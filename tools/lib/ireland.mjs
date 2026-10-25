@@ -79,7 +79,7 @@ export const lowestIB = (need) => {
  * write a false sentence back.
  */
 export const aboveIB = (points, test = false) => points > 625
-  ? 'Above the 625-point IB maximum, so no IB equivalent.'
+  ? (test ? PLUS_TEST : 'Above the 625-point IB maximum, so no IB equivalent.')
   : test
     ? 'Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given.'
     : 'Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given.';
@@ -89,6 +89,25 @@ export const aboveIB = (points, test = false) => points > 625
 // a row whose note carries BONUS_ONLY shows "needs HL Maths 4+" on its card.
 export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
 export const MATHS_BONUS = 'HL Maths 4+ adds 25 bonus points.';
+
+/**
+ * Every Irish cutoff above 625 includes a test score: the HPAT for Medicine,
+ * or the CAO "#" marker (an audition or test) on the rest. So it is not a
+ * points total and is never turned into an IB figure or used to hide a course
+ * (Q12 option C, Leon 2026-10-25).
+ *
+ * For HPAT Medicine the CAO publishes a real minimum instead. Its brochure
+ * "Selection Criteria for Undergraduate Entry to Medicine for EU Applicants
+ * 2027" (www2.cao.ie/downloads/documents/2027/UGMedEntry2027.pdf, read
+ * 2026-10-25) says school leavers need "a minimum of 480 points" (Leaving
+ * Certificate "or equivalent"), and places then go on "the combined score of
+ * Leaving Certificate (or equivalent) and HPAT-Ireland". 480 converts to 35 IB
+ * points through TABLE. Re-check the brochure each cycle, like HPAT_CODES.
+ * js/data.js keeps copies of HPAT_NOTE and PLUS_TEST; check.mjs compares them.
+ */
+export const HPAT_MIN_POINTS = 480;
+export const HPAT_NOTE = `The CAO minimum for Medicine is ${HPAT_MIN_POINTS} points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure.`;
+export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given.';
 
 /**
  * The ib_points_min figure and the note sentences for one CAO cutoff. All three
@@ -105,9 +124,15 @@ export const MATHS_BONUS = 'HL Maths 4+ adds 25 bonus points.';
  * test marks, so it is not a points total and gets no bonus figure.
  *
  * `needsMaths` (still title-based) only decides the informational MATHS_BONUS
- * sentence on cutoffs a 45 or less already reaches.
+ * sentence on cutoffs a 45 or less already reaches. `hpat` (the CAO code is in
+ * HPAT_CODES) gives the CAO's Medicine minimum instead of any conversion.
  */
-export function convertCutoff(points, { test = false, needsMaths = false } = {}) {
+export function convertCutoff(points, { test = false, hpat = false, needsMaths = false } = {}) {
+  // An HPAT cutoff is never a points total, and the 480 minimum does not depend
+  // on there having been a cutoff, so HPAT courses always get the CAO minimum,
+  // even with no cutoff (AQA, none published, or no CAO entry: points null).
+  if (hpat) return { ib: lowestIB(HPAT_MIN_POINTS), notes: [HPAT_NOTE] };
+  if (points === null || points === undefined) return { ib: null, notes: [] };
   const notes = [];
   let ib = lowestIB(points);
   if (ib === null && points <= 625 && !test) {

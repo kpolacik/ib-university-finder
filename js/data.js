@@ -190,6 +190,12 @@ function build(universityRows, programmeRows, today) {
       // Maths 4+ (a 601-625 CAO cutoff). The note's exact sentence is what marks
       // it, so the card can say "needs HL Maths 4+" (Q13, 2026-10-25).
       needsHlMaths: ibPointsMin !== null && deadlineNotes.includes(BONUS_ONLY),
+      // Irish cutoffs above 625 include a test score, so they are never an IB
+      // figure (Q12 option C, 2026-10-25). HPAT Medicine shows the CAO's
+      // 480-point minimum and is then ranked with the HPAT; the other test
+      // courses show no figure and say the cutoff includes a test score.
+      rankedWithHpat: ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE),
+      pointsPlusTest: ibPointsMin === null && deadlineNotes.includes(PLUS_TEST),
 
       // Three requirement kinds, kept apart so a card can show only what
       // applies. ib_subjects has its own three states:
@@ -283,6 +289,11 @@ export const BULLET = ' · ';
 // because the browser cannot import from tools/; check.mjs asserts the two are
 // equal, so editing one alone fails the checks.
 export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
+// The same for HPAT Medicine and for other cutoffs that include a test score
+// (copies of HPAT_NOTE and PLUS_TEST in tools/lib/ireland.mjs, also compared by
+// check.mjs). Mind the plain ASCII apostrophe in "last year's".
+export const HPAT_NOTE = "The CAO minimum for Medicine is 480 points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure.";
+export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given.';
 
 function inheritNumber(raw, fallback, issues, label) {
   const value = text(raw);

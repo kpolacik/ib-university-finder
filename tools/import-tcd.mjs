@@ -122,18 +122,21 @@ for (const c of links) {
   const notes = [];
   let ib = null;
 
-  if (entry && entry.latest.points !== null) {
-    notes.push(caoNote(entry));
-    // One conversion for all three Irish writers (lib/ireland.mjs).
-    const conv = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
-    ib = conv.ib;
-    notes.push(...conv.notes);
-  } else if (entry) {
+  if (entry) {
     notes.push(caoNote(entry));
   } else {
     counts.noCutoff++;
     notes.push(`No CAO cutoff is published for this course${code ? ` (code ${code})` : ''}.`);
   }
+  // One conversion for all three Irish writers (lib/ireland.mjs), called on
+  // every branch: with no cutoff (AQA, none published, no CAO entry) points is
+  // null and the figure stays blank, except on HPAT Medicine, which gets the
+  // CAO's minimum whatever the cutoff.
+  const conv = convertCutoff(entry ? entry.latest.points : null, {
+    test: entry?.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+  });
+  ib = conv.ib;
+  notes.push(...conv.notes);
 
   rows.push(toRow({
     programme_id: idFor(c.h),

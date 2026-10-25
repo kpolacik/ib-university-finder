@@ -89,18 +89,18 @@ export async function importUniversity(cfg) {
     let ib = null;
     const notes = [caoNote(entry)];
 
-    if (entry.latest.aqa) {
-      // No cutoff existed, so there is no total to convert. Left blank, which
-      // the site shows and labels rather than reading as "no requirement".
-      ib = null;
-    } else if (entry.latest.points !== null) {
-      // One conversion for all three Irish writers (ireland.mjs). A test
-      // marker or an HPAT code means the cutoff may include test marks.
-      const c = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
-      ib = c.ib;
-      notes.push(...c.notes);
-      if (ib === null) skipped.aboveReach++;
-    }
+    // One conversion for all three Irish writers (ireland.mjs). A test marker
+    // or an HPAT code means the cutoff may include test marks. AQA means no
+    // cutoff existed, so there is no total to convert (points null): the
+    // figure stays blank, which the site labels rather than reading as "no
+    // requirement", except on HPAT Medicine, which gets the CAO's minimum.
+    const points = entry.latest.aqa ? null : entry.latest.points;
+    const c = convertCutoff(points, {
+      test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+    });
+    ib = c.ib;
+    notes.push(...c.notes);
+    if (points !== null && ib === null) skipped.aboveReach++;
 
     rows.push({
       code,

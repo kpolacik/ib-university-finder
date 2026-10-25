@@ -297,8 +297,8 @@ a per-country system.
   Architecture's cutoff carries the CAO test marker, so its note now says the
   cutoff may include test or portfolio marks, and it still gives no IB figure.
   The wording comes from `aboveIB` in `tools/lib/ireland.mjs`, which both Irish
-  importers and `update-cao-points.mjs` share. Rows really above 625 (Medicine
-  and the like) are unchanged.
+  importers and `update-cao-points.mjs` share. Rows really above 625 are the
+  next-but-one entry.
 
 - **The HL Maths bonus figure depended on the course title (fixed 2026-10-25,
   registry P03).** The importers only tried the 25 bonus points on courses with
@@ -309,6 +309,17 @@ a per-country system.
   "Only reachable with the 25 HL Maths bonus points.", and the card reads
   "44 IB points, needs HL Maths 4+". `check.mjs` ties the sentence to the
   figure.
+
+- **Irish Medicine said "No minimum published" (fixed 2026-10-25, registry
+  P02).** Its cutoffs (730–741) are points plus the HPAT test score, not points
+  totals, and the CAO does publish a minimum: 480 points for every HPAT course
+  (CAO, "Selection Criteria for Undergraduate Entry to Medicine for EU
+  Applicants 2027"). The 5 Medicine rows now show 35 IB points (480 converted),
+  and the card reads "35 IB points, then ranked with the HPAT". The other two
+  cutoffs above 625 (Trinity Music Education, Galway Commerce International)
+  include an audition or test, so they still give no figure and the card reads
+  "Cutoff includes a test score". No row says "Above the 625-point IB maximum"
+  any more. The sentences come from `convertCutoff` in `tools/lib/ireland.mjs`.
 
 ## Decisions already made, so they are not relitigated
 
@@ -386,6 +397,9 @@ a per-country system.
   Maths 4+" (decided 2026-10-25). The one exception
   is UCD, which publishes an IB total it will accept, so UCD's numbers are real
   minimums and its cutoff sits in the note instead.
+- **Irish cutoffs above 625 include a test score** (HPAT or audition), so they
+  are never turned into an IB figure or used to hide a course. HPAT Medicine
+  shows the CAO's 480-point minimum (35 IB) instead (decided 2026-10-25).
 - **Cutoffs come from the CAO, not from the universities' own pages.** Only the
   CAO says what a cutoff *meant*: `AQA` (everyone qualified got in, so there was
   no cutoff at all), `#` (a test, interview, portfolio or audition also
@@ -434,7 +448,7 @@ a per-country system.
   any `HPAT_CODES` code goes missing, and `update-cao-points.mjs` keeps their
   cutoffs current.
 - **Ireland** publishes a CAO cutoff per course and an official IB conversion,
-  which is why 537 of the 548 Irish rows have a number. It also issues **no
+  which is why 542 of the 548 Irish rows have a number. It also issues **no
   conditional offers** — decisions arrive mid-August.
 - **Where each Irish university hides its data**, since finding this again was
   most of the work: UCD's course list is drawn by JavaScript from an internal

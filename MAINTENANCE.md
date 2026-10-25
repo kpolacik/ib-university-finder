@@ -206,14 +206,22 @@ where admission runs on required subjects rather than a total score. Leave it
 blank and put the real requirement in `ib_subjects`. The card will say
 "Points not published", which is honest and useful. A number copied from a
 commercial university-comparison site is not a fact, and it is exactly the kind
-of thing that makes someone apply for a course they cannot get into.
+of thing that makes someone apply for a course they cannot get into. The one
+exception is HPAT Medicine in Ireland: there the figure is the CAO's published
+480-point minimum (35 IB points), which applies to every HPAT course.
 
 **Some Irish notes contain a sentence the card reads.** When an Irish row's
 `deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
 points.", its card says "44 IB points, needs HL Maths 4+" (with its own number).
 That sentence belongs only on rows whose figure assumes the 25 bonus points (a
-CAO cutoff of 601 to 625 with no test). Keep it word for word: `check.mjs`
-complains if it is changed, missing or on the wrong row.
+CAO cutoff of 601 to 625 with no test). Two more work the same way:
+"The CAO minimum for Medicine is 480 points; places then go on points plus the
+HPAT test, so last year's cutoff is not an IB figure." makes the card say "35 IB
+points, then ranked with the HPAT", and "Above what any IB total can reach,
+because the cutoff includes test or audition marks, so no IB figure is given."
+(with `ib_points_min` blank) makes it say "Cutoff includes a test score". Keep
+all three word for word: `check.mjs` complains if one is changed, missing or on
+the wrong row.
 
 **`verified_by` is a signature.** Put your initials there only if you personally
 opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered

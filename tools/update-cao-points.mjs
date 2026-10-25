@@ -20,7 +20,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
-import { convertCutoff, HPAT_CODES } from './lib/ireland.mjs';
+import { convertCutoff, HPAT_CODES, HPAT_NOTE } from './lib/ireland.mjs';
 import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
 
 const IRISH = new Set(['tcd', 'ucd', 'ucc', 'galway', 'dcu', 'ul', 'maynooth']);
@@ -38,6 +38,8 @@ const OLD = [
   /Above the 625-point IB maximum, so no IB equivalent\./,
   /Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given\./,
   /Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given\./,
+  /The CAO minimum for Medicine is \d+ points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure\./,
+  /Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given\./,
 ];
 const MATHS_TITLE = /engineer|mathemat|physic|comput|actuarial|financ|econom/i;
 
@@ -62,18 +64,22 @@ for (const r of rows) {
   const isUcd = r[col.university_id] === 'ucd';
   const needsMaths = MATHS_TITLE.test(r[col.programme]) || /mathemat/i.test(r[col.ib_subjects]);
   const sentences = [caoNote(entry)];
-  let ib = null;
-  if (!entry.latest.aqa && entry.latest.points !== null) {
-    // One conversion for all three Irish writers (lib/ireland.mjs).
-    const conv = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
-    ib = conv.ib;
-    sentences.push(...conv.notes);
-  }
+  // One conversion for all three Irish writers (lib/ireland.mjs), called even
+  // with no cutoff (AQA: points null), so HPAT Medicine always gets the CAO's
+  // minimum and HPAT_NOTE.
+  const conv = convertCutoff(entry.latest.aqa ? null : entry.latest.points, {
+    test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+  });
+  const ib = conv.ib;
+  sentences.push(...conv.notes);
   // UCD's figure is UCD's own stated minimum, not a conversion, so a UCD note
   // keeps only the sentences on this list. It used to drop any sentence naming
   // Maths or 625, but the 601-625 test sentence names neither and would have
   // said "no IB figure is given" beside UCD's own figure.
-  const ucdKeep = new Set([sentences[0]]);
+  // HPAT_NOTE stays too: it describes the CAO's Medicine rule, not UCD's figure.
+  // The figure on ucd-medicine (the CAO's 480-point minimum) was set by hand,
+  // and this script never writes a UCD figure, so a refresh keeps it.
+  const ucdKeep = new Set([sentences[0], HPAT_NOTE]);
   const fresh = (isUcd ? sentences.filter((s) => ucdKeep.has(s)) : sentences).join(' ');
 
   // Rebuild the note: the new block where the first old sentence was, every

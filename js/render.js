@@ -127,7 +127,10 @@ function requirements(row) {
   if (row.ibPointsMin === null) {
     // Worth stating rather than omitting: "there is no points threshold" is
     // news to an IB student who assumes every university has one.
-    reqRow(list, 'Points', [el('span', 'req-quiet', 'No minimum published')]);
+    // An Irish cutoff above 625 that includes test or audition marks is not a
+    // points total, so it gives no figure, and the card says why (Q12 C).
+    reqRow(list, 'Points', [el('span', 'req-quiet',
+      row.pointsPlusTest ? 'Cutoff includes a test score' : 'No minimum published')]);
   } else {
     const value = el('span', 'req-points');
     value.append(el('span', 'req-number', String(row.ibPointsMin)));
@@ -138,6 +141,11 @@ function requirements(row) {
       // with a gap, so a bare text node would put a gap before the comma.
       value.append(el('span', 'req-unit', 'IB points,'));
       value.append(el('span', 'req-quiet', 'needs HL Maths 4+'));
+    } else if (row.rankedWithHpat) {
+      // HPAT Medicine: the figure is the CAO's 480-point minimum, and places
+      // then go on points plus the HPAT (Q12 C, 2026-10-25). Same spans as above.
+      value.append(el('span', 'req-unit', 'IB points,'));
+      value.append(el('span', 'req-quiet', 'then ranked with the HPAT'));
     } else {
       value.append(el('span', 'req-unit', 'IB points'));
     }

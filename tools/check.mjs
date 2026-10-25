@@ -396,7 +396,8 @@ const oldPatterns = [...read('tools/update-cao-points.mjs').match(/const OLD = \
   .matchAll(/^\s*\/(.+)\/,$/gm)].map((m) => new RegExp(m[1]));
 check('update-cao-points.mjs OLD removes every aboveIB sentence before rebuilding',
   typeof ie.aboveIB === 'function'
-    && [ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700)].every((t) => oldPatterns.some((re) => re.test(t))));
+    && [ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true), ie.HPAT_NOTE]
+      .every((t) => typeof t === 'string' && oldPatterns.some((re) => re.test(t))));
 const wronglyAbove = live.filter((p) => p.deadlineNotes.includes(ABOVE_SCALE)
   && Number((p.deadlineNotes.match(/CAO cutoff: (\d+) points/) || [])[1]) <= 625);
 check('no row calls a cutoff of 625 or less "above the 625-point IB maximum"', wronglyAbove.length === 0,
@@ -429,10 +430,8 @@ check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Math
   !read('tools/update-cao-points.mjs').includes('Maths|625'));
 const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);
 const cutoffOf = (p) => { const m = p.deadlineNotes.match(/CAO cutoff: (\d+) points/); return m ? Number(m[1]) : null; };
-// ucd-medicine (hand-added) still says "Above the 625-point IB maximum" until
-// P02's HPAT sentence replaces it, so the above-625 sentence is not listed here.
 const ucdConverted = live.filter((p) => p.id.startsWith('ucd-')
-  && [ie.BONUS_ONLY, ie.MATHS_BONUS, ie.aboveIB(610), ie.aboveIB(610, true)]
+  && [ie.BONUS_ONLY, ie.MATHS_BONUS, ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true)]
     .some((t) => p.deadlineNotes.includes(t)));
 check('no UCD row carries a conversion sentence (UCD\'s figure is its own)', ucdConverted.length === 0,
   ucdConverted.map((p) => p.id).join(', '));
@@ -465,6 +464,81 @@ equal('needsHlMaths is on exactly the 601-625 rows without a test',
 check('the card says "needs HL Maths 4+" when needsHlMaths is set',
   renderSrc.includes("'needs HL Maths 4+'") && renderSrc.includes('row.needsHlMaths'));
 console.log(`        ${bonusRows.length} rows need the HL Maths bonus`);
+
+// P02 / Q12 option C (2026-10-25): every Irish cutoff above 625 includes a test
+// score (HPAT Medicine, or the CAO "#" marker), so it is not a points total.
+// Medicine used to say "No minimum published", though the CAO publishes one
+// (480 points = 35 IB, UGMedEntry2027.pdf). None of these courses is hidden
+// for its cutoff; HPAT Medicine hides below 35 like any other minimum.
+check('HPAT_MIN_POINTS is 480, which converts to 35 IB points',
+  ie.HPAT_MIN_POINTS === 480 && ie.lowestIB(480) === 35);
+const hpatOut = { ib: 35, notes: [ie.HPAT_NOTE] };
+equal('convertCutoff: an HPAT cutoff gives the CAO minimum and only the HPAT sentence, whatever the cutoff',
+  [cc(741, { hpat: true, test: true }), cc(500, { hpat: true })], [hpatOut, hpatOut]);
+equal('convertCutoff: 706 and 657 with a test give no figure and the plus-test sentence',
+  [cc(706, { test: true }), cc(657, { test: true })],
+  [{ ib: null, notes: [ie.PLUS_TEST] }, { ib: null, notes: [ie.PLUS_TEST] }]);
+equal('convertCutoff: 741 without a test keeps the above-625 sentence', cc(741), { ib: null, notes: [ABOVE_SCALE] });
+equal('convertCutoff: no cutoff (null) gives the HPAT minimum on HPAT courses and nothing otherwise',
+  [cc(null, { hpat: true }), cc(null)], [hpatOut, { ib: null, notes: [] }]);
+check('HPAT_NOTE and PLUS_TEST are plain strings', typeof ie.HPAT_NOTE === 'string' && typeof ie.PLUS_TEST === 'string');
+for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
+  check(`${f} passes hpat: to convertCutoff`, /convertCutoff\([^]*?hpat:/.test(read(f)));
+}
+check('update-cao-points.mjs keeps HPAT_NOTE on UCD rows',
+  /const ucdKeep = new Set\(.*HPAT_NOTE/.test(read('tools/update-cao-points.mjs')));
+check('update-cao-points.mjs OLD removes the plus-test sentence too',
+  typeof ie.PLUS_TEST === 'string' && oldPatterns.some((re) => re.test(ie.PLUS_TEST)));
+const irish = live.filter(isIrish);
+const isHpatRow = (p) => p.otherRequirements.includes(ie.HPAT);
+const hpatWrong = irish.filter((p) => isHpatRow(p)
+  !== (p.deadlineNotes.includes(ie.HPAT_NOTE) && p.ibPointsMin === ie.lowestIB(480)));
+check('every HPAT Irish row, and only those, has the HPAT sentence and the CAO minimum',
+  typeof ie.HPAT_NOTE === 'string' && hpatWrong.length === 0, hpatWrong.map((p) => p.id).join(', '));
+const plusTestWrong = irish.filter((p) => !isHpatRow(p) && cutoffOf(p) > 625)
+  .filter((p) => p.ibPointsMin !== null || !p.deadlineNotes.includes(ie.PLUS_TEST));
+check('every non-HPAT Irish cutoff above 625 has no figure and the plus-test sentence',
+  typeof ie.PLUS_TEST === 'string' && plusTestWrong.length === 0, plusTestWrong.map((p) => p.id).join(', '));
+const stillAbove = live.filter((p) => p.deadlineNotes.includes(ABOVE_SCALE));
+check('no row says "Above the 625-point IB maximum" (every such cutoff includes a test)',
+  stillAbove.length === 0, stillAbove.map((p) => p.id).join(', '));
+check('js/data.js HPAT_NOTE and PLUS_TEST match tools/lib/ireland.mjs',
+  typeof dataMod.HPAT_NOTE === 'string' && dataMod.HPAT_NOTE === ie.HPAT_NOTE
+    && typeof dataMod.PLUS_TEST === 'string' && dataMod.PLUS_TEST === ie.PLUS_TEST);
+const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+const testProg = [
+  head,
+  `p-hpat,u,,Medicine,MB,Medicine & Health,English,35,,,,,,2027-02-01,${q(dataMod.HPAT_NOTE)},https://example.org,2026-08-14,TT`,
+  `p-hpat-blank,u,,Medicine blank,MB,Medicine & Health,English,,,,,,,2027-02-01,${q(dataMod.HPAT_NOTE)},https://example.org,2026-08-14,TT`,
+  `p-test,u,,Music,BMus,Art & Design,English,,,,,,,2027-02-01,${q(dataMod.PLUS_TEST)},https://example.org,2026-08-14,TT`,
+  `p-test-fig,u,,Music fig,BMus,Art & Design,English,30,,,,,,2027-02-01,${q(dataMod.PLUS_TEST)},https://example.org,2026-08-14,TT`,
+  'p-plain2,u,,Plain,BSc,Engineering,English,35,,,,,,2027-02-01,Some note.,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: tp, meta: tpMeta } = await load(uni, testProg);
+const tpRow = (id) => tp.find((p) => p.id === id);
+equal('rankedWithHpat / pointsPlusTest follow the sentence and the figure',
+  ['p-hpat', 'p-hpat-blank', 'p-test', 'p-test-fig', 'p-plain2']
+    .map((id) => [tpRow(id)?.rankedWithHpat, tpRow(id)?.pointsPlusTest]),
+  [[true, false], [false, false], [false, true], [false, false], [false, false]]);
+check('the HPAT fixture parses cleanly', tpMeta.issues.length === 0, JSON.stringify(tpMeta.issues));
+const hpatLive = live.filter((p) => p.rankedWithHpat);
+equal('rankedWithHpat is on exactly the HPAT Irish rows, all at 35',
+  hpatLive.map((p) => [p.id, p.ibPointsMin]).sort(),
+  irish.filter(isHpatRow).map((p) => [p.id, 35]).sort());
+equal('pointsPlusTest is on exactly the non-HPAT cutoffs above 625',
+  live.filter((p) => p.pointsPlusTest).map((p) => p.id).sort(),
+  irish.filter((p) => !isHpatRow(p) && cutoffOf(p) > 625).map((p) => p.id).sort());
+check('the card says "then ranked with the HPAT" and "Cutoff includes a test score" under their flags',
+  /row\.rankedWithHpat[^]{0,300}'then ranked with the HPAT'/.test(renderSrc)
+    && /row\.pointsPlusTest \? 'Cutoff includes a test score'/.test(renderSrc));
+// Unchanged behaviour, guarded: a blank figure is never hidden by My points,
+// and the CAO minimum hides Medicine below 35 like any other minimum.
+const { applyFilters, createFilterState } = await import(new URL('../js/filters.js', import.meta.url));
+const withPoints = (n) => { const st = createFilterState(); st.myIbPoints = n; return st; };
+const shown = (n) => applyFilters(tp, withPoints(n)).map((p) => p.id);
+check('a plus-test row (no figure) is shown at 24 points', shown(24).includes('p-test'));
+check('an HPAT row (35) is hidden at 34 and shown at 35', !shown(34).includes('p-hpat') && shown(35).includes('p-hpat'));
+console.log(`        ${hpatLive.length} rows ranked with the HPAT, ${live.filter((p) => p.pointsPlusTest).length} with a test-score cutoff`);
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes
