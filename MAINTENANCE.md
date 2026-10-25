@@ -293,7 +293,9 @@ node tools/make-snapshot.mjs
 ```
 
 Then commit and push. Do it after the autumn pass, and any time the Sheet
-changes a lot.
+changes a lot. While the site reads the CSVs in the repo, `node tools/check.mjs`
+fails when `data/fallback.json` no longer matches them: run the command above
+and commit the result with the CSVs.
 
 While you are there, this checks that nothing is broken:
 

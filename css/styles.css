@@ -231,6 +231,10 @@ svg:not(.sprite) {
 .banner-warn::before { background: var(--warn); }
 .banner-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); font-weight: 600; }
 .banner-danger::before { background: var(--danger); }
+/* The banner's link to the problems list (L06) takes the banner's colour, so it
+   needs no contrast pair of its own. */
+.banner a { color: inherit; text-decoration: underline; }
+.banner .button { margin-left: auto; flex: none; }
 
 /* ------------------------------------------------------------- buttons */
 

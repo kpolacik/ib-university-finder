@@ -327,14 +327,28 @@ export function renderSourceBanner(node, meta) {
     );
   }
 
-  if (parts.length === 0) {
+  // The problems list sits after every card, 1240 of them, where nobody sees
+  // it. One line up here says it exists and links to it (L06).
+  const problems = meta.issues ? meta.issues.length : 0;
+
+  if (parts.length === 0 && problems === 0) {
     node.hidden = true;
     return;
   }
 
+  const text = el('span', '', parts.join(' '));
+  if (problems > 0) {
+    const link = el('a', '', 'See the list below the results.');
+    link.href = '#issues';
+    text.append(
+      `${parts.length ? ' ' : ''}${problems} spreadsheet ${problems === 1 ? 'problem' : 'problems'}: `,
+      'some rows may be missing or incomplete. ', link,
+    );
+  }
+
   // Invented data is the louder problem, so it sets the tone when both apply.
   node.className = `banner banner-${meta.sampleCount > 0 ? 'danger' : 'warn'}`;
-  node.textContent = parts.join(' ');
+  node.replaceChildren(text);
   node.hidden = false;
 }
 

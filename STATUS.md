@@ -350,7 +350,28 @@ a per-country system.
   "nothing matches" hint named filters nobody had set; it now names the ones in
   use and has a Clear all button. A tab left open past midnight kept yesterday's
   deadline badges; they are worked out again on the next action or when the tab
-  comes back into view. `check.mjs` guards each.
+  comes back into view. `check.mjs` guards each. Universities are also found by
+  their short and native names (UvA, TCD, ČVUT, Univerzita Karlova; the
+  `aliases` column on the universities tab), and Prague, Milan, Turin, Rome and
+  The Hague by their local names.
+
+- **A broken, empty or slow file loaded as an empty site (fixed 2026-10-26,
+  registry L01–L07, X01, T04).** An empty or header-only programmes file, a
+  login page served instead of the CSV, or a renamed column (`official_url`,
+  `application_deadline`, `verified_by`, …) loaded as 0 programmes or as cards
+  with no deadline. A request that never answered left the page loading for
+  ever. Now each of those falls back to the saved copy (`data/fallback.json`),
+  after 10 seconds for a request that hangs, and the banner says so and links
+  to the problems list, which names the file and the column. If even the saved
+  copy fails, the page says "Could not load the programme list" with a Reload
+  button instead of a JavaScript error. A file that ends inside an open quote
+  mark is reported (it used to swallow every row after it). Numbers are
+  checked: IB points must be a whole number from 24 to 45, fees and living
+  costs 0 or more, and a comma only separates thousands ("2771,00" used to read
+  as 277,100). A blank `official_url` is listed as a problem, and a link with a
+  user name in it (`https://www.ucd.ie@evil.example/`, which goes to
+  evil.example) is refused. `check.mjs` guards each, and also fails when
+  `data/fallback.json` no longer matches the CSVs field for field.
 
 ## Decisions already made, so they are not relitigated
 

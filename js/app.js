@@ -12,6 +12,8 @@ import {
 
 const dom = {
   banner: document.getElementById('source-banner'),
+  form: document.getElementById('filter-form'),
+  resultsBar: document.querySelector('.results-bar'),
   dropdowns: [...document.querySelectorAll('.dropdown')],
   subjectsCount: document.getElementById('dd-subjects-count'),
   countriesCount: document.getElementById('dd-countries-count'),
@@ -62,6 +64,7 @@ let dataDay = localDay(new Date());
 start();
 
 async function start() {
+  dom.banner.addEventListener('click', openIssuesFromLink);
   wireDropdowns();
   wireInputs();
   dom.results.setAttribute('aria-busy', 'true');
@@ -85,13 +88,39 @@ async function start() {
     loaded = true;
     update();
   } catch (err) {
-    dom.banner.className = 'banner banner-danger';
-    dom.banner.textContent = `Could not load any university data (${err.message}). Try reloading.`;
-    dom.banner.hidden = false;
+    showTotalFailure(err);
   } finally {
     dom.loading.hidden = true;
     dom.results.removeAttribute('aria-busy');
   }
+}
+
+// Nothing could be loaded, not even the saved copy (L07). The banner used to
+// print the raw JavaScript error. Now it says what happened in one plain
+// sentence, offers a Reload, and the reasons go to the problems panel for
+// whoever maintains the Sheet. The filters and the empty Sort menu are
+// hidden: there is nothing to filter or sort.
+function showTotalFailure(err) {
+  const sentence = document.createElement('span');
+  sentence.textContent = 'Could not load the programme list. Check your connection and reload the page.';
+  const reload = document.createElement('button');
+  reload.type = 'button';
+  reload.className = 'button';
+  reload.textContent = 'Reload';
+  reload.addEventListener('click', () => location.reload());
+  dom.banner.className = 'banner banner-danger';
+  dom.banner.setAttribute('role', 'alert');
+  dom.banner.replaceChildren(sentence, reload);
+  dom.banner.hidden = false;
+  dom.form.hidden = true;
+  dom.resultsBar.hidden = true;
+  renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, err.reasons || [err.message]);
+}
+
+// The banner's "see the list" link points at #issues, a closed <details>.
+// Following it opens the list, or the reader lands on a bare summary line (L06).
+function openIssuesFromLink(event) {
+  if (event.target.closest('a[href="#issues"]')) dom.issues.open = true;
 }
 
 function drawChips() {

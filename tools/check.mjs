@@ -14,6 +14,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
 
 const { parseCsv, csvToObjects } = await import(new URL('../js/csv.js', import.meta.url));
+const appSrcEarly = readFileSync(join(root, 'js/app.js'), 'utf8');
 const { safeUrl } = await import(new URL('../js/data.js', import.meta.url));
 
 let failures = 0;
@@ -26,15 +27,38 @@ const equal = (name, actual, expected) =>
   check(name, JSON.stringify(actual) === JSON.stringify(expected),
     `got ${JSON.stringify(actual)}\n        want ${JSON.stringify(expected)}`);
 
-// Loads the data layer against whatever CSV text you give it.
-async function load(universities, programmes, today = new Date('2026-08-14')) {
-  globalThis.fetch = async (url) => ({
-    ok: true,
-    text: async () => (String(url).includes('universities') ? universities : programmes),
-  });
+// Loads the data layer against whatever CSV text you give it. The stub fetch
+// also serves a snapshot (the fallback path), and can leave chosen URLs
+// unanswered: such a request settles only when its signal aborts, the way a
+// real fetch does on a timeout, so a loader without a timeout never finishes.
+//   snapshot        object served as data/fallback.json (none: a 404 HTML page)
+//   snapshotStatus  HTTP status for the snapshot
+//   hang            URL fragments that never answer
+//   timeoutMs       passed to loadData, so a hang test takes milliseconds
+async function load(universities, programmes, today = new Date('2026-08-14'),
+  { snapshot = null, snapshotStatus = 200, hang = [], timeoutMs } = {}) {
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (hang.some((h) => u.includes(h))) {
+      return new Promise((_, reject) => {
+        if (init.signal) init.signal.addEventListener('abort', () => reject(init.signal.reason || new Error('aborted')));
+      });
+    }
+    if (u.includes('fallback.json')) {
+      const ok = Boolean(snapshot) && snapshotStatus === 200;
+      return {
+        ok,
+        status: snapshot ? snapshotStatus : 404,
+        // A server's error page is HTML, so reading it as JSON gives a parse
+        // error, which is what used to reach the banner.
+        json: async () => { if (!ok) throw new SyntaxError('Unexpected token \'<\', "<!doctype "... is not valid JSON'); return snapshot; },
+      };
+    }
+    return { ok: true, status: 200, text: async () => (u.includes('universities') ? universities : programmes) };
+  };
   // A fresh query string dodges the module cache between fixtures.
   const { loadData } = await import(new URL(`../js/data.js?t=${Math.random()}`, import.meta.url));
-  return loadData(today);
+  return timeoutMs === undefined ? loadData(today) : loadData(today, { timeoutMs });
 }
 
 // ---------------------------------------------------------------- CSV parsing
@@ -63,6 +87,10 @@ check('mixed-case javascript: rejected', safeUrl('JaVaScRiPt:alert(1)') === null
 check('data: rejected', safeUrl('data:text/html,<script>') === null);
 check('bare domain rejected', safeUrl('tudelft.nl') === null);
 check('blank rejected', safeUrl('   ') === null);
+// X01: the part before "@" is a user name, so this link goes to evil.example.
+check('a link with a user name or password is rejected (https://www.ucd.ie@evil.example/)',
+  [safeUrl('https://www.ucd.ie@evil.example/'), safeUrl('https://a@b.example/'), safeUrl('https://user:pw@example.org/')]
+    .every((v) => v === null));
 
 // ---------------------------------------------- inherit / override / unknown
 
@@ -106,10 +134,10 @@ const uniA = [
   'a,Points University,Town,Testland,Places go by points,2026-08-14,TT',
 ].join('\n') + '\n';
 const progA = [
-  'programme_id,university_id,programme,admission,official_url,last_verified,verified_by',
-  'a-inherit,a,Inherits,,https://example.org,2026-08-14,TT',
-  'a-own,a,Own,Entrance exam · Can be waived,https://example.org,2026-08-14,TT',
-  'a-unknown,a,Unknown,?,https://example.org,2026-08-14,TT',
+  'programme_id,university_id,programme,admission,application_deadline,official_url,last_verified,verified_by',
+  'a-inherit,a,Inherits,,,https://example.org,2026-08-14,TT',
+  'a-own,a,Own,Entrance exam · Can be waived,,https://example.org,2026-08-14,TT',
+  'a-unknown,a,Unknown,?,,https://example.org,2026-08-14,TT',
 ].join('\n') + '\n';
 const { programmes: adm } = await load(uniA, progA);
 const admOf = (id) => adm.find((p) => p.id === id).admission;
@@ -136,13 +164,13 @@ const uniH = [
   'h2,Unsigned University,Town,Testland,,,2026-08-14,',
 ].join('\n') + '\n';
 const progH = [
-  'programme_id,university_id,city,programme,english_requirement,official_url,last_verified,verified_by',
-  'h-blank,h,,Blank english,,https://example.org,2026-08-14,TT',
-  'h-q,h,,Unknown english,?,https://example.org,2026-08-14,TT',
-  'h-city,h,?,Unknown city,,https://example.org,2026-08-14,TT',
-  'h-nosign,h,,No signer,,https://example.org,2026-08-14,',
-  'h-draft,h,,Draft,,https://example.org,2026-08-14,AI-DRAFT',
-  'h-uni-blank,h2,,University unsigned,,https://example.org,2026-08-14,TT',
+  'programme_id,university_id,city,programme,english_requirement,application_deadline,official_url,last_verified,verified_by',
+  'h-blank,h,,Blank english,,,https://example.org,2026-08-14,TT',
+  'h-q,h,,Unknown english,?,,https://example.org,2026-08-14,TT',
+  'h-city,h,?,Unknown city,,,https://example.org,2026-08-14,TT',
+  'h-nosign,h,,No signer,,,https://example.org,2026-08-14,',
+  'h-draft,h,,Draft,,,https://example.org,2026-08-14,AI-DRAFT',
+  'h-uni-blank,h2,,University unsigned,,,https://example.org,2026-08-14,TT',
 ].join('\n') + '\n';
 const { programmes: hc, meta: hcMeta } = await load(uniH, progH);
 const hcRow = (id) => hc.find((p) => p.id === id);
@@ -187,10 +215,10 @@ const uniS = [
   's,Portal University,Town,Testland,Own portal,2026-08-14,TT',
 ].join('\n') + '\n';
 const progS = [
-  'programme_id,university_id,programme,application_system,official_url,last_verified,verified_by',
-  's-inherit,s,Inherits,,https://example.org,2026-08-14,TT',
-  's-own,s,Own,Common App,https://example.org,2026-08-14,TT',
-  's-unknown,s,Unknown,?,https://example.org,2026-08-14,TT',
+  'programme_id,university_id,programme,application_system,application_deadline,official_url,last_verified,verified_by',
+  's-inherit,s,Inherits,,,https://example.org,2026-08-14,TT',
+  's-own,s,Own,Common App,,https://example.org,2026-08-14,TT',
+  's-unknown,s,Unknown,?,,https://example.org,2026-08-14,TT',
 ].join('\n') + '\n';
 const { programmes: sys, meta: sysMeta } = await load(uniS, progS);
 const sysOf = (id) => sys.find((p) => p.id === id).applicationSystem;
@@ -200,8 +228,8 @@ equal('own application system wins', sysOf('s-own'), 'Common App');
 equal('"?" application system does not inherit', sysOf('s-unknown'), '');
 // An old CSV, the snapshot or a Sheet without the column must still load.
 const progNoCol = [
-  'programme_id,university_id,programme,official_url,last_verified,verified_by',
-  's-old,s,Old file,https://example.org,2026-08-14,TT',
+  'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by',
+  's-old,s,Old file,,https://example.org,2026-08-14,TT',
 ].join('\n') + '\n';
 const { programmes: noCol } = await load(uniS, progNoCol);
 equal('a programmes CSV with no application_system column still inherits',
@@ -225,6 +253,101 @@ check('an unknown university_id drops the row', badRows.every((p) => p.id !== 'q
 check('an impossible date is refused', said(/2026-02-31/));
 check('a javascript: link is refused', said(/not a usable link/));
 check('a non-numeric points value is flagged', said(/is not a number/));
+
+// ---------------------------------------------------------- loading guards
+
+section('A broken, empty or slow file falls back to the saved copy (L01-L07)');
+const snapFixture = {
+  meta: { generated_at: '2026-08-01', note: 'fixture' },
+  universities: [{ university_id: 'u', name: 'Saved University', city: 'Town', country: 'Testland', last_verified: '2026-08-14', verified_by: 'TT' }],
+  programmes: [{ programme_id: 'snap-1', university_id: 'u', programme: 'Saved', application_deadline: '2027-01-15', official_url: 'https://example.org', last_verified: '2026-08-14', verified_by: 'TT' }],
+};
+const goodRow = 'g1,u,,Good,BSc,Engineering,English,,HL Maths,,,,,2027-05-01,,https://example.org,2026-08-14,TT';
+const usedSnapshot = (res) => res && res.meta && res.meta.source === 'snapshot'
+  && res.programmes.map((p) => p.id).join() === 'snap-1';
+const tryLoad = (u, p, opts) => load(u, p, undefined, { snapshot: snapFixture, ...opts }).catch((err) => ({ error: err }));
+for (const [name, text, why] of [
+  ['an empty programmes file', '', /empty|no data rows/],
+  ['a header-only programmes file', `${head}\n`, /no data rows/],
+  ['an HTML page instead of the CSV', '<!doctype html><html><body>Sign in</body></html>\n', /programme_id/],
+]) {
+  const res = await tryLoad(uni, text);
+  check(`${name} loads the saved copy and says why`,
+    usedSnapshot(res) && res.meta.issues.some((i) => /^Live data unavailable/.test(i) && why.test(i)),
+    JSON.stringify(res.error ? res.error.message : res.meta.issues));
+}
+const renamed = await tryLoad(uni, [head.replace('official_url', 'official_link'), goodRow].join('\n') + '\n');
+check('a renamed official_url header loads the saved copy, and the problem names the column',
+  usedSnapshot(renamed) && renamed.meta.issues.some((i) => i.includes('"official_url"')),
+  JSON.stringify(renamed.error ? renamed.error.message : renamed.meta.issues));
+const uniNoSigner = uni.replace(',verified_by\n', ',signed\n');
+const noSignerCol = await tryLoad(uniNoSigner, [head, goodRow].join('\n') + '\n');
+check('a universities file without verified_by loads the saved copy',
+  usedSnapshot(noSignerCol) && noSignerCol.meta.issues.some((i) => i.includes('"verified_by"')),
+  JSON.stringify(noSignerCol.error ? noSignerCol.error.message : noSignerCol.meta.issues));
+const sleep = (ms) => new Promise((resolve) => setTimeout(() => resolve({ error: new Error('still waiting after 2 s') }), ms));
+const hung = await Promise.race([tryLoad(uni, [head, goodRow].join('\n') + '\n', { hang: ['programmes'], timeoutMs: 20 }), sleep(2000)]);
+check('a request that never answers times out and loads the saved copy',
+  usedSnapshot(hung) && hung.meta.issues.some((i) => /did not answer/.test(i)),
+  JSON.stringify(hung.error ? hung.error.message : hung.meta.issues));
+const hungAll = await Promise.race([tryLoad(uni, '', { hang: ['programmes', 'fallback.json'], timeoutMs: 20 }), sleep(2000)]);
+check('the saved copy has a timeout too', hungAll.error && Array.isArray(hungAll.error.reasons)
+  && hungAll.error.reasons.some((r) => /fallback\.json did not answer/.test(r)),
+  hungAll.error ? `${hungAll.error.message} ${JSON.stringify(hungAll.error.reasons)}` : 'loaded');
+const noSnap = await tryLoad(uni, '', { snapshotStatus: 404 });
+check('when the saved copy is missing too, the error is plain words, not a JSON parse message',
+  noSnap.error && !/JSON|Unexpected token/.test(noSnap.error.message)
+    && Array.isArray(noSnap.error.reasons) && noSnap.error.reasons.some((r) => /404/.test(r)),
+  noSnap.error ? `${noSnap.error.message} ${JSON.stringify(noSnap.error.reasons)}` : 'loaded');
+const emptySnap = await tryLoad(uni, '', { snapshot: { ...snapFixture, programmes: [] } });
+check('an empty saved copy is a failure too, not an empty site', Boolean(emptySnap.error), 'loaded with 0 rows');
+
+// L03: an unclosed quote at the end swallowed every row after it into one cell.
+const cut = csvToObjects('id,name\n1,"unfinished\n2,normal\n', 'Test');
+check('a file that ends inside a quoted field is reported, and the swallowed row is not shown',
+  cut.rows.length === 0 && cut.issues.length === 1 && /ends inside a quoted field that starts on line 2/.test(cut.issues[0]),
+  JSON.stringify(cut));
+const cutLoad = await tryLoad(uni, [head, goodRow, 'g2,u,,"Cut off,BSc'].join('\n') + '\n');
+check('a truncated programmes file keeps its good rows and says so (no fallback)',
+  cutLoad.meta && cutLoad.meta.source === 'sample' && cutLoad.programmes.map((p) => p.id).join() === 'g1'
+    && cutLoad.meta.issues.some((i) => /ends inside a quoted field/.test(i)),
+  JSON.stringify(cutLoad.error ? cutLoad.error.message : [cutLoad.meta.source, cutLoad.meta.issues]));
+
+// L04: "2771,00" became 277100 and any number passed as IB points.
+section('Numbers are range-checked, and a comma is only a thousands separator (L04)');
+const numProg = [
+  head,
+  'n-99,u,,Points 99,BSc,Engineering,English,99,HL Maths,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+  'n-frac,u,,Points 36.5,BSc,Engineering,English,36.5,HL Maths,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+  'n-neg,u,,Fee -100,BSc,Engineering,English,,HL Maths,,-100,,,2027-05-01,,https://example.org,2026-08-14,TT',
+  'n-comma,u,,Fee 2771 comma 00,BSc,Engineering,English,,HL Maths,,"2771,00",,,2027-05-01,,https://example.org,2026-08-14,TT',
+  'n-thou,u,,Fee 12 thousand,BSc,Engineering,English,36,HL Maths,,"12,500",,,2027-05-01,,https://example.org,2026-08-14,TT',
+  'n-nolink,u,,No link,BSc,Engineering,English,,HL Maths,,,,,2027-05-01,,,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: num, meta: numMeta } = await load(uni, numProg);
+const numRow = (id) => num.find((p) => p.id === id);
+const numSaid = (re) => numMeta.issues.some((i) => re.test(i));
+check('IB points 99 and 36.5 are reported and treated as not published',
+  numRow('n-99').ibPointsMin === null && numRow('n-frac').ibPointsMin === null
+    && numSaid(/ib_points_min.*"99"/) && numSaid(/ib_points_min.*"36\.5"/), JSON.stringify(numMeta.issues));
+check('a fee of -100 is reported and treated as not published',
+  numRow('n-neg').tuitionEu === null && numSaid(/tuition_eu.*"-100"/), JSON.stringify(numMeta.issues));
+check('"2771,00" is reported, not read as 277100', numRow('n-comma').tuitionEu === null && numSaid(/"2771,00"/),
+  `${numRow('n-comma').tuitionEu}`);
+check('"12,500" is still read as 12500, and 36 points as 36', numRow('n-thou').tuitionEu === 12500 && numRow('n-thou').ibPointsMin === 36);
+// T04: a blank official_url was not reported; the card just said no link.
+check('a blank official_url is reported', numSaid(/row 7, official_url is blank/), JSON.stringify(numMeta.issues));
+
+section('The page says when there are problems, and a total failure reads plainly (L06, L07)');
+check('the banner links to the problems list when there are any',
+  renderSrc.includes("'#issues'") && /meta\.issues\.length/.test(renderSrc.slice(renderSrc.indexOf('export function renderSourceBanner'))));
+check('following that link opens the problems list', appSrcEarly.includes('dom.issues.open = true'));
+check('a total failure is an alert with a plain sentence and a Reload button, not the raw error',
+  appSrcEarly.includes("setAttribute('role', 'alert')")
+    && appSrcEarly.includes('Could not load the programme list. Check your connection and reload the page.')
+    && appSrcEarly.includes("'Reload'") && !appSrcEarly.includes('${err.message}'));
+check('a total failure hides the filters and lists the reasons in the problems panel',
+  appSrcEarly.includes('dom.form.hidden = true') && /renderIssues\([^)]*err\.reasons/.test(appSrcEarly));
 
 // ------------------------------------------------------- sorting, on real data
 
@@ -503,6 +626,16 @@ const { meta: noAliasMeta, programmes: noAlias } = await load(uniF, progF);
 check('a universities file without the aliases column still loads with no problems',
   noAliasMeta.issues.length === 0 && noAlias.length === 5 && !uniF.split('\n')[0].includes('aliases'),
   JSON.stringify(noAliasMeta.issues));
+
+// L08: the saved copy is what students see when the CSVs cannot be read. It
+// must hold exactly what the CSVs hold, field for field: a stale deadline
+// under the right programme_id is the risk, so comparing ids is not enough.
+const snapshotFile = JSON.parse(read('data/fallback.json'));
+const csvRows = (p) => csvToObjects(read(p), p).rows.map(({ __row, ...rest }) => rest);
+const parity = (name, file) => JSON.stringify(snapshotFile[name]) === JSON.stringify(csvRows(file));
+check('data/fallback.json matches the CSVs exactly',
+  parity('universities', 'data/universities.csv') && parity('programmes', 'data/programmes.csv'),
+  'the saved copy is out of date: run  node tools/make-snapshot.mjs  and commit data/fallback.json with the CSVs');
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 

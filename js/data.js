@@ -10,7 +10,9 @@ import {
 
 const DAY = 24 * 60 * 60 * 1000;
 
-export async function loadData(today = new Date()) {
+// `timeoutMs` is per request. It is a parameter rather than a config value so
+// tools/check.mjs can test a request that never answers in milliseconds.
+export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
   const sources = [];
 
   if (SHEET_CSV_URLS.universities && SHEET_CSV_URLS.programmes) {
@@ -24,11 +26,18 @@ export async function loadData(today = new Date()) {
   for (const source of sources) {
     try {
       const [uniText, progText] = await Promise.all([
-        fetchText(source.urls.universities),
-        fetchText(source.urls.programmes),
+        fetchText(source.urls.universities, timeoutMs),
+        fetchText(source.urls.programmes, timeoutMs),
       ]);
       const uni = csvToObjects(uniText, 'Universities');
       const prog = csvToObjects(progText, 'Programmes');
+      // A file that read without error can still be useless: empty, only a
+      // header, a login page served as HTML, or a renamed column. Each of those
+      // used to load as an empty or blank site (L01, L05). Throwing here sends
+      // the loader to the saved copy, and the reason lands in the issues.
+      requireColumns(uni, 'Universities', REQUIRED_UNIVERSITY_COLUMNS);
+      requireColumns(prog, 'Programmes', REQUIRED_PROGRAMME_COLUMNS);
+      if (prog.rows.length === 0) throw new Error('the Programmes file has no data rows');
       const built = build(uni.rows, prog.rows, today);
       return {
         programmes: built.programmes,
@@ -49,12 +58,33 @@ export async function loadData(today = new Date()) {
   // Everything above failed. Fall back to the committed snapshot — but the
   // caller must tell the user, because a snapshot can be months out of date
   // and stale deadlines are the one thing this site must not present quietly.
-  const snapshot = await (await fetch(SNAPSHOT_URL)).json();
-  const built = build(
-    withRowNumbers(snapshot.universities),
-    withRowNumbers(snapshot.programmes),
-    today,
-  );
+  const reasons = failures.map((f) => `Live data unavailable: ${f}`);
+  let snapshot;
+  let built;
+  try {
+    // fetchBody checks res.ok first. Without that, a missing file's HTML error
+    // page went to .json(), and the banner showed the parse error (L07).
+    snapshot = await fetchBody(SNAPSHOT_URL, timeoutMs, async (res) => {
+      try {
+        return await res.json();
+      } catch {
+        throw new Error(`${SNAPSHOT_URL} is not a readable saved copy`);
+      }
+    });
+    if (!snapshot || !Array.isArray(snapshot.programmes) || snapshot.programmes.length === 0) {
+      throw new Error(`${SNAPSHOT_URL} has no programmes in it`);
+    }
+    built = build(
+      withRowNumbers(snapshot.universities),
+      withRowNumbers(snapshot.programmes),
+      today,
+    );
+  } catch (err) {
+    // The page shows one plain sentence; the reasons go to the issues panel.
+    const total = new Error('no programme data could be loaded');
+    total.reasons = [...reasons, `Saved copy unavailable: ${err.message}`];
+    throw total;
+  }
   return {
     programmes: built.programmes,
     meta: {
@@ -66,15 +96,59 @@ export async function loadData(today = new Date()) {
       draftCount: built.draftCount,
       total: built.programmes.length,
       snapshotDate: snapshot.meta ? parseIsoDate(snapshot.meta.generated_at) : null,
-      issues: [...built.issues, ...failures.map((f) => `Live data unavailable: ${f}`)],
+      issues: [...built.issues, ...reasons],
     },
   };
 }
 
-async function fetchText(url) {
-  const res = await fetch(url, { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-  return res.text();
+// The columns whose loss blanks the whole site or its trust signal. Every other
+// column (aliases, application_system, admission, ...) is optional, so a Sheet
+// that lacks one still loads. application_deadline is here because a renamed
+// header would turn every deadline into "Not published" while the saved copy
+// has them.
+const REQUIRED_UNIVERSITY_COLUMNS = ['university_id', 'name', 'country', 'verified_by'];
+const REQUIRED_PROGRAMME_COLUMNS = [
+  'programme_id', 'university_id', 'programme', 'application_deadline', 'official_url', 'verified_by',
+];
+
+function requireColumns(parsed, label, required) {
+  const missing = required.filter((c) => !parsed.header.includes(c));
+  if (missing.length === 0) return;
+  if (parsed.header.length === 0) throw new Error(`the ${label} file is empty`);
+  throw new Error(
+    `the ${label} file has no ${missing.map((c) => `"${c}"`).join(', ')} column ` +
+    `(renamed, deleted, or not a CSV at all)`
+  );
+}
+
+// A school network can leave a request hanging for minutes. After timeoutMs
+// it counts as failed, so the saved copy is tried instead (L02). The timeout
+// covers reading the body too, which is why this returns the body, not the
+// response.
+async function fetchBody(url, timeoutMs, read, init = {}) {
+  let timer;
+  let signal;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    signal = AbortSignal.timeout(timeoutMs);
+  } else {
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+    signal = controller.signal;
+  }
+  try {
+    const res = await fetch(url, { ...init, signal });
+    if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+    return await read(res);
+  } catch (err) {
+    if (signal.aborted) throw new Error(`${url} did not answer within ${timeoutMs / 1000} s`);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function fetchText(url, timeoutMs) {
+  return fetchBody(url, timeoutMs, (res) => res.text(), { cache: 'no-cache' });
 }
 
 // The snapshot has no header row, so error messages count from the array
@@ -105,9 +179,9 @@ function build(universityRows, programmeRows, today) {
       city: text(row.city),
       country: text(row.country),
       applicationSystem: text(row.application_system),
-      livingCostMonthly: number(row.living_cost_monthly, issues, `Universities row ${row.__row}, living_cost_monthly`),
-      tuitionEuDefault: number(row.tuition_eu_default, issues, `Universities row ${row.__row}, tuition_eu_default`),
-      tuitionNonEuDefault: number(row.tuition_noneu_default, issues, `Universities row ${row.__row}, tuition_noneu_default`),
+      livingCostMonthly: number(row.living_cost_monthly, issues, `Universities row ${row.__row}, living_cost_monthly`, NOT_NEGATIVE),
+      tuitionEuDefault: number(row.tuition_eu_default, issues, `Universities row ${row.__row}, tuition_eu_default`, NOT_NEGATIVE),
+      tuitionNonEuDefault: number(row.tuition_noneu_default, issues, `Universities row ${row.__row}, tuition_noneu_default`, NOT_NEGATIVE),
       englishRequirementDefault: text(row.english_requirement_default),
       // How places are decided, when it is the same across the university —
       // every Irish course goes through CAO points. Czech and Dutch rows vary
@@ -161,7 +235,7 @@ function build(universityRows, programmeRows, today) {
 
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);
-    const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`);
+    const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`, IB_POINTS);
     const deadlineNotes = text(row.deadline_notes);
 
     programmes.push({
@@ -230,7 +304,7 @@ function build(universityRows, programmeRows, today) {
 
       deadline,
       deadlineNotes,
-      officialUrl: url(row.official_url, issues, `${where}, official_url`),
+      officialUrl: officialUrl(row.official_url, issues, `${where}, official_url`),
       studentLifeUrl: uni.studentLifeUrl,
 
       lastVerified,
@@ -348,7 +422,7 @@ function inheritNumber(raw, fallback, issues, label) {
   const value = text(raw);
   if (value === UNKNOWN) return null;
   if (value === '') return fallback;
-  return number(value, issues, label);
+  return number(value, issues, label, NOT_NEGATIVE);
 }
 
 function inheritText(raw, fallback) {
@@ -361,13 +435,30 @@ function list(value, separator = ';') {
   return text(value).split(separator).map((s) => s.trim()).filter(Boolean);
 }
 
-function number(value, issues, label) {
+// Ranges for number(). Every money column is a fee or a cost, so never below
+// 0; IB points are a whole number on the 24-45 diploma scale. A value outside
+// its range is reported and treated as not published, never clamped (L04).
+const NOT_NEGATIVE = { min: 0, says: 'below 0' };
+const IB_POINTS = { min: 24, max: 45, whole: true, says: 'not a whole number of IB points from 24 to 45' };
+
+function number(value, issues, label, range = {}) {
   const raw = text(value);
   if (raw === '') return null;
-  const cleaned = raw.replace(/[€$\s ]/g, '').replace(/,/g, '');
-  const n = Number(cleaned);
+  const cleaned = raw.replace(/[€$\s ]/g, '');
+  // A comma is accepted only as a thousands separator ("12,500"). Stripping
+  // every comma read a decimal comma, "2771,00", as 277100.
+  if (cleaned.includes(',') && !/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
+    issues.push(`${label}: "${raw}" is not a number (use a dot for decimals, or no separator) — treated as not published.`);
+    return null;
+  }
+  const n = Number(cleaned.replace(/,/g, ''));
   if (!Number.isFinite(n)) {
     issues.push(`${label}: "${raw}" is not a number — treated as not published.`);
+    return null;
+  }
+  if ((range.min !== undefined && n < range.min) || (range.max !== undefined && n > range.max)
+      || (range.whole && !Number.isInteger(n))) {
+    issues.push(`${label}: "${raw}" is ${range.says} — treated as not published.`);
     return null;
   }
   return n;
@@ -382,6 +473,9 @@ export function safeUrl(value) {
   if (raw === '') return null;
   try {
     const parsed = new URL(raw);
+    // "https://www.ucd.ie@evil.example/" goes to evil.example: everything
+    // before the "@" is a user name. No official page needs one (X01).
+    if (parsed.username || parsed.password) return null;
     return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : null;
   } catch {
     return null;
@@ -396,6 +490,17 @@ function url(value, issues, label) {
     issues.push(`${label}: "${raw}" is not a usable link — it must start with https://.`);
   }
   return clean;
+}
+
+// official_url is the one link the site promises on every card. A blank one
+// used to pass quietly; the card says "No official link on file", and now the
+// problems list says which row needs it (T04).
+function officialUrl(value, issues, label) {
+  if (text(value) === '') {
+    issues.push(`${label} is blank — the card says "No official link on file". Add the programme's official page.`);
+    return null;
+  }
+  return url(value, issues, label);
 }
 
 function date(value, issues, label) {
