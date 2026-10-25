@@ -373,6 +373,21 @@ a per-country system.
   evil.example) is refused. `check.mjs` guards each, and also fails when
   `data/fallback.json` no longer matches the CSVs field for field.
 
+- **Keyboard, screen reader and phone problems (fixed 2026-10-26, registry
+  A02–A07).** On a 320 px phone the open filter lists and the masthead count
+  made the page wider than the screen; the lists now span the row of filter
+  buttons and the count wraps. The text boxes and Sort had their focus outline
+  replaced by a ring nobody could see; they now show the same blue outline as
+  everything else. A filter list stayed open after tabbing out of it, and
+  Escape in Search moved the cursor to a filter button; both fixed. A screen
+  reader now hears "Subject area, 2 selected" instead of "Subject area 2", the
+  result count only when it changes, "Architektura a urbanismus, Bc." instead
+  of the title and degree run together, Czech titles in Czech, the masthead
+  without its decorative full stop, and each "Official admissions page" link
+  with the programme's name and a note that it opens a new tab. The filter bar
+  no longer sticks to the top on a phone held sideways (it took half the
+  screen), and "Skip to results" lands below it. `check.mjs` guards each.
+
 ## Decisions already made, so they are not relitigated
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).

@@ -457,6 +457,45 @@ check('the empty state no longer mentions the Google Sheet or a fixed tuition/co
 check('the empty state has a working Clear all button',
   indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', clearAll)"));
 
+// The audits found these with a keyboard, a screen reader and a 320 px phone.
+// There is no DOM here, so they are checked as text; the browser steps in
+// the plan cover how they behave.
+section('Keyboard, screen readers and narrow screens (A02-A07)');
+check('one .visually-hidden utility is defined', /\.visually-hidden \{[^}]*clip/.test(css));
+// A03: the text inputs and Sort replaced the outline with a 1.04:1 soft ring.
+check('text inputs and Sort keep the focus outline (no outline: none)',
+  !/\.field input:focus[^{]*\{[^}]*outline: none/.test(css) && !/select:focus[^{]*\{[^}]*outline: none/.test(css));
+// A05: the h1's decorative full stop was read out as part of the title.
+check('the h1 full stop has empty alt text, with a plain fallback before it',
+  /h1::after \{ content: "\."; content: "\." \/ "";/.test(css));
+// A02: dropdown panels and the masthead stat pushed a 320 px page to 354 px.
+const narrow = css.slice(css.indexOf('@media (max-width: 719px)'));
+check('below 720 px the dropdown panels span the menus row',
+  /\.filterbar-menus \{ position: relative; \}/.test(narrow) && /\.dropdown \{ position: static; \}/.test(narrow)
+    && /\.dropdown-panel \{[^}]*left: 0; right: 0; width: auto;/.test(narrow));
+check('below 720 px the masthead stat may wrap', /\.masthead-stat \{ white-space: normal; \}/.test(narrow));
+// A07: the sticky bar hid the skip-link target and filled a landscape phone.
+check('the filter bar is sticky only on screens at least 720 wide and 600 tall',
+  /@media \(min-width: 720px\) and \(min-height: 600px\) \{\s*\.filterbar \{ position: sticky;/.test(css)
+    && !/@media \(min-width: 720px\) \{\s*\.filterbar \{ position: sticky/.test(css));
+check('#results has a scroll-margin-top that clears the sticky bar', /#results \{[^}]*scroll-margin-top/.test(css));
+// A05, A04: names a screen reader reads out.
+check('a hidden ", " separates the title from the degree',
+  renderSrc.includes("el('span', 'visually-hidden', ', ')"));
+check('a Czech-only title is marked lang="cs"', /title\.lang = 'cs'/.test(renderSrc));
+check('each card is named by its title (aria-labelledby, id from programme_id)',
+  renderSrc.includes("article.setAttribute('aria-labelledby'") && /title\.id = /.test(renderSrc));
+check('the official link names its programme and says it opens a new tab',
+  renderSrc.includes('(opens in a new tab)') && /for \$\{row\.programme\}, \$\{row\.university\}/.test(renderSrc));
+// A06: the pick-lists and the live result count.
+check('a dropdown closes when focus leaves it (focusout)', appSrc.includes("addEventListener('focusout'"));
+check('Escape returns focus to the summary only from inside the open dropdown',
+  /open\.contains\(document\.activeElement\)/.test(appSrc));
+check('the dropdown count reads "2 selected" (hidden text in its own span)',
+  indexHtml.includes('<span class="visually-hidden"> selected</span>') && appSrc.includes("subjectsCountNumber"));
+check('the live result count is written only when its text changes',
+  /if \(dom\.count\.textContent !== countText\) dom\.count\.textContent = countText;/.test(appSrc));
+
 // ---------------------------------------------------------------- export
 
 section('Shortlist CSV export');

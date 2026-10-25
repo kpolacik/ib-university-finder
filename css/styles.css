@@ -150,6 +150,21 @@ svg:not(.sprite) {
 }
 .skip-link:focus { left: 1.25rem; }
 
+/* Read by a screen reader, not shown: the ", " between a title and its
+   degree, "selected" after a dropdown count, and what a link opens (A04, A05). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ------------------------------------------------------------- masthead */
 
 .site-header { padding: 2.25rem 0 1.25rem; }
@@ -172,9 +187,11 @@ svg:not(.sprite) {
   letter-spacing: -0.015em;
   line-height: 1.05;
 }
-/* The rose full stop, straight from the reference wordmark. Decorative, so it
-   is a pseudo-element and never reaches the accessibility tree. */
-.site-header h1::after { content: "."; color: var(--accent); }
+/* The rose full stop, straight from the reference wordmark. Decorative. A
+   pseudo-element's text IS read out, so the second declaration gives it empty
+   alt text (A05); a browser without that syntax keeps the first and still
+   shows the stop. */
+.site-header h1::after { content: "."; content: "." / ""; color: var(--accent); }
 
 .tagline {
   margin: 0.4rem 0 0;
@@ -328,7 +345,7 @@ svg:not(.sprite) {
 .dropdown-button svg { color: var(--ink-faint); }
 .dropdown[open] > .dropdown-button { border-color: var(--accent); }
 /* A list that is narrowing the results says so even when it is closed. */
-.dropdown:has(.dropdown-count:not(:empty)) > .dropdown-button { border-color: var(--accent); }
+.dropdown:has(.dropdown-count:not([hidden])) > .dropdown-button { border-color: var(--accent); }
 
 .dropdown-count {
   min-width: 1.35rem;
@@ -341,7 +358,6 @@ svg:not(.sprite) {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.dropdown-count:empty { display: none; }
 
 .dropdown-panel {
   position: absolute;
@@ -404,11 +420,10 @@ svg:not(.sprite) {
 }
 .field input::placeholder { color: var(--ink-faint); }
 .field input:hover, .sort-field select:hover { border-color: var(--accent-line); }
-.field input:focus, .sort-field select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
+/* The global :focus-visible outline shows here too. The soft ring that
+   replaced it was 1.04:1 against the panel, so a keyboard user could not see
+   which field had focus (A03). */
+.field input:focus, .sort-field select:focus { border-color: var(--accent); }
 .field input[type="number"] { font-variant-numeric: tabular-nums; }
 
 /* Search gets its icon inside the field. */
@@ -853,10 +868,25 @@ svg:not(.sprite) {
 @media (max-width: 719px) {
   .site-header { padding: 1.35rem 0 0.9rem; }
   .tagline { margin-top: 0.3rem; }
+  /* At 320-375 px the stat and a dropdown panel anchored to its own button
+     pushed the page wider than the screen (A02). The stat may wrap, and a
+     panel spans the whole row of menus instead. */
+  .masthead-stat { white-space: normal; }
+  .filterbar-menus { position: relative; }
+  .dropdown { position: static; }
+  .dropdown-panel { left: 0; right: 0; width: auto; min-width: 0; max-width: none; }
+}
+
+/* Sticky only where there is room for it. On a phone held sideways the bar
+   took 46% of the screen, and it covered the "Skip to results" target (A07). */
+@media (min-width: 720px) and (min-height: 600px) {
+  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: 0 8px 24px -18px rgba(20, 17, 15, 0.35); }
+  /* Skip to results lands below the bar, not under it. The bar is 154px tall
+     at 768 and 99px at 1280 (measured 2026-10-26), so 12rem clears both. */
+  #results { scroll-margin-top: 12rem; }
 }
 
 @media (min-width: 720px) {
-  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: 0 8px 24px -18px rgba(20, 17, 15, 0.35); }
   /* minmax(0, 1fr), never plain 1fr: a bare 1fr refuses to shrink below its
      content's min-width, and one long unbroken requirement string then pushes
      the whole grid wider than the page. */

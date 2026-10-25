@@ -46,6 +46,11 @@ const PAIRS = [
   ['--ink-faint',   '--surface',     '.card-place, .facts dt, .verified, .hint, .field label'],
   ['--save',        '--surface',     '.shortlist-count'],
   ['--danger',      '--surface',     '.field-error (My points / Max fee message)'],
+  // The 2px focus outline sits 2px outside a field, so it is drawn on what is
+  // behind the field: the filter panel for Search, points and fee, the page for
+  // Sort. A non-text indicator, so 3:1 (A03).
+  ['--link',        '--surface',     ':focus-visible outline on Search, My points, Max fee', 3],
+  ['--link',        '--page',        ':focus-visible outline on Sort', 3],
 
   // on the panel's hover shade
   ['--ink',         '--surface-2',   '.filters > summary:hover'],

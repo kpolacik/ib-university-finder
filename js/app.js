@@ -15,9 +15,15 @@ const dom = {
   form: document.getElementById('filter-form'),
   resultsBar: document.querySelector('.results-bar'),
   dropdowns: [...document.querySelectorAll('.dropdown')],
+  // Each count is the number plus hidden ", " and " selected", so a screen
+  // reader names the button "Subject area, 2 selected" rather than
+  // "Subject area 2" (A06). Only the number is written; the box is hidden at 0.
   subjectsCount: document.getElementById('dd-subjects-count'),
   countriesCount: document.getElementById('dd-countries-count'),
   languagesCount: document.getElementById('dd-languages-count'),
+  subjectsCountNumber: document.getElementById('dd-subjects-count-number'),
+  countriesCountNumber: document.getElementById('dd-countries-count-number'),
+  languagesCountNumber: document.getElementById('dd-languages-count-number'),
   search: document.getElementById('f-search'),
   points: document.getElementById('f-points'),
   tuition: document.getElementById('f-tuition'),
@@ -301,15 +307,18 @@ function renderCounts(shown) {
   const active = activeFilterCount(state);
   const scope = state.shortlistOnly ? ' in your shortlist' : '';
 
-  dom.count.textContent = active === 0 && !state.shortlistOnly
+  const countText = active === 0 && !state.shortlistOnly
     ? `${shown} ${plural(shown)}`
     : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`;
+  // The count is a live region. Rewriting it with the same text on every
+  // keystroke made a screen reader repeat it (A06), so only a change is written.
+  if (dom.count.textContent !== countText) dom.count.textContent = countText;
 
   // Each pick-list button shows how many of its values are ticked, so a closed
   // drop-down still tells you it is narrowing the results.
-  dom.subjectsCount.textContent = state.subjectAreas.size || '';
-  dom.countriesCount.textContent = state.countries.size || '';
-  dom.languagesCount.textContent = state.languages.size || '';
+  showCount(dom.subjectsCount, dom.subjectsCountNumber, state.subjectAreas.size);
+  showCount(dom.countriesCount, dom.countriesCountNumber, state.countries.size);
+  showCount(dom.languagesCount, dom.languagesCountNumber, state.languages.size);
   dom.clear.disabled = active === 0;
 
   const saved = shortlist.size;
@@ -319,6 +328,11 @@ function renderCounts(shown) {
   // code is left in place so the feature can return by restoring the button.
   dom.shortlistBar.hidden = true;
   if (saved > 0) dom.shortlistCount.textContent = `${saved} saved ${plural(saved)}`;
+}
+
+function showCount(box, number, n) {
+  box.hidden = n === 0;
+  number.textContent = n || '';
 }
 
 function renderEmptyState(shown) {
@@ -364,13 +378,19 @@ function listOf(items) {
 
 // The pick-lists are native <details>, so they open and close from the keyboard
 // with no help. This adds what <details> does not do on its own: only one open
-// at a time, and closing on a click outside or on Escape.
+// at a time, and closing on a click outside, on Tab out, or on Escape.
 function wireDropdowns() {
   const closeAll = (except) => {
     for (const d of dom.dropdowns) if (d !== except) d.open = false;
   };
   for (const d of dom.dropdowns) {
     d.addEventListener('toggle', () => { if (d.open) closeAll(d); });
+    // Tabbing past the last option left the panel open over the next control
+    // (A06). A null relatedTarget is left alone: Safari does not focus a
+    // clicked checkbox, so focus "leaves" to nothing on every tick.
+    d.addEventListener('focusout', (event) => {
+      if (d.open && event.relatedTarget && !d.contains(event.relatedTarget)) d.open = false;
+    });
   }
   document.addEventListener('click', (event) => {
     if (!dom.dropdowns.some((d) => d.contains(event.target))) closeAll();
@@ -379,8 +399,11 @@ function wireDropdowns() {
     if (event.key !== 'Escape') return;
     const open = dom.dropdowns.find((d) => d.open);
     if (!open) return;
+    // Focus goes back to the button only from inside the list. Escape in
+    // Search used to pull focus away to a dropdown button (A06).
+    const wasInside = open.contains(document.activeElement);
     open.open = false;
-    open.querySelector('summary').focus();
+    if (wasInside) open.querySelector('summary').focus();
   });
 }
 

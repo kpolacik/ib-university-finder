@@ -35,8 +35,22 @@ function card(row, { state, shortlist, onToggleStar }) {
 
   const titles = el('div', 'card-titles');
   const title = el('h2', 'card-title');
-  title.textContent = row.programme;
-  if (row.degreeType) title.append(el('span', 'degree', row.degreeType));
+  // The card is named by its title, so a screen reader's list of articles reads
+  // as a list of programmes (A05). programme_id never changes, so neither does
+  // the id; the prefix keeps it from colliding with the page's own ids.
+  title.id = `p-${row.id}`;
+  article.setAttribute('aria-labelledby', title.id);
+  title.append(document.createTextNode(row.programme));
+  // Czech-taught programmes have Czech titles; without lang a screen reader
+  // reads "Architektura a urbanismus" with English pronunciation (A05).
+  if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
+  if (row.degreeType) {
+    // Hidden ", " so it is not read as "Architektura a urbanismusBc." (A05).
+    // The degree keeps the page's language even inside a Czech title.
+    const degree = el('span', 'degree', row.degreeType);
+    if (title.lang) degree.lang = 'en';
+    title.append(el('span', 'visually-hidden', ', '), degree);
+  }
   titles.append(title);
   titles.append(el('p', 'card-uni', row.university));
   // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
@@ -227,7 +241,10 @@ function provenance(row) {
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
   if (row.officialUrl) {
-    foot.append(externalLink('official-link', 'Official admissions page', row.officialUrl));
+    // 1240 links all named "Official admissions page" are useless in a screen
+    // reader's links list, so a hidden part says whose page it is (A04).
+    foot.append(externalLink('official-link', 'Official admissions page', row.officialUrl,
+      ` for ${row.programme}, ${row.university}`));
   } else {
     foot.append(el('p', 'note', 'No official link on file — do not rely on this entry.'));
   }
@@ -238,8 +255,11 @@ function provenance(row) {
   return foot;
 }
 
-function externalLink(className, label, href) {
+// Both links open a new tab, which a screen reader user is not told unless
+// the link says so (A04). The visible text stays as it was.
+function externalLink(className, label, href, hiddenName = '') {
   const link = el('a', className, label);
+  link.append(el('span', 'visually-hidden', `${hiddenName} (opens in a new tab)`));
   link.href = href;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
