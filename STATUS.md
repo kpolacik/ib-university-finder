@@ -284,6 +284,20 @@ a per-country system.
   `check.mjs` guards both. Leon then dropped both duplicate rows on
   2026-10-25 (`vu-las`, and `lei-polsci`, whose English option is `lei-iro`).
 
+- **A `?` admission route vanished from the card (fixed 2026-10-25).** `?` empties
+  the admission list, so Leiden Archaeology, Leiden University College and
+  University College Roosevelt showed no Admission row at all, as if there were no
+  route. The card now shows "Admission: Not published" (`admissionUnknown` in
+  `js/data.js`). `check.mjs` guards it.
+
+- **Cutoffs of 602–625 were called "above the IB maximum" (fixed 2026-10-25).**
+  A 45 converts to 600 and the HL Maths bonus adds 25, so UCC Dentistry, DCU
+  Global Business (USA) and UL Architecture are reachable, only not by the IB
+  total alone. Their notes now say that and still give no IB figure. The
+  wording comes from `aboveIB` in `tools/lib/ireland.mjs`, which both Irish
+  importers and `update-cao-points.mjs` share. Rows really above 625 (Medicine
+  and the like) are unchanged.
+
 ## Decisions already made, so they are not relitigated
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).

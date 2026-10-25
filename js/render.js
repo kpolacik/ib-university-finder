@@ -98,7 +98,8 @@ function requirements(row) {
                        row.noSubjectsRequired &&
                        row.otherRequirements.length === 0 &&
                        row.englishRequirement.length === 0 &&
-                       row.admission.length === 0;
+                       row.admission.length === 0 &&
+                       !row.admissionUnknown;
 
   if (nothingAtAll) {
     // The baseline differs by country, so it comes from the universities tab.
@@ -116,6 +117,10 @@ function requirements(row) {
   // different under open entry, a CAO ranking and a Czech entrance exam.
   if (row.admission.length) {
     reqRow(list, 'Admission', row.admission.map((t) => el('span', 'req-admission', t)));
+  } else if (row.admissionUnknown) {
+    // A "?" route is not "no route": it exists and differs from the default,
+    // but is unpublished. Same style as the Subjects row's "Not checked yet".
+    reqRow(list, 'Admission', [el('span', 'req-unknown', 'Not published')]);
   }
 
   // --- points ------------------------------------------------------------

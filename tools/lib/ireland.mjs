@@ -63,6 +63,21 @@ export const lowestIB = (need) => {
   return ok.length ? Math.min(...ok) : null;
 };
 
+/**
+ * The sentence for a cutoff no IB total reaches on its own (lowestIB gave null).
+ *
+ * It used to say "above the 625-point IB maximum" for every such cutoff. That is
+ * false for 601-625: a 45 converts to 600, and the 25 bonus points for HL Maths
+ * 4+ lift it to 625, so those cutoffs are reachable, just not by the IB total
+ * alone. Only above 625 is the cutoff truly off the scale. We still give no IB
+ * figure for 601-625, because conversions never assume the HL Maths bonus.
+ * Shared by both Irish importers and update-cao-points.mjs so a rerun cannot
+ * write the false sentence back.
+ */
+export const aboveIB = (points) => points > 625
+  ? 'Above the 625-point IB maximum, so no IB equivalent.'
+  : 'Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given.';
+
 const SUBJ = [
   [/comput|software|information systems|informat|data science|artificial intelligence/i, 'Computer Science'],
   [/engineer/i, 'Engineering'],

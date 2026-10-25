@@ -33,7 +33,7 @@
 //     fee. This importer would write it back as a plain CAO row.
 
 import { writeFileSync } from 'node:fs';
-import { getHtml, toText, lowestIB, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
+import { getHtml, toText, lowestIB, aboveIB, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
 import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
 
 const BASE = 'https://www.tcd.ie';
@@ -132,7 +132,7 @@ for (const c of links) {
       notes.push('HL Maths 4+ adds 25 bonus points.');
     }
     if (ib === null) {
-      notes.push('Above the 625-point IB maximum, so no IB equivalent.');
+      notes.push(aboveIB(entry.latest.points));
     }
   } else if (entry) {
     notes.push(caoNote(entry));

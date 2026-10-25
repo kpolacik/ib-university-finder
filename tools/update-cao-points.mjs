@@ -20,7 +20,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
-import { lowestIB } from './lib/ireland.mjs';
+import { lowestIB, aboveIB } from './lib/ireland.mjs';
 import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
 
 const IRISH = new Set(['tcd', 'ucd', 'ucc', 'galway', 'dcu', 'ul', 'maynooth']);
@@ -36,6 +36,7 @@ const OLD = [
   /HL Maths 4\+ adds 25 bonus points\./,
   /Only reachable with the 25 HL Maths bonus points\./,
   /Above the 625-point IB maximum, so no IB equivalent\./,
+  /Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given\./,
 ];
 const MATHS_TITLE = /engineer|mathemat|physic|comput|actuarial|financ|econom/i;
 
@@ -69,7 +70,7 @@ for (const r of rows) {
     } else if (ib !== null && needsMaths) {
       sentences.push('HL Maths 4+ adds 25 bonus points.');
     }
-    if (ib === null) sentences.push('Above the 625-point IB maximum, so no IB equivalent.');
+    if (ib === null) sentences.push(aboveIB(entry.latest.points));
   }
   const fresh = isUcd ? sentences.filter((s) => !/Maths|625/.test(s)).join(' ') : sentences.join(' ');
 

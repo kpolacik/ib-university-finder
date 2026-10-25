@@ -199,6 +199,11 @@ function build(universityRows, programmeRows, today) {
       // How the place is actually decided: open entry, a ranking, an entrance
       // exam. Same inherit / "?" rules as english_requirement, same bullet.
       admission: list(inheritText(row.admission, uni.admissionDefault), BULLET),
+      // "?" empties `admission` (it never inherits), which on its own makes the
+      // card look as if there were no admission route. This lets the card say
+      // "Not published" instead: the route differs from the university's, but
+      // nobody has found out what it is.
+      admissionUnknown: text(row.admission) === UNKNOWN,
 
       // Split on the same bullet as other_requirements — the docs teach one
       // separator, so every column that uses it must honour it.

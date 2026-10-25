@@ -11,7 +11,7 @@
 
 import { writeFileSync } from 'node:fs';
 import {
-  getHtml, toText, lowestIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
+  getHtml, toText, lowestIB, aboveIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
 } from './ireland.mjs';
 import { fetchCaoPoints, caoNote } from './cao-points.mjs';
 
@@ -103,7 +103,7 @@ export async function importUniversity(cfg) {
       }
       if (ib === null) {
         skipped.aboveReach++;
-        notes.push('Above the 625-point IB maximum, so no IB equivalent.');
+        notes.push(aboveIB(entry.latest.points));
       }
     }
 

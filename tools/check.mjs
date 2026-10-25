@@ -116,6 +116,16 @@ const admOf = (id) => adm.find((p) => p.id === id).admission;
 equal('blank admission inherits the university default', admOf('a-inherit'), ['Places go by points']);
 equal('own admission wins and splits on the bullet', admOf('a-own'), ['Entrance exam', 'Can be waived']);
 equal('"?" admission does not inherit', admOf('a-unknown'), []);
+// R02: a "?" admission used to vanish from the card, so a route that exists but
+// is unpublished read as "no route at all". The loader now says it is unknown.
+const admUnknownOf = (id) => adm.find((p) => p.id === id).admissionUnknown;
+check('"?" admission is flagged as unknown', admUnknownOf('a-unknown') === true);
+check('blank and own admission are not flagged as unknown',
+  admUnknownOf('a-inherit') === false && admUnknownOf('a-own') === false);
+const renderSrc = read('js/render.js');
+check('the card shows "Not published" for an unknown admission route',
+  /nothingAtAll[\s\S]{0,400}!row\.admissionUnknown/.test(renderSrc)
+    && /else if \(row\.admissionUnknown\)[\s\S]{0,400}'Not published'/.test(renderSrc));
 
 // ------------------------------------------------------ application system
 
@@ -271,6 +281,12 @@ const lapsed = live.filter((p) => [...p.deadlineNotes.matchAll(
 check('no note promises news by a date that has passed', lapsed.length === 0,
   `a note promises news by a date that has passed — re-read the page: ${lapsed.map((p) => p.id).join(', ')}`);
 
+// R02 on the real data: these three rows have a different admission route from
+// their university and nobody has published it. They must say so on the card.
+const unknownAdmission = ['lei-archaeology', 'lei-luc', 'uu-ucr'].filter((id) => !(liveRow(id) && liveRow(id).admissionUnknown));
+check('lei-archaeology, lei-luc and uu-ucr show an unknown admission route', unknownAdmission.length === 0,
+  unknownAdmission.join(', '));
+
 // D11: "Dentistry" matched no subject pattern and fell through to Liberal Arts.
 check('ucc-dentistry is filed under Medicine & Health',
   liveRow('ucc-dentistry') && liveRow('ucc-dentistry').subjectAreas.includes('Medicine & Health'));
@@ -361,6 +377,28 @@ for (const f of ['tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/lib/iris
   check(`${f} checks HPAT_CODES before the CAO test marker`, hpatAt > 0 && hpatAt < testAt);
 }
 check('areasFor("Dentistry") includes Medicine & Health', ie.areasFor('Dentistry').includes('Medicine & Health'));
+
+// P02: a cutoff of 601-625 is NOT above the IB scale. 45 IB points convert to
+// 600, so 602-625 is reachable with the 25 HL Maths bonus. The importers wrote
+// "Above the 625-point IB maximum" for it. aboveIB() picks the true sentence,
+// and all three writers share it so a rerun cannot bring the false one back.
+const ABOVE_SCALE = 'Above the 625-point IB maximum, so no IB equivalent.';
+check('aboveIB: 602 and 625 get the bonus-points sentence, not "above the maximum"',
+  [602, 625].every((n) => typeof ie.aboveIB === 'function' && ie.aboveIB(n) !== ABOVE_SCALE && /HL Maths bonus/.test(ie.aboveIB(n))));
+check('aboveIB: 626 and 741 keep the "above the maximum" sentence',
+  typeof ie.aboveIB === 'function' && [626, 741].every((n) => ie.aboveIB(n) === ABOVE_SCALE));
+for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
+  check(`${f} words an unreachable cutoff with aboveIB()`, /aboveIB\(/.test(read(f)));
+}
+const oldPatterns = [...read('tools/update-cao-points.mjs').match(/const OLD = \[([\s\S]*?)\n\];/)[1]
+  .matchAll(/^\s*\/(.+)\/,$/gm)].map((m) => new RegExp(m[1]));
+check('update-cao-points.mjs OLD removes both aboveIB sentences before rebuilding',
+  typeof ie.aboveIB === 'function'
+    && [600, 700].every((n) => oldPatterns.some((re) => re.test(ie.aboveIB(n)))));
+const wronglyAbove = live.filter((p) => p.deadlineNotes.includes(ABOVE_SCALE)
+  && Number((p.deadlineNotes.match(/CAO cutoff: (\d+) points/) || [])[1]) <= 625);
+check('no row calls a cutoff of 625 or less "above the 625-point IB maximum"', wronglyAbove.length === 0,
+  wronglyAbove.map((p) => p.id).join(', '));
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes
