@@ -174,7 +174,10 @@ function build(universityRows, programmeRows, today) {
       // Utrecht. Blank means "the university's home city".
       city,
       country: uni.country,
-      applicationSystem: uni.applicationSystem,
+      // A programme can apply through a different route from the rest of its
+      // university: Bocconi's World Bachelor goes through the Common App, not
+      // Bocconi's own portal. Blank inherits, "?" means unknown.
+      applicationSystem: inheritText(row.application_system, uni.applicationSystem),
       livingCostMonthly: uni.livingCostMonthly,
       baselineRequirement: uni.baselineRequirement,
 

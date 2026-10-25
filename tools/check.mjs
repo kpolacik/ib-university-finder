@@ -117,6 +117,36 @@ equal('blank admission inherits the university default', admOf('a-inherit'), ['P
 equal('own admission wins and splits on the bullet', admOf('a-own'), ['Entrance exam', 'Can be waived']);
 equal('"?" admission does not inherit', admOf('a-unknown'), []);
 
+// ------------------------------------------------------ application system
+
+// Bocconi's World Bachelor applies through the Common App, not Bocconi's own
+// portal, but "Apply via" used to come only from the university row (D01).
+section('Application system: programme value, blank inherits, "?"');
+const uniS = [
+  'university_id,name,city,country,application_system,last_verified,verified_by',
+  's,Portal University,Town,Testland,Own portal,2026-08-14,TT',
+].join('\n') + '\n';
+const progS = [
+  'programme_id,university_id,programme,application_system,official_url,last_verified,verified_by',
+  's-inherit,s,Inherits,,https://example.org,2026-08-14,TT',
+  's-own,s,Own,Common App,https://example.org,2026-08-14,TT',
+  's-unknown,s,Unknown,?,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: sys, meta: sysMeta } = await load(uniS, progS);
+const sysOf = (id) => sys.find((p) => p.id === id).applicationSystem;
+check('fixture parses cleanly', sysMeta.issues.length === 0, JSON.stringify(sysMeta.issues));
+equal('blank application system inherits the university value', sysOf('s-inherit'), 'Own portal');
+equal('own application system wins', sysOf('s-own'), 'Common App');
+equal('"?" application system does not inherit', sysOf('s-unknown'), '');
+// An old CSV, the snapshot or a Sheet without the column must still load.
+const progNoCol = [
+  'programme_id,university_id,programme,official_url,last_verified,verified_by',
+  's-old,s,Old file,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: noCol } = await load(uniS, progNoCol);
+equal('a programmes CSV with no application_system column still inherits',
+  noCol[0] && noCol[0].applicationSystem, 'Own portal');
+
 // ---------------------------------------------------------------- bad input
 
 section('Bad spreadsheet input is reported, never silently swallowed');
@@ -185,6 +215,15 @@ check('every programme belongs to a university', live.every((p) => p.university)
 const freeEnglish = live.filter((p) => p.country === 'Czechia' && p.languages.includes('English') && p.tuitionEu === 0);
 check('no English-taught Czech programme shows as free', freeEnglish.length === 0,
   freeEnglish.map((p) => p.id).join(', '));
+
+// D01: WBB closes 1 Nov 2026 and goes through the Common App. The row used to
+// say "2027/28 dates not out yet" and inherit Bocconi's own portal.
+const liveRow = (id) => live.find((p) => p.id === id);
+const wbb = liveRow('bocconi-wbb');
+check('bocconi-wbb: deadline is 2026-11-01 and it applies via the Common App',
+  wbb && wbb.deadline && wbb.deadline.toISOString().slice(0, 10) === '2026-11-01'
+    && /common app/i.test(wbb.applicationSystem),
+  wbb ? `${wbb.deadline && wbb.deadline.toISOString()} / ${wbb.applicationSystem}` : 'row missing');
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');

@@ -133,7 +133,7 @@ export const COLUMNS = [
   'programme_id', 'university_id', 'city', 'programme', 'degree_type', 'subject_area', 'language',
   'ib_points_min', 'ib_subjects', 'other_requirements', 'admission', 'tuition_eu', 'tuition_noneu',
   'english_requirement', 'application_deadline', 'deadline_notes', 'official_url',
-  'last_verified', 'verified_by',
+  'last_verified', 'verified_by', 'application_system',
 ];
 
 /** One programmes.csv line from a partial object, missing fields left blank. */

@@ -69,6 +69,7 @@ Only if it is not already on the `universities` tab.
 | `ib_subjects` | Subject requirements only. Type `none` if the university says there are none. **Leave blank if you haven't checked** |
 | `other_requirements` | Anything else you must do, separated by ` · `. See below |
 | `admission` | How places are decided, separated by ` · `. Blank uses the university's `admission_default`; `?` means unknown. See below |
+| `application_system` | **Leave blank** unless this programme is applied for some other way than the rest of the university. `?` means unknown. It is the last column in the sheet. See below |
 | `tuition_eu` | **Leave blank** unless this programme differs from the university default |
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
 | `english_requirement` | Leave blank unless it differs from the university default |
@@ -122,6 +123,13 @@ the wording already in use so the cards read alike:
 Czech universities admit by entrance exam, not IB points, so a Czech row's
 `ib_points_min` is blank and `admission` carries the real hurdle. Mark anything
 that comes from last year's rules with `(2026 rules)`.
+
+**`application_system`** on a programme row is for the rare course you apply
+to some other way than the rest of its university. Bocconi's World Bachelor in
+Business, for example, goes through the Common App (choose USC, then WBB), not
+Bocconi's own portal. Blank uses the university's `application_system`, the way
+blank `admission` uses `admission_default`. `?` means "it differs, but we don't
+know how", and the card then leaves out "Apply via" rather than guess.
 
 **Put IB English grades in `english_requirement`, not `ib_subjects`.** A student
 looking for "what English do I need" looks at the language line.
