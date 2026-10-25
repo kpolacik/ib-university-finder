@@ -69,14 +69,56 @@ export const lowestIB = (need) => {
  * It used to say "above the 625-point IB maximum" for every such cutoff. That is
  * false for 601-625: a 45 converts to 600, and the 25 bonus points for HL Maths
  * 4+ lift it to 625, so those cutoffs are reachable, just not by the IB total
- * alone. Only above 625 is the cutoff truly off the scale. We still give no IB
- * figure for 601-625, because conversions never assume the HL Maths bonus.
+ * alone. Only above 625 is the cutoff truly off the scale.
+ *
+ * convertCutoff now gives a 601-625 cutoff a bonus figure, so the 601-625
+ * sentence without a test only appears if that path somehow fails. A 601-625
+ * cutoff with the CAO "#" marker (`test`) may include test or portfolio marks
+ * (UL Architecture), so it is not a points total and gets its own sentence.
  * Shared by both Irish importers and update-cao-points.mjs so a rerun cannot
- * write the false sentence back.
+ * write a false sentence back.
  */
-export const aboveIB = (points) => points > 625
+export const aboveIB = (points, test = false) => points > 625
   ? 'Above the 625-point IB maximum, so no IB equivalent.'
-  : 'Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given.';
+  : test
+    ? 'Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given.'
+    : 'Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given.';
+
+// The exact sentences the card reads. js/data.js keeps a copy of BONUS_ONLY
+// (the browser cannot import from tools/), and check.mjs asserts they match:
+// a row whose note carries BONUS_ONLY shows "needs HL Maths 4+" on its card.
+export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
+export const MATHS_BONUS = 'HL Maths 4+ adds 25 bonus points.';
+
+/**
+ * The ib_points_min figure and the note sentences for one CAO cutoff. All three
+ * Irish writers (irish-import.mjs, import-tcd.mjs, update-cao-points.mjs) call
+ * this, so a rerun of any of them gives the same figure and wording.
+ *
+ * The bonus path used to depend on the course title (a maths-sounding name, or
+ * "mathemat" in the subjects). The CAO's 25 bonus points for HL Maths at 4+
+ * apply to any course, so the title made UCC Dentistry and DCU Global Business
+ * (USA) show no figure while Trinity Dental Science showed 44 (registry P03).
+ * Leon decided on 2026-10-25 (Q13): every 601-625 cutoff without a test gets
+ * lowestIB(cutoff - 25) and BONUS_ONLY, and the card says "needs HL Maths 4+".
+ * A cutoff with a test (`test`: the CAO "#" marker or an HPAT code) may include
+ * test marks, so it is not a points total and gets no bonus figure.
+ *
+ * `needsMaths` (still title-based) only decides the informational MATHS_BONUS
+ * sentence on cutoffs a 45 or less already reaches.
+ */
+export function convertCutoff(points, { test = false, needsMaths = false } = {}) {
+  const notes = [];
+  let ib = lowestIB(points);
+  if (ib === null && points <= 625 && !test) {
+    ib = lowestIB(points - 25);
+    if (ib !== null) notes.push(BONUS_ONLY);
+  } else if (ib !== null && needsMaths) {
+    notes.push(MATHS_BONUS);
+  }
+  if (ib === null) notes.push(aboveIB(points, test));
+  return { ib, notes };
+}
 
 const SUBJ = [
   [/comput|software|information systems|informat|data science|artificial intelligence/i, 'Computer Science'],

@@ -293,10 +293,22 @@ a per-country system.
 - **Cutoffs of 602–625 were called "above the IB maximum" (fixed 2026-10-25).**
   A 45 converts to 600 and the HL Maths bonus adds 25, so UCC Dentistry, DCU
   Global Business (USA) and UL Architecture are reachable, only not by the IB
-  total alone. Their notes now say that and still give no IB figure. The
-  wording comes from `aboveIB` in `tools/lib/ireland.mjs`, which both Irish
+  total alone. UCC Dentistry and DCU now show the bonus figure (next entry). UL
+  Architecture's cutoff carries the CAO test marker, so its note now says the
+  cutoff may include test or portfolio marks, and it still gives no IB figure.
+  The wording comes from `aboveIB` in `tools/lib/ireland.mjs`, which both Irish
   importers and `update-cao-points.mjs` share. Rows really above 625 (Medicine
   and the like) are unchanged.
+
+- **The HL Maths bonus figure depended on the course title (fixed 2026-10-25,
+  registry P03).** The importers only tried the 25 bonus points on courses with
+  a maths-sounding name, so Trinity Dental Science (625) showed 44 while UCC
+  Dentistry (625) showed nothing. The CAO bonus counts for any course. All
+  three Irish writers now share `convertCutoff` in `tools/lib/ireland.mjs`:
+  every 601–625 cutoff without a test gets the bonus figure and the sentence
+  "Only reachable with the 25 HL Maths bonus points.", and the card reads
+  "44 IB points, needs HL Maths 4+". `check.mjs` ties the sentence to the
+  figure.
 
 ## Decisions already made, so they are not relitigated
 
@@ -369,7 +381,9 @@ a per-country system.
   fee, but it does publish the contribution and the levy, which is all this
   cohort actually pays.
 - **Irish points are last year's demand-driven cutoffs**, not minimums, and the
-  cards say so. Conversions never assume the HL Maths bonus. The one exception
+  cards say so. Conversions assume the HL Maths bonus only when nothing else
+  reaches the cutoff (601–625, no test), and the card then says "needs HL
+  Maths 4+" (decided 2026-10-25). The one exception
   is UCD, which publishes an IB total it will accept, so UCD's numbers are real
   minimums and its cutoff sits in the note instead.
 - **Cutoffs come from the CAO, not from the universities' own pages.** Only the
@@ -420,7 +434,7 @@ a per-country system.
   any `HPAT_CODES` code goes missing, and `update-cao-points.mjs` keeps their
   cutoffs current.
 - **Ireland** publishes a CAO cutoff per course and an official IB conversion,
-  which is why 535 of the 548 Irish rows have a number. It also issues **no
+  which is why 537 of the 548 Irish rows have a number. It also issues **no
   conditional offers** — decisions arrive mid-August.
 - **Where each Irish university hides its data**, since finding this again was
   most of the work: UCD's course list is drawn by JavaScript from an internal

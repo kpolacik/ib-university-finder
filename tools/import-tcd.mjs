@@ -33,7 +33,7 @@
 //     fee. This importer would write it back as a plain CAO row.
 
 import { writeFileSync } from 'node:fs';
-import { getHtml, toText, lowestIB, aboveIB, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
+import { getHtml, toText, convertCutoff, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
 import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
 
 const BASE = 'https://www.tcd.ie';
@@ -124,16 +124,10 @@ for (const c of links) {
 
   if (entry && entry.latest.points !== null) {
     notes.push(caoNote(entry));
-    ib = lowestIB(entry.latest.points);
-    if (ib === null && needsMaths) {
-      ib = lowestIB(entry.latest.points - 25);
-      if (ib !== null) notes.push('Only reachable with the 25 HL Maths bonus points.');
-    } else if (ib !== null && needsMaths) {
-      notes.push('HL Maths 4+ adds 25 bonus points.');
-    }
-    if (ib === null) {
-      notes.push(aboveIB(entry.latest.points));
-    }
+    // One conversion for all three Irish writers (lib/ireland.mjs).
+    const conv = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
+    ib = conv.ib;
+    notes.push(...conv.notes);
   } else if (entry) {
     notes.push(caoNote(entry));
   } else {

@@ -382,23 +382,89 @@ check('areasFor("Dentistry") includes Medicine & Health', ie.areasFor('Dentistry
 // 600, so 602-625 is reachable with the 25 HL Maths bonus. The importers wrote
 // "Above the 625-point IB maximum" for it. aboveIB() picks the true sentence,
 // and all three writers share it so a rerun cannot bring the false one back.
+// A 601-625 cutoff with the CAO test marker may include test or portfolio
+// marks (UL Architecture), so it gets its own sentence and no figure.
 const ABOVE_SCALE = 'Above the 625-point IB maximum, so no IB equivalent.';
-check('aboveIB: 602 and 625 get the bonus-points sentence, not "above the maximum"',
+const ABOVE_TEST_601 = 'Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given.';
+check('aboveIB: 602 and 625 without a test get the bonus-points sentence, not "above the maximum"',
   [602, 625].every((n) => typeof ie.aboveIB === 'function' && ie.aboveIB(n) !== ABOVE_SCALE && /HL Maths bonus/.test(ie.aboveIB(n))));
+check('aboveIB: 602 and 625 with a test get the test-or-portfolio sentence',
+  [602, 625].every((n) => ie.aboveIB(n, true) === ABOVE_TEST_601));
 check('aboveIB: 626 and 741 keep the "above the maximum" sentence',
   typeof ie.aboveIB === 'function' && [626, 741].every((n) => ie.aboveIB(n) === ABOVE_SCALE));
-for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
-  check(`${f} words an unreachable cutoff with aboveIB()`, /aboveIB\(/.test(read(f)));
-}
 const oldPatterns = [...read('tools/update-cao-points.mjs').match(/const OLD = \[([\s\S]*?)\n\];/)[1]
   .matchAll(/^\s*\/(.+)\/,$/gm)].map((m) => new RegExp(m[1]));
-check('update-cao-points.mjs OLD removes both aboveIB sentences before rebuilding',
+check('update-cao-points.mjs OLD removes every aboveIB sentence before rebuilding',
   typeof ie.aboveIB === 'function'
-    && [600, 700].every((n) => oldPatterns.some((re) => re.test(ie.aboveIB(n)))));
+    && [ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700)].every((t) => oldPatterns.some((re) => re.test(t))));
 const wronglyAbove = live.filter((p) => p.deadlineNotes.includes(ABOVE_SCALE)
   && Number((p.deadlineNotes.match(/CAO cutoff: (\d+) points/) || [])[1]) <= 625);
 check('no row calls a cutoff of 625 or less "above the 625-point IB maximum"', wronglyAbove.length === 0,
   wronglyAbove.map((p) => p.id).join(', '));
+
+// P03 / Q13 (2026-10-25): the bonus figure used to depend on the course title,
+// so UCC Dentistry (625) and DCU Global Business USA (602) showed no figure
+// while Trinity Dental Science (625) showed 44. The CAO bonus applies to any
+// course: every 601-625 cutoff without a test now gets lowestIB(cutoff - 25)
+// and the BONUS_ONLY sentence, and the card says "needs HL Maths 4+".
+const cc = (...a) => (typeof ie.convertCutoff === 'function' ? ie.convertCutoff(...a) : null);
+equal('convertCutoff: 601 gives 42 with the bonus sentence', cc(601), { ib: 42, notes: [ie.BONUS_ONLY] });
+equal('convertCutoff: 625 gives 44 with the bonus sentence, whatever the title',
+  [cc(625), cc(625, { needsMaths: true })], [{ ib: 44, notes: [ie.BONUS_ONLY] }, { ib: 44, notes: [ie.BONUS_ONLY] }]);
+equal('convertCutoff: 625 with a test gives no figure and no bonus sentence',
+  cc(625, { test: true }), { ib: null, notes: [ABOVE_TEST_601] });
+equal('convertCutoff: 626 gives no figure and the above-625 sentence', cc(626), { ib: null, notes: [ABOVE_SCALE] });
+equal('convertCutoff: 600 with a maths title gives 44 and the informational bonus sentence',
+  cc(600, { needsMaths: true }), { ib: 44, notes: [ie.MATHS_BONUS] });
+equal('convertCutoff: 600 without a maths title gives 44 and no sentence', cc(600), { ib: 44, notes: [] });
+check('BONUS_ONLY and MATHS_BONUS are the sentences the tools always wrote',
+  ie.BONUS_ONLY === 'Only reachable with the 25 HL Maths bonus points.'
+    && ie.MATHS_BONUS === 'HL Maths 4+ adds 25 bonus points.');
+for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
+  const src = read(f);
+  check(`${f} converts a cutoff with convertCutoff() and has no inline bonus maths`,
+    src.includes('convertCutoff(') && !/points\s*[-−]\s*25/.test(src));
+}
+check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Maths|625',
+  !read('tools/update-cao-points.mjs').includes('Maths|625'));
+const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);
+const cutoffOf = (p) => { const m = p.deadlineNotes.match(/CAO cutoff: (\d+) points/); return m ? Number(m[1]) : null; };
+// ucd-medicine (hand-added) still says "Above the 625-point IB maximum" until
+// P02's HPAT sentence replaces it, so the above-625 sentence is not listed here.
+const ucdConverted = live.filter((p) => p.id.startsWith('ucd-')
+  && [ie.BONUS_ONLY, ie.MATHS_BONUS, ie.aboveIB(610), ie.aboveIB(610, true)]
+    .some((t) => p.deadlineNotes.includes(t)));
+check('no UCD row carries a conversion sentence (UCD\'s figure is its own)', ucdConverted.length === 0,
+  ucdConverted.map((p) => p.id).join(', '));
+const CAO_TEST = 'Test, interview, portfolio or audition';
+const shouldBonus = (p) => !p.id.startsWith('ucd-') && cutoffOf(p) > 600 && cutoffOf(p) <= 625
+  && !p.otherRequirements.includes(ie.HPAT) && p.otherRequirements.join(' · ') !== CAO_TEST;
+const bonusMismatch = live.filter(isIrish).filter((p) => shouldBonus(p) !== p.deadlineNotes.includes(ie.BONUS_ONLY));
+check('every non-UCD Irish 601-625 cutoff without a test has the bonus sentence, and no other row does',
+  bonusMismatch.length === 0, bonusMismatch.map((p) => p.id).join(', '));
+const bonusRows = live.filter((p) => p.deadlineNotes.includes(ie.BONUS_ONLY));
+const bonusWrongFigure = bonusRows.filter((p) => p.ibPointsMin !== ie.lowestIB(cutoffOf(p) - 25));
+check('every row with the bonus sentence shows lowestIB(cutoff - 25)', bonusWrongFigure.length === 0,
+  bonusWrongFigure.map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
+const dataMod = await import(new URL('../js/data.js', import.meta.url));
+check('js/data.js BONUS_ONLY matches tools/lib/ireland.mjs',
+  typeof dataMod.BONUS_ONLY === 'string' && dataMod.BONUS_ONLY === ie.BONUS_ONLY);
+const hlProg = [
+  head,
+  `p-hl,u,,Bonus,BSc,Engineering,English,44,,,,,,2027-05-01,${ie.BONUS_ONLY},https://example.org,2026-08-14,TT`,
+  'p-plain,u,,Plain,BSc,Engineering,English,44,,,,,,2027-05-01,Some note.,https://example.org,2026-08-14,TT',
+  `p-hl-blank,u,,Bonus blank,BSc,Engineering,English,,,,,,,2027-05-01,${ie.BONUS_ONLY},https://example.org,2026-08-14,TT`,
+].join('\n') + '\n';
+const { programmes: hl } = await load(uni, hlProg);
+const hlRow = (id) => hl.find((p) => p.id === id);
+equal('needsHlMaths: bonus sentence plus a figure is true; no sentence, or a blank figure, is false',
+  ['p-hl', 'p-plain', 'p-hl-blank'].map((id) => hlRow(id)?.needsHlMaths), [true, false, false]);
+const hlLive = live.filter((p) => p.needsHlMaths).map((p) => p.id).sort();
+equal('needsHlMaths is on exactly the 601-625 rows without a test',
+  hlLive, live.filter(isIrish).filter(shouldBonus).map((p) => p.id).sort());
+check('the card says "needs HL Maths 4+" when needsHlMaths is set',
+  renderSrc.includes("'needs HL Maths 4+'") && renderSrc.includes('row.needsHlMaths'));
+console.log(`        ${bonusRows.length} rows need the HL Maths bonus`);
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

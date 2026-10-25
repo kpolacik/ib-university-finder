@@ -11,7 +11,7 @@
 
 import { writeFileSync } from 'node:fs';
 import {
-  getHtml, toText, lowestIB, aboveIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
+  getHtml, toText, convertCutoff, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
 } from './ireland.mjs';
 import { fetchCaoPoints, caoNote } from './cao-points.mjs';
 
@@ -94,17 +94,12 @@ export async function importUniversity(cfg) {
       // the site shows and labels rather than reading as "no requirement".
       ib = null;
     } else if (entry.latest.points !== null) {
-      ib = lowestIB(entry.latest.points);
-      if (ib === null && needsMaths) {
-        ib = lowestIB(entry.latest.points - 25);
-        if (ib !== null) notes.push('Only reachable with the 25 HL Maths bonus points.');
-      } else if (ib !== null && needsMaths) {
-        notes.push('HL Maths 4+ adds 25 bonus points.');
-      }
-      if (ib === null) {
-        skipped.aboveReach++;
-        notes.push(aboveIB(entry.latest.points));
-      }
+      // One conversion for all three Irish writers (ireland.mjs). A test
+      // marker or an HPAT code means the cutoff may include test marks.
+      const c = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
+      ib = c.ib;
+      notes.push(...c.notes);
+      if (ib === null) skipped.aboveReach++;
     }
 
     rows.push({

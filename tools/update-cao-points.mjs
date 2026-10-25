@@ -20,7 +20,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
-import { lowestIB, aboveIB } from './lib/ireland.mjs';
+import { convertCutoff, HPAT_CODES } from './lib/ireland.mjs';
 import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
 
 const IRISH = new Set(['tcd', 'ucd', 'ucc', 'galway', 'dcu', 'ul', 'maynooth']);
@@ -37,6 +37,7 @@ const OLD = [
   /Only reachable with the 25 HL Maths bonus points\./,
   /Above the 625-point IB maximum, so no IB equivalent\./,
   /Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given\./,
+  /Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given\./,
 ];
 const MATHS_TITLE = /engineer|mathemat|physic|comput|actuarial|financ|econom/i;
 
@@ -63,16 +64,17 @@ for (const r of rows) {
   const sentences = [caoNote(entry)];
   let ib = null;
   if (!entry.latest.aqa && entry.latest.points !== null) {
-    ib = lowestIB(entry.latest.points);
-    if (ib === null && needsMaths) {
-      ib = lowestIB(entry.latest.points - 25);
-      if (ib !== null) sentences.push('Only reachable with the 25 HL Maths bonus points.');
-    } else if (ib !== null && needsMaths) {
-      sentences.push('HL Maths 4+ adds 25 bonus points.');
-    }
-    if (ib === null) sentences.push(aboveIB(entry.latest.points));
+    // One conversion for all three Irish writers (lib/ireland.mjs).
+    const conv = convertCutoff(entry.latest.points, { test: entry.latest.test || HPAT_CODES.has(code), needsMaths });
+    ib = conv.ib;
+    sentences.push(...conv.notes);
   }
-  const fresh = isUcd ? sentences.filter((s) => !/Maths|625/.test(s)).join(' ') : sentences.join(' ');
+  // UCD's figure is UCD's own stated minimum, not a conversion, so a UCD note
+  // keeps only the sentences on this list. It used to drop any sentence naming
+  // Maths or 625, but the 601-625 test sentence names neither and would have
+  // said "no IB figure is given" beside UCD's own figure.
+  const ucdKeep = new Set([sentences[0]]);
+  const fresh = (isUcd ? sentences.filter((s) => ucdKeep.has(s)) : sentences).join(' ');
 
   // Rebuild the note: the new block where the first old sentence was, every
   // other old sentence dropped, everything else (shared-code notes, Galway

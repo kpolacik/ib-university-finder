@@ -131,7 +131,16 @@ function requirements(row) {
   } else {
     const value = el('span', 'req-points');
     value.append(el('span', 'req-number', String(row.ibPointsMin)));
-    value.append(el('span', 'req-unit', 'IB points'));
+    if (row.needsHlMaths) {
+      // The figure assumes the 25 CAO bonus points for HL Maths 4+ (a 601-625
+      // Irish cutoff), so the card says so (Q13, 2026-10-25). The comma sits in
+      // the unit span and the qualifier gets its own span: .req-points is flex
+      // with a gap, so a bare text node would put a gap before the comma.
+      value.append(el('span', 'req-unit', 'IB points,'));
+      value.append(el('span', 'req-quiet', 'needs HL Maths 4+'));
+    } else {
+      value.append(el('span', 'req-unit', 'IB points'));
+    }
     reqRow(list, 'Points', [value]);
   }
 

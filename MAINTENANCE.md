@@ -208,6 +208,13 @@ blank and put the real requirement in `ib_subjects`. The card will say
 commercial university-comparison site is not a fact, and it is exactly the kind
 of thing that makes someone apply for a course they cannot get into.
 
+**Some Irish notes contain a sentence the card reads.** When an Irish row's
+`deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
+points.", its card says "44 IB points, needs HL Maths 4+" (with its own number).
+That sentence belongs only on rows whose figure assumes the 25 bonus points (a
+CAO cutoff of 601 to 625 with no test). Keep it word for word: `check.mjs`
+complains if it is changed, missing or on the wrong row.
+
 **`verified_by` is a signature.** Put your initials there only if you personally
 opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered
 automatically and nobody has confirmed it — the site says so in a banner at the top

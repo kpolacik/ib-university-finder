@@ -161,6 +161,8 @@ function build(universityRows, programmeRows, today) {
 
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);
+    const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`);
+    const deadlineNotes = text(row.deadline_notes);
 
     programmes.push({
       id,
@@ -183,7 +185,11 @@ function build(universityRows, programmeRows, today) {
 
       tuitionEu,
       tuitionNonEu,
-      ibPointsMin: number(row.ib_points_min, issues, `${where}, ib_points_min`),
+      ibPointsMin,
+      // An Irish figure that is only reachable with the 25 bonus points for HL
+      // Maths 4+ (a 601-625 CAO cutoff). The note's exact sentence is what marks
+      // it, so the card can say "needs HL Maths 4+" (Q13, 2026-10-25).
+      needsHlMaths: ibPointsMin !== null && deadlineNotes.includes(BONUS_ONLY),
 
       // Three requirement kinds, kept apart so a card can show only what
       // applies. ib_subjects has its own three states:
@@ -210,7 +216,7 @@ function build(universityRows, programmeRows, today) {
       englishRequirement: list(inheritText(row.english_requirement, uni.englishRequirementDefault), BULLET),
 
       deadline,
-      deadlineNotes: text(row.deadline_notes),
+      deadlineNotes,
       officialUrl: url(row.official_url, issues, `${where}, official_url`),
       studentLifeUrl: uni.studentLifeUrl,
 
@@ -271,6 +277,12 @@ const NO_REQUIREMENT = 'none';
 // One bullet separator, used by every column that holds a list of short items.
 // Exported so the CSV export joins on exactly what the parser split on.
 export const BULLET = ' · ';
+
+// The exact deadline_notes sentence the Irish tools write when a figure assumes
+// the 25 HL Maths bonus points. A copy of BONUS_ONLY in tools/lib/ireland.mjs,
+// because the browser cannot import from tools/; check.mjs asserts the two are
+// equal, so editing one alone fails the checks.
+export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
 
 function inheritNumber(raw, fallback, issues, label) {
   const value = text(raw);
