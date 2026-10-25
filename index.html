@@ -124,14 +124,18 @@
       <label for="f-points">My points</label>
       <input type="number" id="f-points" name="points" min="24" max="45" step="1"
              inputmode="numeric" placeholder="e.g. 36"
+             aria-describedby="f-points-error"
              title="Shows programmes asking for this many IB points or fewer">
+      <p class="field-error" id="f-points-error" aria-live="polite"></p>
     </div>
 
     <div class="field field-number">
       <label for="f-tuition">Max fee &euro;/yr</label>
-      <input type="number" id="f-tuition" name="tuition" min="0" step="500"
+      <input type="number" id="f-tuition" name="tuition" min="0" step="1"
              inputmode="numeric" placeholder="e.g. 3000"
+             aria-describedby="f-tuition-error"
              title="The EU-student fee">
+      <p class="field-error" id="f-tuition-error" aria-live="polite"></p>
     </div>
 
     <div class="filterbar-menus">
@@ -216,6 +220,7 @@
       <svg class="empty-icon" aria-hidden="true"><use href="#i-compass"/></svg>
       <p><strong id="empty-title"></strong></p>
       <p id="empty-hint"></p>
+      <button type="button" id="empty-clear" class="button" hidden>Clear all</button>
     </div>
 
     <details class="issues" id="issues" hidden>

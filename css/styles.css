@@ -289,6 +289,9 @@ svg:not(.sprite) {
 }
 .field-search { flex: 1 1 18rem; }
 .field-number { flex: 0 0 7.5rem; }
+/* Why My points or Max fee is not being applied (P05). Empty means valid. */
+.field-error { margin: 0.25rem 0 0; font-size: 0.8rem; line-height: 1.3; color: var(--danger); }
+.field-error:empty { display: none; }
 .filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .filterbar #f-clear { align-self: flex-end; }
 

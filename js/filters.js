@@ -31,12 +31,12 @@ export function activeFilterCount(state) {
 }
 
 export function applyFilters(rows, state, shortlist) {
-  const needle = foldAccents(state.search.trim()).toLowerCase();
+  const tokens = searchTokens(state.search);
 
   return rows.filter((row) => {
     if (state.shortlistOnly && !shortlist.has(row.id)) return false;
 
-    if (needle && !row.searchBlob.includes(needle)) return false;
+    if (!tokensMatch(row.searchBlob, tokens)) return false;
 
     if (state.subjectAreas.size &&
         !row.subjectAreas.some((a) => state.subjectAreas.has(a))) return false;
@@ -58,6 +58,64 @@ export function applyFilters(rows, state, shortlist) {
 
     return true;
   });
+}
+
+// ------------------------------------------------------------------- search
+
+// The search used to be one substring over the whole blob, so "computer science
+// netherlands" found nothing (the words are in different fields) and "cs"
+// matched "Physics" (S01). Now every word must appear, in any order. A word of
+// three letters or fewer must start a word in the blob ("cs", "uva", "law"),
+// a longer one may appear anywhere. A hyphen or other punctuation starts a new
+// word, so "eco" finds "Socio-economic".
+export function matchesSearch(blob, query) {
+  return tokensMatch(blob, searchTokens(query));
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+const SHORT_TOKEN = 3;
+
+function searchTokens(query) {
+  return foldAccents(String(query || '')).toLowerCase().split(/\s+/)
+    // Leading and trailing punctuation goes ("law," is "law"). A token that is
+    // only punctuation, like "&", is dropped rather than failing every row.
+    .map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter(Boolean);
+}
+
+function tokensMatch(blob, tokens) {
+  return tokens.every((token) => (token.length > SHORT_TOKEN
+    ? blob.includes(token)
+    : startsAWord(blob, token)));
+}
+
+function startsAWord(blob, token) {
+  for (let at = blob.indexOf(token); at !== -1; at = blob.indexOf(token, at + 1)) {
+    if (at === 0 || !WORD_CHAR.test(blob[at - 1])) return true;
+  }
+  return false;
+}
+
+// ------------------------------------------------------------- number fields
+
+// My points and Max fee. Anything that is not a whole number in range is
+// refused: the filter is not applied and the field says why (P05). It used to
+// apply 46, -3 or 36.5 silently, and a typo must never read as 0.
+// Returns { value, valid }: value is null when the field is empty or invalid.
+export function parsePoints(raw) {
+  return wholeNumberIn(raw, 24, 45);
+}
+
+export function parseFee(raw) {
+  return wholeNumberIn(raw, 0, Infinity);
+}
+
+function wholeNumberIn(raw, min, max) {
+  const trimmed = String(raw == null ? '' : raw).trim();
+  if (trimmed === '') return { value: null, valid: true };
+  if (!/^\d+$/.test(trimmed)) return { value: null, valid: false };
+  const n = Number(trimmed);
+  return n >= min && n <= max ? { value: n, valid: true } : { value: null, valid: false };
 }
 
 // ------------------------------------------------------------------- sorting

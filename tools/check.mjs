@@ -250,6 +250,90 @@ const before = sample.map((p) => p.id).join();
 sortRows(sample, 'name');
 check('sorting does not reorder the caller array', sample.map((p) => p.id).join() === before);
 
+// ---------------------------------------------------------------- search
+
+section('Search: every word, any order; short words start a word (S01)');
+const filtersMod = await import(new URL('../js/filters.js', import.meta.url));
+// Stand-ins that always fail, so a missing export shows as FAIL lines, not a crash.
+const missing = () => ({ value: undefined, valid: undefined });
+const matchesSearch = filtersMod.matchesSearch || (() => false);
+const parsePoints = filtersMod.parsePoints || missing;
+const parseFee = filtersMod.parseFee || missing;
+const applyToday = (await import(new URL('../js/data.js', import.meta.url))).applyToday || (() => {});
+const uniF = [
+  'university_id,name,city,country,last_verified,verified_by',
+  'nl,Delft University of Technology,Delft,Netherlands,2026-08-14,TT',
+  'cz,Technická univerzita v Košicích,Košice,Slovakia,2026-08-14,TT',
+].join('\n') + '\n';
+const progF = [
+  'programme_id,university_id,programme,subject_area,application_deadline,official_url,last_verified,verified_by',
+  'f-cs,nl,Computer Science and Engineering,Computer Science & IT,2027-01-15,https://example.org,2026-08-14,TT',
+  'f-phys,nl,Applied Physics,Natural Sciences,2027-01-15,https://example.org,2026-08-14,TT',
+  'f-law,cz,Law,Law,2026-08-14,https://example.org,2026-08-14,TT',
+  'f-med,cz,Všeobecné lékařství,Medicine & Health,2027-01-15,https://example.org,2026-08-14,TT',
+  'f-socio,cz,Socio-economic Studies,Social Sciences,2027-01-15,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: sf } = await load(uniF, progF);
+const sfRow = (id) => sf.find((p) => p.id === id);
+const finds = (query, id) => matchesSearch(sfRow(id).searchBlob, query);
+check('"computer science netherlands" finds a Dutch CS row', finds('computer science netherlands', 'f-cs'));
+check('the same words in another order still find it', finds('netherlands computer science', 'f-cs'));
+check('"cs" no longer matches "Physics"', !finds('cs', 'f-phys'));
+check('"law" matches a Law row', finds('law', 'f-law'));
+check('accent folding still works ("Kosice" finds Košice)', finds('Kosice', 'f-law'));
+check('"medicine" finds a Medicine & Health row whose title lacks the word', finds('medicine', 'f-med'));
+check('"eco" finds "Socio-economic" (a hyphen starts a word)', finds('eco', 'f-socio'));
+check('a punctuation-only word such as "&" is ignored, not a reason to hide every row',
+  finds('&', 'f-cs') && finds('computer & science', 'f-cs'));
+check('an empty search matches everything', finds('   ', 'f-phys'));
+
+section('My points and Max fee refuse what is not a whole number in range (P05)');
+equal('parsePoints refuses 23, 46, 36.5, -3 and "abc"',
+  ['23', '46', '36.5', '-3', 'abc'].map((v) => parsePoints(v).valid), [false, false, false, false, false]);
+equal('parsePoints accepts 24 and 45, and an empty field is valid with no value',
+  ['24', '45', ''].map((v) => parsePoints(v)), [{ value: 24, valid: true }, { value: 45, valid: true }, { value: null, valid: true }]);
+equal('parseFee accepts 2771 and 0, refuses -100 and 12.5',
+  ['2771', '0', '-100', '12.5'].map((v) => parseFee(v)),
+  [{ value: 2771, valid: true }, { value: 0, valid: true }, { value: null, valid: false }, { value: null, valid: false }]);
+check('an invalid number is never read as 0', parseFee('-100').value === null && parsePoints('abc').value === null);
+const indexHtml = read('index.html');
+check('the fee field takes any whole euro amount (no step="500")',
+  !indexHtml.includes('step="500"') && /id="f-tuition"[^>]*step="1"/.test(indexHtml));
+check('both number fields point at a message element',
+  /id="f-points"[^>]*aria-describedby="f-points-error"/.test(indexHtml) && indexHtml.includes('id="f-points-error"')
+    && /id="f-tuition"[^>]*aria-describedby="f-tuition-error"/.test(indexHtml) && indexHtml.includes('id="f-tuition-error"'));
+const appSrc = read('js/app.js');
+check('app.js shows the message on validity.badInput too', appSrc.includes('input.validity.badInput'));
+check('app.js reads My points and Max fee through parsePoints / parseFee, not a bare Number()',
+  appSrc.includes('parsePoints') && appSrc.includes('parseFee') && !appSrc.includes('function wholeNumber'));
+
+section('Typing during loading is kept, and nothing renders before the data (S04)');
+const startBody = appSrc.slice(appSrc.indexOf('async function start()'));
+check('wireInputs() runs before await loadData() in start()',
+  startBody.indexOf('wireInputs();') > 0 && startBody.indexOf('wireInputs();') < startBody.indexOf('await loadData('));
+check('the fields are read into the state after loading, before the first update()',
+  /readFields\(\);\s*loaded = true;\s*update\(\);/.test(startBody));
+check('update() returns early before the data has loaded', /function update\(\) \{\s*if \(!loaded\) return;/.test(appSrc));
+
+section('Deadline state follows the date, not the load time (S06)');
+const todayRow = sfRow('f-law');
+check('a deadline of today is not passed', todayRow.deadlinePassed === false && todayRow.daysUntilDeadline === 0);
+const sortRank = (rows, id) => sortRows(rows, 'deadline').findIndex((p) => p.id === id);
+const rankToday = sortRank(sf, 'f-law');
+applyToday(sf, new Date('2026-08-15'));
+check('the next day it is passed, no longer urgent, and sorts below the live deadlines',
+  todayRow.deadlinePassed === true && todayRow.isUrgent === false && todayRow.daysUntilDeadline === -1
+    && rankToday === 0 && sortRank(sf, 'f-law') === sf.length - 1);
+check('applyToday also re-works isStale', (applyToday(sf, new Date('2030-01-01')), todayRow.isStale === true));
+check('app.js re-applies the date when the day changes and on visibilitychange',
+  appSrc.includes('applyToday(allRows, now)') && appSrc.includes("'visibilitychange'"));
+
+section('The empty state names the filters in use (S05)');
+check('the empty state no longer mentions the Google Sheet or a fixed tuition/country hint',
+  !appSrc.includes('Google Sheet') && !appSrc.includes('raising the tuition limit, or removing a country'));
+check('the empty state has a working Clear all button',
+  indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', clearAll)"));
+
 // ---------------------------------------------------------------- export
 
 section('Shortlist CSV export');

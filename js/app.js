@@ -1,8 +1,9 @@
 // Wires the data layer to the filter state to the DOM.
 
-import { loadData } from './data.js';
+import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS,
+  parsePoints, parseFee,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
@@ -29,6 +30,9 @@ const dom = {
   empty: document.getElementById('empty-state'),
   emptyTitle: document.getElementById('empty-title'),
   emptyHint: document.getElementById('empty-hint'),
+  emptyClear: document.getElementById('empty-clear'),
+  pointsError: document.getElementById('f-points-error'),
+  tuitionError: document.getElementById('f-tuition-error'),
   shortlistBar: document.getElementById('shortlist-bar'),
   // The <p> holds an icon as well, so the text goes in its own span rather
   // than through textContent on the parent, which would wipe the icon.
@@ -48,14 +52,22 @@ const shortlist = loadShortlist();
 let allRows = [];
 let facets = { subjectAreas: [], countries: [], languages: [] };
 let currentlyShown = 0;
+// False until the data is in. The inputs are live from the start so nothing
+// typed during loading is lost (S04), but update() must not draw anything
+// before then: with no rows it would flash "No programmes match".
+let loaded = false;
+// The local date the deadline fields were last worked out for (S06).
+let dataDay = localDay(new Date());
 
 start();
 
 async function start() {
   wireDropdowns();
+  wireInputs();
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
+    dataDay = localDay(new Date());
     const { programmes, meta } = await loadData();
     allRows = programmes;
 
@@ -67,7 +79,10 @@ async function start() {
     drawChips();
     renderMastheadStat();
 
-    wireInputs();
+    // Whatever was typed while the data loaded is in the fields, not yet in
+    // the state, because update() ignored it until now.
+    readFields();
+    loaded = true;
     update();
   } catch (err) {
     dom.banner.className = 'banner banner-danger';
@@ -101,6 +116,29 @@ function toggle(set) {
   };
 }
 
+// Reads the text and number fields into the state. Used by their handlers and
+// once after loading, for anything typed while the data was on its way.
+function readFields() {
+  state.search = dom.search.value;
+  state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
+    'Enter a whole number from 24 to 45.');
+  state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
+    'Enter a whole number of euros, 0 or more.');
+}
+
+// An invalid number is never applied, and never treated as 0 or as empty: the
+// field is marked invalid and says why (P05). A number field gives back '' for
+// text the browser cannot parse ("abc", a lone "-"), so badInput is checked
+// too, or that text would quietly count as an empty field.
+function readNumber(input, message, parse, explanation) {
+  const { value, valid } = parse(input.value);
+  const ok = valid && !input.validity.badInput;
+  if (ok) input.removeAttribute('aria-invalid'); else input.setAttribute('aria-invalid', 'true');
+  const text = ok ? '' : explanation;
+  if (message.textContent !== text) message.textContent = text;
+  return ok ? value : null;
+}
+
 function wireInputs() {
   dom.search.addEventListener('input', debounce(() => {
     state.search = dom.search.value;
@@ -110,12 +148,14 @@ function wireInputs() {
   // Debounced like the search box: typing "3000" otherwise renders four times,
   // and the intermediate "under €3" and "under €30" states flash an empty list.
   dom.points.addEventListener('input', debounce(() => {
-    state.myIbPoints = wholeNumber(dom.points.value);
+    state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
+      'Enter a whole number from 24 to 45.');
     update();
   }, 150));
 
   dom.tuition.addEventListener('input', debounce(() => {
-    state.maxTuition = wholeNumber(dom.tuition.value);
+    state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
+      'Enter a whole number of euros, 0 or more.');
     update();
   }, 150));
 
@@ -124,22 +164,13 @@ function wireInputs() {
     update();
   });
 
-  dom.clear.addEventListener('click', () => {
-    state.search = '';
-    state.maxTuition = null;
-    state.myIbPoints = null;
-    state.subjectAreas.clear();
-    state.countries.clear();
-    state.languages.clear();
+  dom.clear.addEventListener('click', clearAll);
+  dom.emptyClear.addEventListener('click', clearAll);
 
-    dom.search.value = '';
-    dom.points.value = '';
-    dom.tuition.value = '';
-    // Re-render the chips rather than reaching into render.js's markup with a
-    // selector — a class rename there would silently break unchecking here.
-    drawChips();
-
-    update();
+  // A tab left open overnight: work the deadlines out again when it comes
+  // back into view on a new day. No timer; any input does the same (S06).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && loaded && localDay(new Date()) !== dataDay) update();
   });
 
   dom.shortlistOnly.addEventListener('change', () => {
@@ -192,7 +223,36 @@ function onToggleStar(id) {
   return starred;
 }
 
+function clearAll() {
+  state.search = '';
+  state.maxTuition = null;
+  state.myIbPoints = null;
+  state.subjectAreas.clear();
+  state.countries.clear();
+  state.languages.clear();
+
+  dom.search.value = '';
+  dom.points.value = '';
+  dom.tuition.value = '';
+  readFields();
+  // Re-render the chips rather than reaching into render.js's markup with a
+  // selector — a class rename there would silently break unchecking here.
+  drawChips();
+
+  update();
+}
+
 function update() {
+  if (!loaded) return;
+
+  // Deadlines are "today"-relative, so a new local day means working them out
+  // again before filtering and sorting (S06).
+  const now = new Date();
+  if (localDay(now) !== dataDay) {
+    applyToday(allRows, now);
+    dataDay = localDay(now);
+  }
+
   // Turning off an empty shortlist view belongs here, before rendering — not
   // as a side effect hidden inside the count update.
   if (state.shortlistOnly && shortlist.size === 0) {
@@ -238,17 +298,39 @@ function renderEmptyState(shown) {
     return;
   }
   dom.empty.hidden = false;
+  dom.emptyClear.hidden = true;
 
   if (state.shortlistOnly && shortlist.size === 0) {
     dom.emptyTitle.textContent = 'Your shortlist is empty.';
     dom.emptyHint.textContent = 'Use the bookmark button on any programme to save it here.';
   } else if (activeFilterCount(state) === 0) {
-    dom.emptyTitle.textContent = 'No programmes in the spreadsheet yet.';
-    dom.emptyHint.textContent = 'Add some rows to the Google Sheet and reload.';
+    // The old hint told students to add rows to the spreadsheet, which they
+    // never see (S05). With no filter set, the list itself is missing.
+    dom.emptyTitle.textContent = 'No programmes to show.';
+    dom.emptyHint.textContent = 'The programme list could not be loaded. Try reloading the page.';
   } else {
+    // Name only the filters actually in use; the old fixed hint suggested the
+    // tuition limit and countries even when neither was set (S05).
     dom.emptyTitle.textContent = 'No programmes match these filters.';
-    dom.emptyHint.textContent = 'Try raising the tuition limit, or removing a country.';
+    dom.emptyHint.textContent = `Try changing ${listOf(filtersInUse())}.`;
+    dom.emptyClear.hidden = false;
   }
+}
+
+function filtersInUse() {
+  const used = [];
+  if (state.search.trim()) used.push(`the search “${state.search.trim()}”`);
+  if (state.myIbPoints !== null) used.push('your points');
+  if (state.maxTuition !== null) used.push('the fee limit');
+  if (state.subjectAreas.size) used.push('the subject areas');
+  if (state.countries.size) used.push('the countries');
+  if (state.languages.size) used.push('the languages');
+  return used;
+}
+
+function listOf(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
 }
 
 // The pick-lists are native <details>, so they open and close from the keyboard
@@ -277,11 +359,8 @@ function plural(n) {
   return n === 1 ? 'programme' : 'programmes';
 }
 
-function wholeNumber(value) {
-  const trimmed = value.trim();
-  if (trimmed === '') return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
+function localDay(date) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 function debounce(fn, ms) {

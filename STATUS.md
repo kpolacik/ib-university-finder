@@ -339,6 +339,19 @@ a per-country system.
   read as "Checked" with no name; it now counts as not checked and is listed
   under the spreadsheet problems. `check.mjs` guards all four.
 
+- **Search and the number filters misbehaved (fixed 2026-10-26, registry S01,
+  S04, S05, S06, P05).** Search was one exact phrase, so "computer science
+  netherlands" found nothing and "cs" matched "Physics". Now every word has to
+  appear, in any order, words of three letters or fewer must start a word, and
+  the subject areas are searched too. Anything typed while the list loaded was
+  ignored; it now counts. My points and Max fee applied 46, −3 or 36.5 without a
+  word, and the fee box rejected €2,771; a number that is not a whole number in
+  range is now refused with a message under the box and not applied. The
+  "nothing matches" hint named filters nobody had set; it now names the ones in
+  use and has a Clear all button. A tab left open past midnight kept yesterday's
+  deadline badges; they are worked out again on the next action or when the tab
+  comes back into view. `check.mjs` guards each.
+
 ## Decisions already made, so they are not relitigated
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).

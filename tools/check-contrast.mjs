@@ -45,6 +45,7 @@ const PAIRS = [
   ['--ink-soft',    '--surface',     '.empty-state, .card-uni'],
   ['--ink-faint',   '--surface',     '.card-place, .facts dt, .verified, .hint, .field label'],
   ['--save',        '--surface',     '.shortlist-count'],
+  ['--danger',      '--surface',     '.field-error (My points / Max fee message)'],
 
   // on the panel's hover shade
   ['--ink',         '--surface-2',   '.filters > summary:hover'],

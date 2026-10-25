@@ -155,11 +155,6 @@ function build(universityRows, programmeRows, today) {
     const ownSigner = signer(row.verified_by, issues, where);
     const verifiedBy = [...new Set([uni.verifiedBy, ownSigner].filter(Boolean))].join(' / ');
 
-    // Whole days from today. Negative means the date has gone.
-    const daysUntilDeadline = deadline
-      ? Math.round((deadline.getTime() - startOfDay(today)) / DAY)
-      : null;
-
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);
     const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`);
@@ -237,12 +232,8 @@ function build(universityRows, programmeRows, today) {
       lastVerified,
       verifiedBy,
 
-      daysUntilDeadline,
-      deadlinePassed: daysUntilDeadline !== null && daysUntilDeadline < 0,
-      isUrgent: daysUntilDeadline !== null &&
-                daysUntilDeadline >= 0 &&
-                daysUntilDeadline <= URGENT_WITHIN_DAYS,
-      isStale: lastVerified ? (today - lastVerified) / DAY > STALE_AFTER_DAYS : true,
+      // daysUntilDeadline, deadlinePassed, isUrgent and isStale are set by
+      // applyToday() below, because they change at midnight.
 
       // verified_by is the site's promise that a person read the official page.
       // Rows gathered automatically say AI-DRAFT until someone signs them off,
@@ -253,11 +244,16 @@ function build(universityRows, programmeRows, today) {
       isChecked: Boolean(uni.verifiedBy && ownSigner) &&
                  !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE'),
 
+      // Subject areas are in, so "medicine" finds a Medicine & Health row whose
+      // title doesn't say it (S01). Language and degree type stay out: "english"
+      // would match most rows, and language has its own filter.
       searchBlob: foldAccents(
-        [text(row.programme), uni.name, city, uni.country].join(' ')
+        [text(row.programme), uni.name, city, uni.country, ...list(row.subject_area)].join(' ')
       ).toLowerCase(),
     });
   }
+
+  applyToday(programmes, today);
 
   if (programmes.length === 0 && programmeRows.length > 0) {
     throw new Error('every programme row failed to load');
@@ -271,6 +267,21 @@ function build(universityRows, programmeRows, today) {
   const draftCount = programmes.filter((p) => !p.isChecked && !p.isSample).length;
 
   return { programmes, issues, sampleCount, draftCount };
+}
+
+// The fields that depend on today's date. They used to be set once at load,
+// so a tab left open past midnight kept yesterday's deadline state (S06).
+// app.js calls this again when the local date has changed.
+export function applyToday(programmes, today) {
+  for (const p of programmes) {
+    // Whole days from today. Negative means the date has gone.
+    const days = p.deadline ? Math.round((p.deadline.getTime() - startOfDay(today)) / DAY) : null;
+    p.daysUntilDeadline = days;
+    p.deadlinePassed = days !== null && days < 0;
+    p.isUrgent = days !== null && days >= 0 && days <= URGENT_WITHIN_DAYS;
+    p.isStale = p.lastVerified ? (today - p.lastVerified) / DAY > STALE_AFTER_DAYS : true;
+  }
+  return programmes;
 }
 
 // ---------------------------------------------------------------- helpers
