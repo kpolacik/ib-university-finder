@@ -2,7 +2,13 @@
 // CAS/verification/{italy,denmark}) into the site's format, with the fixes
 // found when they were re-checked against the official pages on 2026-10-25.
 //
-//   node tools/merge-italy-denmark.mjs
+// ALREADY APPLIED on 2026-10-25. Do not run it again. A rerun replaces every
+// Italian and Danish row and undoes the hand corrections made since: the
+// Bocconi €17,700 fees and fee note, bocconi-wbb (1 Nov 2026 deadline, Common
+// App route) and dtu-ge (English and IB subject requirements). It refuses to
+// run without the flag below, and the flag only exists as an escape hatch:
+//
+//   node tools/merge-italy-denmark.mjs --rerun-one-off
 //
 // What was re-checked, and changed from the drafts:
 //   * Every official_url (71) is live and is the programme it claims to be.
@@ -29,6 +35,15 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
 import { COLUMNS } from './lib/ireland.mjs';
+
+// Before anything is read or written: see the header (registry D12).
+if (!process.argv.includes('--rerun-one-off')) {
+  console.error('merge-italy-denmark.mjs was applied on 2026-10-25 and is kept as a record.\n'
+    + 'A rerun replaces every Italian and Danish row in data/ and undoes the hand corrections\n'
+    + 'made since (Bocconi €17,700 fees and note, bocconi-wbb, dtu-ge). Not running.\n'
+    + 'If you really mean it, pass --rerun-one-off and diff data/ carefully afterwards.');
+  process.exit(1);
+}
 
 const DRAFTS = new URL('../../verification/', import.meta.url);
 const DATA = new URL('../data/', import.meta.url);

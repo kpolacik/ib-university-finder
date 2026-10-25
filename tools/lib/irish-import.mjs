@@ -10,7 +10,9 @@
 // sits on the page. Those two things are the config; everything else is here.
 
 import { writeFileSync } from 'node:fs';
-import { getHtml, toText, lowestIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE } from './ireland.mjs';
+import {
+  getHtml, toText, lowestIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
+} from './ireland.mjs';
 import { fetchCaoPoints, caoNote } from './cao-points.mjs';
 
 /**
@@ -119,7 +121,8 @@ export async function importUniversity(cfg) {
         // requirement per course, so nobody has checked rather than there being
         // nothing to meet.
         ib_subjects: '',
-        other_requirements: entry.latest.test ? 'Test, interview, portfolio or audition' : otherFor(title),
+        other_requirements: HPAT_CODES.has(code) ? HPAT
+          : entry.latest.test ? 'Test, interview, portfolio or audition' : otherFor(title),
         tuition_eu: fees.eu ?? '',
         tuition_noneu: fees.noneu ?? '',
         application_deadline: '2027-02-01',

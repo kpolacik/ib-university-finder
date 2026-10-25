@@ -224,7 +224,88 @@ check('bocconi-wbb: deadline is 2026-11-01 and it applies via the Common App',
   wbb && wbb.deadline && wbb.deadline.toISOString().slice(0, 10) === '2026-11-01'
     && /common app/i.test(wbb.applicationSystem),
   wbb ? `${wbb.deadline && wbb.deadline.toISOString()} / ${wbb.applicationSystem}` : 'row missing');
+
+// D02: graduate-entry routes need a first degree (UCC's GEM ranks on GAMSAT,
+// whose 58 was converted into "24 IB points"). School-leavers can't apply.
+const gradEntry = live.filter((p) => /graduate[- ]entry/i.test(p.programme));
+check('no graduate-entry programme is listed', gradEntry.length === 0, gradEntry.map((p) => p.id).join(', '));
+
+// D03: HPAT is for undergraduate Medicine only (ACER's list). It used to be
+// guessed from titles and landed on Dental Science, Podiatric Medicine and
+// Molecular Medicine. deadline_notes may say "such as the HPAT test", so only
+// the requirement chips are scanned.
+const hpatIds = live.filter((p) => p.otherRequirements.some((r) => /HPAT/.test(r))).map((p) => p.id).sort();
+equal('HPAT appears on exactly the undergraduate Medicine rows', hpatIds,
+  ['galway-bachelor-of-medicine-mb-of-surgery-bc', 'tcd-medicine', 'ucc-medicine']);
+
+// D04: the Trinity–Columbia dual degree is a joint application with years
+// 3–4 at Columbia, so Trinity's CAO route and fee must not be inherited.
+const columbia = liveRow('tcd-columbia-dual-degree');
+check('tcd-columbia-dual-degree has its own admission and an unknown fee',
+  columbia && columbia.admission.length > 0 && columbia.tuitionEu === null,
+  columbia ? JSON.stringify([columbia.admission, columbia.tuitionEu]) : 'row missing');
+
+// D05: Groningen UCG says it is "not a numerus fixus programme"; the row said
+// it was, and its note gave a 15 January deadline the page doesn't have.
+const ucg = liveRow('rug-ucg');
+const ucgText = ucg ? [...ucg.otherRequirements, ...ucg.admission, ucg.deadlineNotes].join(' | ') : '';
+check('rug-ucg is not called numerus fixus, and has no 15 January date',
+  ucg && !/(?<!not (a )?)numerus fixus/i.test(ucgText) && !/15 January/i.test(ucgText), ucgText || 'row missing');
+
+// D09: notes are for students, not maintainer to-dos, and must not promise
+// news by a date that has gone. Real deadlines ("by 15 January 2027") are fine;
+// only "will confirm / announce / publish ... by <date>" is a promise.
+const confirm = live.filter((p) => /CONFIRM/.test(p.deadlineNotes));
+check('no note contains a CONFIRM to-do', confirm.length === 0, confirm.map((p) => p.id).join(', '));
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december'];
+const runDate = new Date();
+const lapsed = live.filter((p) => [...p.deadlineNotes.matchAll(
+  /\bwill (?:confirm|announce|publish)\b[^.]*?\bby (\d{1,2}) ([A-Za-z]+) (\d{4})/gi,
+)].some(([, d, m, y]) => {
+  const month = MONTHS.indexOf(m.toLowerCase());
+  return month >= 0 && new Date(Date.UTC(+y, month, +d)) < runDate;
+}));
+check('no note promises news by a date that has passed', lapsed.length === 0,
+  `a note promises news by a date that has passed — re-read the page: ${lapsed.map((p) => p.id).join(', ')}`);
+
+// D11: "Dentistry" matched no subject pattern and fell through to Liberal Arts.
+check('ucc-dentistry is filed under Medicine & Health',
+  liveRow('ucc-dentistry') && liveRow('ucc-dentistry').subjectAreas.includes('Medicine & Health'));
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
+
+// ---------------------------------------------------------------- importers
+
+section('Irish importer rules (so a rerun cannot bring the fixed rows back)');
+const ie = await import(new URL('./lib/ireland.mjs', import.meta.url));
+check('SKIP_TITLE drops graduate-entry Medicine', ie.SKIP_TITLE.test('Medicine (Graduate Entry)'));
+check('SKIP_TITLE drops graduate-entry Pharmacy', ie.SKIP_TITLE.test('Pharmacy - Graduate Entry to Pharmacy'));
+check('Trinity\'s own title filter drops graduate entry',
+  /graduate\[- \]entry/.test(read('tools/import-tcd.mjs')));
+equal('otherFor no longer invents an HPAT for Dental Science', ie.otherFor('Dental Science'), '');
+equal('otherFor gives Veterinary Medicine the veterinary text', ie.otherFor('Veterinary Medicine'),
+  'Restricted entry — additional assessment');
+check('HPAT_CODES holds the undergraduate Medicine codes only',
+  ['TR051', 'CK701', 'GY501', 'DN400'].every((c) => ie.HPAT_CODES.has(c))
+    && !['TR052', 'TR060', 'GY504', 'CK702', 'CK791'].some((c) => ie.HPAT_CODES.has(c)));
+for (const f of ['tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/lib/irish-import.mjs']) {
+  const src = read(f);
+  const hpatAt = src.indexOf('HPAT_CODES.has(');
+  const testAt = src.indexOf('latest.test ?');
+  check(`${f} checks HPAT_CODES before the CAO test marker`, hpatAt > 0 && hpatAt < testAt);
+}
+check('areasFor("Dentistry") includes Medicine & Health', ie.areasFor('Dentistry').includes('Medicine & Health'));
+
+// D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
+// must refuse to run without --rerun-one-off before it reads or writes
+// anything. Checked as text: running it is exactly what must not happen here.
+const merge = read('tools/merge-italy-denmark.mjs');
+const firstIo = Math.min(...['readFileSync(', 'writeFileSync(', 'save(']
+  .map((call) => { const i = merge.indexOf(call); return i < 0 ? Infinity : i; }));
+const guardAt = merge.indexOf("process.argv.includes('--rerun-one-off')");
+const exitAt = merge.indexOf('process.exit(', guardAt);
+check('merge-italy-denmark.mjs refuses to run without --rerun-one-off',
+  guardAt > 0 && exitAt > guardAt && exitAt < firstIo);
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

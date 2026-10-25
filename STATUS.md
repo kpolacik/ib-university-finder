@@ -249,6 +249,29 @@ a per-country system.
   Sciences" does not repeat the requirement; it links to the parent course that
   carries it. The importer follows that link once, which recovered 15 rows.
 
+- **Graduate-entry courses got in, and a GAMSAT score became IB points (fixed
+  2026-10-25).** UCC's "Medicine (Graduate Entry)" and Trinity's "Graduate
+  Entry to Pharmacy" need a first degree, yet both were listed, and UCC's
+  GAMSAT cutoff of 58 was run through the IB table as "24 IB points". Both rows
+  are gone. `SKIP_TITLE` in `tools/lib/ireland.mjs` and Trinity's own title
+  filter in `import-tcd.mjs` now drop "graduate entry", so a rerun can't bring
+  them back. `update-cao-points.mjs` only edits rows that exist.
+
+- **The HPAT was guessed from course titles (fixed 2026-10-25).** `otherFor()`
+  wrote "HPAT admission test" on any title with "medicine" or "dental science",
+  so Dental Science, Podiatric Medicine and Molecular Medicine claimed a test
+  they don't have, while the real Medicine rows only said "Test, interview,
+  portfolio or audition". The HPAT now comes from a list of CAO codes
+  (`HPAT_CODES`, from ACER's own page), checked before the CAO marker in every
+  Irish importer.
+
+- **A one-off merge script could undo later fixes (guarded 2026-10-25).**
+  `tools/merge-italy-denmark.mjs` rebuilds every Italian and Danish row, so a
+  rerun would bring back the old Bocconi fees, the wrong World Bachelor
+  deadline and the old DTU English note. It now refuses to run without
+  `--rerun-one-off`, and `check.mjs` checks that by reading the file, never by
+  running it.
+
 ## Decisions already made, so they are not relitigated
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
@@ -335,6 +358,10 @@ a per-country system.
   rest; UL's LM002 Arts covers every Arts subject; UCD's DN250 covers three
   agriculture degrees. You apply to the code, not the programme, so the cutoff
   belongs to the code. 180 rows carry that sentence.
+- **Graduate-entry courses are left out** (decided 2026-10-25). They need a
+  first degree, and this site is for school-leavers, the same reasoning as
+  dropping degrees that need Dutch. The Irish importers skip any title with
+  "graduate entry".
 - The **UK is excluded**: post-Brexit, EU students pay international fees of
   roughly £25,000–38,000, so it is not a realistic option for this cohort.
 
@@ -342,6 +369,10 @@ a per-country system.
 
 - **Netherlands** admits on *subjects*, not totals — only 1 of 202 Dutch rows
   has a points minimum, and that is correct, not missing data.
+- **The HPAT list goes stale each cycle.** `HPAT_CODES` in
+  `tools/lib/ireland.mjs` holds the CAO codes of the courses ACER lists on
+  hpat-ireland.acer.org (undergraduate Medicine only, checked 2026-10-25).
+  Re-check it every year before trusting an importer rerun.
 - **Ireland** publishes a CAO cutoff per course and an official IB conversion,
   which is why 542 of the 555 Irish rows have a number. It also issues **no
   conditional offers** — decisions arrive mid-August.

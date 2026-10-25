@@ -68,7 +68,7 @@ const SUBJ = [
   [/chemi/i, 'Chemistry'],
   [/biolog|biochem|botany|zoolog|genetic|immunolog|microbiolog|neuroscience|physiolog|biomedical sci|biotechnolog|bioscience|marine science/i, 'Biology & Life Sciences'],
   [/environment|geoscience|geography|earth|geolog|climate|agricultur|food science|forestry|equine|horticultur/i, 'Environmental Sciences'],
-  [/medicine|dental|pharmac|nursing|health|nutrition|radiation|radiograph|therap|speech|midwifer|veterinar|paramedic|optometr/i, 'Medicine & Health'],
+  [/medicine|dental|dentist|pharmac|nursing|health|nutrition|radiation|radiograph|therap|speech|midwifer|veterinar|paramedic|optometr/i, 'Medicine & Health'],
   [/psycholog/i, 'Psychology'],
   [/econom/i, 'Economics'],
   [/business|management|commerce|marketing|accounting|finance|entrepreneur/i, 'Business & Management'],
@@ -89,10 +89,26 @@ const SUBJ = [
 export const areasFor = (name) =>
   [...new Set(SUBJ.filter(([re]) => re.test(name)).map(([, a]) => a))].slice(0, 3).join('; ') || 'Liberal Arts';
 
+/**
+ * The CAO codes whose applicants sit the HPAT, from ACER's HPAT-Ireland home
+ * page (hpat-ireland.acer.org), checked 2026-10-25: undergraduate Medicine at
+ * Galway, RCSI, Trinity, UCC, UCD and UL. Dental Science is not on it. UL's
+ * code is LM301, "Medicine - Undergraduate Entry" in the 2026 CAO table. RCSI
+ * (RC001) is left out because no importer reads RCSI. Re-check each cycle:
+ * ACER's list is the only source.
+ *
+ * This used to be a title test (/\bmedicine\b|dental science/), which put an
+ * HPAT on Dental Science, Podiatric Medicine and Molecular Medicine, and
+ * matched "Veterinary Medicine" before the veterinary rule could. Every
+ * importer has the CAO code, so the code decides, ahead of the CAO "test"
+ * marker.
+ */
+export const HPAT_CODES = new Set(['TR051', 'CK701', 'GY501', 'DN400', 'LM301']);
+export const HPAT = 'HPAT admission test';
+
 /** Admission hurdles a points total cannot express, spotted from the title. */
 export const otherFor = (name) =>
-  /\bmedicine\b|dental science/i.test(name) ? 'HPAT admission test'
-  : /veterinar/i.test(name) ? 'Restricted entry — additional assessment'
+  /veterinar/i.test(name) ? 'Restricted entry — additional assessment'
   : /music|drama|theatre|acting|art & design|fine art|performance/i.test(name) ? 'Audition or portfolio'
   : '';
 
@@ -151,6 +167,10 @@ export function idMaker(prefix) {
   };
 }
 
-/** Titles no Slovak IB applicant can realistically take, or that are not degrees. */
+/**
+ * Titles no Slovak IB applicant can realistically take, or that are not degrees.
+ * Graduate entry needs a first degree (UCC's GEM ranks on GAMSAT, whose score
+ * of 58 was once converted into "24 IB points"), so school-leavers can't apply.
+ */
 export const SKIP_TITLE =
-  /gaeilge|irish (language|studies)|as gaeilge|léann|ph\.?d|masters?\b|m\.?sc\b|postgrad|diploma|certificate|foundation|micro-?credential|part[- ]time|access course|mature/i;
+  /graduate[- ]entry|gaeilge|irish (language|studies)|as gaeilge|léann|ph\.?d|masters?\b|m\.?sc\b|postgrad|diploma|certificate|foundation|micro-?credential|part[- ]time|access course|mature/i;
