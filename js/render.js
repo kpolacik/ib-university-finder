@@ -39,7 +39,9 @@ function card(row, { state, shortlist, onToggleStar }) {
   if (row.degreeType) title.append(el('span', 'degree', row.degreeType));
   titles.append(title);
   titles.append(el('p', 'card-uni', row.university));
-  titles.append(el('p', 'card-place', [row.city, row.country].filter(Boolean).join(', ')));
+  // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
+  const city = row.cityUnknown ? 'City not published' : row.city;
+  titles.append(el('p', 'card-place', [city, row.country].filter(Boolean).join(', ')));
   head.append(titles);
   // No save button. It was removed on 2026-10-24 at Jakub's request, and the
   // shortlist it fed went with it; see the note in app.js.
@@ -98,6 +100,7 @@ function requirements(row) {
                        row.noSubjectsRequired &&
                        row.otherRequirements.length === 0 &&
                        row.englishRequirement.length === 0 &&
+                       !row.englishUnknown &&
                        row.admission.length === 0 &&
                        !row.admissionUnknown;
 
@@ -167,8 +170,26 @@ function requirements(row) {
   }
 
   // --- language ----------------------------------------------------------
+  // Always shown. Leaving the row out made 608 cards look as if there were no
+  // language requirement, when nobody had looked (R01). "?" means it differs
+  // from the university's and is unpublished, as on the Admission row.
   if (row.englishRequirement.length) {
     reqRow(list, 'Language', row.englishRequirement.map((t) => el('span', 'req-lang', t)));
+  } else if (row.englishUnknown) {
+    reqRow(list, 'Language', [el('span', 'req-unknown', 'Not published')]);
+  } else {
+    reqRow(list, 'Language', [el('span', 'req-unknown', 'Not checked yet')]);
+  }
+
+  // --- general -----------------------------------------------------------
+  // What every applicant's diploma must clear, from the universities tab. It
+  // used to appear only inside nothingAtAll, which no real row reaches, so 29
+  // universities' baselines were never shown (R03). The stored text starts
+  // lowercase because it also completes "No requirements beyond …". A blank
+  // baseline shows nothing: six Irish ones are blank on purpose (STATUS).
+  if (row.baselineRequirement) {
+    const general = row.baselineRequirement;
+    reqRow(list, 'General', [document.createTextNode(general[0].toUpperCase() + general.slice(1))]);
   }
 
   block.append(list);
@@ -196,7 +217,7 @@ function provenance(row) {
     const verified = el('p', 'verified', 'Invented sample row');
     verified.append(el('span', 'badge-danger', 'not real data'));
     foot.append(verified);
-  } else if (!row.needsHumanCheck && row.lastVerified) {
+  } else if (row.isChecked && row.lastVerified) {
     const verified = el('p', 'verified', `Checked ${longDate.format(row.lastVerified)}`);
     if (row.verifiedBy) verified.textContent += ` by ${row.verifiedBy}`;
     if (row.isStale) verified.append(el('span', 'badge-stale', 'may be out of date'));

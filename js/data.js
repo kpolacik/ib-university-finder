@@ -119,7 +119,7 @@ function build(universityRows, programmeRows, today) {
       baselineRequirement: text(row.baseline_requirement),
       studentLifeUrl: url(row.student_life_url, issues, `Universities row ${row.__row}, student_life_url`),
       lastVerified: date(row.last_verified, issues, `Universities row ${row.__row}, last_verified`),
-      verifiedBy: text(row.verified_by),
+      verifiedBy: signer(row.verified_by, issues, `Universities row ${row.__row}`),
     });
   }
 
@@ -152,7 +152,8 @@ function build(universityRows, programmeRows, today) {
     const deadline = date(row.application_deadline, issues, `${where}, application_deadline`);
 
     // Usually the same person checked both rows; only name them twice if not.
-    const verifiedBy = [...new Set([uni.verifiedBy, text(row.verified_by)].filter(Boolean))].join(' / ');
+    const ownSigner = signer(row.verified_by, issues, where);
+    const verifiedBy = [...new Set([uni.verifiedBy, ownSigner].filter(Boolean))].join(' / ');
 
     // Whole days from today. Negative means the date has gone.
     const daysUntilDeadline = deadline
@@ -175,6 +176,10 @@ function build(universityRows, programmeRows, today) {
       // Satellite campuses: University College Roosevelt is in Middelburg, not
       // Utrecht. Blank means "the university's home city".
       city,
+      // "?" empties `city` (it never inherits), which on its own made the card
+      // show only the country, as if the city did not matter. This lets the
+      // card say the city is not published instead.
+      cityUnknown: text(row.city) === UNKNOWN,
       country: uni.country,
       // A programme can apply through a different route from the rest of its
       // university: Bocconi's World Bachelor goes through the Common App, not
@@ -220,6 +225,9 @@ function build(universityRows, programmeRows, today) {
       // Split on the same bullet as other_requirements — the docs teach one
       // separator, so every column that uses it must honour it.
       englishRequirement: list(inheritText(row.english_requirement, uni.englishRequirementDefault), BULLET),
+      // Same as admissionUnknown: "?" means a requirement exists but nobody has
+      // found it, which the card must not show as nothing to meet.
+      englishUnknown: text(row.english_requirement) === UNKNOWN,
 
       deadline,
       deadlineNotes,
@@ -238,9 +246,12 @@ function build(universityRows, programmeRows, today) {
 
       // verified_by is the site's promise that a person read the official page.
       // Rows gathered automatically say AI-DRAFT until someone signs them off,
-      // and invented rows say SAMPLE. Neither may pass as checked.
+      // and invented rows say SAMPLE. Neither may pass as checked, and nor may a
+      // blank cell: "nobody signed" used to read as "Checked" with no name (T04).
+      // Today both rows must be signed; which signer counts is registry Q14.
       isSample: verifiedBy.includes('SAMPLE'),
-      needsHumanCheck: verifiedBy.includes('AI-DRAFT'),
+      isChecked: Boolean(uni.verifiedBy && ownSigner) &&
+                 !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE'),
 
       searchBlob: foldAccents(
         [text(row.programme), uni.name, city, uni.country].join(' ')
@@ -255,7 +266,9 @@ function build(universityRows, programmeRows, today) {
   // "some", not "every": one invented row mixed into real data must still raise
   // the alarm, otherwise the real rows lend it credibility.
   const sampleCount = programmes.filter((p) => p.isSample).length;
-  const draftCount = programmes.filter((p) => p.needsHumanCheck).length;
+  // Counts every row nobody has signed, not only the AI-DRAFT ones, so a blank
+  // signer keeps the research banner up instead of taking it down (T04).
+  const draftCount = programmes.filter((p) => !p.isChecked && !p.isSample).length;
 
   return { programmes, issues, sampleCount, draftCount };
 }
@@ -294,6 +307,14 @@ export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
 // check.mjs). Mind the plain ASCII apostrophe in "last year's".
 export const HPAT_NOTE = "The CAO minimum for Medicine is 480 points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure.";
 export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given.';
+
+// A blank signer is reported: the cell is the site's only record of who read
+// the official page, so an empty one is a gap someone should fill, not a pass.
+function signer(raw, issues, where) {
+  const value = text(raw);
+  if (value === '') issues.push(`${where}: verified_by is blank — shown as not checked. Write AI-DRAFT or your initials.`);
+  return value;
+}
 
 function inheritNumber(raw, fallback, issues, label) {
   const value = text(raw);

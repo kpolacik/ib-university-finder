@@ -537,8 +537,8 @@ svg:not(.sprite) {
 .c-denmark { background: var(--tint-dk); }
 .c-denmark .card-title,
 .c-denmark .req-number { color: var(--tint-dk-ink); }
-.card.is-past { opacity: 0.65; }
-.card.is-past:hover { opacity: 1; }
+/* Passed-deadline cards are not dimmed: 0.65 opacity took their text below
+   readable contrast (A01). The red date and the "passed" badge mark them. */
 
 /* A saved card is marked by a rule down its edge, not a coloured border that
    would fight the hover state. */

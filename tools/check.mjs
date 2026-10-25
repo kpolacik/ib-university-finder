@@ -127,6 +127,56 @@ check('the card shows "Not published" for an unknown admission route',
   /nothingAtAll[\s\S]{0,400}!row\.admissionUnknown/.test(renderSrc)
     && /else if \(row\.admissionUnknown\)[\s\S]{0,400}'Not published'/.test(renderSrc));
 
+// ------------------------------------------------------------ honest cards
+
+section('Cards say what is unknown instead of leaving it out');
+const uniH = [
+  'university_id,name,city,country,english_requirement_default,baseline_requirement,last_verified,verified_by',
+  'h,Card University,Town,Testland,,a recognised school diploma,2026-08-14,TT',
+  'h2,Unsigned University,Town,Testland,,,2026-08-14,',
+].join('\n') + '\n';
+const progH = [
+  'programme_id,university_id,city,programme,english_requirement,official_url,last_verified,verified_by',
+  'h-blank,h,,Blank english,,https://example.org,2026-08-14,TT',
+  'h-q,h,,Unknown english,?,https://example.org,2026-08-14,TT',
+  'h-city,h,?,Unknown city,,https://example.org,2026-08-14,TT',
+  'h-nosign,h,,No signer,,https://example.org,2026-08-14,',
+  'h-draft,h,,Draft,,https://example.org,2026-08-14,AI-DRAFT',
+  'h-uni-blank,h2,,University unsigned,,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: hc, meta: hcMeta } = await load(uniH, progH);
+const hcRow = (id) => hc.find((p) => p.id === id);
+// R01: a blank language requirement used to drop the Language row entirely.
+check('blank english (no default) is empty and not flagged unknown',
+  hcRow('h-blank').englishRequirement.length === 0 && hcRow('h-blank').englishUnknown === false);
+check('"?" english is flagged as unknown', hcRow('h-q').englishUnknown === true);
+check('the card always has a Language row: "Not checked yet", or "Not published" for "?"',
+  /else if \(row\.englishUnknown\) \{\s*reqRow\(list, 'Language', \[el\('span', 'req-unknown', 'Not published'\)\]\);\s*\} else \{\s*reqRow\(list, 'Language', \[el\('span', 'req-unknown', 'Not checked yet'\)\]\);/.test(renderSrc));
+// R04: a "?" city showed only the country.
+check('"?" city is flagged as unknown, blank is not',
+  hcRow('h-city').cityUnknown === true && hcRow('h-blank').cityUnknown === false);
+check('the card says "City not published" for a "?" city',
+  /row\.cityUnknown \? 'City not published'/.test(renderSrc));
+// R03: the university baseline only appeared inside nothingAtAll.
+check('the baseline reaches every programme of its university',
+  hcRow('h-blank').baselineRequirement === 'a recognised school diploma');
+check('the card shows a General row outside nothingAtAll',
+  renderSrc.indexOf("reqRow(list, 'General'") > renderSrc.indexOf("const list = el('dl', 'req')"));
+// T04: a blank signer read as "Checked <date>" with no name.
+equal('only a row signed on both tabs, without AI-DRAFT, is checked',
+  ['h-blank', 'h-nosign', 'h-draft', 'h-uni-blank'].map((id) => hcRow(id).isChecked), [true, false, false, false]);
+check('a blank verified_by is reported, on either tab',
+  hcMeta.issues.filter((i) => /verified_by is blank/.test(i)).length === 2
+    && hcMeta.issues.some((i) => /^Universities row 3: verified_by is blank/.test(i))
+    && hcMeta.issues.some((i) => /^Programmes row 5: verified_by is blank/.test(i)), JSON.stringify(hcMeta.issues));
+check('an unsigned row keeps the research banner up (draftCount counts it)', hcMeta.draftCount === 3,
+  `draftCount ${hcMeta.draftCount}`);
+check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
+  renderSrc.includes('row.isChecked && row.lastVerified') && !renderSrc.includes('needsHumanCheck'));
+// A01: dimmed past-deadline cards fell below readable contrast.
+const css = read('css/styles.css');
+check('past-deadline cards are not dimmed', !/\.card\.is-past[^{]*\{[^}]*opacity/.test(css));
+
 // ------------------------------------------------------ application system
 
 // Bocconi's World Bachelor applies through the Common App, not Bocconi's own
@@ -340,6 +390,15 @@ check('no UvA note says "YOUR deadline"', yourDeadline.length === 0, yourDeadlin
 const housingRows = uvaRows.filter((p) => housingDate(p) !== null);
 check('the UvA housing sentence is on the open-entry rows (at least 15)', housingRows.length >= 15,
   `${housingRows.length} rows`);
+
+// R03 on the real data: every university baseline reaches all its programmes.
+const baselineOf = new Map(csvToObjects(read('data/universities.csv'), 'Universities').rows
+  .map((u) => [u.name.trim(), (u.baseline_requirement || '').trim()]));
+const lostBaseline = live.filter((p) => p.baselineRequirement !== baselineOf.get(p.university));
+check('every programme carries its university\'s baseline (29 universities have one)',
+  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length === 29,
+  `${lostBaseline.length} rows differ; ${[...baselineOf.values()].filter(Boolean).length} baselines`);
+check('the one "?" city on the real data is flagged', liveRow('cvut-aplikace-informatiky-v-prirodnich-vedac')?.cityUnknown === true);
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 

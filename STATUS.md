@@ -125,7 +125,7 @@ initials and it reads "Checked <date> by <initials>".
   The Dutch ones are VU Law in Society, Leiden Archaeology, Leiden University
   College, and the two Utrecht colleges. Was 20 on the Dutch side — fourteen
   Leiden deadlines and Tilburg Psychology were recovered on 2026-08-21.
-- 608 of 1240 show no English requirement, counting the university default each
+- 608 of 1240 say "Not checked yet" for the language requirement, counting the university default each
   programme inherits (Netherlands 173, Czechia 344, Italy 21). On the Irish side
   only DCU's 70 are missing, for the reason in job 2.
 - 52 of 1240 show no tuition figure, after inheritance: 39 Italian rows (public
@@ -320,6 +320,24 @@ a per-country system.
   include an audition or test, so they still give no figure and the card reads
   "Cutoff includes a test score". No row says "Above the 625-point IB maximum"
   any more. The sentences come from `convertCutoff` in `tools/lib/ireland.mjs`.
+
+- **Passed-deadline cards were dimmed until unreadable (fixed 2026-10-26,
+  registry A01).** A card whose deadline had gone was drawn at 65% opacity,
+  which took its text to 2.7–3.6:1 contrast, below what anyone can read
+  comfortably. The first one (Bocconi's World Bachelor, 1 November) would have
+  dimmed on 2 November. The dimming is gone; the red date and the "passed" badge
+  already say it. `check.mjs` fails if `.card.is-past` gets an opacity again.
+
+- **Cards left out what nobody knew (fixed 2026-10-26, registry R01, R03, R04,
+  T04).** A card with no language requirement had no Language row, so 608 cards
+  looked as if there were nothing to meet; they now say "Not checked yet" (or
+  "Not published" for `?`). The university's general requirement (the
+  `baseline_requirement` column) only showed on a card with no other
+  requirement at all, which no real row is, so it was never seen; every card now
+  ends with a "General" row when its university has one. A `?` city showed only
+  the country; it now says "City not published". And a blank `verified_by`
+  read as "Checked" with no name; it now counts as not checked and is listed
+  under the spreadsheet problems. `check.mjs` guards all four.
 
 ## Decisions already made, so they are not relitigated
 
