@@ -275,12 +275,13 @@ check('no note promises news by a date that has passed', lapsed.length === 0,
 check('ucc-dentistry is filed under Medicine & Health',
   liveRow('ucc-dentistry') && liveRow('ucc-dentistry').subjectAreas.includes('Medicine & Health'));
 
-// D22: vu-las is Amsterdam University College, the same college as uva-auc,
-// but it inherited VU's own statutory fee (2,771) instead of AUC's 5,580.
-check('vu-las and uva-auc show the same fee, and it is not VU\'s default',
-  liveRow('vu-las') && liveRow('uva-auc') && liveRow('uva-auc').tuitionEu !== null
-    && liveRow('vu-las').tuitionEu === liveRow('uva-auc').tuitionEu,
-  `${liveRow('vu-las') && liveRow('vu-las').tuitionEu} vs ${liveRow('uva-auc') && liveRow('uva-auc').tuitionEu}`);
+// D22: vu-las was Amsterdam University College, the same college as uva-auc,
+// and inherited VU's own statutory fee (2,771) instead of AUC's 5,580. Fixed
+// in d949351; then Leon (Q10, 2026-10-25) dropped the duplicate row, so the
+// college is listed once, under the UvA entry, at AUC's own fee.
+check('vu-las is dropped and uva-auc stays, at AUC\'s own fee',
+  !liveRow('vu-las') && liveRow('uva-auc') && liveRow('uva-auc').tuitionEu === 5580,
+  `vu-las ${liveRow('vu-las') ? 'still listed' : 'gone'}; uva-auc fee ${liveRow('uva-auc') && liveRow('uva-auc').tuitionEu}`);
 
 // D23: Leiden's English-taught International Relations and Organisations track
 // is numerus fixus (selection and placement), but the row said "?" and so
@@ -289,6 +290,40 @@ const iro = liveRow('lei-iro');
 check('lei-iro says numerus fixus in its admission route',
   iro && iro.admission.some((a) => /numerus fixus/i.test(a)),
   iro ? JSON.stringify(iro.admission) : 'row missing');
+
+// Q11 (2026-10-25): Leiden Political Science is listed once. Its English-taught
+// option is lei-iro; the other track (NIP) is Dutch-taught, so lei-polsci went.
+check('lei-polsci is dropped and lei-iro stays numerus fixus',
+  !liveRow('lei-polsci') && iro && iro.admission.some((a) => /numerus fixus/i.test(a)),
+  `lei-polsci ${liveRow('lei-polsci') ? 'still listed' : 'gone'}`);
+
+// D10 / Q6: UvA's open-entry rows used to headline 1 April, which is only the
+// date for EU/EEA students with a non-Dutch diploma who want UvA housing. The
+// headline is the general date (1 May); the housing date lives in the note, in
+// one fixed sentence. The check compares the headline with the date the note
+// names, so it needs no year and survives the next cycle.
+// uva-anthro and uva-comm are left out on purpose: when this was fixed
+// (2026-10-25) their pages still showed the 2026 dates (anthro) or an
+// "advisory 1 April" with no year (comm), so their rows were not rewritten.
+// Take them off this list the day their pages show the 2027 dates.
+const UVA_NOT_YET_CONFIRMED = new Set(['uva-anthro', 'uva-comm']);
+const uvaRows = live.filter((p) => p.id.startsWith('uva-') && !UVA_NOT_YET_CONFIRMED.has(p.id));
+const housingDate = (p) => {
+  const m = p.deadlineNotes.match(/Want UvA housing\? Apply by (\d{1,2}) ([A-Za-z]+) (\d{4}) instead\./);
+  const month = m ? MONTHS.indexOf(m[2].toLowerCase()) : -1;
+  return month < 0 ? null : new Date(Date.UTC(+m[3], month, +m[1])).toISOString().slice(0, 10);
+};
+const headlineIsHousing = uvaRows.filter((p) => p.deadline && p.deadline.toISOString().slice(0, 10) === housingDate(p));
+check('no UvA row headlines its housing date', headlineIsHousing.length === 0,
+  headlineIsHousing.map((p) => p.id).join(', '));
+const housingNoSentence = uvaRows.filter((p) => /housing/i.test(p.deadlineNotes) && housingDate(p) === null);
+check('every UvA note that mentions housing uses the "Want UvA housing?" sentence', housingNoSentence.length === 0,
+  housingNoSentence.map((p) => p.id).join(', '));
+const yourDeadline = uvaRows.filter((p) => /YOUR deadline/.test(p.deadlineNotes));
+check('no UvA note says "YOUR deadline"', yourDeadline.length === 0, yourDeadline.map((p) => p.id).join(', '));
+const housingRows = uvaRows.filter((p) => housingDate(p) !== null);
+check('the UvA housing sentence is on the open-entry rows (at least 15)', housingRows.length >= 15,
+  `${housingRows.length} rows`);
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 

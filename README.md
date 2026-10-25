@@ -29,6 +29,9 @@ Google Sheet ──published as CSV──▶ browser fetch ──▶ join ──
       └── if the fetch fails ──▶ data/fallback.json (with a visible warning)
 ```
 
+The Sheet is not connected yet and there is no plan to connect it for now: `js/config.js`
+has no Sheet URLs, so the site reads `data/*.csv` from the repo.
+
 **Two tabs, not one**, so that university-level facts are typed once no matter
 how many programmes you list:
 

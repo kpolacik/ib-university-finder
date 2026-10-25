@@ -8,11 +8,11 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1242 programmes · 35 universities · 5 countries · all checks passing.
+1240 programmes · 35 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 199 | **Complete** — every Dutch research university |
+| Netherlands | 13 | 197 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 5 | 46 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo |
@@ -88,7 +88,8 @@ initials and it reads "Checked <date> by <initials>".
    levy, which UCD does publish. See the Free Fees entry below.
 
 
-3. **Connect the Google Sheet.** Two tabs, published to the web as CSV, URLs
+3. **Connect the Google Sheet.** *Not planned for now (decided 2026-10-25).*
+   Two tabs, published to the web as CSV, URLs
    pasted into `js/config.js`. Until then the site reads `data/*.csv` from the
    repo and nobody can maintain it without Git.
 4. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
@@ -120,14 +121,14 @@ initials and it reads "Checked <date> by <initials>".
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
   Kondiční trenér are listed as Czech-taught but carry a fee "za studium v
   cizím jazyce". Their fee is `?` and the note says so.
-- 111 of 1242 programmes have no deadline: 61 Czech, 45 Italian and 5 Dutch.
+- 111 of 1240 programmes have no deadline: 61 Czech, 45 Italian and 5 Dutch.
   The Dutch ones are VU Law in Society, Leiden Archaeology, Leiden University
   College, and the two Utrecht colleges. Was 20 on the Dutch side — fourteen
   Leiden deadlines and Tilburg Psychology were recovered on 2026-08-21.
-- 610 of 1242 show no English requirement, counting the university default each
-  programme inherits (Netherlands 175, Czechia 344, Italy 21). On the Irish side
+- 608 of 1240 show no English requirement, counting the university default each
+  programme inherits (Netherlands 173, Czechia 344, Italy 21). On the Irish side
   only DCU's 70 are missing, for the reason in job 2.
-- 52 of 1242 show no tuition figure, after inheritance: 39 Italian rows (public
+- 52 of 1240 show no tuition figure, after inheritance: 39 Italian rows (public
   fees depend on ISEE), 10 Czech, 2 Dutch and Trinity's Columbia dual
   degree, whose page does not say what each part costs. Was 147 on the Dutch and Irish rows alone — the Irish
   fees were re-based on the Free Fees Initiative on 2026-08-21, which both
@@ -280,7 +281,8 @@ a per-country system.
   AUC's name and fee. Leiden's English-taught International Relations and
   Organisations had `?` for its admission route although Leiden's page says it
   has a numerus fixus with a selection and placement procedure; it now says so.
-  `check.mjs` guards both.
+  `check.mjs` guards both. Leon then dropped both duplicate rows on
+  2026-10-25 (`vu-las`, and `lei-polsci`, whose English option is `lei-iro`).
 
 ## Decisions already made, so they are not relitigated
 
@@ -372,12 +374,25 @@ a per-country system.
   first degree, and this site is for school-leavers, the same reasoning as
   dropping degrees that need Dutch. The Irish importers skip any title with
   "graduate entry".
+- **A college or degree is listed once** (decided 2026-10-25). Amsterdam
+  University College appears only as `uva-auc`; its note says it is run jointly
+  by the UvA and VU Amsterdam. Leiden Political Science appears only as the
+  English-taught `lei-iro`; the other track is Dutch-taught. The search no
+  longer finds AUC under "VU" (an alias column, registry S01, would fix that).
+- **UvA's headline deadline is the general 1 May date** (decided 2026-10-25).
+  The 1 April date is only for EU/EEA students with a non-Dutch diploma who want
+  UvA housing, so it sits in the note ("Want UvA housing? Apply by 1 April 2027
+  instead.") rather than on the card's date. A nicer display of housing dates
+  would be part of application milestones (registry F03).
+- **The Google Sheet is not planned for now** (decided 2026-10-25). The site
+  reads the two CSV files in `data/`. The Sheet instructions in
+  MAINTENANCE.md describe how it would work if it is connected later.
 - The **UK is excluded**: post-Brexit, EU students pay international fees of
   roughly £25,000–38,000, so it is not a realistic option for this cohort.
 
 ## Country notes worth keeping
 
-- **Netherlands** admits on *subjects*, not totals — only 2 of 199 Dutch rows
+- **Netherlands** admits on *subjects*, not totals — only 2 of 197 Dutch rows
   have a points minimum, and that is correct, not missing data.
 - **The HPAT list goes stale each cycle.** `HPAT_CODES` in
   `tools/lib/ireland.mjs` holds the CAO codes of the courses ACER lists on

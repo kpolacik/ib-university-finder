@@ -3,6 +3,11 @@
 You do not need to know how to code. Everything below happens in a Google
 Sheet, in your browser.
 
+**Today the Google Sheet is not connected, and there is no plan to connect it for
+now.** The data is the two CSV files in the `data/` folder, edited in a plain
+text editor (never Excel) and saved with Git. The sections below describe how
+the Sheet would work if it is connected later.
+
 If you take one thing from this document: **this site is only as trustworthy as
 the person who last checked it.** Somebody may plan their application around a
 deadline on this page. That is the whole reason for the `last_verified` and
