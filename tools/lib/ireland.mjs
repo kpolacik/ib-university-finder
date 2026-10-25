@@ -197,37 +197,6 @@ export const otherFor = (name) =>
   : /music|drama|theatre|acting|art & design|fine art|performance/i.test(name) ? 'Audition or portfolio'
   : '';
 
-/**
- * The ib_points_min plus deadline_notes pair for a course whose only published
- * number is last year's CAO cutoff.
- *
- * Ireland's cutoffs are demand-driven, so they are not minimums, and the note
- * says so every time rather than trusting the reader to remember.
- */
-export function fromCutoff(cao, year, code, { needsMaths = false, codeLabel = 'CAO code' } = {}) {
-  const base = `Last year's CAO cutoff was ${cao} points (${year})${code ? `; ${codeLabel} ${code}` : ''}. `
-    + 'Cutoffs are set by demand each August and move year to year — this is not a guaranteed minimum.';
-
-  let ib = lowestIB(cao);
-  if (ib === null && needsMaths) {
-    ib = lowestIB(cao - 25);
-    if (ib !== null) {
-      return { ib, note: `${base} Reachable only with the 25 bonus points for HL Maths at grade 4 or better.` };
-    }
-  }
-  if (ib === null) {
-    return {
-      ib: null,
-      note: `${base} ABOVE the 625 points an IB student can reach (45 plus the maths bonus) because the cutoff `
-        + 'includes a separate assessment such as the HPAT test or an audition, so no IB equivalent can be given.',
-    };
-  }
-  return {
-    ib,
-    note: base + (needsMaths ? ' A grade 4+ in HL Maths adds 25 bonus points, so one point lower may suffice.' : ''),
-  };
-}
-
 const esc = (v) => (/[",\r\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
 
 export const COLUMNS = [

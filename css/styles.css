@@ -1,6 +1,6 @@
-/* Mobile-first. Two breakpoints — 720px splits the paired inputs and the card
-   grid, 1080px turns the filter panel into a sticky rail — plus a dark palette
-   and a print stylesheet for the shortlist.
+/* Mobile-first. One main breakpoint: from 720px the cards go two to a row and
+   the filter bar sticks to the top (when the screen is also 600px tall), plus
+   a print stylesheet for the shortlist. Light only.
 
    Design notes that are easy to undo by accident:
    - One accent hue. Amber and red are states, not accents, and never compete.

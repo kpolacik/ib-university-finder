@@ -31,25 +31,35 @@ export function saveShortlist(shortlist) {
 
 // ------------------------------------------------------------------- export
 
+// Each column says what the card says, qualifiers included: a bare "37" for a
+// figure that needs HL Maths 4+, or a blank for a "?" city, would tell the
+// student less than the page did (R05).
 const EXPORT_COLUMNS = [
   ['University', (r) => r.university],
   ['Programme', (r) => r.programme],
   ['Degree', (r) => r.degreeType],
-  ['City', (r) => r.city],
+  ['City', (r) => (r.cityUnknown ? 'not published' : r.city)],
   ['Country', (r) => r.country],
   ['Deadline', (r) => (r.deadline ? r.deadline.toISOString().slice(0, 10) : '')],
   ['Deadline notes', (r) => r.deadlineNotes],
-  ['Admission', (r) => r.admission.join(BULLET)],
-  ['IB points', (r) => (r.ibPointsMin === null ? 'not published' : String(r.ibPointsMin))],
+  ['Admission', (r) => (r.admissionUnknown ? 'not published' : r.admission.join(BULLET))],
+  ['IB points', points],
   ['Subject requirements', (r) => (r.noSubjectsRequired ? 'none required' : (r.ibSubjects || 'not checked'))],
   ['Other requirements', (r) => r.otherRequirements.join(BULLET)],
-  ['Language', (r) => r.englishRequirement.join(BULLET)],
+  ['Language', (r) => (r.englishUnknown ? 'not published' : r.englishRequirement.join(BULLET))],
   ['Tuition EU per year', (r) => (r.tuitionEu === null ? 'not published' : String(r.tuitionEu))],
   ['Apply via', (r) => r.applicationSystem],
   ['Official page', (r) => r.officialUrl || ''],
   ['Last checked', (r) => (r.lastVerified ? r.lastVerified.toISOString().slice(0, 10) : 'never')],
   ['Checked by', (r) => r.verifiedBy],
 ];
+
+function points(r) {
+  if (r.ibPointsMin === null) return r.pointsPlusTest ? 'cutoff includes a test score' : 'not published';
+  if (r.needsHlMaths) return `${r.ibPointsMin}, needs HL Maths 4+`;
+  if (r.rankedWithHpat) return `${r.ibPointsMin}, then ranked with the HPAT`;
+  return String(r.ibPointsMin);
+}
 
 export function toCsv(rows) {
   const lines = [EXPORT_COLUMNS.map(([heading]) => escapeCsv(heading)).join(',')];
@@ -60,7 +70,11 @@ export function toCsv(rows) {
 }
 
 function escapeCsv(value) {
-  const text = value == null ? '' : String(value);
+  let text = value == null ? '' : String(value);
+  // Any student can type into the Sheet, and a spreadsheet runs a cell that
+  // starts with = + - @ (or a tab or carriage return) as a formula when the
+  // file is opened. A leading ' makes it plain text (X03).
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

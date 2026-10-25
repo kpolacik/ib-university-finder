@@ -3,7 +3,7 @@
 // Once the Google Sheet exists, publish BOTH tabs to the web as CSV
 // (File > Share > Publish to web > pick the tab > Comma-separated values)
 // and paste the two URLs here. Until then these stay empty and the site
-// runs on the sample files in /data.
+// reads data/universities.csv and data/programmes.csv (below).
 
 export const SHEET_CSV_URLS = {
   universities: '',

@@ -506,6 +506,38 @@ check('every exported row has the same column count',
   grid.every((r) => r.length === grid[0].length), JSON.stringify(grid.map((r) => r.length)));
 check('commas inside a field survive the round trip',
   messy.length > 0 && grid[1][grid[0].indexOf('Subject requirements')] === messy[0].ibSubjects);
+// R05, X03: the export is switched off with the shortlist, but kept. It gave
+// a bare points figure where the card adds a condition, and a cell typed as
+// "=..." in the Sheet would run as a formula when the file is opened.
+const base = sample[0];
+const exportRows = [
+  { ...base, ibPointsMin: 37, needsHlMaths: true, rankedWithHpat: false, pointsPlusTest: false },
+  { ...base, ibPointsMin: 32, needsHlMaths: false, rankedWithHpat: true, pointsPlusTest: false },
+  { ...base, ibPointsMin: null, needsHlMaths: false, rankedWithHpat: false, pointsPlusTest: true },
+  { ...base, admission: [], admissionUnknown: true, city: '', cityUnknown: true,
+    englishRequirement: [], englishUnknown: true },
+  { ...base, programme: '=HYPERLINK("http://evil.example","x")', deadlineNotes: '+1 day', university: '@uni' },
+];
+const exported = parseCsv(toCsv(exportRows));
+const cell = (r, heading) => exported[r + 1][exported[0].indexOf(heading)];
+equal('the export carries the card\'s points qualifiers',
+  [cell(0, 'IB points'), cell(1, 'IB points'), cell(2, 'IB points')],
+  ['37, needs HL Maths 4+', '32, then ranked with the HPAT', 'cutoff includes a test score']);
+equal('the export says "not published" for a "?" admission, city and language',
+  [cell(3, 'Admission'), cell(3, 'City'), cell(3, 'Language')], ['not published', 'not published', 'not published']);
+equal('a cell that starts with = + - or @ is exported as text, not a formula',
+  [cell(4, 'Programme'), cell(4, 'Deadline notes'), cell(4, 'University')],
+  ['\'=HYPERLINK("http://evil.example","x")', '\'+1 day', '\'@uni']);
+
+// M05, M06, M07: comments that said the wrong thing, a favicon 404 in the
+// console on every load, and a converter nothing called that still had the
+// old wrong "ABOVE the 625" wording.
+section('Tidy-up (M05-M07)');
+check('config.js no longer says the site runs on the sample files', !read('js/config.js').includes('sample files in /data'));
+check('the CSS header no longer mentions a dark palette or a 1080px rail',
+  !/dark palette/.test(css.slice(0, 600)) && !/1080px/.test(css.slice(0, 600)));
+check('index.html declares an icon, so no favicon request 404s', /<link rel="icon" href="data:,">/.test(indexHtml));
+check('the unused fromCutoff converter is gone', !read('tools/lib/ireland.mjs').includes('fromCutoff'));
 
 // ---------------------------------------------------------------- the real data
 
