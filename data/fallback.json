@@ -18,7 +18,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "TU Delft"
     },
     {
       "university_id": "eur",
@@ -34,7 +35,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "EUR · Erasmus Universiteit Rotterdam"
     },
     {
       "university_id": "wur",
@@ -50,7 +52,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "WUR"
     },
     {
       "university_id": "maastricht",
@@ -66,7 +69,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UM · Universiteit Maastricht"
     },
     {
       "university_id": "tue",
@@ -82,7 +86,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "TU/e · Technische Universiteit Eindhoven"
     },
     {
       "university_id": "rug",
@@ -98,7 +103,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "RUG · Rijksuniversiteit Groningen"
     },
     {
       "university_id": "uva",
@@ -114,7 +120,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UvA · Universiteit van Amsterdam · AUC"
     },
     {
       "university_id": "vu",
@@ -130,7 +137,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "VU · VU Amsterdam"
     },
     {
       "university_id": "twente",
@@ -146,7 +154,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UT"
     },
     {
       "university_id": "tilburg",
@@ -162,7 +171,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": ""
     },
     {
       "university_id": "leiden",
@@ -178,7 +188,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Universiteit Leiden"
     },
     {
       "university_id": "radboud",
@@ -194,7 +205,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Radboud Universiteit"
     },
     {
       "university_id": "utrecht",
@@ -210,7 +222,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UU · Universiteit Utrecht"
     },
     {
       "university_id": "tcd",
@@ -226,7 +239,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "TCD"
     },
     {
       "university_id": "ucd",
@@ -242,7 +256,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UCD"
     },
     {
       "university_id": "ucc",
@@ -258,7 +273,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UCC"
     },
     {
       "university_id": "galway",
@@ -274,7 +290,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "NUI Galway · NUIG · Ollscoil na Gaillimhe"
     },
     {
       "university_id": "dcu",
@@ -290,7 +307,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "DCU"
     },
     {
       "university_id": "ul",
@@ -306,7 +324,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "UL"
     },
     {
       "university_id": "maynooth",
@@ -322,7 +341,8 @@
       "admission_default": "Places offered in order of CAO points",
       "student_life_url": "",
       "last_verified": "2026-08-16",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "MU"
     },
     {
       "university_id": "cuni",
@@ -338,7 +358,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-24",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "CUNI · Univerzita Karlova"
     },
     {
       "university_id": "muni",
@@ -354,7 +375,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-24",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "MUNI · Masarykova univerzita"
     },
     {
       "university_id": "cvut",
@@ -370,7 +392,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-24",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "ČVUT · CTU · České vysoké učení technické v Praze"
     },
     {
       "university_id": "vut",
@@ -386,7 +409,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-24",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "VUT · BUT · Vysoké učení technické v Brně"
     },
     {
       "university_id": "vse",
@@ -402,7 +426,8 @@
       "admission_default": "",
       "student_life_url": "",
       "last_verified": "2026-10-24",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "VŠE · Vysoká škola ekonomická v Praze"
     },
     {
       "university_id": "unibo",
@@ -418,7 +443,8 @@
       "admission_default": "Admission test (TOLC or SAT) and a ranking",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Unibo · Università di Bologna · Alma Mater Studiorum"
     },
     {
       "university_id": "polito",
@@ -434,7 +460,8 @@
       "admission_default": "Admission test and a ranking",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "PoliTO"
     },
     {
       "university_id": "bocconi",
@@ -450,7 +477,8 @@
       "admission_default": "Bocconi online test or SAT/ACT, ranked with school grades",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Università Bocconi"
     },
     {
       "university_id": "polimi",
@@ -466,7 +494,8 @@
       "admission_default": "Entrance test (TOL or an accepted alternative) and a ranking",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Polimi"
     },
     {
       "university_id": "sapienza",
@@ -482,7 +511,8 @@
       "admission_default": "CEnT-S admission test (CISIA) and a ranking",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Sapienza Università di Roma"
     },
     {
       "university_id": "cbs",
@@ -498,7 +528,8 @@
       "admission_default": "Quota 1 (grade average) or Quota 2 (assessed application)",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "CBS"
     },
     {
       "university_id": "aarhus",
@@ -514,7 +545,8 @@
       "admission_default": "Quota 1 (grade average) or Quota 2 (assessed application)",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "AU · Aarhus Universitet"
     },
     {
       "university_id": "dtu",
@@ -530,7 +562,8 @@
       "admission_default": "Quota 1 (grade average) or Quota 2 (assessed application)",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Danmarks Tekniske Universitet"
     },
     {
       "university_id": "sdu",
@@ -546,7 +579,8 @@
       "admission_default": "Quota 1 (grade average) or Quota 2 (assessed application)",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "Syddansk Universitet"
     },
     {
       "university_id": "aau",
@@ -562,7 +596,8 @@
       "admission_default": "Quota 1 (grade average) or Quota 2 (assessed application)",
       "student_life_url": "",
       "last_verified": "2026-10-25",
-      "verified_by": "AI-DRAFT"
+      "verified_by": "AI-DRAFT",
+      "aliases": "AAU · Aalborg Universitet"
     }
   ],
   "programmes": [

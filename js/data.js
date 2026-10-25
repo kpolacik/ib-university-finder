@@ -120,6 +120,10 @@ function build(universityRows, programmeRows, today) {
       studentLifeUrl: url(row.student_life_url, issues, `Universities row ${row.__row}, student_life_url`),
       lastVerified: date(row.last_verified, issues, `Universities row ${row.__row}, last_verified`),
       verifiedBy: signer(row.verified_by, issues, `Universities row ${row.__row}`),
+      // Short and native names people search for ("UvA", "ČVUT", "Univerzita
+      // Karlova"), only ever read into the search text. A Sheet or snapshot
+      // without the column gives none, which is fine (S01).
+      aliases: list(row.aliases, BULLET),
     });
   }
 
@@ -248,7 +252,8 @@ function build(universityRows, programmeRows, today) {
       // title doesn't say it (S01). Language and degree type stay out: "english"
       // would match most rows, and language has its own filter.
       searchBlob: foldAccents(
-        [text(row.programme), uni.name, city, uni.country, ...list(row.subject_area)].join(' ')
+        [text(row.programme), uni.name, ...uni.aliases, city, LOCAL_CITY_NAMES.get(city) || '',
+          uni.country, ...list(row.subject_area)].join(' ')
       ).toLowerCase(),
     });
   }
@@ -307,6 +312,18 @@ const NO_REQUIREMENT = 'none';
 // One bullet separator, used by every column that holds a list of short items.
 // Exported so the CSV export joins on exactly what the parser split on.
 export const BULLET = ' · ';
+
+// The local name of a city whose English name is what the CSV stores, so
+// "Praha" finds Prague. Keyed on the programme's own city rather than put in the
+// university's aliases: Charles University also teaches in Plzeň and Hradec
+// Králové, and those rows must not come up for "Praha".
+const LOCAL_CITY_NAMES = new Map([
+  ['Prague', 'Praha'],
+  ['Milan', 'Milano'],
+  ['Turin', 'Torino'],
+  ['Rome', 'Roma'],
+  ['The Hague', 'Den Haag'],
+]);
 
 // The exact deadline_notes sentence the Irish tools write when a figure assumes
 // the 25 HL Maths bonus points. A copy of BONUS_ONLY in tools/lib/ireland.mjs,

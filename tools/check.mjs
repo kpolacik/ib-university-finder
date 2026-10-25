@@ -484,6 +484,26 @@ check('every programme carries its university\'s baseline (29 universities have 
   `${lostBaseline.length} rows differ; ${[...baselineOf.values()].filter(Boolean).length} baselines`);
 check('the one "?" city on the real data is flagged', liveRow('cvut-aplikace-informatiky-v-prirodnich-vedac')?.cityUnknown === true);
 
+// S01: "UvA", "TCD" or "ČVUT" found nothing, because only the English names were
+// searched. The aliases column (universities tab) and the local city names fix it.
+const uniOfRows = (query) => new Set(live.filter((p) => matchesSearch(p.searchBlob, query)).map((p) => p.university));
+for (const [query, university] of [['uva', 'University of Amsterdam'], ['tu delft', 'Delft University of Technology'],
+  ['tcd', 'Trinity College Dublin'], ['ucd', 'University College Dublin'],
+  ['cvut', 'Czech Technical University in Prague'], ['praha', 'Charles University'],
+  ['univerzita karlova', 'Charles University'], ['milano', 'Bocconi University']]) {
+  const unis = uniOfRows(query);
+  check(`"${query}" finds ${university}`, unis.has(university), JSON.stringify([...unis]));
+}
+check('"uva" finds only the University of Amsterdam', [...uniOfRows('uva')].join() === 'University of Amsterdam',
+  JSON.stringify([...uniOfRows('uva')]));
+const prahaOutside = live.filter((p) => matchesSearch(p.searchBlob, 'praha') && p.city !== 'Prague');
+check('"praha" does not find Charles University rows taught in Plzeň or Hradec Králové',
+  prahaOutside.every((p) => p.university !== 'Charles University'), prahaOutside.map((p) => p.id).join(', '));
+const { meta: noAliasMeta, programmes: noAlias } = await load(uniF, progF);
+check('a universities file without the aliases column still loads with no problems',
+  noAliasMeta.issues.length === 0 && noAlias.length === 5 && !uniF.split('\n')[0].includes('aliases'),
+  JSON.stringify(noAliasMeta.issues));
+
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 
 // ---------------------------------------------------------------- importers

@@ -58,6 +58,7 @@ Only if it is not already on the `universities` tab.
 | `student_life_url` | Student union page or city subreddit | |
 | `last_verified` | Today's date, `YYYY-MM-DD` | `2026-09-14` |
 | `verified_by` | Your initials | `JP` |
+| `aliases` | Short names and native names people search for, separated by ` · `. **Only names the university uses itself** on its own site. Search reads it; the card does not show it. Can be blank | `UvA · Universiteit van Amsterdam` |
 
 ## Adding a programme
 
