@@ -3,7 +3,7 @@
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS,
-  parsePoints, parseFee,
+  parsePoints, parseFee, stateToParams, paramsToState,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
@@ -72,6 +72,7 @@ start();
 async function start() {
   dom.banner.addEventListener('click', openIssuesFromLink);
   wireDropdowns();
+  applyUrlFields();
   wireInputs();
   dom.results.setAttribute('aria-busy', 'true');
 
@@ -85,6 +86,7 @@ async function start() {
     renderSortOptions(dom.sort, SORTS, state.sort);
 
     facets = buildFacets(allRows);
+    applyUrlLists();
     drawChips();
     renderMastheadStat();
 
@@ -99,6 +101,36 @@ async function start() {
     dom.loading.hidden = true;
     dom.results.removeAttribute('aria-busy');
   }
+}
+
+// A shared or reloaded address brings its filters back (S03). The text and
+// number fields are filled before loading starts, so anything typed while the
+// data loads overwrites them and wins; readFields() picks up whichever is
+// there. The sort is set now so the menu is built with it.
+function applyUrlFields() {
+  const fromUrl = paramsToState(location.search);
+  dom.search.value = fromUrl.search;
+  if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
+  if (fromUrl.maxTuition !== null) dom.tuition.value = String(fromUrl.maxTuition);
+  state.sort = fromUrl.sort;
+}
+
+// Subjects, countries and languages can only be checked against the data,
+// so they wait for it; a value not in the data is dropped.
+function applyUrlLists() {
+  const fromUrl = paramsToState(location.search, facets);
+  fromUrl.subjectAreas.forEach((v) => state.subjectAreas.add(v));
+  fromUrl.countries.forEach((v) => state.countries.add(v));
+  fromUrl.languages.forEach((v) => state.languages.add(v));
+}
+
+// replaceState, not pushState: one history entry per keystroke would make the
+// Back button step through every letter typed.
+function keepAddress() {
+  const query = stateToParams(state);
+  const search = query ? `?${query}` : '';
+  if (search === location.search) return;
+  history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 }
 
 // Nothing could be loaded, not even the saved copy (L07). The banner used to
@@ -301,6 +333,7 @@ function update() {
   renderCards(dom.results, rows, { state, shortlist, onToggleStar });
   renderEmptyState(rows.length);
   renderCounts(rows.length);
+  keepAddress();
 }
 
 function renderCounts(shown) {

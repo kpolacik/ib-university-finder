@@ -457,6 +457,33 @@ check('the empty state no longer mentions the Google Sheet or a fixed tuition/co
 check('the empty state has a working Clear all button',
   indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', clearAll)"));
 
+// S03: a reload threw every filter away, and a filtered view could not be
+// shared. The state now lives in the address.
+section('Filters are kept in the address (S03)');
+const { stateToParams, paramsToState } = filtersMod;
+const urlFacets = { subjectAreas: ['Law', 'Medicine & Health'], countries: ['Ireland', 'Italy'], languages: ['English', 'Czech'] };
+const fullState = {
+  ...filtersMod.createFilterState(),
+  search: 'computer science', myIbPoints: 36, maxTuition: 3000,
+  subjectAreas: new Set(['Law', 'Medicine & Health']), countries: new Set(['Ireland']),
+  languages: new Set(['English']), sort: 'tuition',
+};
+const fullQuery = stateToParams(fullState);
+const back = paramsToState(fullQuery, urlFacets);
+equal('a full state survives the round trip',
+  [back.search, back.myIbPoints, back.maxTuition, [...back.subjectAreas], [...back.countries], [...back.languages], back.sort],
+  ['computer science', 36, 3000, ['Law', 'Medicine & Health'], ['Ireland'], ['English'], 'tuition']);
+check('the short parameter names are used', /^q=computer\+science&points=36&fee=3000&subject=Law&subject=Medicine\+%26\+Health&country=Ireland&lang=English&sort=tuition$/.test(fullQuery), fullQuery);
+const junk = paramsToState('points=46&fee=-5&subject=Astrology&country=Mars&lang=Klingon&sort=random&country=Italy', urlFacets);
+equal('unknown values and invalid numbers are dropped',
+  [junk.myIbPoints, junk.maxTuition, [...junk.subjectAreas], [...junk.countries], [...junk.languages], junk.sort],
+  [null, null, [], ['Italy'], [], 'deadline']);
+equal('an empty state gives an empty query string, and the default sort is left out',
+  stateToParams(filtersMod.createFilterState()), '');
+check('app.js writes the URL values into the fields before loading, and keeps the address up to date',
+  startBody.indexOf('applyUrlFields(') > 0 && startBody.indexOf('applyUrlFields(') < startBody.indexOf('await loadData(')
+    && appSrc.includes('history.replaceState('));
+
 // The audits found these with a keyboard, a screen reader and a 320 px phone.
 // There is no DOM here, so they are checked as text; the browser steps in
 // the plan cover how they behave.

@@ -118,6 +118,47 @@ function wholeNumberIn(raw, min, max) {
   return n >= min && n <= max ? { value: n, valid: true } : { value: null, valid: false };
 }
 
+// ----------------------------------------------------------------- address
+
+// The filters live in the address, so a reload keeps them and a filtered view
+// can be shared as a link (S03). Short, stable names; a list repeats its name
+// (subject=Law&subject=Medicine). The default sort and empty filters are left
+// out, so the plain page keeps its plain address.
+const DEFAULT_SORT = 'deadline';
+
+export function stateToParams(state) {
+  const params = new URLSearchParams();
+  if (state.search.trim()) params.set('q', state.search.trim());
+  if (state.myIbPoints !== null) params.set('points', String(state.myIbPoints));
+  if (state.maxTuition !== null) params.set('fee', String(state.maxTuition));
+  for (const v of state.subjectAreas) params.append('subject', v);
+  for (const v of state.countries) params.append('country', v);
+  for (const v of state.languages) params.append('lang', v);
+  if (state.sort !== DEFAULT_SORT) params.set('sort', state.sort);
+  return params.toString();
+}
+
+// The reverse, trusting nothing: an address can be edited by hand or be old.
+// A number that is not valid, a sort that does not exist, or a subject,
+// country or language that is not in the data is dropped, never applied.
+// Without facets (before the data has loaded) the lists come back empty.
+export function paramsToState(query, facets = null) {
+  const params = new URLSearchParams(query);
+  const points = parsePoints(params.get('points'));
+  const fee = parseFee(params.get('fee'));
+  const known = (name, values) => new Set(facets ? params.getAll(name).filter((v) => values.includes(v)) : []);
+  const sort = params.get('sort');
+  return {
+    search: params.get('q') || '',
+    myIbPoints: points.valid ? points.value : null,
+    maxTuition: fee.valid ? fee.value : null,
+    subjectAreas: known('subject', facets && facets.subjectAreas),
+    countries: known('country', facets && facets.countries),
+    languages: known('lang', facets && facets.languages),
+    sort: Object.hasOwn(SORTS, sort) ? sort : DEFAULT_SORT,
+  };
+}
+
 // ------------------------------------------------------------------- sorting
 
 export const SORTS = {

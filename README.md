@@ -140,6 +140,11 @@ application, so the site never presents itself as the final authority.
 **One bad spreadsheet edit cannot take down the page.** Malformed rows are
 skipped and reported in a panel at the bottom, naming the row and column.
 
+**The filters are in the page address.** Reloading keeps them, and a filtered
+view can be shared by copying the address (for example
+`?q=law&country=Ireland&points=36`). A value the data does not have, or a
+number out of range, is ignored.
+
 **No invented rankings or "student life scores".** `student_life_url` is a
 link, never a number. See MAINTENANCE.md.
 
