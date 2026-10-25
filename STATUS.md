@@ -128,8 +128,8 @@ initials and it reads "Checked <date> by <initials>".
   programme inherits (Netherlands 175, Czechia 344, Italy 21). On the Irish side
   only DCU's 70 are missing, for the reason in job 2.
 - 52 of 1242 show no tuition figure, after inheritance: 39 Italian rows (public
-  fees depend on ISEE), 10 Czech, 2 Dutch and Galway Pharmacy, whose page
-  carries no fee table. Was 147 on the Dutch and Irish rows alone — the Irish
+  fees depend on ISEE), 10 Czech, 2 Dutch and Trinity's Columbia dual
+  degree, whose page does not say what each part costs. Was 147 on the Dutch and Irish rows alone — the Irish
   fees were re-based on the Free Fees Initiative on 2026-08-21, which both
   corrected them and filled UCD's 140.
   Galway no longer has a university default at all — its fees are per course,
