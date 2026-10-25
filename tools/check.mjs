@@ -227,7 +227,8 @@ check('bocconi-wbb: deadline is 2026-11-01 and it applies via the Common App',
 
 // D02: graduate-entry routes need a first degree (UCC's GEM ranks on GAMSAT,
 // whose 58 was converted into "24 IB points"). School-leavers can't apply.
-const gradEntry = live.filter((p) => /graduate[- ]entry/i.test(p.programme));
+// (?<!under): UL's "Undergraduate Entry Medicine" is open to school leavers.
+const gradEntry = live.filter((p) => /(?<!under)graduate[- ]entry/i.test(p.programme));
 check('no graduate-entry programme is listed', gradEntry.length === 0, gradEntry.map((p) => p.id).join(', '));
 
 // D03: HPAT is for undergraduate Medicine only (ACER's list). It used to be
@@ -236,7 +237,8 @@ check('no graduate-entry programme is listed', gradEntry.length === 0, gradEntry
 // the requirement chips are scanned.
 const hpatIds = live.filter((p) => p.otherRequirements.some((r) => /HPAT/.test(r))).map((p) => p.id).sort();
 equal('HPAT appears on exactly the undergraduate Medicine rows', hpatIds,
-  ['galway-bachelor-of-medicine-mb-of-surgery-bc', 'tcd-medicine', 'ucc-medicine']);
+  ['galway-bachelor-of-medicine-mb-of-surgery-bc', 'tcd-medicine', 'ucc-medicine', 'ucd-medicine',
+    'ul-undergraduate-entry-medicine-bmbs']);
 
 // D04: the Trinity–Columbia dual degree is a joint application with years
 // 3–4 at Columbia, so Trinity's CAO route and fee must not be inherited.
@@ -272,6 +274,22 @@ check('no note promises news by a date that has passed', lapsed.length === 0,
 // D11: "Dentistry" matched no subject pattern and fell through to Liberal Arts.
 check('ucc-dentistry is filed under Medicine & Health',
   liveRow('ucc-dentistry') && liveRow('ucc-dentistry').subjectAreas.includes('Medicine & Health'));
+
+// D22: vu-las is Amsterdam University College, the same college as uva-auc,
+// but it inherited VU's own statutory fee (2,771) instead of AUC's 5,580.
+check('vu-las and uva-auc show the same fee, and it is not VU\'s default',
+  liveRow('vu-las') && liveRow('uva-auc') && liveRow('uva-auc').tuitionEu !== null
+    && liveRow('vu-las').tuitionEu === liveRow('uva-auc').tuitionEu,
+  `${liveRow('vu-las') && liveRow('vu-las').tuitionEu} vs ${liveRow('uva-auc') && liveRow('uva-auc').tuitionEu}`);
+
+// D23: Leiden's English-taught International Relations and Organisations track
+// is numerus fixus (selection and placement), but the row said "?" and so
+// showed no admission route at all.
+const iro = liveRow('lei-iro');
+check('lei-iro says numerus fixus in its admission route',
+  iro && iro.admission.some((a) => /numerus fixus/i.test(a)),
+  iro ? JSON.stringify(iro.admission) : 'row missing');
+
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
 
 // ---------------------------------------------------------------- importers
@@ -280,14 +298,27 @@ section('Irish importer rules (so a rerun cannot bring the fixed rows back)');
 const ie = await import(new URL('./lib/ireland.mjs', import.meta.url));
 check('SKIP_TITLE drops graduate-entry Medicine', ie.SKIP_TITLE.test('Medicine (Graduate Entry)'));
 check('SKIP_TITLE drops graduate-entry Pharmacy', ie.SKIP_TITLE.test('Pharmacy - Graduate Entry to Pharmacy'));
+check('SKIP_TITLE keeps undergraduate-entry Medicine (UL LM301)', !ie.SKIP_TITLE.test('Undergraduate Entry Medicine - BMBS'));
 check('Trinity\'s own title filter drops graduate entry',
   /graduate\[- \]entry/.test(read('tools/import-tcd.mjs')));
 equal('otherFor no longer invents an HPAT for Dental Science', ie.otherFor('Dental Science'), '');
 equal('otherFor gives Veterinary Medicine the veterinary text', ie.otherFor('Veterinary Medicine'),
   'Restricted entry — additional assessment');
 check('HPAT_CODES holds the undergraduate Medicine codes only',
-  ['TR051', 'CK701', 'GY501', 'DN400'].every((c) => ie.HPAT_CODES.has(c))
+  ['TR051', 'CK701', 'GY501', 'DN400', 'LM301'].every((c) => ie.HPAT_CODES.has(c))
     && !['TR052', 'TR060', 'GY504', 'CK702', 'CK791'].some((c) => ie.HPAT_CODES.has(c)));
+// D24: UCD (DN400) and UL (LM301) undergraduate Medicine were missing. The UCD
+// hub page has no IB block, so import-ucd.mjs skips it, and the two rows are
+// hand-added. This fails if a merge from an importer run loses one of them.
+// update-cao-points.mjs finds a row by the "(code XX000)" in its note and
+// rewrites the sentence its first OLD pattern matches, so both must hold.
+const oldCao = new RegExp(read('tools/update-cao-points.mjs').match(/const OLD = \[\n\s+\/(.+)\/,\n/)[1]);
+for (const code of ie.HPAT_CODES) {
+  const rows = live.filter((p) => p.deadlineNotes.includes(`(code ${code})`));
+  check(`HPAT code ${code} names a live Medicine row the CAO refresh can find`,
+    rows.length === 1 && oldCao.test(rows[0].deadlineNotes),
+    `${rows.length} rows carry (code ${code})`);
+}
 for (const f of ['tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/lib/irish-import.mjs']) {
   const src = read(f);
   const hpatAt = src.indexOf('HPAT_CODES.has(');

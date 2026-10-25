@@ -189,22 +189,24 @@ is in Middelburg, not Utrecht; Leiden teaches three programmes in The Hague;
 Groningen teaches two in Leeuwarden. Put the real city there and the card — and
 the search box — will use it.
 
-**Never edit an `id` once the row exists.** Students star programmes to build a
-shortlist, saved in their own browser against these ids. Change one and their
-saved star silently points at nothing. Renaming a university is fine. Fixing a
-typo in a name is fine. Changing the id is not.
+**Never edit an `id` once the row exists.** The id is how the two tabs are
+joined and how a programme is referred to elsewhere (the shortlist code, which is
+kept but switched off, stores programmes by id). Change one and anything pointing
+at it silently points at nothing. Renaming a university is fine. Fixing a typo in
+a name is fine. Changing the id is not.
 
 **Only write in `ib_points_min` what the university actually publishes.** Many
 do not publish a number at all — this is normal, especially in the Netherlands,
 where admission runs on required subjects rather than a total score. Leave it
-blank and put the real requirement in `ib_hl_requirements`. The card will say
+blank and put the real requirement in `ib_subjects`. The card will say
 "Points not published", which is honest and useful. A number copied from a
 commercial university-comparison site is not a fact, and it is exactly the kind
 of thing that makes someone apply for a course they cannot get into.
 
 **`verified_by` is a signature.** Put your initials there only if you personally
 opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered
-automatically and nobody has confirmed it — the site marks those with a badge.
+automatically and nobody has confirmed it — the site says so in a banner at the top
+and shows no "checked" line on that card.
 Replacing `AI-DRAFT` with your initials is how you sign it off.
 
 **Do not invent scores.** No "student life: 8/10", no rankings we made up.
@@ -232,7 +234,7 @@ between two people.
 1. **Open the site and sort by deadline.** Anything marked "passed" is last
    year's date and needs rolling forward.
 2. **Work down the `programmes` tab.** For each row, open `official_url` and
-   check three things: the deadline, `ib_points_min` / `ib_hl_requirements`,
+   check three things: the deadline, `ib_points_min` / `ib_subjects`,
    and the tuition fee.
 3. **Update `application_deadline` to next year's date.** Most are the same date
    each year — 15 January is common across the Netherlands for capped courses —
@@ -243,8 +245,8 @@ between two people.
    if there is an amber box, it lists exactly which row and column is wrong.
 6. **Rebuild the offline copy** (see below).
 
-Anything not checked for six months shows a "may be out of date" badge
-automatically, so you can see at a glance what has been missed.
+Anything a person signed off and has not re-checked for six months shows a "may
+be out of date" badge automatically, so you can see at a glance what has been missed.
 
 ## Before each application season
 

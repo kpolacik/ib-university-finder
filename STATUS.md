@@ -8,11 +8,11 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1245 programmes · 35 universities · 5 countries · all checks passing.
+1242 programmes · 35 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 202 | **Complete** — every Dutch research university |
+| Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 5 | 46 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo |
@@ -108,7 +108,7 @@ initials and it reads "Checked <date> by <initials>".
 
 ## Known gaps
 
-- **Czech gaps** (424 rows): 65 have no deadline — the faculties above plus
+- **Czech gaps** (424 rows): 61 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no
   fee (`?`). 10 have no admission line. Every Czech-taught row shows
@@ -120,20 +120,21 @@ initials and it reads "Checked <date> by <initials>".
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
   Kondiční trenér are listed as Czech-taught but carry a fee "za studium v
   cizím jazyce". Their fee is `?` and the note says so.
-- 5 programmes have no deadline: VU Law in Society, Leiden Archaeology, Leiden
-  University College, and the two Utrecht colleges. Was 20 — fourteen Leiden
-  deadlines and Tilburg Psychology were recovered on 2026-08-21.
-- 249 of 757 show no English requirement, counting the university default each
-  programme inherits. Almost all are Dutch; on the Irish side only DCU's 71 are
-  missing, for the reason in job 2.
-- 3 of 757 show no tuition figure, after inheritance: Galway Pharmacy, whose
-  page carries no fee table, and two Dutch rows. Was 147 — the Irish fees were
-  re-based on the Free Fees Initiative on 2026-08-21, which both corrected them
-  and filled UCD's 140.
+- 111 of 1242 programmes have no deadline: 61 Czech, 45 Italian and 5 Dutch.
+  The Dutch ones are VU Law in Society, Leiden Archaeology, Leiden University
+  College, and the two Utrecht colleges. Was 20 on the Dutch side — fourteen
+  Leiden deadlines and Tilburg Psychology were recovered on 2026-08-21.
+- 610 of 1242 show no English requirement, counting the university default each
+  programme inherits (Netherlands 175, Czechia 344, Italy 21). On the Irish side
+  only DCU's 70 are missing, for the reason in job 2.
+- 52 of 1242 show no tuition figure, after inheritance: 39 Italian rows (public
+  fees depend on ISEE), 10 Czech, 2 Dutch and Galway Pharmacy, whose page
+  carries no fee table. Was 147 on the Dutch and Irish rows alone — the Irish
+  fees were re-based on the Free Fees Initiative on 2026-08-21, which both
+  corrected them and filled UCD's 140.
   Galway no longer has a university default at all — its fees are per course,
   because only 1 of its 54 courses charged the figure that used to be the
   default. See the GLM re-check section.
-- 19 of 757 have no deadline.
 - `student_life_url` is empty everywhere. Never invent these.
 - Subject areas are keyword-mapped from course titles across all seven Irish
   universities, and a few are rough.
@@ -143,7 +144,7 @@ initials and it reads "Checked <date> by <initials>".
   and a Slovak applicant goes through the CAO as an EU applicant. Left blank
   rather than borrowed from the wrong audience. The per-course `ib_points_min`
   carries the number that actually matters anyway.
-- **368 of the 555 Irish rows have a blank `ib_subjects`.** Only UCD and
+- **358 of the 548 Irish rows have a blank `ib_subjects`.** Only UCD and
   Trinity publish subject requirements per course; the other five do not, so
   blank here means "not checked", not "nothing to meet". A further 7 Trinity
   rows say `none`, and there that is verified: Trinity runs its "Admission
@@ -192,7 +193,7 @@ large tinted rounded panels, rose brand accent, blue links, arrow motif).
   browsing will not all be at a desk. "Desktop only" means no further mobile
   polish, not ripping out working breakpoints.
 - **Contrast is measured, not eyeballed.** `node tools/check-contrast.mjs` —
-  29 pairs, every foreground against the background it is genuinely painted on.
+  44 pairs, every foreground against the background it is genuinely painted on.
 
 **What was deliberately not taken from the reference.** It is a portfolio with
 six elements on a screen and enormous type. This is a data tool where one card
@@ -272,10 +273,19 @@ a per-country system.
   `--rerun-one-off`, and `check.mjs` checks that by reading the file, never by
   running it.
 
+- **A duplicate row inherited the wrong fee, and a `?` hid a published
+  numerus fixus (fixed 2026-10-25).** The VU "Liberal Arts and Sciences" row is
+  Amsterdam University College, the same college as the UvA entry, but it had a
+  blank fee and so showed VU's own €2,771 instead of AUC's €5,580. It now carries
+  AUC's name and fee. Leiden's English-taught International Relations and
+  Organisations had `?` for its admission route although Leiden's page says it
+  has a numerus fixus with a selection and placement procedure; it now says so.
+  `check.mjs` guards both.
+
 ## Decisions already made, so they are not relitigated
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
-  The Free Fees explanation that sat on all 555 Irish cards is gone — the reason
+  The Free Fees explanation that sat on every Irish card is gone — the reason
   Irish fees are the contribution plus levy is recorded once, below, not on every
   card — and so is every other sentence explaining a fee. The repeated cutoff
   disclaimers are one short line each, and notes written before the August
@@ -367,14 +377,21 @@ a per-country system.
 
 ## Country notes worth keeping
 
-- **Netherlands** admits on *subjects*, not totals — only 1 of 202 Dutch rows
-  has a points minimum, and that is correct, not missing data.
+- **Netherlands** admits on *subjects*, not totals — only 2 of 199 Dutch rows
+  have a points minimum, and that is correct, not missing data.
 - **The HPAT list goes stale each cycle.** `HPAT_CODES` in
   `tools/lib/ireland.mjs` holds the CAO codes of the courses ACER lists on
   hpat-ireland.acer.org (undergraduate Medicine only, checked 2026-10-25).
   Re-check it every year before trusting an importer rerun.
+- **UCD Medicine (DN400) and UL Undergraduate Entry Medicine (LM301) are
+  hand-added rows** (2026-10-25). UCD's DN400 page has no IB requirements
+  block, so `import-ucd.mjs` skips it and a rerun would drop `ucd-medicine`;
+  both rows leave `ib_subjects` blank because neither page states an IB subject
+  list. Keep them when merging an importer run. `check.mjs` fails if a row for
+  any `HPAT_CODES` code goes missing, and `update-cao-points.mjs` keeps their
+  cutoffs current.
 - **Ireland** publishes a CAO cutoff per course and an official IB conversion,
-  which is why 542 of the 555 Irish rows have a number. It also issues **no
+  which is why 535 of the 548 Irish rows have a number. It also issues **no
   conditional offers** — decisions arrive mid-August.
 - **Where each Irish university hides its data**, since finding this again was
   most of the work: UCD's course list is drawn by JavaScript from an internal
@@ -426,7 +443,7 @@ a per-country system.
 
 ```bash
 node tools/serve.mjs            # then open http://localhost:8765
-node tools/check.mjs            # 45 checks, must end "All checks passed"
+node tools/check.mjs            # must end "All checks passed"
 node tools/check-contrast.mjs   # every text colour vs its real background
 node tools/make-snapshot.mjs    # rebuild data/fallback.json after data changes
 ```

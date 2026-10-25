@@ -11,11 +11,11 @@ The site uses ES modules, which browsers refuse to load over `file://`. Opening
 `index.html` by double-clicking it will show a blank page. Serve it instead:
 
 ```bash
-python -m http.server 8000
+node tools/serve.mjs
 ```
 
-Then open <http://localhost:8000>. Any static server works — `npx serve`, the
-VS Code Live Server extension, whatever you have.
+Then open <http://localhost:8765>. This server tells the browser not to cache,
+so a CSS change shows up straight away; Python's `http.server` does not do that.
 
 ## How the data gets in
 
@@ -84,13 +84,13 @@ over the files.
 
 ```
 index.html            markup and the filter controls
-css/styles.css        all styling, including dark mode and the print layout
+css/styles.css        all styling, including the print layout (light only; there is no dark mode)
 js/
   config.js           Sheet URLs and the two thresholds. Start here.
   csv.js              RFC 4180 CSV parser (~90 lines, no dependencies)
   data.js             fetch, join, validate, normalise. All parsing lives here.
   filters.js          pure functions: rows + filter state -> rows, and sorting
-  shortlist.js        localStorage and CSV export
+  shortlist.js        localStorage and CSV export (kept but switched off: no save button)
   render.js           everything that touches the DOM
   app.js              wiring and event handlers
 data/
@@ -125,8 +125,9 @@ Silently dropping a university because a spreadsheet cell is empty could cost
 someone an option they wanted.
 
 **`verified_by` means a person looked.** Rows marked `AI-DRAFT` were gathered
-automatically and show a "nobody has checked this yet" badge until someone
-replaces that with their initials. Rows marked `SAMPLE` are invented and
+automatically; the banner at the top of the page says nothing has been checked
+by a person, and a card only shows "Checked <date> by <initials>" once someone
+replaces `AI-DRAFT` with their initials. Rows marked `SAMPLE` are invented and
 trigger a red banner. Neither can pass as verified data.
 
 **Every card shows `last_verified` and links to the official page.** Not behind

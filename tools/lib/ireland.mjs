@@ -1,8 +1,11 @@
-// Shared pieces for the six Irish importers (UCD, UCC, Galway, DCU, UL, Maynooth).
+// Shared pieces for the seven Irish importers (Trinity, UCD, UCC, Galway, DCU, UL, Maynooth).
 //
-// import-tcd.mjs came first and inlines its own copies of all of this. It is
-// left alone on purpose: it is the record of how the Trinity rows were made.
-// Everything written after it shares this file instead of copying it six times.
+// import-tcd.mjs came first, and this file was later split out of the pieces
+// every Irish importer needs. Trinity's importer now imports getHtml, toText,
+// lowestIB, areasFor, otherFor, toRow, HPAT_CODES and HPAT from here too. It
+// keeps only its own course-list parsing, its id scheme (idFor, by URL) and
+// its subject parsing (ibFrom), because Trinity's pages are laid out
+// differently from the other five.
 
 const UA = {
   'user-agent':
@@ -171,6 +174,8 @@ export function idMaker(prefix) {
  * Titles no Slovak IB applicant can realistically take, or that are not degrees.
  * Graduate entry needs a first degree (UCC's GEM ranks on GAMSAT, whose score
  * of 58 was once converted into "24 IB points"), so school-leavers can't apply.
+ * (?<!under) because "Undergraduate Entry Medicine" (UL's LM301, open to school
+ * leavers) contains the words "graduate entry" and was being skipped as one.
  */
 export const SKIP_TITLE =
-  /graduate[- ]entry|gaeilge|irish (language|studies)|as gaeilge|léann|ph\.?d|masters?\b|m\.?sc\b|postgrad|diploma|certificate|foundation|micro-?credential|part[- ]time|access course|mature/i;
+  /(?<!under)graduate[- ]entry|gaeilge|irish (language|studies)|as gaeilge|léann|ph\.?d|masters?\b|m\.?sc\b|postgrad|diploma|certificate|foundation|micro-?credential|part[- ]time|access course|mature/i;
