@@ -53,13 +53,18 @@ The column rules are in MAINTENANCE.md and the parsing is in `js/data.js`.
   capped-regex bugs in STATUS.md). If a capture needs a bound, end it at a
   terminator, never at a character count.
 - **`ib_points_min` is a number only**, and only what the university
-  publishes. Never take it from comparison sites. Czech rows leave it blank
-  (admission is by entrance exam).
+  publishes (or the CAO, for Irish rows). Never take it from comparison
+  sites. Czech rows leave it blank (admission is by entrance exam).
 - **Irish points are last year's CAO cutoffs (converted), not minimums.**
-  UCD is the exception: its figure is UCD's published IB minimum. STATUS.md
-  says conversions never assume the HL Maths bonus, but the importers
-  currently do for a few rows (registry P03). Cutoffs come from the CAO, with
-  its `AQA`/`#`/`*` markers (`tools/lib/cao-points.mjs`, STATUS.md decisions).
+  UCD is the exception: its figure is UCD's published IB minimum. All
+  conversion goes through `convertCutoff` in `tools/lib/ireland.mjs`:
+  - A plain 601–625 cutoff assumes the 25-point HL Maths bonus. The card
+    says "needs HL Maths 4+" (decision Q13).
+  - HPAT Medicine shows the CAO's 480-point minimum (35 IB), ranked with
+    the HPAT (decision Q12).
+  - A cutoff above 625 that includes a test stays blank and says so.
+  Cutoffs come from the CAO, with its `AQA`/`#`/`*` markers
+  (`tools/lib/cao-points.mjs`, STATUS.md decisions).
 - **Irish fee = Free Fees figure** (student contribution plus levy). Don't use
   the bigger "EU fee" a page prints (STATUS.md).
 - **Unknown never hides a programme.** Filters show unknown values and label
