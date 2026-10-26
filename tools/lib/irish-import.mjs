@@ -13,7 +13,7 @@ import { writeFileSync } from 'node:fs';
 import {
   getHtml, toText, convertCutoff, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
 } from './ireland.mjs';
-import { fetchCaoPoints, caoNote } from './cao-points.mjs';
+import { fetchCaoPoints, caoNote, hasCaoTest } from './cao-points.mjs';
 
 /**
  * @param {object} cfg
@@ -95,7 +95,7 @@ export async function importUniversity(cfg) {
     // requirement", except on HPAT Medicine, which gets the CAO's minimum.
     const points = entry.latest.aqa ? null : entry.latest.points;
     const c = convertCutoff(points, {
-      test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+      test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
     });
     ib = c.ib;
     notes.push(...c.notes);
@@ -116,7 +116,7 @@ export async function importUniversity(cfg) {
         // nothing to meet.
         ib_subjects: '',
         other_requirements: HPAT_CODES.has(code) ? HPAT
-          : entry.latest.test ? 'Test, interview, portfolio or audition' : otherFor(title),
+          : hasCaoTest(entry) ? 'Test, interview, portfolio or audition' : otherFor(title),
         tuition_eu: fees.eu ?? '',
         tuition_noneu: fees.noneu ?? '',
         application_deadline: '2027-02-01',

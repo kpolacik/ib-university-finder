@@ -824,7 +824,7 @@ for (const code of ie.HPAT_CODES) {
 for (const f of ['tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/lib/irish-import.mjs']) {
   const src = read(f);
   const hpatAt = src.indexOf('HPAT_CODES.has(');
-  const testAt = src.indexOf('latest.test ?');
+  const testAt = src.indexOf('hasCaoTest(entry) ?');
   check(`${f} checks HPAT_CODES before the CAO test marker`, hpatAt > 0 && hpatAt < testAt);
 }
 check('areasFor("Dentistry") includes Medicine & Health', ie.areasFor('Dentistry').includes('Medicine & Health'));
@@ -1063,6 +1063,22 @@ check('fetchCaoPoints reads through parseCaoTable (no second parser)',
 // parseCaoSentence, which the cards will use.
 const v = (points, extra = {}) => ({ points, aqa: false, test: false, notAll: false, newComp: false, ...extra });
 const ent = (round1, round2 = null) => ({ code: 'TR028', year: 2026, round1, round2, latest: round2 ?? round1 });
+// The note does not carry "#", so either round must mark the whole course as
+// needing a test. Looking only at latest.test lost a Round 1-only marker.
+const testEntries = [ent(v(625, { test: true }), v(610)), ent(v(625), v(610, { test: true })), ent(v(600)), null];
+equal('a test marker in either CAO round marks the course, including Round 1 only',
+  testEntries.map((entry) => typeof cp.hasCaoTest === 'function' && cp.hasCaoTest(entry)),
+  [true, true, false, false]);
+equal('a Round 1-only test marker prevents a bonus IB figure for a 610 Round 2 cutoff',
+  cc(testEntries[0].latest.points, { test: typeof cp.hasCaoTest === 'function' && cp.hasCaoTest(testEntries[0]) }),
+  { ib: null, notes: [ABOVE_TEST_601] });
+for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/update-cao-points.mjs']) {
+  check(`${f} reads the course's test marker from both rounds`,
+    read(f).includes('hasCaoTest(entry)') && !/latest\.test/.test(read(f)));
+}
+check('the CAO refresh preserves other requirements and adds a missing test tag',
+  /other_requirements/.test(read('tools/update-cao-points.mjs'))
+    && /!other\.includes\(CAO_TEST\)/.test(read('tools/update-cao-points.mjs')));
 const shapes = [
   [ent(v(495)), 'one round', '2026 CAO cutoff: Round 1 495 points (code TR028).',
     [{ round: 1, points: 495, aqa: false, notAll: false }]],

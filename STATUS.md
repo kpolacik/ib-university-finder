@@ -358,6 +358,12 @@ a per-country system.
   has changed" if the headings on the page disagree or a title runs into the
   figures. `check.mjs` runs it on a copy of those lines.
 
+  Verification also caught a test marker being read from the latest round
+  only. The importers and refresh now check both rounds, so a Round 1-only
+  `#` keeps the course's test requirement and the stricter conversion. The
+  refresh adds a missing test tag without replacing other requirements.
+  Regression fixtures cover it; no data was changed or importer run.
+
 - **"HL Maths 4+ adds 25 bonus points." went on courses by title (removed
   2026-10-26, registry D28).** 126 rows carried it because their name sounded
   mathematical, though the bonus applies to any course. The sentence is gone

@@ -112,6 +112,10 @@ export async function fetchCaoPoints() {
   return parseCaoTable(await getHtml(SOURCE));
 }
 
+// The note omits "#", so the row's Other tag must keep it even when only the
+// earlier round has it. Both rounds then use the stricter test-score reading.
+export const hasCaoTest = (entry) => Boolean(entry?.round1?.test || entry?.round2?.test);
+
 /**
  * The sentence that goes in deadline_notes for a CAO-entry course, given what
  * the CAO published about it. Returns null where there is nothing to say.

@@ -13,7 +13,7 @@ import { writeFileSync } from 'node:fs';
 import {
   getHtml, toText, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
 } from './lib/ireland.mjs';
-import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
+import { fetchCaoPoints, caoNote, hasCaoTest } from './lib/cao-points.mjs';
 
 const cao = await fetchCaoPoints();
 
@@ -116,7 +116,7 @@ for (const c of courses) {
       // and a course with none listed has not been checked against anything else.
       ib_subjects: subjects.join('; '),
       other_requirements: HPAT_CODES.has(c.cao) ? HPAT
-        : entry?.latest.test ? 'Test, interview, portfolio or audition' : otherFor(c.title),
+        : hasCaoTest(entry) ? 'Test, interview, portfolio or audition' : otherFor(c.title),
       application_deadline: '2027-02-01',
       official_url: `https://hub.ucd.ie/usis/!W_HU_MENU.P_PUBLISH?p_tag=COURSE&MAJR=${c.majr}&AUDIENCE=audienceEU`,
       last_verified: '2026-08-16',

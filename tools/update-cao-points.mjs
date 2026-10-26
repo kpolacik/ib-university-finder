@@ -12,7 +12,9 @@
 //     Round 2 …", "every qualified applicant got a place", "No 2026 cutoff
 //     published") and the conversion sentences that go with it;
 //   * ib_points_min, for every university except UCD, whose figure is UCD's
-//     own stated minimum and not a conversion of the cutoff.
+//     own stated minimum and not a conversion of the cutoff;
+//   * a missing test requirement tag, if either round carries "#", keeping
+//     every existing requirement.
 //
 // ib_points_min is converted from the latest round (Round 2 where the CAO
 // published one), though the card's headline is Round 1. The latest round is
@@ -27,8 +29,9 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
+import { BULLET, CAO_TEST } from '../js/data.js';
 import { convertCutoff, HPAT_CODES, HPAT_NOTE } from './lib/ireland.mjs';
-import { fetchCaoPoints, caoNote, rebuildNote } from './lib/cao-points.mjs';
+import { fetchCaoPoints, caoNote, rebuildNote, hasCaoTest } from './lib/cao-points.mjs';
 
 const IRISH = new Set(['tcd', 'ucd', 'ucc', 'galway', 'dcu', 'ul', 'maynooth']);
 // Rows whose note no longer names the code, because it was rewritten by hand.
@@ -61,7 +64,7 @@ for (const r of rows) {
   // with no cutoff (AQA: points null), so HPAT Medicine always gets the CAO's
   // minimum and HPAT_NOTE.
   const conv = convertCutoff(entry.latest.aqa ? null : entry.latest.points, {
-    test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
   });
   const ib = conv.ib;
   sentences.push(...conv.notes);
@@ -79,6 +82,13 @@ for (const r of rows) {
   // dropped, everything else (shared-code notes, Galway band notes,
   // hand-written notes) kept in place.
   r[col.deadline_notes] = rebuildNote(notes, fresh);
+
+  // The browser reads the test marker from Other because the CAO sentence
+  // omits "#". Do not lose a Round 1-only marker or replace other hurdles.
+  const other = r[col.other_requirements].split(BULLET);
+  if (hasCaoTest(entry) && !HPAT_CODES.has(code) && !other.includes(CAO_TEST)) {
+    r[col.other_requirements] = [...other.filter(Boolean), CAO_TEST].join(BULLET);
+  }
 
   if (!isUcd) {
     const next = ib === null ? '' : String(ib);

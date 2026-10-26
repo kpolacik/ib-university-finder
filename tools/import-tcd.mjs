@@ -34,7 +34,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { getHtml, toText, convertCutoff, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
-import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
+import { fetchCaoPoints, caoNote, hasCaoTest } from './lib/cao-points.mjs';
 
 const BASE = 'https://www.tcd.ie';
 const cao = await fetchCaoPoints();
@@ -132,7 +132,7 @@ for (const c of links) {
   // null and the figure stays blank, except on HPAT Medicine, which gets the
   // CAO's minimum whatever the cutoff.
   const conv = convertCutoff(entry ? entry.latest.points : null, {
-    test: entry?.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
   });
   ib = conv.ib;
   notes.push(...conv.notes);
@@ -146,7 +146,7 @@ for (const c of links) {
     ib_points_min: ib === null ? '' : String(ib),
     ib_subjects: subjects,
     other_requirements: HPAT_CODES.has(code) ? HPAT
-      : entry?.latest.test ? 'Test, interview, portfolio or audition' : otherFor(c.t),
+      : hasCaoTest(entry) ? 'Test, interview, portfolio or audition' : otherFor(c.t),
     application_deadline: '2027-02-01',
     deadline_notes: [...notes, ...extra].filter(Boolean).join(' '),
     official_url: BASE + c.h,
