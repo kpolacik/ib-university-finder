@@ -454,6 +454,69 @@ PROGS.push(
     official_url: 'https://en.unimib.it/study/international-programmes/school-medicine-and-surgery' },
 );
 
+// Ca' Foscari. unive.it/pag/15612 (English-taught degree programmes), opened
+// tab by tab: the bachelors are Business Administration and Management
+// (etr8), Digital Management (etr7), Economics and Business (etr9), Computer
+// Science - Data Science (ctr3), Hospitality Innovation and e-Tourism (ctr9),
+// Italian and Mediterranean Studies (ftr6), Philosophy, International and
+// Economic Studies (ltr6), and Ancient Civilizations for the Contemporary
+// World (the Milan-run joint degree, unimi-accw). Each unive.it/degree/<code>
+// page gives "Venue", "Language" and "Admission"; each admission page still
+// describes 2026/2027, so no 2027/28 deadline. Every admission page: "a
+// minimum B2-level" English; non-Italian students on an English-taught
+// programme "are required to obtain 3 CFU in Italian to graduate" (exempt
+// from B1 Italian).
+UNIS.push({
+  university_id: 'unive', name: "Ca' Foscari University of Venice", city: 'Venice', country: 'Italy',
+  application_system: "Direct (Ca' Foscari online registration)",
+  english_requirement_default: 'English at B2 (CEFR)',
+});
+const CF_ITALIAN = '3 credits of Italian needed to graduate (waived with B1 Italian)';
+const CF_TOLC = "TOLC-E test (CISIA) and a ranking";
+const cf = (code, fields) => ({ university_id: 'unive', language: 'English', degree_type: 'BSc',
+  official_url: `https://www.unive.it/degree/${code}`, ...fields });
+PROGS.push(
+  // etr8 admission page: "limited-admission programme taught in English that
+  // requires candidates to take an entry test"; "Taking the TOLC-E test and
+  // registering for the Ca' Foscari selection"; "English TOLC-E tests will
+  // not be considered"; 2026/27 summer round closed "August 28th, 2026".
+  cf('etr8', { programme_id: 'unive-bam', programme: 'Business Administration and Management', subject_area: 'Business & Management',
+    admission: CF_TOLC, other_requirements: `Limited access · Ca' Foscari says the English TOLC-E is not accepted · ${CF_ITALIAN}`,
+    deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; the summer round closed on 28 August 2026. Fees depend on family income (ISEE)." }),
+  // etr7: "Venue: Roncade"; same procedure; summer round "by July 29th, 2026".
+  cf('etr7', { programme_id: 'unive-dm', city: 'Roncade', programme: 'Digital Management', subject_area: 'Business & Management; Computer Science',
+    admission: CF_TOLC, other_requirements: `Taught at Roncade (Treviso) · Limited access · Ca' Foscari says the English TOLC-E is not accepted · ${CF_ITALIAN}`,
+    deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; the summer round closed on 29 July 2026. Fees depend on family income (ISEE)." }),
+  // etr9: same procedure as etr8; summer round "by August 28th, 2026".
+  cf('etr9', { programme_id: 'unive-eb', programme: 'Economics and Business', subject_area: 'Economics; Business & Management',
+    admission: CF_TOLC, other_requirements: `Limited access · Ca' Foscari says the English TOLC-E is not accepted · ${CF_ITALIAN}`,
+    deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; the summer round closed on 28 August 2026. Fees depend on family income (ISEE)." }),
+  // ctr3: "Venue: Mestre"; "an open admission programme structured in three
+  // different curricula. Only the Data Science curriculum is taught in
+  // English"; TOLC-I; 2026/27 enrolment "from July 1st to September 30th 2026".
+  cf('ctr3', { programme_id: 'unive-cs-ds', city: 'Mestre', programme: 'Computer Science - Data Science (English curriculum)', subject_area: 'Computer Science',
+    admission: 'Open access: no limit on places', other_requirements: `TOLC-I test (CISIA) required, not a ranking · Only the Data Science curriculum is in English · ${CF_ITALIAN}`,
+    deadline_notes: "Open access; in 2026/27 enrolment ran from 1 July to 30 September 2026 (late window to 30 October, €50 extra). Fees depend on family income (ISEE)." }),
+  // ctr9: "Venue: Venice/Mestre"; TOLC-E procedure; summer round "by August
+  // 28th, 2026".
+  cf('ctr9', { programme_id: 'unive-hiet', programme: 'Hospitality Innovation and e-Tourism', subject_area: 'Business & Management',
+    admission: CF_TOLC, other_requirements: `Taught in Venice and Mestre · Limited access · Ca' Foscari says the English TOLC-E is not accepted · ${CF_ITALIAN}`,
+    deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; the summer round closed on 28 August 2026. Fees depend on family income (ISEE)." }),
+  // ftr6: "an open admission programme taught in English"; "a newly
+  // established course"; enrolment "from July 1st to September 30th 2026".
+  cf('ftr6', { programme_id: 'unive-ims', programme: 'Italian and Mediterranean Studies', subject_area: 'History; Languages & Literature',
+    admission: 'Open access: no limit on places', other_requirements: `New programme (first intake 2026/27) · ${CF_ITALIAN}`,
+    deadline_notes: "Open access; in 2026/27 enrolment ran from 1 July to 30 September 2026 (late window to 30 October, €50 extra). Fees depend on family income (ISEE)." }),
+  // ltr6: Ca' Foscari's own entry test, taken remotely ("carried out
+  // remotely on Wednesday, August 26th, 2026"); "A minimum B2-level knowledge
+  // of English is mandatory for enrolment"; summer registration closed "noon
+  // on August 17th, 2026".
+  cf('ltr6', { programme_id: 'unive-pies', programme: 'Philosophy, International and Economic Studies', subject_area: 'Philosophy; Politics & International Relations; Economics',
+    admission: "Ca' Foscari's own online entry test and a ranking",
+    other_requirements: `Limited access · B2 English certificate needed by the enrolment deadline · ${CF_ITALIAN}`,
+    deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; summer registration closed on 17 August 2026 (test online on 26 August). Fees depend on family income (ISEE)." }),
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

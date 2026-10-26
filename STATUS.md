@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1271 programmes · 42 universities · 5 countries · all checks passing.
+1278 programmes · 43 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 10 | 69 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca |
+| Italy | 11 | 76 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -87,6 +87,14 @@ Environmental Sustainability, Physical Sciences for Innovative Technologies
 Bergamo. Bicocca publishes no general entry baseline on these pages, so its
 university row leaves it blank (the card falls back to "a qualifying secondary
 school diploma").
+
+Italy, Ca' Foscari +7 (new university): Business Administration and
+Management, Digital Management (Roncade), Economics and Business, Computer
+Science's English Data Science curriculum (Mestre), Hospitality Innovation and
+e-Tourism, Italian and Mediterranean Studies, and Philosophy, International and
+Economic Studies. Worth knowing: for the TOLC-E programmes Ca' Foscari states
+"English TOLC-E tests will not be considered" — the cards say so. Ancient
+Civilizations is the Milan-run joint degree, listed under Milan.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
