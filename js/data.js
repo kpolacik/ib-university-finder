@@ -3,6 +3,7 @@
 // spreadsheet string.
 
 import { csvToObjects } from './csv.js';
+import { parseCaoSentence, ibForCutoff } from './points.js';
 import {
   SHEET_CSV_URLS, SAMPLE_CSV_URLS, SNAPSHOT_URL,
   STALE_AFTER_DAYS, URGENT_WITHIN_DAYS,
@@ -245,6 +246,9 @@ function build(universityRows, programmeRows, today) {
     const subjects = text(row.ib_subjects);
     const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`, IB_POINTS);
     const deadlineNotes = text(row.deadline_notes);
+    const otherRequirements = list(row.other_requirements, BULLET);
+    const rankedWithHpat = ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE);
+    const cao = cutoffSentence(uni, ibPointsMin, rankedWithHpat, deadlineNotes, otherRequirements);
 
     programmes.push({
       id,
@@ -280,8 +284,21 @@ function build(universityRows, programmeRows, today) {
       // figure (Q12 option C, 2026-10-25). HPAT Medicine shows the CAO's
       // 480-point minimum and is then ranked with the HPAT; the other test
       // courses show no figure and say the cutoff includes a test score.
-      rankedWithHpat: ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE),
+      rankedWithHpat,
       pointsPlusTest: ibPointsMin === null && deadlineNotes.includes(PLUS_TEST),
+      // What kind of figure ib_points_min is, so the card can say it (P01, Q2
+      // interim, 2026-10-26). "cutoff": an Irish course's IB equivalent of last
+      // year's CAO cutoff, which moves with demand every year. "minimum": what
+      // the university publishes as its floor, including UCD's stated IB
+      // minimum and the CAO's 480-point HPAT Medicine minimum. null: no figure.
+      // Derived from the university and the CAO sentence because there is no
+      // column for it yet; plans/backlog/points-value-kind.md replaces this
+      // with a field the importers write.
+      pointsKind: ibPointsMin === null ? null : (cao ? 'cutoff' : 'minimum'),
+      // On a "cutoff" row only: the CAO sentence read back, each round with its
+      // own IB equivalent ({ ib, bonusOnly } from js/points.js), and `test` when
+      // the CAO marks the course as including a test, interview or audition.
+      cao,
 
       // Three requirement kinds, kept apart so a card can show only what
       // applies. ib_subjects has its own three states:
@@ -292,7 +309,7 @@ function build(universityRows, programmeRows, today) {
       // to fill in must never read as "there is nothing to meet".
       ibSubjects: subjects === NO_REQUIREMENT ? '' : subjects,
       noSubjectsRequired: subjects === NO_REQUIREMENT,
-      otherRequirements: list(row.other_requirements, BULLET),
+      otherRequirements,
 
       // How the place is actually decided: open entry, a ranking, an entrance
       // exam. Same inherit / "?" rules as english_requirement, same bullet.
@@ -419,6 +436,32 @@ export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
 // check.mjs). Mind the plain ASCII apostrophe in "last year's".
 export const HPAT_NOTE = "The CAO minimum for Medicine is 480 points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure.";
 export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given.';
+
+// The other_requirements tag the Irish importers write when the CAO marks a
+// course "#" (test, interview, portfolio or audition). Its cutoff may include
+// those marks, so it is not a pure points total.
+export const CAO_TEST = 'Test, interview, portfolio or audition';
+
+// UCD publishes its own IB minimum per course, and the Irish tools store that
+// instead of a converted cutoff (STATUS decision), so a UCD figure is a minimum
+// even though its note also quotes the CAO cutoff.
+const UCD_ID = 'ucd';
+
+// The parsed CAO sentence of a row whose figure is a converted CAO cutoff, or
+// null for every other row. HPAT Medicine is a minimum (the CAO's 480), and a
+// sentence with no round that had a cutoff gives nothing to convert.
+function cutoffSentence(uni, ibPointsMin, rankedWithHpat, notes, otherRequirements) {
+  if (ibPointsMin === null || uni.country !== 'Ireland' || uni.id === UCD_ID || rankedWithHpat) return null;
+  const sentence = parseCaoSentence(notes);
+  if (!sentence || !sentence.rounds.some((r) => r.points !== null)) return null;
+  const test = otherRequirements.includes(CAO_TEST);
+  return {
+    year: sentence.year,
+    code: sentence.code,
+    test,
+    rounds: sentence.rounds.map((r) => ({ ...r, ...ibForCutoff(r.points, { test }) })),
+  };
+}
 
 // A blank signer is reported: the cell is the site's only record of who read
 // the official page, so an empty one is a gap someone should fill, not a pass.

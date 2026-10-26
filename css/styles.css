@@ -688,7 +688,8 @@ svg:not(.sprite) {
 }
 .req-value { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; align-items: baseline; }
 
-.req-points { display: flex; align-items: baseline; gap: 0.35rem; }
+/* One line each: a two-round Irish cutoff gives two (js/points.js). */
+.req-points { display: flex; flex: 0 0 100%; align-items: baseline; gap: 0.35rem; }
 .req-number {
   font-family: var(--font-display);
   font-size: 2.1rem;

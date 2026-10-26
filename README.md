@@ -145,6 +145,14 @@ view can be shared by copying the address (for example
 `?q=law&country=Ireland&points=36`). A value the data does not have, or a
 number out of range, is ignored.
 
+**A minimum and a cutoff are said differently.** A university's published
+minimum is a floor, so the card says "36 IB points, minimum". An Irish course
+has no IB minimum: places go to the highest CAO points, and the figure is the
+IB equivalent of last year's cutoff, which moves with demand every year. So
+those cards say "≈ 37 IB points, Round 1 cutoff, 2026", with a second line for
+Round 2 where the CAO published one. UCD is the exception: it publishes its own
+IB minimum, so its cards say "minimum".
+
 **No invented rankings or "student life scores".** `student_life_url` is a
 link, never a number. See MAINTENANCE.md.
 

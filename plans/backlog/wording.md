@@ -26,11 +26,29 @@ Phase 2 (the CAO sentence in `deadline_notes`, written by
   "in Round 2", "in both rounds")
 - Removed: "HL Maths 4+ adds 25 bonus points." (126 rows, D28)
 
-Planned for Phases 3–4: "minimum"; "≈ N IB points"; "Round 1 cutoff, 2026" /
-"Round 2 cutoff, 2026"; "with HL Maths 4+"; "not an IB figure (includes a test
-score)"; "HL Maths 4+" (checkbox) and "Adds the 25 CAO bonus points on Irish
-courses"; the new "My points" title; "within your points" / "only with HL
-Maths 4+" / "points unknown" in the count; "Shown despite your points: points
-unknown."; "Shown despite your points: the cutoff includes a test, interview or
+Phase 3 (the card's Points row, from `pointsLines` in `js/points.js`; the
+CSV export joins the same lines with "; "):
+
+- `36 IB points, minimum` (was "36 IB points")
+- `≈ 37 IB points, Round 1 cutoff, 2026` / `≈ 36 IB points, Round 2 cutoff,
+  2026`; `≈ 40 IB points, cutoff, 2025` (the one row with the old one-round
+  sentence)
+- `…, with HL Maths 4+` on a bonus-only round (was "44 IB points, needs HL
+  Maths 4+")
+- `Round 1 cutoff, 2026: not an IB figure (includes a test score)` and
+  `Round 1 cutoff, 2026: above what any IB total can reach` (a round with no IB
+  figure; none of our rows today)
+- `Round 2, 2026: every qualified applicant got a place` (AQA round; none of
+  our rows today)
+- Unchanged: "35 IB points, then ranked with the HPAT", "No minimum
+  published", "Cutoff includes a test score"
+- "My points" `title`: "Hides programmes whose minimum or last year’s cutoff
+  your IB total does not reach" (was "Shows programmes asking for this many IB
+  points or fewer")
+
+Planned for Phase 4: "HL Maths 4+" (checkbox) and "Adds the 25 CAO bonus
+points on Irish courses"; "within your points" / "only with HL Maths 4+" /
+"points unknown" in the count; "Shown despite your points: points unknown.";
+"Shown despite your points: the cutoff includes a test, interview or
 audition."; "Within your points only with HL Maths 4+."; "Within your points on
 the Round 2 cutoff, not Round 1."

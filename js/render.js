@@ -4,6 +4,7 @@
 // spreadsheet that any student can edit, and a pasted <script> tag should show
 // up as text rather than run.
 
+import { pointsLines } from './points.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -141,33 +142,22 @@ function requirements(row) {
   }
 
   // --- points ------------------------------------------------------------
-  if (row.ibPointsMin === null) {
-    // Worth stating rather than omitting: "there is no points threshold" is
-    // news to an IB student who assumes every university has one.
-    // An Irish cutoff above 625 that includes test or audition marks is not a
-    // points total, so it gives no figure, and the card says why (Q12 C).
-    reqRow(list, 'Points', [el('span', 'req-quiet',
-      row.pointsPlusTest ? 'Cutoff includes a test score' : 'No minimum published')]);
-  } else {
+  // What the row says comes from pointsLines (js/points.js), shared with the
+  // CSV export. Each line is its own .req-points, so a two-round cutoff reads
+  // as two lines. The comma sits in the unit span and the qualifier gets its
+  // own span: .req-points is flex with a gap, so a bare text node would put a
+  // gap before the comma.
+  reqRow(list, 'Points', pointsLines(row).map((line) => {
     const value = el('span', 'req-points');
-    value.append(el('span', 'req-number', String(row.ibPointsMin)));
-    if (row.needsHlMaths) {
-      // The figure assumes the 25 CAO bonus points for HL Maths 4+ (a 601-625
-      // Irish cutoff), so the card says so (Q13, 2026-10-25). The comma sits in
-      // the unit span and the qualifier gets its own span: .req-points is flex
-      // with a gap, so a bare text node would put a gap before the comma.
-      value.append(el('span', 'req-unit', 'IB points,'));
-      value.append(el('span', 'req-quiet', 'needs HL Maths 4+'));
-    } else if (row.rankedWithHpat) {
-      // HPAT Medicine: the figure is the CAO's 480-point minimum, and places
-      // then go on points plus the HPAT (Q12 C, 2026-10-25). Same spans as above.
-      value.append(el('span', 'req-unit', 'IB points,'));
-      value.append(el('span', 'req-quiet', 'then ranked with the HPAT'));
+    if (line.number === null) {
+      value.append(el('span', 'req-quiet', line.qualifier));
     } else {
-      value.append(el('span', 'req-unit', 'IB points'));
+      value.append(el('span', 'req-number', line.number));
+      value.append(el('span', 'req-unit', `${line.unit},`));
+      value.append(el('span', 'req-quiet', line.qualifier));
     }
-    reqRow(list, 'Points', [value]);
-  }
+    return value;
+  }));
 
   // --- subjects ----------------------------------------------------------
   if (row.noSubjectsRequired) {

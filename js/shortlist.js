@@ -6,6 +6,7 @@
 // nothing. Ids that no longer exist in the sheet are simply ignored on load.
 
 import { BULLET } from './data.js';
+import { pointsLines, pointsLineText } from './points.js';
 
 const STORAGE_KEY = 'ib-university-finder:shortlist:v1';
 
@@ -54,11 +55,10 @@ const EXPORT_COLUMNS = [
   ['Checked by', (r) => r.verifiedBy],
 ];
 
+// The card's Points lines, joined (pointsLines in js/points.js), so the export
+// says "minimum" or "Round 1 cutoff, 2026" exactly where the card does.
 function points(r) {
-  if (r.ibPointsMin === null) return r.pointsPlusTest ? 'cutoff includes a test score' : 'not published';
-  if (r.needsHlMaths) return `${r.ibPointsMin}, needs HL Maths 4+`;
-  if (r.rankedWithHpat) return `${r.ibPointsMin}, then ranked with the HPAT`;
-  return String(r.ibPointsMin);
+  return pointsLines(r).map(pointsLineText).join('; ');
 }
 
 export function toCsv(rows) {

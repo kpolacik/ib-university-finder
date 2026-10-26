@@ -104,3 +104,56 @@ export function parseCaoSentence(notes) {
   if (m) return { year: Number(m[1]), code: m[2], aqa: false, rounds: [] };
   return null;
 }
+
+/**
+ * What a card's Points row says, as plain data, so the card (js/render.js) and
+ * the dormant CSV export (js/shortlist.js) can't say different things (R05).
+ * One { number, unit, qualifier } per line; `number` is null on a line with no
+ * IB figure, which then says why in `qualifier`.
+ *
+ * A published minimum and last year's cutoff are different promises (P01, Q2
+ * interim, 2026-10-26): a minimum is a floor the university states, a cutoff
+ * is what the last place offered went for and moves with demand every year.
+ * So a cutoff line says which round and year it comes from, carries "≈" (it is
+ * an IB equivalent of a CAO points figure, not an IB number anyone published),
+ * and Round 1 comes first (Q4: Round 1 is the headline, Round 2 is what the
+ * CAO's later offers went down to).
+ */
+export function pointsLines(row) {
+  if (row.ibPointsMin === null) {
+    // "There is no points threshold" is news to an IB student who assumes
+    // every university has one. An Irish cutoff above 625 that includes test
+    // or audition marks is not a points total, so it gives no figure (Q12 C).
+    return [{ number: null, unit: null,
+      qualifier: row.pointsPlusTest ? 'Cutoff includes a test score' : 'No minimum published' }];
+  }
+  if (row.pointsKind === 'cutoff' && row.cao) return row.cao.rounds.map((r) => roundLine(r, row.cao));
+  if (row.rankedWithHpat) {
+    // HPAT Medicine: the figure is the CAO's 480-point minimum, and places
+    // then go on points plus the HPAT (Q12 C, 2026-10-25).
+    return [{ number: String(row.ibPointsMin), unit: 'IB points', qualifier: 'then ranked with the HPAT' }];
+  }
+  return [{ number: String(row.ibPointsMin), unit: 'IB points', qualifier: 'minimum' }];
+}
+
+function roundLine(r, cao) {
+  // The pre-2026-10-26 one-round sentence did not record its round.
+  const when = r.round === null ? `cutoff, ${cao.year}` : `Round ${r.round} cutoff, ${cao.year}`;
+  if (r.aqa) {
+    return { number: null, unit: null,
+      qualifier: `${r.round === null ? '' : `Round ${r.round}, `}${cao.year}: every qualified applicant got a place` };
+  }
+  if (r.ib !== null) {
+    // A 601–625 cutoff is only reachable with the 25 HL Maths bonus points
+    // (Q13, 2026-10-25), so the line says so.
+    return { number: `≈ ${r.ib}`, unit: 'IB points', qualifier: r.bonusOnly ? `${when}, with HL Maths 4+` : when };
+  }
+  // Above 600 with a test, or above 625: no IB total converts to it.
+  return { number: null, unit: null,
+    qualifier: `${when}: ${cao.test ? 'not an IB figure (includes a test score)' : 'above what any IB total can reach'}` };
+}
+
+/** One pointsLines line as text: "≈ 37 IB points, Round 1 cutoff, 2026". */
+export const pointsLineText = (line) => (line.number === null
+  ? line.qualifier
+  : `${line.number} ${line.unit}, ${line.qualifier}`);

@@ -581,22 +581,29 @@ check('commas inside a field survive the round trip',
 // "=..." in the Sheet would run as a formula when the file is opened.
 const base = sample[0];
 const exportRows = [
-  { ...base, ibPointsMin: 37, needsHlMaths: true, rankedWithHpat: false, pointsPlusTest: false },
-  { ...base, ibPointsMin: 32, needsHlMaths: false, rankedWithHpat: true, pointsPlusTest: false },
-  { ...base, ibPointsMin: null, needsHlMaths: false, rankedWithHpat: false, pointsPlusTest: true },
+  { ...base, ibPointsMin: 43, needsHlMaths: true, rankedWithHpat: false, pointsPlusTest: false, pointsKind: 'cutoff',
+    cao: { year: 2026, test: false, rounds: [
+      { round: 1, points: 610, aqa: false, notAll: false, ib: 43, bonusOnly: true },
+      { round: 2, points: 590, aqa: false, notAll: false, ib: 43, bonusOnly: false }] } },
+  { ...base, ibPointsMin: 32, needsHlMaths: false, rankedWithHpat: true, pointsPlusTest: false, pointsKind: 'minimum', cao: null },
+  { ...base, ibPointsMin: null, needsHlMaths: false, rankedWithHpat: false, pointsPlusTest: true, pointsKind: null, cao: null },
+  { ...base, ibPointsMin: 36, needsHlMaths: false, rankedWithHpat: false, pointsPlusTest: false, pointsKind: 'minimum', cao: null },
   { ...base, admission: [], admissionUnknown: true, city: '', cityUnknown: true,
     englishRequirement: [], englishUnknown: true },
   { ...base, programme: '=HYPERLINK("http://evil.example","x")', deadlineNotes: '+1 day', university: '@uni' },
 ];
 const exported = parseCsv(toCsv(exportRows));
 const cell = (r, heading) => exported[r + 1][exported[0].indexOf(heading)];
-equal('the export carries the card\'s points qualifiers',
-  [cell(0, 'IB points'), cell(1, 'IB points'), cell(2, 'IB points')],
-  ['37, needs HL Maths 4+', '32, then ranked with the HPAT', 'cutoff includes a test score']);
+// Since points-honesty Phase 3 the export joins the card's own pointsLines, so
+// it says "minimum" or which round's cutoff, as the card does.
+equal('the export carries the card\'s points qualifiers, cutoff or minimum',
+  [0, 1, 2, 3].map((r) => cell(r, 'IB points')),
+  ['≈ 43 IB points, Round 1 cutoff, 2026, with HL Maths 4+; ≈ 43 IB points, Round 2 cutoff, 2026',
+    '32 IB points, then ranked with the HPAT', 'Cutoff includes a test score', '36 IB points, minimum']);
 equal('the export says "not published" for a "?" admission, city and language',
-  [cell(3, 'Admission'), cell(3, 'City'), cell(3, 'Language')], ['not published', 'not published', 'not published']);
+  [cell(4, 'Admission'), cell(4, 'City'), cell(4, 'Language')], ['not published', 'not published', 'not published']);
 equal('a cell that starts with = + - or @ is exported as text, not a formula',
-  [cell(4, 'Programme'), cell(4, 'Deadline notes'), cell(4, 'University')],
+  [cell(5, 'Programme'), cell(5, 'Deadline notes'), cell(5, 'University')],
   ['\'=HYPERLINK("http://evil.example","x")', '\'+1 day', '\'@uni']);
 
 // M05, M06, M07: comments that said the wrong thing, a favicon 404 in the
@@ -914,8 +921,12 @@ equal('needsHlMaths: bonus sentence plus a figure is true; no sentence, or a bla
 const hlLive = live.filter((p) => p.needsHlMaths).map((p) => p.id).sort();
 equal('needsHlMaths is on exactly the 601-625 rows without a test',
   hlLive, live.filter(isIrish).filter(shouldBonus).map((p) => p.id).sort());
-check('the card says "needs HL Maths 4+" when needsHlMaths is set',
-  renderSrc.includes("'needs HL Maths 4+'") && renderSrc.includes('row.needsHlMaths'));
+// Since Phase 3 of plans/points-honesty.md the card says it per round, from
+// pointsLines: the latest round's line carries "with HL Maths 4+".
+const lastLine = (p) => { const l = pts.pointsLines(p); return pts.pointsLineText(l[l.length - 1]); };
+const hlNoLine = live.filter((p) => p.needsHlMaths).filter((p) => !lastLine(p).endsWith(', with HL Maths 4+'));
+check('the card says "with HL Maths 4+" on the latest round when needsHlMaths is set',
+  hlLive.length > 0 && hlNoLine.length === 0, hlNoLine.map((p) => `${p.id}: ${lastLine(p)}`).join(', '));
 console.log(`        ${bonusRows.length} rows need the HL Maths bonus`);
 
 // P02 / Q12 option C (2026-10-25): every Irish cutoff above 625 includes a test
@@ -981,9 +992,11 @@ equal('rankedWithHpat is on exactly the HPAT Irish rows, all at 35',
 equal('pointsPlusTest is on exactly the non-HPAT cutoffs above 625',
   live.filter((p) => p.pointsPlusTest).map((p) => p.id).sort(),
   irish.filter((p) => !isHpatRow(p) && cutoffOf(p) > 625).map((p) => p.id).sort());
+const allLines = (p) => pts.pointsLines(p).map(pts.pointsLineText).join('; ');
 check('the card says "then ranked with the HPAT" and "Cutoff includes a test score" under their flags',
-  /row\.rankedWithHpat[^]{0,300}'then ranked with the HPAT'/.test(renderSrc)
-    && /row\.pointsPlusTest \? 'Cutoff includes a test score'/.test(renderSrc));
+  hpatLive.every((p) => allLines(p) === '35 IB points, then ranked with the HPAT')
+    && live.filter((p) => p.pointsPlusTest).every((p) => allLines(p) === 'Cutoff includes a test score'),
+  [...hpatLive, ...live.filter((p) => p.pointsPlusTest)].map((p) => `${p.id}: ${allLines(p)}`).join(', '));
 // Unchanged behaviour, guarded: a blank figure is never hidden by My points,
 // and the CAO minimum hides Medicine below 35 like any other minimum.
 const { applyFilters, createFilterState } = await import(new URL('../js/filters.js', import.meta.url));
@@ -1129,6 +1142,80 @@ const twoRound = live.filter((p) => caoOf(p)?.rounds.length === 2);
 check('the two-round sentence is on the real rows (Round 1 first)', twoRound.length > 100
   && twoRound.every((p) => caoOf(p).rounds.map((r) => r.round).join() === '1,2'), `${twoRound.length} rows`);
 console.log(`        ${nonUcdCao.length} non-UCD Irish rows with a CAO code, ${twoRound.length} rows quote two rounds`);
+
+// ---------------------------------------------------------------- minimum or cutoff
+section('Cards say minimum or cutoff, with round and year (P01, Q4)');
+// A published minimum and last year's CAO cutoff are different promises, and
+// the card printed both as "N IB points". pointsKind is derived (no column
+// yet, Q2 interim) and pointsLines says it, Round 1 first.
+const kindUni = 'university_id,name,city,country,application_system,living_cost_monthly,tuition_eu_default,tuition_noneu_default,english_requirement_default,student_life_url,last_verified,verified_by\n'
+  + 'tcd,Trinity,Dublin,Ireland,CAO,,,,,,2026-08-14,TT\n'
+  + 'ucd,UCD,Dublin,Ireland,CAO,,,,,,2026-08-14,TT\n'
+  + 'nl,Dutch,Delft,Netherlands,Studielink,,,,,,2026-08-14,TT\n';
+const kindRow = (id, uniId, ib, notes, other = '') =>
+  `${id},${uniId},,${id},BSc,Engineering,English,${ib},,${q(other)},,,,2027-02-01,${q(notes)},https://example.org,2026-08-14,TT`;
+const kindProg = [
+  head,
+  kindRow('ie-two', 'tcd', 36, '2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028).'),
+  kindRow('ie-one', 'tcd', 37, '2026 CAO cutoff: Round 1 508 points (code TR001).'),
+  kindRow('ie-bonus', 'tcd', 44, `2026 CAO cutoff: Round 1 625 points (code TR002). ${ie.BONUS_ONLY}`),
+  kindRow('ie-above-r1', 'tcd', 44, '2026 CAO cutoff: Round 1 630 points, Round 2 600 points (code TR003).'),
+  kindRow('ie-test-r1', 'tcd', 44, '2026 CAO cutoff: Round 1 610 points, Round 2 600 points (code TR004).', dataMod.CAO_TEST),
+  kindRow('ie-aqa-r2', 'tcd', 29, '2026 CAO cutoff: Round 1 400 points, Round 2 every qualified applicant got a place (code TR005).'),
+  kindRow('ie-legacy', 'tcd', 40, '2025 CAO cutoff: 544 points (code MH002).'),
+  kindRow('ucd-x', 'ucd', 33, "UCD's stated minimum: 33 IB points. 2026 CAO cutoff: Round 1 510 points (code DN100)."),
+  kindRow('ie-hpat', 'tcd', 35, `2026 CAO cutoff: Round 1 738 points (code TR051). ${dataMod.HPAT_NOTE}`),
+  kindRow('nl-min', 'nl', 36, ''),
+  kindRow('ie-blank', 'tcd', '', '2026 CAO cutoff: Round 1 700 points (code TR006).'),
+].join('\n') + '\n';
+const { programmes: kinds, meta: kindMeta } = await load(kindUni, kindProg);
+check('the minimum-or-cutoff fixture parses cleanly', kindMeta.issues.length === 0, JSON.stringify(kindMeta.issues));
+const kindOf = (id) => kinds.find((p) => p.id === id);
+const linesOf = (p) => pts.pointsLines(p).map(pts.pointsLineText);
+equal('pointsKind: Irish cutoffs, UCD/HPAT/non-Irish minimums, blank none',
+  ['ie-two', 'ie-legacy', 'ucd-x', 'ie-hpat', 'nl-min', 'ie-blank'].map((id) => kindOf(id)?.pointsKind),
+  ['cutoff', 'cutoff', 'minimum', 'minimum', 'minimum', null]);
+equal('pointsLines for each kind', Object.fromEntries(kinds.map((p) => [p.id, linesOf(p)])), {
+  'ie-two': ['≈ 38 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
+  'ie-one': ['≈ 37 IB points, Round 1 cutoff, 2026'],
+  'ie-bonus': ['≈ 44 IB points, Round 1 cutoff, 2026, with HL Maths 4+'],
+  'ie-above-r1': ['Round 1 cutoff, 2026: above what any IB total can reach', '≈ 44 IB points, Round 2 cutoff, 2026'],
+  'ie-test-r1': ['Round 1 cutoff, 2026: not an IB figure (includes a test score)', '≈ 44 IB points, Round 2 cutoff, 2026'],
+  'ie-aqa-r2': ['≈ 29 IB points, Round 1 cutoff, 2026', 'Round 2, 2026: every qualified applicant got a place'],
+  'ie-legacy': ['≈ 40 IB points, cutoff, 2025'],
+  'ucd-x': ['33 IB points, minimum'],
+  'ie-hpat': ['35 IB points, then ranked with the HPAT'],
+  'nl-min': ['36 IB points, minimum'],
+  'ie-blank': ['No minimum published'],
+});
+check('the CAO "#" tag marks a cutoff as including a test', kindOf('ie-test-r1')?.cao?.test === true
+  && kindOf('ie-two')?.cao?.test === false);
+check('js/render.js and js/shortlist.js both take the Points text from pointsLines',
+  renderSrc.includes('pointsLines(row)') && read('js/shortlist.js').includes('pointsLines(r)'));
+
+// The real data.
+const withFigure = live.filter((p) => p.ibPointsMin !== null);
+const kindWrong = live.filter((p) => (p.ibPointsMin === null ? p.pointsKind !== null : !['cutoff', 'minimum'].includes(p.pointsKind)));
+check('every row with a figure has exactly one kind, and a blank row none', kindWrong.length === 0,
+  kindWrong.map((p) => `${p.id} ${p.pointsKind}`).join(', '));
+const cutoffs = live.filter((p) => p.pointsKind === 'cutoff');
+const cutoffWrongUni = cutoffs.filter((p) => p.id.startsWith('ucd-') || p.rankedWithHpat || !isIrish(p));
+check('no cutoff row is UCD, HPAT or outside Ireland', cutoffWrongUni.length === 0, cutoffWrongUni.map((p) => p.id).join(', '));
+const ucdMinimum = live.filter((p) => p.id.startsWith('ucd-') && p.ibPointsMin !== null);
+check('every UCD row with a figure is a minimum, including the ones that quote a CAO cutoff',
+  ucdMinimum.every((p) => p.pointsKind === 'minimum') && ucdMinimum.filter((p) => caoOf(p)).length > 100,
+  `${ucdMinimum.filter((p) => caoOf(p)).length} UCD rows quote a CAO cutoff`);
+const cutoffLinesWrong = cutoffs.filter((p) => !linesOf(p).every((l) => l.includes(`cutoff, ${p.cao.year}`)
+  && (p.cao.rounds.every((r) => r.round === null) || /^(≈ \d+ IB points, )?Round [12]/.test(l))));
+check('every cutoff row\'s lines say "Round N cutoff" (or "cutoff" on the one-round 2025 shape) and the year',
+  cutoffs.length > 300 && cutoffLinesWrong.length === 0,
+  cutoffLinesWrong.slice(0, 5).map((p) => `${p.id}: ${linesOf(p).join(' | ')}`).join(', '));
+const minimumSaysCutoff = live.filter((p) => p.pointsKind !== 'cutoff' && linesOf(p).some((l) => /cutoff/i.test(l) && !/includes a test/.test(l)));
+check('no minimum (or blank) row says "cutoff", except the test-score sentence', minimumSaysCutoff.length === 0,
+  minimumSaysCutoff.map((p) => p.id).join(', '));
+check('every cutoff row\'s latest round converts to its ib_points_min',
+  cutoffs.every((p) => p.cao.rounds[p.cao.rounds.length - 1].ib === p.ibPointsMin));
+console.log(`        ${cutoffs.length} cutoff rows, ${withFigure.length - cutoffs.length} minimum rows, ${live.length - withFigure.length} with no figure`);
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

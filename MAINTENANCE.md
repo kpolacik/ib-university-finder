@@ -222,8 +222,8 @@ sentences each August, so don't edit them; anything else in the note is kept.
 
 **Some Irish notes contain a sentence the card reads.** When an Irish row's
 `deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
-points.", its card says "44 IB points, needs HL Maths 4+" (with its own number).
-That sentence belongs only on rows whose figure assumes the 25 bonus points (a
+points.", its figure assumes the 25 bonus points, and the card's cutoff line
+for that round ends "with HL Maths 4+". That sentence belongs only on rows whose figure assumes the 25 bonus points (a
 CAO cutoff of 601 to 625 with no test). Two more work the same way:
 "The CAO minimum for Medicine is 480 points; places then go on points plus the
 HPAT test, so last year's cutoff is not an IB figure." makes the card say "35 IB
@@ -232,6 +232,23 @@ because the cutoff includes test or audition marks, so no IB figure is given."
 (with `ib_points_min` blank) makes it say "Cutoff includes a test score". Keep
 all three word for word: `check.mjs` complains if one is changed, missing or on
 the wrong row.
+
+**The card says what kind of points figure it is.** You do not fill this in;
+the site works it out:
+
+- An Irish course (not UCD, not HPAT Medicine) whose note has the CAO sentence
+  shows last year's cutoff, one line per round, Round 1 first: "≈ 37 IB points,
+  Round 1 cutoff, 2026". "≈" because it is the IB equivalent of a CAO points
+  figure, not a number the university published. A round no IB total reaches
+  says why instead ("Round 1 cutoff, 2026: not an IB figure (includes a test
+  score)").
+- Every other row with a figure shows it as a minimum: "36 IB points, minimum".
+  That includes UCD (its own published IB minimum) and HPAT Medicine ("35 IB
+  points, then ranked with the HPAT").
+- A row with `ib_points_min` blank says "No minimum published" (or "Cutoff
+  includes a test score", as above).
+
+A later column will say this directly (plans/backlog/points-value-kind.md).
 
 **`verified_by` is a signature.** Put your initials there only if you personally
 opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered
