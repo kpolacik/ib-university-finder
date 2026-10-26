@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1257 programmes · 38 universities · 5 countries · all checks passing.
+1261 programmes · 39 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 6 | 55 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova |
+| Italy | 7 | 59 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -61,6 +61,13 @@ Technology; Food Safety for Global Health; Innovative Technologies in
 Agriculture) — add them once approved. Biology of Human and Environmental
 Health is the joint degree already listed under Bologna; it now has a Padova
 row too, because you apply to each university separately.
+
+Italy, Milan Statale +4 (new university): IPLE, Economics: Behavior, Data and Policy,
+Ancient Civilizations for the Contemporary World (joint with Ca' Foscari,
+applied for through Milan) and the International Medical School. Its pages
+still show the 2026/27 calls, so no deadline; each note gives last year's
+window. Artificial Intelligence, also on Milan's list, is administered by
+Pavia and is listed there.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the

@@ -243,6 +243,65 @@ PROGS.push(
     deadline_notes: PD_MED_NOTE, official_url: 'https://www.unipd.it/en/corsi-di-laurea/medicine-and-surgery-medtech' },
 );
 
+// Milan (Statale). The catalogue at unimi.it/en/education/undergraduate-programmes,
+// filtered to English, has five programmes: Ancient Civilizations for the
+// Contemporary World, Artificial Intelligence, Economics: behavior, data and
+// policy, International Medical School (IMS) and IPLE. Artificial Intelligence
+// is run with Pavia and Milano-Bicocca and "will have its administrative
+// headquarters in Pavia", so it is listed under Pavia. Each page's
+// "Requirements" tab: "upper secondary school diploma … after at least 12
+// years of schooling" and B2 English, which without a certificate is checked
+// by a placement test in the first year. The "Admissions and enrolment" tabs
+// still show the 2026/27 calls, so no 2027/28 deadline is recorded.
+UNIS.push({
+  university_id: 'unimi', name: 'University of Milan (La Statale)', city: 'Milan', country: 'Italy',
+  application_system: 'Direct (unimi.it admissions portal)',
+  baseline_requirement: 'a school-leaving diploma after at least 12 years of schooling',
+  english_requirement_default: 'English at B2 (CEFR): a certificate, a diploma taught in English, or the university\'s placement test in the first year',
+});
+const mi = (slug, fields) => ({
+  university_id: 'unimi', language: 'English', degree_type: 'BSc',
+  official_url: `https://www.unimi.it/en/education/bachelor/${slug}`, ...fields,
+});
+const MI_FEES = 'Fees depend on family income (ISEE).';
+PROGS.push(
+  // "maximum number of students … is set at 125, plus … non-EU"; "Places
+  // available: 125 + 25 reserved for non-EU citizens"; "Starting from the
+  // academic year 2026/2027, the English TOLC-E test will be replaced by the
+  // CEnT-S … only the scores obtained in … Mathematics and Reasoning on Texts
+  // and Data"; "Application for admission: from 12/03/2026 to 06/07/2026".
+  mi('international-politics-law-and-economics-iple', { programme_id: 'unimi-iple', programme: 'International Politics, Law and Economics (IPLE)',
+    subject_area: 'Politics & International Relations; Law; Economics', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: 'Limited access: 125 places for EU applicants (2026/27) · CEnT-S: only the Mathematics and Reasoning on Texts and Data sections count',
+    deadline_notes: `2027/28 call not out yet. In 2026/27 applications ran from 12 March to 6 July 2026. ${MI_FEES}` }),
+  // "Places available: 100 + 15 reserved for non-EU citizens"; the same two
+  // CEnT-S sections; "Application for admission: from 12/03/2026 to 06/07/2026".
+  mi('economics-behavior-data-and-policy', { programme_id: 'unimi-ebdp', programme: 'Economics: Behavior, Data and Policy',
+    subject_area: 'Economics', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: 'Limited access: 100 places for EU applicants (2026/27) · CEnT-S: only the Mathematics and Reasoning on Texts and Data sections count',
+    deadline_notes: `2027/28 call not out yet. In 2026/27 applications ran from 12 March to 6 July 2026. ${MI_FEES}` }),
+  // "interateneo Università Ca' Foscari Venezia"; "Blended learning programme";
+  // "Course location Milan, Venice"; its own admission test (general knowledge
+  // and reading comprehension of an English literary text); "Places available:
+  // 75 + 25 reserved for non-EU citizens"; 2026/27 sessions "from 12/03/2026 to
+  // 02/04/2026" and "from 13/05/2026 to 29/05/2026".
+  mi('ancient-civilizations-contemporary-world', { programme_id: 'unimi-accw', programme: 'Ancient Civilizations for the Contemporary World',
+    subject_area: 'History; Languages & Literature; Art & Design',
+    admission: 'Admission test (general knowledge and an English reading text) and a ranking',
+    other_requirements: 'Joint degree with Ca\' Foscari University of Venice, blended learning, taught in Milan and Venice · Limited access: 75 places for EU applicants (2026/27) · Two admission sessions',
+    deadline_notes: `2027/28 call not out yet. In 2026/27 the two sessions took applications 12 March - 2 April and 13 - 29 May 2026. ${MI_FEES}` }),
+  // unimi.it/en/education/single-cycle-master/international-medical-school-ims:
+  // "the test is the same for all Italian public universities offering an
+  // international medical curriculum"; "Application for admission: from
+  // 17/09/2026 to 30/09/2026"; "Admission test date: 29 September 2026".
+  { programme_id: 'unimi-ims', university_id: 'unimi', programme: 'International Medical School (IMS) - Medicine and Surgery',
+    degree_type: 'Single-cycle master', subject_area: 'Medicine & Health', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree · Places set each year by ministerial decree',
+    deadline_notes: `No 2027/28 call yet. In 2026/27 applications ran from 17 to 30 September and the test was on 29 September 2026. ${MI_FEES}`,
+    official_url: 'https://www.unimi.it/en/education/single-cycle-master/international-medical-school-ims' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
