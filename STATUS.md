@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1265 programmes · 40 universities · 5 countries · all checks passing.
+1268 programmes · 41 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 8 | 63 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento |
+| Italy | 9 | 66 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -74,6 +74,12 @@ tracks of Computer Science, Computer, Communications and Electronic
 Engineering, and Economics and Management. Its pages show only the 2026/27
 calls, so no deadline. Not added: *Biomolecular Sciences and Technology* —
 listed as "English Italian" with no separate English track and no English page.
+
+Italy, Pavia +3 (new university): Artificial Intelligence (joint with Milan
+Statale and Milano-Bicocca, run from Pavia), Social Sciences for Global
+Challenges (open access) and the Harvey medical course. No 2027/28 calls yet.
+Not added: *Ingegneria Edile-Architettura*, listed as English and Italian but
+taught in Italian in the first year.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the

@@ -356,6 +356,61 @@ PROGS.push(
     deadline_notes: '2027/28 call not out yet. In 2026/27 there were three sessions, closing 23 March, 11 May and 24 August 2026. Fees depend on family income (ISEE).' }),
 );
 
+// Pavia. portale.unipv.it/it/didattica/corsi-di-laurea/offerta-formativa,
+// filtered to Laurea triennale / ciclo unico and to "Inglese" or "Inglese e
+// Italiano": Artificial Intelligence, Physical Sciences for Innovative
+// Technologies (seat "MILANO BICOCCA", so listed under Milano-Bicocca), Social
+// Sciences for Global Challenges, Medicine and Surgery, and Ingegneria
+// Edile-Architettura ("Inglese Italiano", but its first-year courses are all
+// Italian-taught — not added).
+UNIS.push({
+  university_id: 'unipv', name: 'University of Pavia', city: 'Pavia', country: 'Italy',
+  application_system: 'Direct (unipv.it admissions)',
+  baseline_requirement: 'a school-leaving diploma the university recognises as valid for entry',
+});
+PROGS.push(
+  // portale.unipv.it/…/artificial-intelligence: "Lingua Inglese", "Accesso
+  // Programmato". bai.unipv.it: "1 Degree course, 3 prestigious Italian
+  // Universities: Pavia, Milano Statale and Milano Bicocca"; "entirely held in
+  // English, requiring at least a B2 proficiency level"; bai.unipv.it/home-eng/
+  // apply: "EU students … must take the CEnT-S test, or must have the English
+  // TOLC-I test"; announcements for "A.Y. 2026/2027". unimi.it's page: "the
+  // programme will have its administrative headquarters in Pavia, but classes
+  // will be held on all three campuses".
+  { programme_id: 'unipv-ai', university_id: 'unipv', programme: 'Artificial Intelligence', degree_type: 'BSc',
+    subject_area: 'Computer Science; Mathematics', language: 'English',
+    admission: 'CEnT-S or English TOLC-I test (CISIA) and a ranking',
+    other_requirements: 'Joint degree of Pavia, Milan Statale and Milano-Bicocca; classes on all three campuses · Limited access',
+    english_requirement: 'English at B2 (CEFR)',
+    deadline_notes: '2027/28 call not out yet (the course site links the 2026/27 announcement). Fees depend on family income (ISEE).',
+    official_url: 'https://bai.unipv.it/' },
+  // portale.unipv.it/…/social-sciences-global-challenges: "completely taught in
+  // English"; "This open access program requires a B2 level in English, which
+  // will need to be certified by providing a language certificate, by having
+  // completed a secondary school program in English, or by taking an entrance
+  // test. The Degree Program also requires participation in a non-selective
+  // entrance test".
+  { programme_id: 'unipv-ssgc', university_id: 'unipv', programme: 'Social Sciences for Global Challenges', degree_type: 'BSc',
+    subject_area: 'Politics & International Relations; Sociology & Anthropology', language: 'English',
+    admission: 'Open access: no limit on places',
+    other_requirements: 'Non-selective entrance test of general knowledge after enrolling',
+    english_requirement: 'English at B2: a certificate, a school diploma taught in English, or an entrance test',
+    deadline_notes: 'Open access; the 2027/28 enrolment period is not published yet. Fees depend on family income (ISEE).',
+    official_url: 'https://portale.unipv.it/it/didattica/corsi-di-laurea/corsi-di-laurea-triennale-e-magistrali-a-ciclo-unico/social-sciences-global-challenges' },
+  // portale.unipv.it/…/corsi-di-laurea-magistrale/medicine-and-surgery: "The
+  // Harvey Medicine and Surgery Course is the first medical course in Italy
+  // taught in English, a six-year single-cycle Master's Degree". 2026/27 call
+  // (Bando … Medicine and Surgery … a.a. 2026-2027): 103 places for EU
+  // candidates; apply on Universitaly "dal 26 agosto al 9 settembre 2026";
+  // test "il 29 settembre 2026"; at least "venti (20) punti" to be ranked.
+  { programme_id: 'unipv-harvey', university_id: 'unipv', programme: 'Medicine and Surgery (Harvey)', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree · 2026/27: 103 places for EU applicants · At least 20 points in the test to be ranked',
+    deadline_notes: 'No 2027/28 call yet. In 2026/27 registration ran on Universitaly from 26 August to 9 September and the test was on 29 September 2026. Fees depend on family income (ISEE).',
+    official_url: 'https://portale.unipv.it/it/didattica/corsi-di-laurea/corsi-di-laurea-magistrale/medicine-and-surgery' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
