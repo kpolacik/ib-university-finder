@@ -245,9 +245,8 @@ initials and it reads "Checked <date> by <initials>".
    replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
    600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
    the 2027 table is not out yet.
-6. **Living costs.** Blank for all 35 universities. Nineteen numbers would
-   improve the tuition filter more than anything else, because rent dwarfs
-   tuition everywhere in this dataset.
+6. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
+   *Living costs* under Decisions). Re-check them each autumn with the rest.
 
 ## Known gaps
 
@@ -406,6 +405,25 @@ a per-country system.
   form. Leiden University College's fee is now `?` rather than the €2,694 default
   its note had warned was probably wrong.
 
+- **Living costs are a monthly range with a source** (2026-10-26). The
+  columns are `living_cost_min`, `living_cost_max` and `living_cost_source`;
+  the card shows one line, e.g. "€1,000–1,200 / month · university's
+  estimate". Rent included, tuition excluded. Sources in order: the
+  university's own figure; another university in the same city ("estimate from
+  …, same city"); an official national portal ("national estimate (Study in
+  NL)" / "(Study in Denmark)"). Nothing crowd-sourced. Where a university gives
+  only items, the range is the sum of what it lists; where it says "+
+  utilities" with no figure, the card adds "bills extra". Figures dated before
+  2021 count as not published. Every number is quoted with its URL in
+  `tools/add-living-costs-2026-10-26.mjs`. Worth knowing:
+  - Borrowed figures: TU Delft and Aalborg/CBS/ITU (national portals —
+    Delft and CBS point there themselves; ITU's own figure is from 2019),
+    Galway (ATU), ČVUT (VŠE), Milan Statale and Milano-Bicocca (PoliMi;
+    Bicocca's own is from 2017-18), Turin (PoliTo; UniTo's page did not load).
+  - Probably low: VUT's €300–600 comes from an undated faculty page whose
+    dorm price is below today's. Bologna, Padova and Trento exclude bills.
+  - Milan's universities disagree widely: PoliMi €650–1,100, Bocconi €1,670,
+    Cattolica €1,500–2,200. All are as published.
 - **No save button, no shortlist** (removed 2026-10-24 at Jakub's request). The
   per-card bookmark is gone, and with it the only way to add to the shortlist,
   so the shortlist bar, its CSV export and Print are hidden too. The shortlist

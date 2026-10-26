@@ -9,6 +9,10 @@
 //   3. an official national study portal               "national estimate (<portal>)"
 // Nothing else — no Numbeo, no blogs. Blank if none of the three says.
 //
+// A figure dated before 2021 is treated as not published, because rents have
+// moved too far since. Where a university lists rent "+ utilities" without a
+// utilities figure, the card says "bills extra".
+//
 // Figures are rent included, tuition excluded, in euros. Where a university
 // gives only a table of items, the range is the sum of the items it lists.
 // A single figure goes in min with max left blank. Re-runnable: it writes only
@@ -170,11 +174,12 @@ const COSTS = {
   // ruc.dk/sites/default/files/2026-07/Getting_Started_2026-27.pdf: "In total,
   // you should expect to use approximately DKK 8,000 (€ 1,070) per month."
   ruc: [1070, null, UNI],
-  // en.itu.dk/Programmes/International-students/Practical-information-for-
-  // international-students: "Living expenses in Copenhagen are on average 6.500
-  // DKK per month/ app. 870€ … (exchange rate November 2019)". Dated, but ITU's
-  // own; STATUS.md flags it.
-  itu: [870, null, UNI],
+  // ITU's own figure is too old to use: en.itu.dk/Programmes/International-
+  // students/Practical-information-for-international-students says "Living
+  // expenses in Copenhagen are on average 6.500 DKK per month/ app. 870€ …
+  // (exchange rate November 2019)". Figures from before 2021 are skipped (see
+  // the top), and no other university here publishes a Copenhagen total — so
+  // Study in Denmark, below.
   // sdu.dk/-/media/files/samarbejde/internationalt_samarbejde/fact_sheet_
   // university_of_southern_denmark.pdf, "Approximate expenses per month in
   // Euros": accommodation € 350 - 500, food € 250 - 350, public transport € 50,
@@ -191,7 +196,72 @@ const COSTS = {
   //   AAU publishes rent but no total, and no other university here is in
   //   Aalborg.
   cbs: [1000, 1740, 'national estimate (Study in Denmark)'],
+  itu: [1000, 1740, 'national estimate (Study in Denmark)'],
   aau: [1000, 1740, 'national estimate (Study in Denmark)'],
+
+  // ------------------------------------------------------------------- Italy
+
+  // unive.it/pag/12525: "you need to consider a monthly budget of 900€."
+  unive: [900, null, UNI],
+  // tor vergata: ing.uniroma2.it/…/FACT-SHEET_School-of-Engineering-Tor-
+  // Vergata_25-26.pdf: "The minimum costs of living for a student is
+  // approximately € 1000 per month. This includes food and … monthly expenses".
+  uniroma2: [1000, null, UNI],
+  // uniroma1.it/…/international_student_guide_2024.pdf: "On average, you will
+  // need at least €800-900/month to live in Rome."
+  sapienza: [800, 900, UNI],
+  // luiss.it/en/international/incoming-exchange-students/erasmus-and-bilateral-
+  // exchanges/living-rome: shared room €350–650 or single room €500–900,
+  // utilities €60–100, food €200–300 per month, monthly pass €35 — €645 to
+  // €1,335.
+  luiss: [645, 1335, UNI],
+  // en.unipv.it/en/university/campus/town-pavia: "students should consider a
+  // monthly budget of 600/1000 euros depending on the location."
+  unipv: [600, 1000, UNI],
+  // international.unicatt.it/ucscinternational-milan-living, "Money matters":
+  // "Monthly total: € 1,500 - € 2,200".
+  unicatt: [1500, 2200, UNI],
+  // unibocconi.it/en/applying-bocconi/bachelor-and-law-programs/funding/
+  // economic-and-asset-situation-ay-2027-2028: "The average cost of
+  // accommodation and living expenses in Milan is generally estimated at
+  // approximately € 20,000 per year" — €1,667 a month.
+  bocconi: [1670, null, UNI],
+  // polimi.it/en/information-for/international-prospective-students/life/
+  // living-in-italy/useful-information/cost-of-living: accommodation "€400 -
+  // €700 per month", food "€150 - €200 per month", social life "€100-200 for
+  // month" — €650 to €1,100 (study costs "impossible to calculate").
+  polimi: [650, 1100, UNI],
+  // Milan Statale publishes residence fees but no monthly total; Milano-
+  // Bicocca's only total ("€700-900 per month") is in its 2017-18 guide. Both
+  // use Politecnico di Milano's figure, the other public university in Milan.
+  unimi: [650, 1100, 'estimate from Politecnico di Milano, same city'],
+  unimib: [650, 1100, 'estimate from Politecnico di Milano, same city'],
+  // polito.it/en/education/international-students/practical-information/
+  // cost-of-living: rent "around 400-600 euros", food "between 200 and 300
+  // euros", student pass "approximately 26 euros", utilities "around 70-100
+  // euros per month" — €696 to €1,026.
+  polito: [696, 1026, UNI],
+  // University of Turin's cost page (studyprogram.unito.it/node/41) did not
+  // answer from this machine on 2026-10-26; Politecnico di Torino's figure for
+  // the same city, above.
+  unito: [696, 1026, 'estimate from Politecnico di Torino, same city'],
+  // unibo.it/en/study/life-at-university-and-in-the-city/living-in-the-city/
+  // living-costs-in-bologna: shared room "€ 300,00 a month + utilities" or
+  // single room "€ 400,00 a month + utilities", food "€ 60,00" a week (€260 a
+  // month), student monthly bus ticket "€ 27,00" — €587 to €687, no utilities
+  // figure.
+  unibo: [587, 687, "university's estimate, bills extra"],
+  // unipd.it/en/studying-padova/funding-and-fees/living-costs: double room
+  // "from € 250 to € 400 + expenses", single room "from € 300 to € 600 +
+  // expenses", groceries "approximately € 60" a week (€260 a month), travelcard
+  // "€247,50 (annual)" (€21 a month) — €531 to €881, no figure for the expenses.
+  unipd: [531, 881, "university's estimate, bills extra"],
+  // unitn.it/en/international/coming-unitrento/all-you-need-know/cost-living:
+  // student residences "from €190 to €390 monthly … utilities included",
+  // private "from €300 to €700 monthly, utilities excluded", transport
+  // "€70/year" (€6 a month), food "approximately €150-€200 monthly" — €346 to
+  // €906.
+  unitn: [346, 906, "university's estimate, bills extra"],
 };
 
 // ------------------------------------------------------------------- write
