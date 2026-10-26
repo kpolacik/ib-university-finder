@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1304 programmes · 47 universities · 5 countries · all checks passing.
+1301 programmes · 47 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 15 | 102 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
+| Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -44,9 +44,12 @@ Roskilde are new universities. Looked for and **not added**:
   economics/business one; its business degree (HA) is Danish-taught.
 - *ITU Global Business Informatics* — taught in English, but requires "Dansk på
   A-niveau" (passed), so it is not open to a Slovak IB applicant without Danish.
-- ITU's English site (en.itu.dk) reset or refused every connection from the
-  cloud machine; the Danish site www.itu.dk answered after retries, so ITU's
-  row links to the Danish page.
+- ITU's English site (en.itu.dk) resets most connections from the cloud
+  machine. The facts were first read on the Danish site www.itu.dk; on a later
+  retry the English page answered too, so ITU's row now links to it.
+- *Aarhus Cognitive Science* stays, but AU expects to switch it **from English
+  to Danish** for the 2027 intake (decision around 1 December 2026; Danish A
+  would then be required). The card says so. Re-check after 1 December.
 
 Italy, Padova +9 (new university): seven English bachelors plus the two
 English medicine degrees (Venice; MedTech in Padua). Padova is the first
@@ -99,8 +102,10 @@ Civilizations is the Milan-run joint degree, listed under Milan.
 Italy, Turin +4 (new university): Business & Management (SAT-based),
 Economics and Finance with Data Science, Global Law and Transnational Legal
 Studies, and Medicine and Surgery (Orbassano). Economics and Finance with Data
-Science has admission `?`: UniTo's page says "Local programmed" in its header
-and "accesso non programmato" in its requirements. Not added: nine bachelors
+Science's course page contradicts itself ("Local programmed" in its header,
+"accesso non programmato" in its text); UniTo's admissions page settles it —
+limited access on the SAT, one call and timetable with Business & Management.
+Not added: nine bachelors
 UniTo tags "English Italian" — Italian-taught degrees admitted on the Italian
 TOLC-E with English modules, and no English track on their pages.
 
@@ -108,9 +113,12 @@ Italy, Tor Vergata +5 (new university): Business Administration and
 Economics, Engineering Sciences, Global Governance, Medicine and Surgery and
 Pharmacy. **en.uniroma2.it refused every connection from the cloud machine**
 and catalogocorsi.uniroma2.it returned 503, so these come from the Italian
-site web.uniroma2.it, whose programme pages state "Lingua: Inglese". Global
-Governance and Pharmacy have admission `?` — limited places, method only in
-the call.
+site web.uniroma2.it, whose programme pages state "Lingua: Inglese". A retry
+on 2026-10-26 still got no answer from en.uniroma2.it. Global Governance and
+Pharmacy are filled in from their 2026/27 calls: Global Governance selects on
+CV and school record plus an English interview over four rounds (the first
+opened in November 2025, so watch for the 2027/28 one); Pharmacy ranks on
+CEnT-S with an English interview.
 
 Italy, existing universities re-checked. Bologna's catalogue filtered to
 English lists 15 programmes, PoliMi's lists 7 English/ITA-ENG bachelors — both
@@ -120,13 +128,14 @@ Dentistry, all "Language English" in corsidilaurea.uniroma1.it. Not added:
 Environmental Engineering for Sustainable Development and Oriental languages
 and civilizations ("Italian, English", no English track found).
 
-**Three existing Sapienza rows look wrong — left for Jakub to decide.** In
-Sapienza's 2026/27 catalogue (corsidilaurea.uniroma1.it, checked 2026-10-26)
-*Economics of Innovation* (course 34173, Rieti campus) and *Economics –
-delivered entirely via distance learning* (34176) are "Language Italian", and
-no bachelor called *Management and Business Law* turns up at all. The rows
-`sapienza-econ-innov`, `sapienza-econ-online` and `sapienza-econ-law` came
-from the 2026-10-25 merge; this pass did not change them.
+**Three Sapienza rows removed (Italian-taught).** `sapienza-econ-innov`,
+`sapienza-econ-online` and `sapienza-econ-law` came from the 2026-10-25 merge,
+which read the English translation of the Economics faculty call (14613) as
+meaning English-taught. The call itself says only Business Administration and
+Management and Economics and Finance "offer both an Italian-language
+curriculum and an English-language curriculum"; Sapienza's catalogue gives the
+other three (courses 34173, 34176, 34174 — the last is now "Management and
+Corporate Law") as "Language Italian".
 
 Italy, Luiss +5 (new, private): Business Administration, Economics and
 Business, Global Law, Management and Artificial Intelligence, and Politics:
@@ -134,8 +143,9 @@ Philosophy and Economics. **Luiss is the one Italian university here that
 publishes an IB figure**: direct admission with IB 36/45, predicted grades
 accepted (apply by 24 March 2027), as an alternative to the Luiss Test (apply
 by 10 February 2027). The rows carry 10 February and keep `ib_points_min`
-blank, because 36 is the bar for one route, not for admission. The full fee
-is not on the pages read (only the €5,000 first instalment), so it stays blank.
+blank, because 36 is the bar for one route, not for admission. Fee: €15,000
+for the first year in 2027/28 (Luiss's admissions FAQ), €5,000 of it due by
+4 May 2027 to hold the place.
 Not added: Economics and Management and Political Science, partly English.
 
 Italy, Cattolica +8 (new, private): Business and Finance (Brescia),
@@ -147,6 +157,12 @@ with EU income under €150,000 (€11,500 otherwise; medicine €18,150), so th
 rows carry a real deadline and fee. Not added: Finance, Food Production
 Management and Medicine (Bolzano), which are on Cattolica's English list but
 have no programme page yet.
+
+**Italian 2027/28 calls re-checked 2026-10-26.** The admission pages of Milan
+Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata and
+Sapienza, and Padova's medicine page, still show only 2026/27 calls. Those rows
+keep a blank deadline with last year's window in the note. Padova (bachelors),
+Luiss and Cattolica have 2027/28 dates and carry them.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
@@ -200,8 +216,13 @@ initials and it reads "Checked <date> by <initials>".
 1. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
    initials. Do not attempt all 757.
-2. **DCU's English requirement.** Its requirements page is live but publishes no
-   IB equivalence at all, so its 71 rows show no English requirement.
+2. ~~DCU's English requirement~~ — filled 2026-10-26. DCU's own pages give no
+   IB English grade, but its entry-requirements page points EU applicants to
+   the CAO's *Agreed Entry Requirements for EU/EFTA/UK* guide, which sets IB
+   English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
+   if the IB was taken through English) — the same rule UCD, UCC and Trinity
+   carry. DCU's IELTS line (6.5, no component below 6.0) is added alongside.
+   The guide is the 2026-entry edition and DCU says it is under review.
 
    UCD's fees are no longer a hole, though its page is still broken: the "EU
    Undergraduate Fees 2026/27" page says *"Fees published for the Colleges
@@ -246,8 +267,8 @@ initials and it reads "Checked <date> by <initials>".
   University College, and the two Utrecht colleges. Was 20 — fourteen Leiden
   deadlines and Tilburg Psychology were recovered on 2026-08-21.
 - 249 of 757 show no English requirement, counting the university default each
-  programme inherits. Almost all are Dutch; on the Irish side only DCU's 71 are
-  missing, for the reason in job 2.
+  programme inherits. Almost all are Dutch. DCU's 70 were filled on
+  2026-10-26 (job 2), so no Irish row is missing one now.
 - 3 of 757 show no tuition figure, after inheritance: Galway Pharmacy, whose
   page carries no fee table, and two Dutch rows. Was 147 — the Irish fees were
   re-based on the Free Fees Initiative on 2026-08-21, which both corrected them

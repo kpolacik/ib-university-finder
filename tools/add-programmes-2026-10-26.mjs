@@ -33,8 +33,8 @@ UNIS.push(
     // itu.dk/Uddannelser/Bacheloruddannelser/Saadan-soeger-du-ind-BSc: "Til
     // 2026-optagelsen kræves til alle ITUs bacheloruddannelser et samlet
     // karaktergennemsnit på mindst 2,0 i den adgangsgivende eksamen."
-    // en.itu.dk refused or reset every connection from this machine; the
-    // Danish site www.itu.dk answered after retries.
+    // en.itu.dk reset most connections from this machine; it answered on a
+    // later retry, so the row links the English page.
     university_id: 'itu', name: 'IT University of Copenhagen', city: 'Copenhagen', country: 'Denmark',
     application_system: 'Optagelse.dk (Danish national portal)', tuition_eu_default: '0',
     baseline_requirement: 'an IB Diploma with at least 24 points and an overall grade average of at least 2.0 on the Danish scale',
@@ -87,7 +87,13 @@ PROGS.push(
     official_url: 'https://www.sdu.dk/en/uddannelse/bachelor/interactive-technology-engineering',
   },
   {
-    // www.itu.dk/Uddannelser/Bacheloruddannelser/Data-Science: "Uddannelsen
+    // en.itu.dk/Programmes/BSc-Programmes/Data-Science (answered on 2026-10-26
+    // after repeated resets): "The Data Science programme is taught in
+    // English"; "Mathematics corresponding to the Danish A-level with an average
+    // mark of at least 6 …"; "English corresponding to the Danish B-level with an
+    // average mark of at least 6 … (there is no grade requirement if you have
+    // passed English corresponding to the Danish A-level)". Same facts first
+    // read on www.itu.dk/Uddannelser/Bacheloruddannelser/Data-Science: "Uddannelsen
     // foregår på engelsk."; "Matematik på A-niveau med mindst 6 i gennemsnit
     // … Engelsk på B-niveau med mindst 6 i gennemsnit". Saadan-soeger-du-ind-BSc:
     // 2026 quota 1 "Data Science: 5,9". Frister-og-vigtige-datoer: "15. marts
@@ -96,11 +102,11 @@ PROGS.push(
     // at uploade eksamensbevis og dokumentation".
     programme_id: 'itu-ds', university_id: 'itu', programme: 'Data Science', degree_type: 'BSc',
     subject_area: 'Computer Science; Mathematics', language: 'English', ib_points_min: '24',
-    ib_subjects: 'Danish-level equivalents: Mathematics A and English B, each with a grade average of at least 6 on the Danish 7-point scale. No programming needed beforehand',
+    ib_subjects: 'Danish-level equivalents: Mathematics A and English B, each with a grade average of at least 6 on the Danish 7-point scale (no English grade needed if you have English at A level). No programming needed beforehand',
     other_requirements: 'Quota 1/Quota 2 selection · 2026 Quota 1 cut-off 5.9 on the Danish 7-point scale',
     application_deadline: DK_DEADLINE,
     deadline_notes: 'ITU\'s deadline for international entry exams, including the IB, is 15 March at 12:00 noon on Optagelse.dk. Upload the diploma and documentation by 5 July at 12:00.',
-    official_url: 'https://www.itu.dk/Uddannelser/Bacheloruddannelser/Data-Science',
+    official_url: 'https://en.itu.dk/Programmes/BSc-Programmes/Data-Science',
   },
 );
 
@@ -533,6 +539,7 @@ UNIS.push({
   baseline_requirement: 'a school-leaving diploma the university recognises as valid for entry',
 });
 const TO_NOTE = '2027/28 dates not published yet. Fees depend on family income (ISEE).';
+const TO_SAT_NOTE = '2027/28 dates not published yet. In 2026/27 the SAT had to be taken by 6 June and pre-registration ran 1-19 June 2026. Fees depend on family income (ISEE).';
 const to = (slug, fields) => ({ university_id: 'unito', language: 'English', degree_type: 'BSc', deadline_notes: TO_NOTE,
   official_url: `https://en.unito.it/studying-unito/programs/degree-programs/${slug}`, ...fields });
 PROGS.push(
@@ -540,14 +547,21 @@ PROGS.push(
   // "dovranno sostenere il SAT Suite … la procedura consiste nella formazione
   // di una graduatoria sulla base del punteggio conseguito nel SAT Suite".
   to('business-management', { programme_id: 'unito-bm', programme: 'Business & Management', subject_area: 'Business & Management',
-    admission: 'SAT Suite score and a ranking', other_requirements: 'Limited access' }),
-  // economics-and-finance-data-science: the header says "Access Local
-  // programmed" but the requirements say "è ad accesso non programmato";
-  // "dovrà sostenere un test di valutazione in lingua inglese … logica,
-  // comprensione verbale e matematica"; failing it brings extra first-year
-  // requirements (OFA). Admission left "?" because the page contradicts itself.
+    admission: 'SAT Suite score and a ranking', other_requirements: 'Limited access', deadline_notes: TO_SAT_NOTE }),
+  // economics-and-finance-data-science: the course page's header says "Access
+  // Local programmed" but its requirements text says "è ad accesso non
+  // programmato". Settled on 2026-10-26 by UniTo's admissions page
+  // (unito.it/didattica/iscrizioni/corsi-di-laurea-triennali-ad-accesso-
+  // programmato/iscrizione-ai-corsi-di-0), which lists "Economics and Finance
+  // with Data Science (L-33R)" under the limited-access degrees with test type
+  // "SAT", shares one call with Business & Management ("Bando di ammissione ai
+  // corsi di laurea in Business & Management e Economics and Finance with Data
+  // Science a.a. 2026-2027") and gives one 2026/27 timetable for both: SAT
+  // "2 gennaio 2025 – 6 giugno 2026", pre-registration "1 giugno 2026 … 19
+  // giugno 2026", ranking "Entro il 17 luglio 2026".
   to('economics-and-finance-data-science', { programme_id: 'unito-efds', programme: 'Economics and Finance with Data Science', subject_area: 'Economics; Mathematics',
-    admission: '?', other_requirements: 'UniTo\'s page says both "local programmed" and "not programmed" access · Entry assessment test in English (logic, verbal comprehension, maths); a low score brings extra first-year requirements, not refusal · Advanced English expected' }),
+    admission: 'SAT Suite score and a ranking', other_requirements: 'Limited access (UniTo\'s admissions page; the course page still says "non programmato") · Advanced English expected',
+    deadline_notes: TO_SAT_NOTE }),
   // global-law-and-transnational-legal-studies: "Access Free"; the TARM is
   // given "attraverso il TOLC di CISIA", which also checks "la conoscenza della
   // lingua inglese pari almeno al livello B2"; below the threshold students
@@ -595,11 +609,19 @@ PROGS.push(
     subject_area: 'Engineering', admission: 'Open access: no limit on places',
     other_requirements: 'Compulsory entry check test; the result does not stop you enrolling · Mechanical, energy, electronics and ICT' }),
   // "Lingua : Inglese"; "La didattica e tutte le attività si svolgono in lingua
-  // inglese"; "Numero di posti programmato a livello locale". The page does not
-  // say how places are allocated.
+  // inglese"; "Numero di posti programmato a livello locale". The 2026/27 call
+  // (web.uniroma2.it/allegato/56840, "Bando CL in Global Governance a.a.
+  // 2026-2027"): "204 posti", of which "129 posti per studenti comunitari";
+  // four rounds, "Dal 03 novembre 2025 …" (first), "Dal 4 dicembre 2025 al 12
+  // febbraio 2026", "Dal 17 febbraio 2026 al 16 aprile 2026", "Dal 21 aprile
+  // 2026 al 4 giugno 2026"; selection "sulla base della valutazione dei
+  // documenti presentati e di un colloquio orale": "Fino a 40 punti" for the CV
+  // and school record (24/40 needed to reach the interview) and "Fino a 60
+  // punti" for an interview "tenuto in lingua inglese"; fee "Euro 100,00".
   tv('global_governance-36050', { programme_id: 'uniroma2-gg', programme: 'Global Governance',
-    subject_area: 'Politics & International Relations; Economics; Law', admission: '?',
-    other_requirements: 'Limited access; the selection method is in the call, not on the programme page' }),
+    subject_area: 'Politics & International Relations; Economics; Law', admission: 'Selective: assessed on your application',
+    other_requirements: 'CV and school record (40 points; 24 needed to go on) then an interview in English (60 points) · 129 places for EU applicants in 2026/27, over four rounds · Application fee €100',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 the first of four rounds opened on 3 November 2025 and the last closed on 4 June 2026. Fees depend on family income (ISEE).' }),
   // "Corso di laurea a ciclo unico in lingua inglese … Durata 6 anni - Numero
   // di posti programmato a livello nazionale"; "tenuto completamente in lingua
   // inglese … Sono previsti corsi di lingua italiana per i rapporti con i
@@ -609,11 +631,17 @@ PROGS.push(
     other_requirements: 'Six-year degree · Italian courses for talking to patients are included',
     deadline_notes: 'No 2027/28 call yet; the national test for English-taught medicine was on 29 September in 2026. Fees depend on family income (ISEE).' }),
   // "Farmacia … a ciclo unico in lingua inglese, ha una durata quinquennale";
-  // "Numero di posti programmato a livello locale"; "Bando Farmacia - lingua
-  // inglese a.a.2026-2027".
+  // "Numero di posti programmato a livello locale". The 2026/27 call
+  // (web.uniroma2.it/allegato/58194, "Bando Farmacia - lingua inglese
+  // a.a.2026-2027"): "n. 80 posti", "60 posti per i cittadini italiani,
+  // cittadini comunitari…"; "Aver sostenuto il test CEnT-S (CISIA)"; apply on
+  // Delphi "dal 18 febbraio 2026 al 12 giugno 2026"; all candidates "dovranno
+  // sostenere un colloquio orale volto ad accertare la conoscenza della lingua
+  // inglese di livello B2"; "Non è previsto un punteggio minimo".
   tv('farmacia-27857', { programme_id: 'uniroma2-pharm', programme: 'Pharmacy', degree_type: 'Single-cycle master',
-    subject_area: 'Medicine & Health; Chemistry', admission: '?',
-    other_requirements: 'Five-year degree · Limited access; the selection method is in the call, not on the programme page' }),
+    subject_area: 'Medicine & Health; Chemistry', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: 'Five-year degree · Oral interview to check B2 English · 60 places for EU applicants in 2026/27',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 applications ran from 18 February to 12 June 2026. Fees depend on family income (ISEE).' }),
 );
 
 // Bologna, PoliMi, Sapienza: checked for English bachelors not yet listed.
@@ -673,16 +701,17 @@ PROGS.push(
 // taught in English: Business Administration, Economics and Business, Global
 // Law, Management and Artificial Intelligence, Politics: Philosophy and
 // Economics"; enrolment booked "by 4 May 2027" with "the first instalment …
-// €5,000". The full annual fee is not on these pages, so tuition stays blank.
-// ib_points_min stays blank: 36 is the bar for one of two routes, not a
-// minimum for admission.
+// €5,000". Its FAQ (opened 2026-10-26): "The single annual tuition fee for the
+// 2027/2028 academic year is €15,000 for the first year of the Bachelor's
+// degree programmes". ib_points_min stays blank: 36 is the bar for one of two
+// routes, not a minimum for admission.
 UNIS.push({
   university_id: 'luiss', name: 'Luiss Guido Carli University', city: 'Rome', country: 'Italy',
-  application_system: 'Direct (Luiss online application)',
+  application_system: 'Direct (Luiss online application)', tuition_eu_default: '15000',
   baseline_requirement: 'a school-leaving diploma valid for entry to Italian universities',
   admission_default: 'Direct admission with IB 36+ (predicted grades accepted), or the Luiss Test',
 });
-const LU_NOTE = 'Luiss Test route: apply by 10 February 2027 (second session for programmes with places left: by 10 May). Direct admission with IB 36+: apply by 24 March 2027. Admitted students book enrolment by 4 May 2027 with a first fee instalment of €5,000.';
+const LU_NOTE = 'Luiss Test route: apply by 10 February 2027 (second session for programmes with places left: by 10 May). Direct admission with IB 36+: apply by 24 March 2027. Admitted students book enrolment by 4 May 2027 with a first fee instalment of €5,000. The fee is the 2027/28 first-year figure.';
 const lu = (slug, fields) => ({ university_id: 'luiss', language: 'English', degree_type: 'BSc',
   application_deadline: '2027-02-10', deadline_notes: LU_NOTE,
   official_url: `https://www.luiss.it/en/courses-and-masters-programmes/undergraduate-school/${slug}`, ...fields });
@@ -751,6 +780,55 @@ PROGS.push(
     official_url: 'https://international.unicatt.it/ucscinternational-undergraduate-programs-medicine-and-surgery' },
 );
 
+// ------------------------------------------- follow-ups to older rows (same day)
+
+// Removed: Italian-taught, so outside the English-only rule. All three came
+// from the 2026-10-25 merge, which read Sapienza's English translation of the
+// Economics faculty call (uniroma1.it/sites/default/files/field_file_allegati/
+// 14613_e_0.pdf, "ACADEMIC YEAR 2026-2027") as meaning English-taught. That
+// call says: "The degree programmes in Business Administration and Management
+// (Degree Class L-18) and Economics and Finance (Degree Class L-33) offer both
+// an Italian-language curriculum and an English-language curriculum" — no
+// other programme in it has one. corsidilaurea.uniroma1.it/en/course/34173
+// "Economics of Innovation (Campus Rieti)", /34176 "Economics - delivered
+// entirely via distance learning" and /34174 "Management and Corporate Law
+// (Campus Latina)" all say "Language Italian".
+const REMOVE = ['sapienza-econ-innov', 'sapienza-econ-online', 'sapienza-econ-law'];
+
+// Fields changed on rows this script did not create.
+const PATCH_PROGS = {
+  // bachelor.au.dk/en/cognitivescience (2026-10-26): still "Language :
+  // English", but "This programme is expected to switch its language of
+  // instruction from English to Danish for the 2027 intake … you would then
+  // need to hold qualifications in both Danish (level A) and English (level B)
+  // … We expect the change to take effect around 1 December 2026." Kept, with
+  // the warning shortened.
+  'au-cog': {
+    other_requirements: 'Quota 1/Quota 2 selection · 2026 Quota 1 cut-off 10.7 (standby 10.5) on the Danish 7-point scale · Taught in English now, but AU expects to switch to Danish from the 2027 intake (decision around 1 December 2026); Danish A would then be required',
+    deadline_notes: 'Apply via Optagelse.dk by 15 March at 12:00 noon (AU\'s stated deadline for IB applicants; system opens 1 February). Document all requirements by 5 July at 12:00. May switch to Danish for 2027 - check the programme page before applying.',
+  },
+};
+const PATCH_UNIS = {
+  // dcu.ie/registry/registry-entry-requirements-undergraduate-programmes, under
+  // "EU School Leaving Examinations from outside Ireland or the UK": applicants
+  // "may obtain guidance on the approved qualifications … using the following
+  // link, EU Qual Guide. This guide outlines the general entry requirement for
+  // each examination". That guide (www2.cao.ie/downloads/documents/2026/
+  // Guidelines-EU-EFTA-UK-2026.pdf, "Agreed Entry Requirements for
+  // EU/EFTA/UK", International Baccalaureate, p. 92): "The minimum acceptable
+  // level of English is English Language A: 3 at Higher level or 4 at Standard
+  // level; English Language B or Ab initio: 4 at Higher Level or 6 at standard
+  // (4 @ either Level if presenting IB through English)". It is for 2026 entry;
+  // DCU says the guide "is currently under review". dcu.ie/registry/english-
+  // language-requirements-non-native-speakers-english-registry: IELTS Academic
+  // "Composite score of 6.5 or above, with no less than 6.0 in any one
+  // component"; "English Language requirements for individual programmes may be
+  // higher than published here."
+  dcu: {
+    english_requirement_default: 'IB English A 3 HL or 4 SL · English B or Ab Initio 4 HL or 6 SL · just 4 at either level if you sat the IB through English · or IELTS Academic 6.5 with no component below 6.0 · some programmes ask for more',
+  },
+};
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
@@ -758,6 +836,11 @@ const uniRows = UNIS.map((u) => Object.fromEntries(unis.head.map((h) => [h, u[h]
   .map((u) => ({ ...u, last_verified: TODAY, verified_by: 'AI-DRAFT' }));
 const uniIds = new Set(uniRows.map((u) => u.university_id));
 const keptUnis = unis.rows.filter((u) => !uniIds.has(u.university_id));
+for (const [id, fields] of Object.entries(PATCH_UNIS)) {
+  const u = keptUnis.find((x) => x.university_id === id);
+  if (!u) throw new Error(`patch: no university ${id}`);
+  Object.assign(u, fields, { last_verified: TODAY });
+}
 save(new URL('universities.csv', DATA), unis.head, [...keptUnis, ...uniRows]);
 const known = new Set([...keptUnis, ...uniRows].map((u) => u.university_id));
 
@@ -767,5 +850,11 @@ const progRows = PROGS.map((p) => Object.fromEntries(progs.head.map((h) => [h, p
 for (const p of progRows) if (!known.has(p.university_id)) throw new Error(`${p.programme_id}: unknown university ${p.university_id}`);
 const ids = new Set(progRows.map((p) => p.programme_id));
 if (ids.size !== progRows.length) throw new Error('duplicate programme_id in this script');
-save(new URL('programmes.csv', DATA), progs.head, [...progs.rows.filter((p) => !ids.has(p.programme_id)), ...progRows]);
-console.log(`universities: ${uniRows.length} written · programmes: ${progRows.length} written`);
+const keptProgs = progs.rows.filter((p) => !ids.has(p.programme_id) && !REMOVE.includes(p.programme_id));
+for (const [id, fields] of Object.entries(PATCH_PROGS)) {
+  const p = keptProgs.find((x) => x.programme_id === id);
+  if (!p) throw new Error(`patch: no programme ${id}`);
+  Object.assign(p, fields, { last_verified: TODAY });
+}
+save(new URL('programmes.csv', DATA), progs.head, [...keptProgs, ...progRows]);
+console.log(`universities: ${uniRows.length} written · programmes: ${progRows.length} written · removed: ${progs.rows.filter((p) => REMOVE.includes(p.programme_id)).length}`);
