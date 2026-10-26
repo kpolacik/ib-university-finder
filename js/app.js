@@ -7,7 +7,7 @@ import {
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderCards, renderChips, renderSortOptions, renderSourceBanner, renderIssues,
+  renderCards, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
@@ -49,7 +49,7 @@ const dom = {
   // The <p> holds an icon as well, so the text goes in its own span rather
   // than through textContent on the parent, which would wipe the icon.
   shortlistCount: document.getElementById('shortlist-count-text'),
-  mastheadStat: document.getElementById('masthead-stat'),
+  sourceLine: document.getElementById('source-line'),
   shortlistOnly: document.getElementById('f-shortlist-only'),
   exportCsv: document.getElementById('export-csv'),
   print: document.getElementById('print-shortlist'),
@@ -95,7 +95,7 @@ async function start() {
     facets = buildFacets(allRows);
     applyUrlLists();
     drawChips();
-    renderMastheadStat();
+    renderSourceLine(dom.sourceLine, allRows, meta);
 
     // Whatever was typed while the data loaded is in the fields, not yet in
     // the state, because update() ignored it until now.
@@ -147,16 +147,19 @@ function keepAddress() {
 // whoever maintains the Sheet. The filters and the empty Sort menu are
 // hidden: there is nothing to filter or sort.
 function showTotalFailure(err) {
-  const sentence = document.createElement('span');
+  const alert = document.createElement('div');
+  alert.className = 'bn bn-fail';
+  alert.setAttribute('role', 'alert');
+  const sentence = document.createElement('p');
   sentence.textContent = 'Could not load the programme list. Check your connection and reload the page.';
   const reload = document.createElement('button');
   reload.type = 'button';
-  reload.className = 'button';
+  reload.className = 'btn btn-p';
   reload.textContent = 'Reload';
   reload.addEventListener('click', () => location.reload());
-  dom.banner.className = 'banner banner-danger';
-  dom.banner.setAttribute('role', 'alert');
-  dom.banner.replaceChildren(sentence, reload);
+  alert.append(sentence, reload);
+  dom.banner.replaceChildren(alert);
+  dom.sourceLine.hidden = true;
   dom.banner.hidden = false;
   dom.form.hidden = true;
   dom.resultsBar.hidden = true;
@@ -173,15 +176,6 @@ function drawChips() {
   renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas));
   renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries));
   renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
-}
-
-// The scale of the dataset, stated once in the masthead. Counted from the rows
-// actually loaded, so it can never drift from what the page is showing.
-function renderMastheadStat() {
-  const universities = new Set(allRows.map((r) => r.university)).size;
-  const countries = new Set(allRows.map((r) => r.country).filter(Boolean)).size;
-  dom.mastheadStat.textContent =
-    `${allRows.length} programmes · ${universities} universities · ${countries} countries`;
 }
 
 function toggle(set) {

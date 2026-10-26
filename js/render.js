@@ -314,54 +314,58 @@ export function renderSortOptions(select, sorts, current) {
 
 // ---------------------------------------------------------------- banners
 
-export function renderSourceBanner(node, meta) {
-  const parts = [];
+export function renderSourceLine(node, rows, meta) {
+  node.replaceChildren();
+  node.hidden = !(meta.draftCount > 0);
+  if (node.hidden) return;
+  const universities = new Set(rows.map((r) => r.university)).size;
+  const countries = new Set(rows.map((r) => r.country).filter(Boolean)).size;
+  node.append(
+    el('b', 'stat', `${rows.length} programmes · ${universities} universities · ${countries} countries.`),
+    ' This site is a starting point for research, not a source of truth. ',
+    el('span', 'src-more', 'Always check requirements, fees and deadlines on the university’s official page before you apply.'),
+  );
+}
 
+export function renderSourceBanner(node, meta) {
+  node.replaceChildren();
+  const parts = [];
   if (meta.source === 'snapshot') {
     const when = meta.snapshotDate ? longDate.format(meta.snapshotDate) : 'an unknown date';
     parts.push(`Live data is unavailable, so this is a saved copy from ${when}. Deadlines may have moved since.`);
   }
-
-  // Shown while any row is still unverified. Worded as what the site is for
-  // rather than how the data was made — Jakub's call, 2026-10-24.
-  if (meta.draftCount > 0) {
-    parts.push(
-      'This site is a starting point for research, not a source of truth. Always check ' +
-      'requirements, fees and deadlines on the university’s official page before you apply.'
-    );
-  }
-
-  if (meta.sampleCount > 0) {
-    const all = meta.sampleCount === meta.total;
-    parts.push(
-      `${all ? 'Every figure on this page is made up' : `${meta.sampleCount} of ${meta.total} entries are made-up sample rows`}. ` +
-      `Do not use ${all ? 'it' : 'them'} for real applications.`
-    );
-  }
-
-  // The problems list sits after every card, 1240 of them, where nobody sees
-  // it. One line up here says it exists and links to it (L06).
+  // Keep the issues link near the top even when a separate sample warning shows.
   const problems = meta.issues ? meta.issues.length : 0;
-
-  if (parts.length === 0 && problems === 0) {
-    node.hidden = true;
-    return;
+  if (parts.length || problems > 0) {
+    const saved = el('div', 'bn bn-saved');
+    saved.setAttribute('role', 'status');
+    const mark = el('span', 'imark', 'i');
+    mark.setAttribute('aria-hidden', 'true');
+    const text = el('p', '', parts.join(' '));
+    if (problems > 0) {
+      const link = el('a', '', 'See the list below the results.');
+      link.href = '#issues';
+      text.append(
+        `${parts.length ? ' ' : ''}${problems} spreadsheet ${problems === 1 ? 'problem' : 'problems'}: `,
+        'some rows may be missing or incomplete. ', link,
+      );
+    }
+    saved.append(mark, text);
+    node.append(saved);
   }
-
-  const text = el('span', '', parts.join(' '));
-  if (problems > 0) {
-    const link = el('a', '', 'See the list below the results.');
-    link.href = '#issues';
+  if (meta.sampleCount > 0) {
+    const sample = el('div', 'bn bn-sample');
+    sample.setAttribute('role', 'status');
+    const all = meta.sampleCount === meta.total;
+    const text = el('p');
     text.append(
-      `${parts.length ? ' ' : ''}${problems} spreadsheet ${problems === 1 ? 'problem' : 'problems'}: `,
-      'some rows may be missing or incomplete. ', link,
+      el('b', '', all ? 'Every figure on this page is made up.' : `${meta.sampleCount} of ${meta.total} entries are made-up sample rows.`),
+      ` Do not use ${all ? 'it' : 'them'} for real applications.`,
     );
+    sample.append(text);
+    node.append(sample);
   }
-
-  // Invented data is the louder problem, so it sets the tone when both apply.
-  node.className = `banner banner-${meta.sampleCount > 0 ? 'danger' : 'warn'}`;
-  node.replaceChildren(text);
-  node.hidden = false;
+  node.hidden = node.childElementCount === 0;
 }
 
 export function renderIssues(details, summary, list, issues) {

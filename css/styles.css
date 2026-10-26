@@ -1,97 +1,209 @@
-/* Mobile-first. One main breakpoint: from 720px the cards go two to a row and
-   the filter bar sticks to the top (when the screen is also 600px tall), plus
-   a print stylesheet for the shortlist. Light only.
+/* IB University Finder: design tokens (the canonical :root; mockup.html
+   carries an identical copy).
+   Colour is the P2 system, "say it, shape it, then tint it". A colour may
+   appear only where a word and a shape already say the same thing, and only
+   for something the student can still act on.
+   Rules a non-coder can keep:
+   - Never put a hex value outside this block.
+   - A new state joins an existing group and uses that group's fill/ink/mark.
+     Never add a sixth hue.
+   - Add every new text/background pair to PAIRS in tools/check-contrast.mjs.
+   Contrast below is WCAG 2 (relative luminance), recomputed by script
+   2026-10-26 after the polish pass (no hex changed; every pair still passes). Text needs 4.5:1, marks, borders and focus rings need 3:1. */
+:root{
+  color-scheme:light;                 /* light only (STATUS.md "The look of it") */
 
-   Design notes that are easy to undo by accident:
-   - One accent hue. Amber and red are states, not accents, and never compete.
-   - No pure black, no outer glows, no gradient text.
-   - Motion is transform/opacity only, and stops entirely under
-     prefers-reduced-motion.
-   - Numbers use tabular figures so points and fees line up column-wise when
-     you scan two cards side by side. */
+  /* ---------- Neutral: the page, the facts, and "nobody knows" ---------- */
+  --ground:#e8edf3;      /* page background behind panels. NOT for a cell fill: grey boxes on neutral cells are cut. */
+  --panel:#ffffff;       /* masthead, filter bar, list panel, pane, sheet, banners. */
+  --hover:#f2f5f9;       /* row hover and the open row on phone/tablet. NOT a status. */
+  --hairline:#d9e0e9;    /* row dividers and panel outlines only. 1.33:1 on panel: decorative,
+                            so NEVER the only edge of a control or of the unknown box. */
+  --edge:#76808e;        /* control borders, stale tag border. 4.00 panel / 3.40 ground / 3.36 accent-tint.
+                            NOT for text. */
+  --ink:#16202c;         /* titles, figures, body text, verified check, field-error text and the 2 px invalid-field
+                            border, "No official link" note rule, sample-row tag border. 16.44 panel / 13.97 ground / 15.04 hover /
+                            13.83 accent-tint / 13.71 fit / 11.90 cond / 9.57 time. */
+  --ink-2:#46515f;       /* secondary text: university, labels, "/ year", passed date. 8.07 panel / 6.85 ground /
+                            7.38 hover / 6.78 accent-tint / 6.73 fit / 5.84 cond / 4.70 time (lowest; keep ≥13px). */
+  --ink-3:#5d6877;       /* placeholder text and the unknown dash (dashed box, dashed ring). 5.66 panel /
+                            4.81 ground / 5.17 hover / 4.76 accent-tint. NOT for body copy. */
 
-:root {
-  /* Light only, declared so the browser does not render form controls,
-     scrollbars and the canvas dark when the OS is — which it does by
-     default, and which would fight a page that has no dark palette. */
-  color-scheme: light;
+  /* ---------- Interaction (blue): you can press it, it has focus, you picked it ----------
+     Never in a status. The selected row is ring + tint, so it cannot read as a verdict. */
+  --accent:#1f5bd0;      /* links, focus ring, primary button, active filter border, active sort arrow, selected-row
+                            ring (focus ring sits 6 px inside it, tint between). Text 6.06 panel / 5.15 ground /
+                            5.54 hover / 5.10 accent-tint. Focus ring on fills:
+                            5.05 fit / 4.39 cond / 3.53 time (all ≥3). */
+  --accent-press:#1745a3;/* hover/pressed primary button and links. White on it 8.69; as link text on panel 8.69. */
+  --accent-tint:#e3ecfb; /* selected row, active filter field. NOT a status fill. */
+  --on-accent:#ffffff;   /* text on accent (6.06) and on alarm (7.49). */
 
-  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  /* ---------- Fit (points column only): your points against this row ---------- */
+  --fit-fill:#d9f0e2;    /* "Within your points" cell, incl. Round-2-only and + HPAT. NOT on fee, deadline, verified. */
+  --fit-ink:#0f5e38;     /* verdict text on fit-fill 6.54; count-line figure on ground 6.66, panel 7.84,
+                            accent-tint 6.59. */
+  --fit-mark:#2a8553;    /* solid dot. 3.83 fit / 4.59 panel / 3.90 ground / 3.86 accent-tint. */
+  --cond-fill:#f7d982;   /* "Only with HL Maths 4+" cell. NOT the saved-copy banner (amber means "yes, if"). */
+  --cond-ink:#5a3a00;    /* 7.45 on cond-fill; count-line figure 8.74 ground / 10.29 panel. */
+  --cond-mark:#8f5a00;   /* half dot. 4.19 cond / 5.78 panel / 4.91 ground. */
 
-  /* A white page with content in tinted panels, rather than white cards on a
-     grey page. Neutrals are warm, so they sit under a serif without the blue
-     cast a cool grey gives it. */
-  --page: #ffffff;
-  --surface: #f7f6f3;
-  --surface-2: #efede7;
-  --ink: #14110f;
-  /* Both greys carry real text, so both clear 4.5:1 on every surface they land
-     on. Anything paler than --ink-faint is for rules only, never for words. */
-  --ink-soft: #4a4641;
-  --ink-faint: #5f5a54;
-  --line: #e6e2da;
-  --line-soft: #f0ede6;
+  /* ---------- Time (deadline column only): 60 days or fewer (URGENT_WITHIN_DAYS) ---------- */
+  --time-fill:#f6b98a;   /* urgent deadline cell. NOT for passed (passed is plain ink, struck). */
+  --time-ink:#612800;    /* "in 50 days" on time-fill 6.75. */
+  --time-mark:#9a4600;   /* Phosphor clock. 3.76 time / 6.46 panel. */
 
-  /* Brand accent. Used sparingly and deliberately NOT on a card: inside a card
-     the country tint does the colour work, and a third hue there would fight
-     it. Lives in the masthead, a checked filter, the active-filter count. */
-  --accent: #c2255c;
-  --accent-strong: #a61e4d;
-  --accent-soft: #fdeef3;
-  --accent-line: #f6d2de;
+  /* ---------- Alarm (red): the data itself is fake or missing. Never on a row cell. ---------- */
+  --alarm:#a3202f;       /* ONLY the sample-data banner fill (white text 7.49) and the failure-alert border (7.49 on panel).
+                            NOT field errors, notes, tags or anything on a row or card: those use ink. */
+  --alarm-ink:#86171d;   /* ONLY the failure-alert sentence. 9.75 on panel. */
 
-  /* Interactive text, kept separate from the brand accent on purpose: the
-     reference design brands in rose and links in blue, and a link painted the
-     brand colour stops reading as a link. */
-  --link: #1b5fc1;
+  /* ---------- Depth ---------- */
+  --scrim:rgb(22 32 44 / .45);   /* behind the phone filter sheet only. */
+  --shadow:0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22); /* the detail pane only: the page's one shadow. */
 
-  /* Country tints. The panel colour carries information rather than decoration
-     — this is the one idea taken from the reference that had to be adapted,
-     because 757 cards in arbitrary pastels would be noise. A card's heading and
-     its points number take the darker ink of its own tint. */
-  --tint-nl: #eaf0fb;
-  --tint-nl-ink: #14427d;
-  --tint-ie: #e7f1ea;
-  --tint-ie-ink: #1a5437;
-  --tint-cz: #f1edf8;
-  --tint-cz-ink: #4b2d7f;
-  --tint-it: #fcefe6;
-  --tint-it-ink: #8a3410;
-  --tint-dk: #e5f3f3;
-  --tint-dk-ink: #0e5a5e;
+  /* ---------- Flags: ONLY inside the Country filter options. Never on rows, cells or headings. ---------- */
+  --flag-white:#ffffff;
+  --flag-nl-red:#ae1c28; --flag-nl-blue:#21468b;
+  --flag-ie-green:#169b62; --flag-ie-orange:#ff883e;
+  --flag-it-green:#009246; --flag-it-red:#ce2b37;
+  --flag-dk-red:#c8102e;
+  --flag-cz-red:#d7141a; --flag-cz-blue:#11457e;
 
-  /* The inset inside a tinted panel — white, because the panel is tinted. The
-     inverse of the old design, where a tinted block sat on a white card. */
-  --inset: #ffffff;
+  /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
+  --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --fs-12:.75rem;   /* labels, help, column header, stale tag */
+  --fs-13:.8125rem; /* university line, requirements line, verdicts, count line */
+  --fs-14:.875rem;  /* body, figures, desktop controls */
+  --fs-16:1rem;     /* row titles on phone, phone controls (16px stops iOS zoom) */
+  --fs-18:1.125rem; /* pane title only */
+  /* weights used: 400 body, 500 rare, 600 titles/figures/verdicts, 700 count total, headings */
 
-  /* states — amber and red stay semantic and never decorate */
-  --warn: #8a5a00;
-  --warn-soft: #fdf5e6;
-  --warn-line: #ecd9ae;
-  --danger: #9b1c1c;
-  --danger-soft: #fdeded;
-  --danger-line: #f2c8c8;
-  /* Dark enough to clear 4.5:1 on white — it carries the "N saved programmes"
-     text, not just the bookmark icon. See tools/check-contrast.mjs. */
-  --save: #956900;
-  --save-soft: #fdf6e4;
+  /* ---------- Space (8-pt grid with a 4 px half step) and shape ---------- */
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
+  --r-panel:6px;    /* panels, tiles, sheet, banners */
+  --r-cell:4px;     /* cells, controls, buttons, tags */
+  --pane-w:25rem;   /* desktop detail pane from 1280 px; .page sets 18rem from 1024 to 1279 px so the title
+                       column keeps at least 240 px */
+  /* --gut (16 phone / 24 from 600), --ctl (control height 44 / 36) and --tap (small-button and link hit
+     height 44 / 28) are set on .page per breakpoint */
 
-  /* Almost no shadow. The reference separates panels with tint and space, not
-     elevation; shadow is kept only for things that genuinely float. */
-  --shadow-sm: 0 1px 2px rgba(20, 17, 15, 0.03);
-  --shadow-md: 0 18px 40px -20px rgba(20, 17, 15, 0.18);
-  --shadow-rail: none;
+  /* ---------- Motion (none under prefers-reduced-motion) ---------- */
+  --t-fast:120ms;   /* hover/focus background, pane content fade */
+  --t-med:160ms;    /* chevron turn */
+  --t-slow:200ms;   /* row expand, filter sheet */
+  --ease-out:cubic-bezier(.2,.7,.3,1);      /* anything entering */
+  --ease-in-out:cubic-bezier(.45,0,.25,1);  /* anything moving between two states */
 
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
-  --r-xl: 26px;
+  /* Temporary old-card compatibility, until the row stage. */
+  --surface: #f7f6f3; /* old: remove in stage 3 */
+  --ink-soft: #4a4641; /* old: remove in stage 3 */
+  --ink-faint: #5f5a54; /* old: remove in stage 3 */
+  --line: #e6e2da; /* old: remove in stage 3 */
+  --line-soft: #f0ede6; /* old: remove in stage 3 */
+  --inset: #ffffff; /* old: remove in stage 3 */
+  --tint-nl: #eaf0fb; /* old: remove in stage 3 */
+  --tint-nl-ink: #14427d; /* old: remove in stage 3 */
+  --tint-ie: #e7f1ea; /* old: remove in stage 3 */
+  --tint-ie-ink: #1a5437; /* old: remove in stage 3 */
+  --tint-cz: #f1edf8; /* old: remove in stage 3 */
+  --tint-cz-ink: #4b2d7f; /* old: remove in stage 3 */
+  --tint-it: #fcefe6; /* old: remove in stage 3 */
+  --tint-it-ink: #8a3410; /* old: remove in stage 3 */
+  --tint-dk: #e5f3f3; /* old: remove in stage 3 */
+  --tint-dk-ink: #0e5a5e; /* old: remove in stage 3 */
+  --warn: #8a5a00; /* old: remove in stage 3 */
+  --warn-soft: #fdf5e6; /* old: remove in stage 3 */
+  --warn-line: #ecd9ae; /* old: remove in stage 3 */
+  --save: #956900; /* old: remove in stage 3 */
+  --save-soft: #fdf6e4; /* old: remove in stage 3 */
+  --shadow-sm: 0 1px 2px rgba(20, 17, 15, 0.03); /* old: remove in stage 3 */
+  --shadow-md: 0 18px 40px -20px rgba(20, 17, 15, 0.18); /* old: remove in stage 3 */
+  --r-sm: 8px; /* old: remove in stage 3 */
+  --r-md: 12px; /* old: remove in stage 3 */
+  --r-lg: 18px; /* old: remove in stage 3 */
+  --r-xl: 26px; /* old: remove in stage 3 */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1); /* old: remove in stage 3 */
+  --dur: 220ms; /* old: remove in stage 3 */
+  --old-print-ink: #000; /* old: remove in stage 3 */
+  --old-print-edge: #999; /* old: remove in stage 3 */
+  --old-print-inset-edge: #ccc; /* old: remove in stage 3 */
+}
 
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 220ms;
 
-  --shell-max: 78rem;
+/* IBM Plex Sans @ibm/plex-sans@1.1.0, latest stable checked 2026-10-26.
+   https://github.com/IBM/plex/releases/tag/%40ibm/plex-sans%401.1.0 */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
 }
 
 * { box-sizing: border-box; }
@@ -106,19 +218,17 @@
 
 body {
   margin: 0;
-  padding: 0 1.25rem 4rem;
-  background: var(--page);
+  background: var(--ground);
   color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
+  font: 400 var(--fs-14)/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-.site-header, .site-footer, .banner, .shell {
-  max-width: var(--shell-max);
-  margin-inline: auto;
+.shell {
+  max-width: 78rem;
+  margin: 16px auto 0;
+  padding-inline: var(--gut);
 }
 
 /* Every icon inherits its colour and sits on the text baseline. */
@@ -130,7 +240,7 @@ svg:not(.sprite) {
 }
 
 :focus-visible {
-  outline: 2px solid var(--link);
+  outline: 2.5px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -165,93 +275,44 @@ svg:not(.sprite) {
   border: 0;
 }
 
-/* ------------------------------------------------------------- masthead */
+/* Stage 1 page chrome; the old results layout stays until its stage. */
+.page{--gut:16px;--ctl:44px;--fs-ctl:16px;--tap:44px}
+.top{background:var(--panel);border-bottom:1px solid var(--hairline)}
+.mast{padding:10px var(--gut) 8px}
+.mast-top{display:flex;align-items:flex-start;gap:12px}
+.mast-id{flex:1;min-width:0}
+.mast h1{margin:0;font-size:var(--fs-16);font-weight:700;line-height:20px}
+.tagline{margin:0;display:none;font-size:var(--fs-13);color:var(--ink-2);line-height:18px}
+.src{margin:4px 0 0;white-space:normal;font-size:12.5px;line-height:17px;color:var(--ink-2);max-width:100ch}
+.src b{color:var(--ink);font-weight:600}.stat,.src-more{display:none}
+.lang{display:flex;align-items:center;gap:2px;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+.lang .ic{margin-right:4px}
+.lang button{min-width:32px;height:28px;padding:0 6px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);cursor:pointer}
+.lang [aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.lang [aria-disabled=true]{color:var(--ink-3);cursor:not-allowed}
+.bn{display:flex;gap:10px;align-items:flex-start;margin:12px var(--gut) 0;padding:10px 12px;border-radius:var(--r-panel);font-size:13.5px;line-height:19px}
+.bn-saved{background:var(--panel);border:1px solid var(--hairline);border-left:4px solid var(--ink-2)}
+.bn-sample{background:var(--alarm);color:var(--on-accent)}.bn-sample b{font-weight:700}
+.bn-fail{background:var(--panel);border:2px solid var(--alarm);align-items:center;flex-wrap:wrap}
+.bn-fail p{flex:1 1 16rem;color:var(--alarm-ink);font-weight:600}
+.imark{flex:none;display:inline-grid;place-items:center;width:18px;height:18px;margin-top:1px;border:1.5px solid var(--ink-2);border-radius:50%;font-size:11px;font-weight:700;color:var(--ink-2)}
+.foot{padding:16px var(--gut) 24px;font-size:var(--fs-12);color:var(--ink-2)}
 
-.site-header { padding: 2.25rem 0 1.25rem; }
-
-/* Asymmetric on purpose: title left, the running total right, nothing
-   centred. */
-.masthead {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+.bn p,.foot p{margin:0}
+.lang button{font:inherit}
+.lang .ic{width:16px;height:16px;fill:currentColor}
+.stat{font-variant-numeric:tabular-nums}
+.bn-saved{color:var(--ink-2)}
+.bn-saved a{color:var(--accent);text-decoration:underline}
+.bn-saved a:hover{color:var(--accent-press)}
+.bn-fail .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--ctl);padding:0 14px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font:inherit;font-size:var(--fs-14);font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap}
+.bn-fail .btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.bn-fail .btn-p:hover{background:var(--accent-press);color:var(--on-accent)}
+@media (min-width: 600px) {
+  .page{--gut:24px;--ctl:36px;--fs-ctl:14px;--tap:28px}
+  .tagline,.stat,.src-more{display:inline}
+  .mast-id{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px}
 }
-
-.site-header h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.6rem);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.05;
-}
-/* The rose full stop, straight from the reference wordmark. Decorative. A
-   pseudo-element's text IS read out, so the second declaration gives it empty
-   alt text (A05); a browser without that syntax keeps the first and still
-   shows the stop. */
-.site-header h1::after { content: "."; content: "." / ""; color: var(--accent); }
-
-.tagline {
-  margin: 0.4rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.95rem;
-  max-width: 46ch;
-}
-
-.masthead-stat {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.masthead-stat:empty { display: none; }
-
-.site-footer {
-  margin-top: 3.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
-  color: var(--ink-faint);
-  font-size: 0.85rem;
-}
-.site-footer p { margin: 0; max-width: 65ch; }
-
-/* ------------------------------------------------------------- banners */
-
-.banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  margin: 0 auto 1.25rem;
-  padding: 0.85rem 1rem;
-  border-radius: var(--r-lg);
-  border: 1px solid var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--ink);
-  font-size: 0.9rem;
-  box-shadow: var(--shadow-sm);
-}
-.banner::before {
-  content: "";
-  flex: none;
-  width: 3px;
-  align-self: stretch;
-  border-radius: 999px;
-  background: var(--accent);
-}
-.banner-warn   { background: var(--warn-soft);   border-color: var(--warn-line);   color: var(--warn); }
-.banner-warn::before { background: var(--warn); }
-.banner-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); font-weight: 600; }
-.banner-danger::before { background: var(--danger); }
-/* The banner's link to the problems list (L06) takes the banner's colour, so it
-   needs no contrast pair of its own. */
-.banner a { color: inherit; text-decoration: underline; }
-.banner .button { margin-left: auto; flex: none; }
 
 /* ------------------------------------------------------------- buttons */
 
@@ -261,11 +322,11 @@ svg:not(.sprite) {
   justify-content: center;
   gap: 0.45rem;
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   padding: 0.5rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-cell);
+  background: var(--panel);
   color: var(--ink);
   cursor: pointer;
   box-shadow: none;
@@ -275,17 +336,17 @@ svg:not(.sprite) {
               transform 120ms var(--ease),
               box-shadow var(--dur) var(--ease);
 }
-.button svg { color: var(--ink-faint); transition: color var(--dur) var(--ease); }
+.button svg { color: var(--ink-2); transition: color var(--dur) var(--ease); }
 .button:hover:not(:disabled) {
-  border-color: var(--accent-line);
+  border-color: var(--accent);
   color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent-tint);
 }
 .button:hover:not(:disabled) svg { color: var(--accent); }
 /* Tactile: the button gives under the press rather than just recolouring. */
 .button:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 .button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
-.button-quiet { color: var(--ink-soft); box-shadow: none; background: transparent; }
+.button-quiet { color: var(--ink-2); box-shadow: none; background: transparent; }
 
 /* --------------------------------------------------------- app shell */
 
@@ -305,13 +366,13 @@ svg:not(.sprite) {
   gap: 0.75rem 0.9rem;
   margin: 0 0 1.5rem;
   padding: 1rem 1.15rem;
-  background: var(--surface);
-  border-radius: var(--r-xl);
+  background: var(--panel);
+  border-radius: var(--r-panel);
 }
 .field-search { flex: 1 1 18rem; }
 .field-number { flex: 0 0 7.5rem; }
 /* Why My points or Max fee is not being applied (P05). Empty means valid. */
-.field-error { margin: 0.25rem 0 0; font-size: 0.8rem; line-height: 1.3; color: var(--danger); }
+.field-error { margin: 0.25rem 0 0; font-size: 0.8rem; line-height: 1.3; color: var(--ink); font-weight: 700; }
 .field-error:empty { display: none; }
 .filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .filterbar #f-clear { align-self: flex-end; }
@@ -329,9 +390,9 @@ svg:not(.sprite) {
      — so the row lines up exactly rather than being off by a pixel. */
   padding: 0.55rem 0.85rem;
   line-height: 1.55;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-cell);
+  background: var(--panel);
   color: var(--ink);
   font-size: 0.94rem;
   cursor: pointer;
@@ -341,8 +402,8 @@ svg:not(.sprite) {
   transition: border-color var(--dur) var(--ease);
 }
 .dropdown-button::-webkit-details-marker { display: none; }
-.dropdown-button:hover { border-color: var(--accent-line); }
-.dropdown-button svg { color: var(--ink-faint); }
+.dropdown-button:hover { border-color: var(--accent); }
+.dropdown-button svg { color: var(--ink-2); }
 .dropdown[open] > .dropdown-button { border-color: var(--accent); }
 /* A list that is narrowing the results says so even when it is closed. */
 .dropdown:has(.dropdown-count:not([hidden])) > .dropdown-button { border-color: var(--accent); }
@@ -351,7 +412,7 @@ svg:not(.sprite) {
   min-width: 1.35rem;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;
-  background: var(--accent-soft);
+  background: var(--accent-tint);
   color: var(--accent);
   font-size: 0.75rem;
   font-weight: 700;
@@ -371,9 +432,9 @@ svg:not(.sprite) {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0.35rem;
-  background: var(--inset);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-panel);
   box-shadow: var(--shadow-md);
 }
 
@@ -389,8 +450,8 @@ svg:not(.sprite) {
   cursor: pointer;
   user-select: none;
 }
-.option:hover { background: var(--surface); }
-.option:has(input:checked) { font-weight: 500; }
+.option:hover { background: var(--panel); }
+.option:has(input:checked) { font-weight: 600; }
 .option input { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
 
 .field { display: grid; gap: 0.4rem; margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -403,7 +464,7 @@ svg:not(.sprite) {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  color: var(--ink-2);
   padding: 0;
 }
 
@@ -411,15 +472,15 @@ svg:not(.sprite) {
   font: inherit;
   font-size: 0.94rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-cell);
+  background: var(--panel);
   color: var(--ink);
   width: 100%;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.field input::placeholder { color: var(--ink-faint); }
-.field input:hover, .sort-field select:hover { border-color: var(--accent-line); }
+.field input::placeholder { color: var(--ink-3); }
+.field input:hover, .sort-field select:hover { border-color: var(--accent); }
 /* The global :focus-visible outline shows here too. The soft ring that
    replaced it was 1.04:1 against the panel, so a keyboard user could not see
    which field had focus (A03). */
@@ -434,7 +495,7 @@ svg:not(.sprite) {
   position: absolute;
   left: 0.7rem;
   top: calc(50% - 0.5em);
-  color: var(--ink-faint);
+  color: var(--ink-2);
   pointer-events: none;
 }
 .input-wrap input { padding-left: 2.15rem; }
@@ -444,9 +505,9 @@ svg:not(.sprite) {
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  background: var(--inset);
+  background: var(--panel);
   font-size: 0.85rem;
   cursor: pointer;
   user-select: none;
@@ -455,10 +516,10 @@ svg:not(.sprite) {
               color var(--dur) var(--ease),
               transform 120ms var(--ease);
 }
-.chip:hover { border-color: var(--accent-line); background: var(--surface-2); }
+.chip:hover { border-color: var(--accent); background: var(--hover); }
 .chip:active { transform: scale(0.97); }
 .chip:has(input:checked) {
-  background: var(--accent-soft);
+  background: var(--accent-tint);
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -492,9 +553,9 @@ svg:not(.sprite) {
   gap: 0.5rem;
   padding: 0.6rem 0.8rem;
   margin-bottom: 1.1rem;
-  background: var(--surface);
+  background: var(--panel);
   border: 0;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-panel);
 }
 .shortlist-count {
   display: inline-flex;
@@ -503,10 +564,10 @@ svg:not(.sprite) {
   margin: 0 auto 0 0;
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--save);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
-.shortlist-icon { color: var(--save); }
+.shortlist-icon { color: var(--ink-2); }
 
 .results { display: grid; gap: 1rem; }
 
@@ -601,7 +662,7 @@ svg:not(.sprite) {
 .card-titles { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
 .card-title {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font);
   font-size: 1.3rem;
   font-weight: 600;
   line-height: 1.22;
@@ -620,7 +681,7 @@ svg:not(.sprite) {
   vertical-align: 0.15em;
   white-space: nowrap;
 }
-.card-uni { margin: 0; font-weight: 500; font-size: 0.92rem; color: var(--ink-soft); }
+.card-uni { margin: 0; font-weight: 600; font-size: 0.92rem; color: var(--ink-soft); }
 .card-place { margin: 0; color: var(--ink-faint); font-size: 0.85rem; }
 
 /* The save control. An outline bookmark that fills when set — a state change
@@ -695,7 +756,7 @@ svg:not(.sprite) {
 .req-points { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: baseline; gap: 0 0.35rem; }
 .req-number, .req-unit { white-space: nowrap; }
 .req-number {
-  font-family: var(--font-display);
+  font-family: var(--font);
   font-size: 2.1rem;
   font-weight: 600;
   line-height: 0.95;
@@ -703,7 +764,7 @@ svg:not(.sprite) {
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.req-unit { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em; color: var(--ink-faint); text-transform: uppercase; }
+.req-unit { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; color: var(--ink-faint); text-transform: uppercase; }
 
 /* The absence of a requirement is useful but must not shout like a number. */
 .req-quiet { color: var(--ink-soft); }
@@ -723,9 +784,9 @@ svg:not(.sprite) {
   line-height: 1.4;
 }
 .req-lang { color: var(--ink-soft); border-color: var(--line); }
-.req-admission { font-weight: 500; }
+.req-admission { font-weight: 600; }
 
-.req-none { margin: 0; font-size: 0.88rem; font-weight: 500; color: var(--ink-soft); }
+.req-none { margin: 0; font-size: 0.88rem; font-weight: 600; color: var(--ink-soft); }
 
 .facts {
   margin: 0;
@@ -736,7 +797,7 @@ svg:not(.sprite) {
 }
 .facts dt { color: var(--ink-faint); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-.facts dd.past { color: var(--danger); font-weight: 600; }
+.facts dd.past { color: var(--ink); font-weight: 600; }
 .facts dd.urgent { color: var(--warn); font-weight: 600; }
 .facts dd.unknown { color: var(--warn); }
 .facts dd.sub {
@@ -760,7 +821,7 @@ svg:not(.sprite) {
   vertical-align: 0.05em;
 }
 .badge-urgent, .badge-stale { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
-.badge-past, .badge-danger  { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line); }
+.badge-past, .badge-danger  { background: var(--panel); color: var(--ink); border: 1px solid var(--edge); }
 
 .note {
   margin: 0;
@@ -792,10 +853,10 @@ svg:not(.sprite) {
   border-bottom: 1px solid transparent;
   transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.official-link { font-weight: 500; color: var(--link); }
+.official-link { font-weight: 600; color: var(--accent); }
 .official-link:hover { border-bottom-color: currentColor; }
 .life-link { color: var(--ink-soft); }
-.life-link:hover { color: var(--link); border-bottom-color: currentColor; }
+.life-link:hover { color: var(--accent); border-bottom-color: currentColor; }
 
 /* ------------------------------------------------- loading + empty */
 
@@ -826,7 +887,7 @@ svg:not(.sprite) {
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--panel) 55%, transparent), transparent);
     animation: shimmer 1.4s infinite;
   }
 }
@@ -850,7 +911,7 @@ svg:not(.sprite) {
   margin-bottom: 0.5rem;
 }
 .empty-state p { margin: 0.15rem 0; max-width: 40ch; }
-.empty-state strong { font-family: var(--font-display); color: var(--ink); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+.empty-state strong { font-family: var(--font); color: var(--ink); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
 
 .issues {
   margin-top: 1.75rem;
@@ -867,16 +928,8 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------- wider screens */
 
-/* The serif masthead is generous by design, but on a phone it plus the
-   not-checked-yet warning pushed the first card 523px down an 812px screen.
-   Trimmed here only; the airy version returns at 720px. */
 @media (max-width: 719px) {
-  .site-header { padding: 1.35rem 0 0.9rem; }
-  .tagline { margin-top: 0.3rem; }
-  /* At 320-375 px the stat and a dropdown panel anchored to its own button
-     pushed the page wider than the screen (A02). The stat may wrap, and a
-     panel spans the whole row of menus instead. */
-  .masthead-stat { white-space: normal; }
+  /* A02: dropdown panels span the menus row on narrow screens. */
   .filterbar-menus { position: relative; }
   .dropdown { position: static; }
   .dropdown-panel { left: 0; right: 0; width: auto; min-width: 0; max-width: none; }
@@ -885,7 +938,7 @@ svg:not(.sprite) {
 /* Sticky only where there is room for it. On a phone held sideways the bar
    took 46% of the screen, and it covered the "Skip to results" target (A07). */
 @media (min-width: 720px) and (min-height: 600px) {
-  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: 0 8px 24px -18px rgba(20, 17, 15, 0.35); }
+  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: var(--shadow-md); }
   /* Skip to results lands below the bar, not under it. The bar is 154px tall
      at 768 and 99px at 1280 (measured 2026-10-26), so 12rem clears both. */
   #results { scroll-margin-top: 12rem; }
@@ -924,17 +977,17 @@ svg:not(.sprite) {
 /* ------------------------------------------------------------- printing */
 
 @media print {
-  body { background: #fff; color: #000; padding: 0; font-size: 11pt; }
+  body { background: var(--panel); color: var(--old-print-ink); padding: 0; font-size: 11pt; }
 
-  .filterbar, .results-bar, .shortlist-bar, .site-footer, .masthead-stat,
+  .filterbar, .results-bar, .shortlist-bar, .foot, .lang, .tagline, .stat,
   .issues, .skip-link, .star, .skeletons, .empty-icon { display: none; }
 
   .shell { display: block; }
 
   /* The "nobody has checked this" warning must survive onto paper — a printed
      sheet has lost every other bit of context. */
-  .banner { border: 1px solid #000; color: #000; background: none; box-shadow: none; }
-  .banner::before { display: none; }
+  .bn { border: 1px solid var(--old-print-ink); color: var(--old-print-ink); background: none; box-shadow: none; }
+  .src-more { display: inline; }
 
   .results { display: block; }
 
@@ -943,7 +996,7 @@ svg:not(.sprite) {
        browser set to drop background colours would print them inconsistently,
        so the card falls back to a plain ruled box. */
     background: none;
-    border: 1px solid #999;
+    border: 1px solid var(--old-print-edge);
     border-radius: 0;
     box-shadow: none;
     break-inside: avoid;
@@ -955,10 +1008,10 @@ svg:not(.sprite) {
     content-visibility: visible;
   }
   .card.is-starred::before { display: none; }
-  .ib-block { background: none; border: 1px solid #ccc; }
+  .ib-block { background: none; border: 1px solid var(--old-print-inset-edge); }
   /* .card-title and .req-number take their colour from the country tint on
      screen; on paper that colour has no panel behind it to relate to. */
-  .card-title, .req-number, .req-unit, .card-uni, .official-link, .ib-label { color: #000; }
+  .card-title, .req-number, .req-unit, .card-uni, .official-link, .ib-label { color: var(--old-print-ink); }
 
   /* A printed link is useless without its address. */
   .official-link::after {

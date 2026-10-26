@@ -388,6 +388,130 @@ check('a total failure is an alert with a plain sentence and a Reload button, no
 check('a total failure hides the filters and lists the reasons in the problems panel',
   appSrcEarly.includes('dom.form.hidden = true') && /renderIssues\([^)]*err\.reasons/.test(appSrcEarly));
 
+
+section('Stage 1 foundations: self-hosted fonts, colour policy and source chrome (L10, A05)');
+const foundationHtml = read('index.html');
+check('no Google Fonts hosts or old font declarations',
+  !/fonts\.(?:googleapis|gstatic)\.com/.test(foundationHtml)
+    && !/DM Sans|Playfair Display/.test(css + foundationHtml));
+const fontFaces = [...css.matchAll(/@font-face\s*\{([^}]+)\}/g)].map((m) => m[1]);
+const subsetRanges = ["U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02", "U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF", "U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB"];
+check('exactly nine local Plex faces with matching weight, subset, normal style and swap',
+  fontFaces.length === 9 && ['Regular', 'SemiBold', 'Bold'].every((name, i) => [1, 2, 3].every((subset) => {
+    const file = `IBMPlexSans-${name}-Latin${subset}.woff2`;
+    const faces = fontFaces.filter((f) => f.includes(`url('../fonts/${file}') format('woff2')`));
+    return faces.length === 1 && faces[0].includes("font-family: 'IBM Plex Sans'")
+      && faces[0].includes(`font-weight: ${[400, 600, 700][i]};`)
+      && faces[0].includes('font-style: normal;') && faces[0].includes('font-display: swap;')
+      && faces[0].includes(`unicode-range: ${subsetRanges[subset - 1]};`)
+      && !faces[0].includes('local(')
+      && readFileSync(join(root, 'fonts', file)).subarray(0, 4).toString() === 'wOF2';
+  })));
+check('the IBM licence is present and only Regular Latin1 is preloaded',
+  /SIL OPEN FONT LICENSE Version 1.1/.test(read('fonts/OFL.txt'))
+    && (foundationHtml.match(/<link[^>]*as="font"[^>]*>/g) ?? []).length === 1
+    && /<link rel="preload" href="fonts\/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font\/woff2" crossorigin>/.test(foundationHtml));
+const { colourPolicyErrors } = await import('./check-contrast.mjs');
+equal('canonical root, marked temporary tokens, no non-root colour literals or misplaced alarm', colourPolicyErrors(css), []);
+const policyRejects = (rule) => colourPolicyErrors(css + rule).length > 0;
+check('colour guard rejects hex/functions/print literals and misplaced old markers',
+  ['.card{display:block;color:#fff}', '.card{display:block;color:var(--ink);background:#fff}', '.card{color:rgb(1 2 3)}', '.card{color:rgba(1,2,3,.5)}',
+    '.card{color:hsl(0 0% 0%)}', '.card{color:hsla(0,0%,0%,.5)}',
+    '@media print{.card{color:#fff; /* old: remove in stage 3 */}}'].every(policyRejects));
+check('colour guard accepts ID selectors and URL fragments',
+  !policyRejects('#abc{color:var(--ink);background:url(sprite.svg#fff)}'));
+check('alarm guard accepts banners and rejects mixed selectors and root overrides',
+  !policyRejects('.bn-sample{background:var(--alarm)} .bn-fail p{color:var(--alarm-ink)}')
+    && policyRejects('.bn-fail, .card{border-color:var(--alarm)}')
+    && policyRejects('.bn-fail, .card{color:var(--alarm-ink)}')
+    && policyRejects('.bn-fail + .card{color:var(--alarm-ink)}')
+    && policyRejects('.card{--ink:var(--alarm)}')
+    && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:var(--ink-2);')).length > 0
+    && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--ink:#16202c;')).length > 0
+    && colourPolicyErrors(css.replace('/* old: remove in stage 3 */', '')).length > 0);
+check('language buttons expose the selected English and described unavailable Slovak',
+  /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
+    && /type="button" aria-pressed="true">EN/.test(foundationHtml)
+    && /type="button" aria-pressed="false" aria-disabled="true" lang="sk" aria-describedby="sk-later">SK/.test(foundationHtml)
+    && /class="visually-hidden" id="sk-later">Slovak version coming later/.test(foundationHtml));
+check('source line starts hidden without a live region and uses allRows once after load',
+  /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
+    && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
+    && (appSrcEarly.match(/renderSourceLine\(/g) ?? []).length === 1);
+check('failure hides source, filters and results bar and uses a scoped primary Reload',
+  appSrcEarly.includes("alert.className = 'bn bn-fail'") && appSrcEarly.includes("reload.className = 'btn btn-p'")
+    && appSrcEarly.includes('dom.sourceLine.hidden = true') && appSrcEarly.includes('dom.resultsBar.hidden = true')
+    && appSrcEarly.includes("reload.addEventListener('click', () => location.reload())"));
+
+// Only the DOM operations these two renderers use; no browser or DOM package.
+class ChromeNode {
+  constructor(tag) { this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {}; }
+  set textContent(text) { this.children = [String(text)]; }
+  get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
+  get childElementCount() { return this.children.filter((c) => typeof c !== 'string').length; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute(name, value) { this.attributes[name] = value; }
+}
+const originalDocument = globalThis.document;
+globalThis.document = { createElement: (tag) => new ChromeNode(tag) };
+try {
+  const { renderSourceLine, renderSourceBanner } = await import('../js/render.js');
+  const rows = [{ university: 'A', country: 'Ireland' }, { university: 'A', country: 'Ireland' }, { university: 'B', country: 'Czechia' }];
+  const source = new ChromeNode('p');
+  const banner = new ChromeNode('div');
+  const base = { source: 'live', draftCount: 0, sampleCount: 0, total: 3, issues: [] };
+  renderSourceLine(source, rows, { ...base, draftCount: 1 });
+  check('source counts every loaded row, university and country with final punctuation',
+    !source.hidden && source.children[0].textContent === '3 programmes · 2 universities · 2 countries.'
+      && source.children[0].className === 'stat' && source.textContent.includes('not a source of truth.')
+      && source.children[2].className === 'src-more');
+  renderSourceLine(source, rows, base);
+  check('checked data hides and clears the source line', source.hidden && source.children.length === 0);
+  for (const meta of [base, { ...base, draftCount: 3 }]) {
+    renderSourceBanner(banner, meta);
+    check(`live ${meta.draftCount ? 'draft' : 'checked'} data has no banner`, banner.hidden && banner.children.length === 0);
+  }
+  for (const date of [new Date('2026-10-26T00:00:00Z'), null]) {
+    renderSourceBanner(banner, { ...base, source: 'snapshot', snapshotDate: date });
+    const saved = banner.children[0];
+    check(`saved-copy neutral status ${date ? 'with date' : 'without date'}`,
+      !banner.hidden && saved.className === 'bn bn-saved' && saved.attributes.role === 'status'
+        && saved.children[0].attributes['aria-hidden'] === 'true' && saved.children[1].tagName === 'p'
+        && saved.textContent.includes(date ? '26 October 2026' : 'an unknown date'));
+  }
+  for (const count of [1, 2]) {
+    renderSourceBanner(banner, { ...base, issues: Array(count).fill('problem') });
+    const saved = banner.children[0];
+    const link = saved.children[1].children.at(-1);
+    check(`issues-only neutral status with ${count} ${count === 1 ? 'problem' : 'problems'}`,
+      saved.className === 'bn bn-saved' && saved.attributes.role === 'status'
+        && saved.textContent.includes(`${count} spreadsheet ${count === 1 ? 'problem:' : 'problems:'}`)
+        && saved.textContent.includes('some rows may be missing or incomplete.')
+        && link.href === '#issues' && link.textContent === 'See the list below the results.');
+  }
+  for (const count of [1, 3]) {
+    renderSourceBanner(banner, { ...base, sampleCount: count });
+    const sample = banner.children[0];
+    equal(`sample-only ${count === 3 ? 'all' : 'mixed'} bold lead`, sample.children[0].children[0].textContent,
+      count === 3 ? 'Every figure on this page is made up.' : '1 of 3 entries are made-up sample rows.');
+    check('sample uses a separate red status with the original applications warning',
+      sample.className === 'bn bn-sample' && sample.attributes.role === 'status'
+        && sample.textContent.includes(`Do not use ${count === 3 ? 'it' : 'them'} for real applications.`));
+  }
+  for (const samples of [0, 1]) {
+    renderSourceBanner(banner, { ...base, source: 'snapshot', draftCount: 3, sampleCount: samples, issues: ['problem'] });
+    check(`snapshot plus issues${samples ? ' plus samples' : ''} keeps one neutral status and its link`,
+      banner.children.length === (samples ? 2 : 1) && banner.children[0].className === 'bn bn-saved'
+        && banner.children[0].textContent.includes('saved copy') && banner.children[0].textContent.includes('See the list below')
+        && !banner.textContent.includes('starting point for research'));
+  }
+  renderSourceBanner(banner, base);
+  check('rerender removes obsolete banner children and hides the container', banner.hidden && banner.children.length === 0);
+} finally {
+  if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
+}
+
 // ------------------------------------------------------- sorting, on real data
 
 section('Sorting (uses data/sample-*.csv, which has varied values on purpose)');
@@ -532,14 +656,16 @@ check('one .visually-hidden utility is defined', /\.visually-hidden \{[^}]*clip/
 check('text inputs and Sort keep the focus outline (no outline: none)',
   !/\.field input:focus[^{]*\{[^}]*outline: none/.test(css) && !/select:focus[^{]*\{[^}]*outline: none/.test(css));
 // A05: the h1's decorative full stop was read out as part of the title.
-check('the h1 full stop has empty alt text, with a plain fallback before it',
-  /h1::after \{ content: "\."; content: "\." \/ "";/.test(css));
+check('the h1 is plain IB University Finder with no generated full stop',
+  /<h1>IB University Finder<\/h1>/.test(read('index.html')) && !/h1\s*::after/.test(css));
 // A02: dropdown panels and the masthead stat pushed a 320 px page to 354 px.
 const narrow = css.slice(css.indexOf('@media (max-width: 719px)'));
 check('below 720 px the dropdown panels span the menus row',
   /\.filterbar-menus \{ position: relative; \}/.test(narrow) && /\.dropdown \{ position: static; \}/.test(narrow)
     && /\.dropdown-panel \{[^}]*left: 0; right: 0; width: auto;/.test(narrow));
-check('below 720 px the masthead stat may wrap', /\.masthead-stat \{ white-space: normal; \}/.test(narrow));
+check('the source line wraps normally and phone hides stat and advice',
+  /\.src\{[^}]*white-space:normal/.test(css) && /\.stat,\.src-more\{display:none\}/.test(css)
+    && /@media \(min-width: 600px\)[\s\S]*?\.tagline,\.stat,\.src-more\{display:inline\}/.test(css));
 // A07: the sticky bar hid the skip-link target and filled a landscape phone.
 check('the filter bar is sticky only on screens at least 720 wide and 600 tall',
   /@media \(min-width: 720px\) and \(min-height: 600px\) \{\s*\.filterbar \{ position: sticky;/.test(css)

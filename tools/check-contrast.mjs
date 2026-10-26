@@ -13,13 +13,11 @@
 // so it cannot drift from the real values the way a second copy of the palette
 // would.
 //
-// Deliberately out of scope: WCAG 1.4.11 non-text contrast for input borders
-// and other component boundaries (--line against --surface). Holding hairline
-// borders to 3:1 would mean redesigning them to be much darker, which is a
-// design decision, not a regression. Text is what regressed before.
+// Text needs 4.5:1; control edges, marks and focus need 3:1.
+// Only the explicitly decorative hairline is informational.
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,80 +31,105 @@ const css = readFileSync(join(root, 'css/styles.css'), 'utf8');
 //
 // `min` defaults to 4.5. It drops to 3 only where WCAG allows it: text at or
 // above 24px (or 18.66px bold), and graphical objects such as an icon.
-const PAIRS = [
-  // on the bare page
-  ['--ink',         '--page',        'body text'],
-  ['--ink-soft',    '--page',        '.tagline'],
-  ['--ink-faint',   '--page',        '#masthead-stat'],
-
-  // on the warm panel: filter rail, shortlist bar, empty state, skeletons, and
-  // a card whose country has no tint of its own
-  ['--ink',         '--surface',     '.result-count, a neutral .card-title'],
-  ['--ink-soft',    '--surface',     '.empty-state, .card-uni'],
-  ['--ink-faint',   '--surface',     '.card-place, .facts dt, .verified, .hint, .field label'],
-  ['--save',        '--surface',     '.shortlist-count'],
-  ['--danger',      '--surface',     '.field-error (My points / Max fee message)'],
-  // The 2px focus outline sits 2px outside a field, so it is drawn on what is
-  // behind the field: the filter panel for Search, points and fee, the page for
-  // Sort. A non-text indicator, so 3:1 (A03).
-  ['--link',        '--surface',     ':focus-visible outline on Search, My points, Max fee', 3],
-  ['--link',        '--page',        ':focus-visible outline on Sort', 3],
-
-  // on the panel's hover shade
-  ['--ink',         '--surface-2',   '.filters > summary:hover'],
-  ['--ink-faint',   '--surface-2',   '.chip:hover'],
-
-  // on white: the requirements inset, and every control that sits on a panel
-  ['--ink',         '--inset',       '.field input, .button'],
-  ['--ink-soft',    '--inset',       '.req-label, .req-quiet, .req-none'],
-  ['--ink-faint',   '--inset',       '.ib-label, .req-unit, .star icon'],
-  ['--warn',        '--inset',       '.req-unknown — "Not checked yet"'],
-  ['--link',        '--inset',       '.official-link'],
-  ['--tint-nl-ink', '--inset',       '.req-number on a Dutch card (33.6px serif)', 3],
-  ['--tint-ie-ink', '--inset',       '.req-number on an Irish card (33.6px serif)', 3],
-  ['--tint-cz-ink', '--inset',       '.req-number on a Czech card (33.6px serif)', 3],
-  ['--tint-it-ink', '--inset',       '.req-number on an Italian card (33.6px serif)', 3],
-  ['--tint-dk-ink', '--inset',       '.req-number on a Danish card (33.6px serif)', 3],
-
-  // on a Dutch card
-  ['--tint-nl-ink', '--tint-nl',     '.card-title'],
-  ['--ink',         '--tint-nl',     '.facts dd'],
-  ['--ink-soft',    '--tint-nl',     '.card-uni'],
-  ['--ink-faint',   '--tint-nl',     '.card-place, .degree, .facts dt, .verified'],
-
-  // on an Irish card
-  ['--tint-ie-ink', '--tint-ie',     '.card-title'],
-  ['--ink',         '--tint-ie',     '.facts dd'],
-  ['--ink-soft',    '--tint-ie',     '.card-uni'],
-  ['--ink-faint',   '--tint-ie',     '.card-place, .degree, .facts dt, .verified'],
-
-  // on a Czech card
-  ['--tint-cz-ink', '--tint-cz',     '.card-title'],
-  ['--ink',         '--tint-cz',     '.facts dd'],
-  ['--ink-soft',    '--tint-cz',     '.card-uni'],
-  ['--ink-faint',   '--tint-cz',     '.card-place, .degree, .facts dt, .verified'],
-
-  // on an Italian card
-  ['--tint-it-ink', '--tint-it',     '.card-title'],
-  ['--ink',         '--tint-it',     '.facts dd'],
-  ['--ink-soft',    '--tint-it',     '.card-uni'],
-  ['--ink-faint',   '--tint-it',     '.card-place, .degree, .facts dt, .verified'],
-
-  // on a Danish card
-  ['--tint-dk-ink', '--tint-dk',     '.card-title'],
-  ['--ink',         '--tint-dk',     '.facts dd'],
-  ['--ink-soft',    '--tint-dk',     '.card-uni'],
-  ['--ink-faint',   '--tint-dk',     '.card-place, .degree, .facts dt, .verified'],
-
-  // the brand accent, which appears only outside cards
-  ['--accent',      '--accent-soft', '.filters-count, a checked .chip'],
-  ['--ink',         '--accent-soft', '.banner body text'],
-
-  // state surfaces
-  ['--warn',        '--warn-soft',   '.note, .badge-urgent, .badge-stale, .issues, .banner-warn'],
-  ['--danger',      '--danger-soft', '.badge-past, .badge-danger, .banner-danger'],
-  ['--save',        '--save-soft',   '.star[aria-pressed="true"] icon', 3],
+const CANONICAL_PAIRS = [
+  ["--edge", "--panel", ".lang button; existing input/select/dropdown borders after retokening", 3.0],
+  ["--edge", "--ground", "Ground-side control edge: the old Sort select if it sits on ground after retokening; .status Sort (stage 3/5)", 3.0],
+  ["--edge", "--accent-tint", ".is-set .inp control edge context (stage 5)", 3.0],
+  ["--ink", "--panel", ".mast h1, .src b, controls", 4.5],
+  ["--ink", "--ground", "body, .result-count", 4.5],
+  ["--ink", "--hover", "Retokened .button:hover; .row:hover facts (stage 3)", 4.5],
+  ["--ink", "--accent-tint", ".is-sel .fig (stage 3)", 4.5],
+  ["--ink", "--fit-fill", ".v-fit .fig (stage 2)", 4.5],
+  ["--ink", "--cond-fill", ".v-cond .fig (stage 2)", 4.5],
+  ["--ink", "--time-fill", ".v-time .fig (stage 2)", 4.5],
+  ["--ink-2", "--panel", ".tagline, .src, .bn-saved, language group", 4.5],
+  ["--ink-2", "--ground", ".foot; count secondary text (stage 3)", 4.5],
+  ["--ink-2", "--hover", ".row:hover .sub (stage 3)", 4.5],
+  ["--ink-2", "--accent-tint", ".is-sel .sub, .is-sel .line (stage 3)", 4.5],
+  ["--ink-2", "--fit-fill", ".v-fit .fig small, .lab (stage 2)", 4.5],
+  ["--ink-2", "--cond-fill", ".v-cond .fig small, .lab (stage 2)", 4.5],
+  ["--ink-2", "--time-fill", ".v-time .fig small, .lab (stage 2; keep secondary text at least 13px here)", 4.5],
+  ["--ink-3", "--panel", ".lang [aria-disabled=true], input placeholders; unknown dash (stage 2)", 4.5],
+  ["--ink-3", "--ground", "Ground control placeholder; .m-unk dash (stage 3)", 4.5],
+  ["--ink-3", "--hover", ".row:hover .v-unk dash (stage 3; stronger text minimum retained)", 4.5],
+  ["--ink-3", "--accent-tint", ".is-sel .v-unk dash / active input placeholder (stages 3/5)", 4.5],
+  ["--accent", "--panel", ".bn-saved a, links/focus", 4.5],
+  ["--accent", "--ground", "Ground links / global focus", 4.5],
+  ["--accent", "--hover", "Hovered row links / sort focus (stage 3)", 4.5],
+  ["--accent", "--accent-tint", "Selected-row link/focus; active filter interaction (stages 3/5)", 4.5],
+  ["--accent", "--fit-fill", ".v-fit focus-ring context (stages 2/3)", 3.0],
+  ["--accent", "--cond-fill", ".v-cond focus-ring context (stages 2/3)", 3.0],
+  ["--accent", "--time-fill", ".v-time focus-ring context (stages 2/3)", 3.0],
+  ["--on-accent", "--accent-press", ".bn-fail .btn-p:hover Reload (stage 1); primary action (stage 2)", 4.5],
+  ["--accent-press", "--panel", ".bn-saved a:hover, a:hover", 4.5],
+  ["--on-accent", "--accent", ".bn-fail .btn-p Reload (stage 1); primary action (stage 2)", 4.5],
+  ["--on-accent", "--alarm", ".bn-sample text", 4.5],
+  ["--fit-ink", "--fit-fill", ".v-fit .verd, .v-fit .r2 (stages 2/3)", 4.5],
+  ["--fit-ink", "--ground", ".status .k-fit (stage 3)", 4.5],
+  ["--fit-ink", "--panel", ".status.is-stuck .k-fit (stage 5)", 4.5],
+  ["--fit-ink", "--accent-tint", ".is-sel .k-fit context (stage 3)", 4.5],
+  ["--fit-mark", "--fit-fill", ".v-fit .m-fit::before (stages 2/3)", 3.0],
+  ["--fit-mark", "--panel", ".status.is-stuck .m-fit::before (stage 5)", 3.0],
+  ["--fit-mark", "--ground", ".status .m-fit::before (stage 3)", 3.0],
+  ["--fit-mark", "--accent-tint", "Selected-row fit mark context (stage 3)", 3.0],
+  ["--cond-ink", "--cond-fill", ".v-cond .verd, .v-cond .r2 (stages 2/3)", 4.5],
+  ["--cond-ink", "--ground", ".status .k-cond (stage 3)", 4.5],
+  ["--cond-ink", "--panel", ".status.is-stuck .k-cond (stage 5)", 4.5],
+  ["--cond-mark", "--cond-fill", ".v-cond .m-cond::before (stages 2/3)", 3.0],
+  ["--cond-mark", "--panel", ".status.is-stuck .m-cond::before (stage 5)", 3.0],
+  ["--cond-mark", "--ground", ".status .m-cond::before (stage 3)", 3.0],
+  ["--time-ink", "--time-fill", ".v-time .verd (stage 2)", 4.5],
+  ["--time-mark", "--time-fill", ".v-time .ic clock (stage 2)", 3.0],
+  ["--time-mark", "--panel", "Clock mark on panel context (stage 2)", 3.0],
+  ["--alarm", "--panel", ".bn-fail border", 3.0],
+  ["--alarm-ink", "--panel", ".bn-fail p", 4.5],
+  ["--hairline", "--panel", ".top divider, .bn-saved decorative outline", null],
+  ["--panel", "--ink", ".lang [aria-pressed=true]", 4.5],
 ];
+
+// Temporary old-card coverage: remove only with the card CSS in stage 3.
+const OLD_CARD_PAIRS = [
+  ["--tint-nl-ink", "--inset", "Old card points", 3],
+  ["--tint-nl-ink", "--tint-nl", "Old card title", 4.5],
+  ["--ink", "--tint-nl", "Old card text", 4.5],
+  ["--ink-soft", "--tint-nl", "Old card text", 4.5],
+  ["--ink-faint", "--tint-nl", "Old card text", 4.5],
+  ["--tint-ie-ink", "--inset", "Old card points", 3],
+  ["--tint-ie-ink", "--tint-ie", "Old card title", 4.5],
+  ["--ink", "--tint-ie", "Old card text", 4.5],
+  ["--ink-soft", "--tint-ie", "Old card text", 4.5],
+  ["--ink-faint", "--tint-ie", "Old card text", 4.5],
+  ["--tint-cz-ink", "--inset", "Old card points", 3],
+  ["--tint-cz-ink", "--tint-cz", "Old card title", 4.5],
+  ["--ink", "--tint-cz", "Old card text", 4.5],
+  ["--ink-soft", "--tint-cz", "Old card text", 4.5],
+  ["--ink-faint", "--tint-cz", "Old card text", 4.5],
+  ["--tint-it-ink", "--inset", "Old card points", 3],
+  ["--tint-it-ink", "--tint-it", "Old card title", 4.5],
+  ["--ink", "--tint-it", "Old card text", 4.5],
+  ["--ink-soft", "--tint-it", "Old card text", 4.5],
+  ["--ink-faint", "--tint-it", "Old card text", 4.5],
+  ["--tint-dk-ink", "--inset", "Old card points", 3],
+  ["--tint-dk-ink", "--tint-dk", "Old card title", 4.5],
+  ["--ink", "--tint-dk", "Old card text", 4.5],
+  ["--ink-soft", "--tint-dk", "Old card text", 4.5],
+  ["--ink-faint", "--tint-dk", "Old card text", 4.5],
+  ["--ink", "--surface", "Old neutral card / inset", 4.5],
+  ["--ink-soft", "--surface", "Old neutral card / inset", 4.5],
+  ["--ink-faint", "--surface", "Old neutral card / inset", 4.5],
+  ["--ink", "--inset", "Old neutral card / inset", 4.5],
+  ["--ink-soft", "--inset", "Old neutral card / inset", 4.5],
+  ["--ink-faint", "--inset", "Old neutral card / inset", 4.5],
+  ["--warn", "--inset", "Old unknown / amber note", 4.5],
+  ["--warn", "--warn-soft", "Old unknown / amber note", 4.5],
+  ["--save", "--inset", "Old bookmark icon", 3],
+  ["--save", "--save-soft", "Old bookmark icon", 3],
+  ["--ink", "--panel", "Neutral past/sample badge", 4.5],
+  ["--ink-2", "--surface", "Old quiet hover text", 4.5],
+  ["--accent", "--inset", "Old official link", 4.5],
+  ["--save", "--panel", "Dormant shortlist text", 4.5],
+];
+const PAIRS = [...CANONICAL_PAIRS, ...OLD_CARD_PAIRS];
 
 // ----------------------------------------------------------------- the tokens
 
@@ -129,7 +152,120 @@ function rootBlock(text, from = 0) {
   return text.slice(open + 1, close);
 }
 
-const light = tokensFrom(rootBlock(css) ?? '');
+// Approved Stage 1 root; keep this independent of ignored design files.
+const CANONICAL = {
+  "--ground": "#e8edf3",
+  "--panel": "#ffffff",
+  "--hover": "#f2f5f9",
+  "--hairline": "#d9e0e9",
+  "--edge": "#76808e",
+  "--ink": "#16202c",
+  "--ink-2": "#46515f",
+  "--ink-3": "#5d6877",
+  "--accent": "#1f5bd0",
+  "--accent-press": "#1745a3",
+  "--accent-tint": "#e3ecfb",
+  "--on-accent": "#ffffff",
+  "--fit-fill": "#d9f0e2",
+  "--fit-ink": "#0f5e38",
+  "--fit-mark": "#2a8553",
+  "--cond-fill": "#f7d982",
+  "--cond-ink": "#5a3a00",
+  "--cond-mark": "#8f5a00",
+  "--time-fill": "#f6b98a",
+  "--time-ink": "#612800",
+  "--time-mark": "#9a4600",
+  "--alarm": "#a3202f",
+  "--alarm-ink": "#86171d",
+  "--scrim": "rgb(22 32 44 / .45)",
+  "--shadow": "0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22)",
+  "--flag-white": "#ffffff",
+  "--flag-nl-red": "#ae1c28",
+  "--flag-nl-blue": "#21468b",
+  "--flag-ie-green": "#169b62",
+  "--flag-ie-orange": "#ff883e",
+  "--flag-it-green": "#009246",
+  "--flag-it-red": "#ce2b37",
+  "--flag-dk-red": "#c8102e",
+  "--flag-cz-red": "#d7141a",
+  "--flag-cz-blue": "#11457e",
+  "--font": "'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif",
+  "--fs-12": ".75rem",
+  "--fs-13": ".8125rem",
+  "--fs-14": ".875rem",
+  "--fs-16": "1rem",
+  "--fs-18": "1.125rem",
+  "--s-1": "4px",
+  "--s-2": "8px",
+  "--s-3": "12px",
+  "--s-4": "16px",
+  "--s-5": "24px",
+  "--s-6": "32px",
+  "--r-panel": "6px",
+  "--r-cell": "4px",
+  "--pane-w": "25rem",
+  "--t-fast": "120ms",
+  "--t-med": "160ms",
+  "--t-slow": "200ms",
+  "--ease-out": "cubic-bezier(.2,.7,.3,1)",
+  "--ease-in-out": "cubic-bezier(.45,0,.25,1)"
+};
+const TEMPORARY = new Set(["--surface", "--ink-soft", "--ink-faint", "--line", "--line-soft", "--inset", "--tint-nl", "--tint-nl-ink", "--tint-ie", "--tint-ie-ink", "--tint-cz", "--tint-cz-ink", "--tint-it", "--tint-it-ink", "--tint-dk", "--tint-dk-ink", "--warn", "--warn-soft", "--warn-line", "--save", "--save-soft", "--shadow-sm", "--shadow-md", "--r-sm", "--r-md", "--r-lg", "--r-xl", "--ease", "--dur", "--old-print-ink", "--old-print-edge", "--old-print-inset-edge"]);
+const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
+
+// Check declaration values, not selectors (#issues) or URL fragments (#i-globe).
+export function colourPolicyErrors(text) {
+  const errors = [];
+  const clean = withoutComments(text);
+  const roots = [...text.matchAll(/:root\s*\{([^{}]*)\}/g)];
+  if (roots.length !== 1) errors.push('Expected exactly one root block');
+  const block = roots[0]?.[1] ?? '';
+  const declarations = [...withoutComments(block).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)];
+  const seen = new Set();
+  for (const [, name, value] of declarations) {
+    if (seen.has(name)) errors.push(`Duplicate root token ${name}`);
+    seen.add(name);
+    if (Object.hasOwn(CANONICAL, name)) {
+      if (value.trim() !== CANONICAL[name]) errors.push(`Changed canonical token ${name}`);
+    } else if (!TEMPORARY.has(name)) {
+      errors.push(`Unapproved temporary token ${name}`);
+    }
+  }
+  for (const name of Object.keys(CANONICAL)) {
+    if (!seen.has(name)) errors.push(`Missing canonical token ${name}`);
+  }
+  // The marker must immediately follow its own declaration inside root.
+  for (const [, name] of block.matchAll(/(--[\w-]+)\s*:[^;]+;/g)) {
+    if (!TEMPORARY.has(name)) continue;
+    const declaration = block.slice(block.search(new RegExp(name + '\\s*:')));
+    if (!/^--[\w-]+\s*:[^;]+;[ 	]*\/\* old: remove in stage 3 \*\//.test(declaration)) {
+      errors.push(`Unmarked temporary token ${name}`);
+    }
+  }
+  const outside = clean.replace(/:root\s*\{[^{}]*\}/g, '');
+  for (const [, property, rawValue] of outside.matchAll(/(?:^|[;{}])\s*([\w-]+)\s*:\s*([^;{}]*)(?=;|\})/g)) {
+    const value = rawValue.replace(/url\([^)]*\)/gi, '');
+    if (/#(?:[\da-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(/i.test(value)) {
+      errors.push(`Colour literal outside root in ${property}`);
+    }
+    if (Object.hasOwn(CANONICAL, property) || TEMPORARY.has(property)) {
+      errors.push(`Root token overridden outside root: ${property}`);
+    }
+  }
+  for (const [, selectors, body] of outside.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const selector of selectors.split(',').map((s) => s.trim())) {
+      if (/var\(\s*--alarm\s*\)/.test(body) && (!/^\.bn-(?:sample|fail)(?=[\s.:#[>]|$)/.test(selector) || /[+~]/.test(selector))) {
+        errors.push(`Alarm outside banner: ${selector}`);
+      }
+      if (/var\(\s*--alarm-ink\s*\)/.test(body) && (!/^\.bn-fail\s+(?:>\s*)?\S/.test(selector) || /[+~]/.test(selector))) {
+        errors.push(`Alarm ink outside failure descendants: ${selector}`);
+      }
+    }
+  }
+  return errors;
+}
+
+const light = tokensFrom(withoutComments(rootBlock(css) ?? ''));
 
 // One palette. The dark one was dropped on 2026-10-24 — the site is light only,
 // and `color-scheme: light` in the stylesheet stops the browser dark-rendering
@@ -175,44 +311,56 @@ function ratio(fg, bg) {
 
 // ----------------------------------------------------------------------- run
 
-let failures = 0;
-let missing = 0;
+function run() {
+  const policyErrors = colourPolicyErrors(css);
+  for (const error of policyErrors) console.error(`  FAIL  ${error}`);
+  let failures = policyErrors.length;
+  let enforced = 0;
+  let missing = 0;
 
-for (const [themeName, tokens] of THEMES) {
-  console.log(`\n${themeName}`);
+  for (const [themeName, tokens] of THEMES) {
+    console.log(`\n${themeName}`);
 
-  for (const [fgName, bgName, where, min = 4.5] of PAIRS) {
-    const fg = tokens[fgName];
-    const bg = tokens[bgName];
+    for (const [fgName, bgName, where, min = 4.5] of PAIRS) {
+      const fg = tokens[fgName];
+      const bg = tokens[bgName];
 
-    if (!fg || !bg) {
-      console.log(`  MISS  ${fgName} on ${bgName} — token not declared`);
-      missing++;
-      continue;
+      if (!fg || !bg) {
+        console.log(`  MISS  ${fgName} on ${bgName} — token not declared`);
+        missing++;
+        continue;
+      }
+
+      const r = ratio(fg, bg);
+      if (r === null) {
+        console.log(`  MISS  ${fgName} on ${bgName} — not a hex colour (${fg} / ${bg})`);
+        missing++;
+        continue;
+      }
+
+      if (min === null) {
+        console.log(`  INFO  ${r.toFixed(2)}:1  ${fgName} on ${bgName} — decorative only`);
+        continue;
+      }
+      enforced++;
+      const ok = r >= min;
+      if (!ok) failures++;
+      const shown = r.toFixed(2).padStart(5);
+      console.log(
+        `  ${ok ? 'ok  ' : 'FAIL'}  ${shown}:1  (needs ${min})  ${fgName} on ${bgName}`
+        + `${ok ? '' : `\n          ${fg} on ${bg} — used by ${where}`}`,
+      );
     }
-
-    const r = ratio(fg, bg);
-    if (r === null) {
-      console.log(`  MISS  ${fgName} on ${bgName} — not a hex colour (${fg} / ${bg})`);
-      missing++;
-      continue;
-    }
-
-    const ok = r >= min;
-    if (!ok) failures++;
-    const shown = r.toFixed(2).padStart(5);
-    console.log(
-      `  ${ok ? 'ok  ' : 'FAIL'}  ${shown}:1  (needs ${min})  ${fgName} on ${bgName}`
-      + `${ok ? '' : `\n          ${fg} on ${bg} — used by ${where}`}`,
-    );
   }
+
+  const problems = failures + missing;
+  console.log(
+    problems
+      ? `\n${failures} below the minimum, ${missing} unresolvable. `
+        + 'Darken the foreground token or lighten its background — do not lower the minimum.'
+      : `\nAll ${enforced} colour pairs pass.`,
+  );
+  process.exitCode = problems ? 1 : 0;
 }
 
-const problems = failures + missing;
-console.log(
-  problems
-    ? `\n${failures} below the minimum, ${missing} unresolvable. `
-      + 'Darken the foreground token or lighten its background — do not lower the minimum.'
-    : `\nAll ${PAIRS.length * THEMES.length} colour pairs pass.`,
-);
-process.exit(problems ? 1 : 0);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) run();
