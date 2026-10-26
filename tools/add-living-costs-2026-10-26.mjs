@@ -126,6 +126,34 @@ const COSTS = {
   // year" — by nine, €1,111 to €1,667. ATU's figure covers all its campuses,
   // Galway included.
   galway: [1110, 1670, 'estimate from ATU, same city'],
+
+  // ----------------------------------------------------------------- Czechia
+
+  // mff.cuni.cz/en/admissions/costs-and-dates (Charles University, Faculty of
+  // Mathematics and Physics): "Average living costs range from 600 to 800 EUR
+  // per month, including accommodation, meals, public transport, and leisure
+  // activities."
+  cuni: [600, 800, UNI],
+  // admissions.vse.cz/living-costs: "The estimated living costs in Prague are
+  // around 7,000 EUR per academic year (approximately 550–800 EUR per month)".
+  vse: [550, 800, UNI],
+  // ČVUT publishes dormitory prices (suz.cvut.cz "Student's estimated financial
+  // cost for accommodation", valid from 08.09.2025) and FEL's partial list
+  // (fel.cvut.cz/en/admissions/life-at-fee-ctu: dormitory about 4 000 CZK,
+  // "about 2 000 CZK per month for lunches", transport 130 CZK) — no total, and
+  // the list covers lunches only. So Prague's figure from VŠE, above.
+  cvut: [550, 800, 'estimate from VŠE, same city'],
+  // fss.muni.cz/en/faculty-of-social-studies/student-life/life-in-brno
+  // (Masaryk University, Faculty of Social Studies): accommodation EUR 250–400,
+  // meals ca EUR 200, pocket money EUR 150 - 200, "Total: EUR 600–850 per month".
+  muni: [600, 850, UNI],
+  // fit.vut.cz/applicants/degree-programme-en (Brno University of Technology,
+  // Faculty of Information Technology): "the monthly costs of living may vary
+  // between EUR 300-600." Probably dated: the same paragraph prices BUT halls
+  // at "about EUR 120/month", where vut.cz/en/cooperation/welcome-service/
+  // guide/costs now gives "Student halls (month) 4 710 Kč / 186 EUR". It is
+  // VUT's own figure, so it is used; STATUS.md flags it.
+  vut: [300, 600, UNI],
 };
 
 // ------------------------------------------------------------------- write
