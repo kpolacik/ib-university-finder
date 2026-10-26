@@ -411,6 +411,49 @@ PROGS.push(
     official_url: 'https://portale.unipv.it/it/didattica/corsi-di-laurea/corsi-di-laurea-magistrale/medicine-and-surgery' },
 );
 
+// Milano-Bicocca. en.unimib.it/study/international-courses, "Programmes
+// entirely taught in English": the bachelors are Economics and Science for
+// Environmental Sustainability and Physical Sciences for Innovative
+// Technologies; Artificial Intelligence is the Pavia-run joint degree
+// (unipv-ai); the rest are master's, plus the School of Medicine and Surgery.
+// The admission blocks link the 2026/2027 calls, so no 2027/28 deadline.
+UNIS.push({
+  university_id: 'unimib', name: 'University of Milano-Bicocca', city: 'Milan', country: 'Italy',
+  application_system: 'Direct (unimib.it admissions)',
+});
+PROGS.push(
+  // en.unimib.it/undergraduate/economics-science-environmental-sustainability:
+  // "L-33 R", "3 years", "Milan", "limited with entry requirements
+  // examination", "English"; "Cisia English TOLC-E — ADMISSION TEST".
+  { programme_id: 'unimib-eses', university_id: 'unimib', programme: 'Economics and Science for Environmental Sustainability', degree_type: 'BSc',
+    subject_area: 'Economics; Environmental Sciences', language: 'English',
+    admission: 'English TOLC-E test (CISIA) and a ranking', other_requirements: 'Limited access',
+    deadline_notes: '2027/28 call not out yet. Fees depend on family income (ISEE).',
+    official_url: 'https://en.unimib.it/undergraduate/economics-science-environmental-sustainability' },
+  // en.unimib.it/undergraduate/physical-sciences: "limited with entry
+  // requirements examination", "English"; "jointly organized by the University
+  // of Milano-Bicocca and the University of Pavia"; "All the lectures are
+  // delivered in English and integrate traditional in-person teaching with
+  // dedicated online activities"; "English TOLC-I TEST"; "CALL FOR APPLICATION
+  // 2026/2027". Pavia's catalogue gives its seat as "MILANO BICOCCA".
+  { programme_id: 'unimib-psit', university_id: 'unimib', programme: 'Physical Sciences for Innovative Technologies', degree_type: 'BSc',
+    subject_area: 'Physics; Engineering', language: 'English',
+    admission: 'English TOLC-I test (CISIA) and a ranking',
+    other_requirements: 'Joint degree with the University of Pavia · Blended: about half in person, half online · Limited access',
+    deadline_notes: '2027/28 call not out yet. Fees depend on family income (ISEE).',
+    official_url: 'https://en.unimib.it/undergraduate/physical-sciences' },
+  // en.unimib.it/study/international-programmes/school-medicine-and-surgery:
+  // "a Master degree program in partnership with University of Bergamo and the
+  // Papa Giovanni XXIII Hospital … Based in Bergamo"; listed among programmes
+  // "entirely taught in English".
+  { programme_id: 'unimib-sms', university_id: 'unimib', city: 'Bergamo', programme: 'School of Medicine and Surgery (SMS)', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree based in Bergamo, with the University of Bergamo and Papa Giovanni XXIII Hospital · Problem-based learning',
+    deadline_notes: 'No 2027/28 call yet; the national test for English-taught medicine was on 29 September in 2026. Fees depend on family income (ISEE).',
+    official_url: 'https://en.unimib.it/study/international-programmes/school-medicine-and-surgery' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

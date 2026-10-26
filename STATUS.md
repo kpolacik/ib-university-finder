@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1268 programmes · 41 universities · 5 countries · all checks passing.
+1271 programmes · 42 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 9 | 66 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia |
+| Italy | 10 | 69 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -80,6 +80,13 @@ Statale and Milano-Bicocca, run from Pavia), Social Sciences for Global
 Challenges (open access) and the Harvey medical course. No 2027/28 calls yet.
 Not added: *Ingegneria Edile-Architettura*, listed as English and Italian but
 taught in Italian in the first year.
+
+Italy, Milano-Bicocca +3 (new university): Economics and Science for
+Environmental Sustainability, Physical Sciences for Innovative Technologies
+(joint with Pavia, blended) and the English School of Medicine and Surgery in
+Bergamo. Bicocca publishes no general entry baseline on these pages, so its
+university row leaves it blank (the card falls back to "a qualifying secondary
+school diploma").
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
