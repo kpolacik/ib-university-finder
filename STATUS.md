@@ -156,6 +156,10 @@ the date and initials from that programme row alone. The university row's
 
 ## The look of it
 
+**Reopened 2026-10-26** (Leon): the redesign starts again from design
+interviews, with Jakub. This section describes the current look until the new
+direction replaces it; see `plans/backlog/redesign.md`.
+
 Redesigned 2026-08-16, then redirected 2026-10-24 from reference images Jakub
 supplied (a product-design portfolio: serif display type, white page, content in
 large tinted rounded panels, rose brand accent, blue links, arrow motif).
@@ -400,6 +404,55 @@ a per-country system.
   rows had to be signed, and all 35 university rows are `AI-DRAFT`, so a
   programme sign-off could never show.
 
+- **Both CAO rounds are shown, Round 1 as the headline** (Leon, 2026-10-26,
+  registry Q4/P06). Each is labelled with its round and year ("Round 1 cutoff,
+  2026") and keeps the CAO's markers. The points filter, the count and the sort
+  use the lower round, which is Round 2 wherever the CAO published one (it is
+  `ib_points_min`): a student who met last year's Round 2 cutoff did get a
+  place, so hiding that course would lose a real option. Where Round 2 is what
+  put a course within someone's points, the card says so ("Within your points
+  on the Round 2 cutoff, not Round 1.").
+
+- **An "HL Maths 4+" tick next to My points** (Leon, 2026-10-26, registry Q5;
+  settles D28). The CAO's 25 bonus points apply to any Irish CAO course, so the
+  tick applies them to every Irish cutoff, and the 126 notes that said "HL
+  Maths 4+ adds 25 bonus points." by course title are gone. Read per student:
+  unticked, a course this student reaches only with the bonus stays visible,
+  says "only with HL Maths 4+" and is not counted as within their points;
+  ticked, it counts as within. The tick changes labels and counts, never which
+  courses are shown. It does not touch UCD (its figure is its own minimum) or
+  HPAT Medicine (the CAO does not say whether the bonus counts toward its
+  480-point minimum). Unknown and test-score rows never hide.
+
+- **The count is split while My points is set** (Leon, 2026-10-26, registry
+  Q3/P04): "N of 1240 programmes · 47 within your points · 7 only with HL
+  Maths 4+ · 62 points unknown". It says "points unknown", not "publish none",
+  because a blank figure often means nobody has checked.
+
+- **Points wording now, a value-kind field later** (Leon, 2026-10-26, registry
+  Q2/P01). The browser tells a minimum from a converted cutoff by the
+  university and the CAO sentence in the note (`pointsKind` in `js/data.js`).
+  A proper column, recording the meaning and the conversion separately, is in
+  `plans/backlog/points-value-kind.md`.
+
+- **Compare is a draft only** (Leon, 2026-10-26, registry Q9/F05). No code,
+  hidden or not. `plans/backlog/compare-architecture.md` holds the sketch. Ask
+  Jakub before building it.
+
+- **The class's target programmes come later** (Leon, 2026-10-26, registry
+  Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
+  `plans/backlog/data-research.md`.
+
+- **The visual direction is reopened** (Leon, 2026-10-26, registry Q15). The
+  redesign starts with design interviews and includes Jakub, whose reference
+  images set the current look. "The look of it" below stays until the new
+  direction replaces it; `plans/backlog/redesign.md`.
+
+- **Deferred work lives in `plans/backlog/`, tracked in git** (Leon,
+  2026-10-26, registry Q16). Items are named by their registry ID only; the
+  registry (`plans/audit-issues.md`) stays the authoritative list and its State
+  column points at the backlog file.
+
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
   The Free Fees explanation that sat on every Irish card is gone — the reason
   Irish fees are the contribution plus levy is recorded once, below, not on every
@@ -468,12 +521,15 @@ a per-country system.
   A useful side effect: this closed the UCD gap. UCD never publishes the full EU
   fee, but it does publish the contribution and the levy, which is all this
   cohort actually pays.
-- **Irish points are last year's demand-driven cutoffs**, not minimums, and the
-  cards say so. Conversions assume the HL Maths bonus only when nothing else
-  reaches the cutoff (601–625, no test), and the card then says "needs HL
-  Maths 4+" (decided 2026-10-25). The one exception
-  is UCD, which publishes an IB total it will accept, so UCD's numbers are real
-  minimums and its cutoff sits in the note instead.
+- **Irish points are last year's demand-driven cutoffs**, not minimums. The
+  card says which a figure is (points-honesty batch, 2026-10-26): a published
+  minimum reads "36 IB points" with "minimum" beside it; a converted cutoff
+  reads "≈ 37 IB points" with "Round 1 cutoff, 2026" beside it, one line per
+  CAO round. Conversions assume the HL Maths bonus only when nothing else
+  reaches the cutoff (601–625, no test), and the card then says "with HL
+  Maths 4+" (decided 2026-10-25). The one exception is UCD, which publishes an
+  IB total it will accept, so UCD's numbers are real minimums and its cutoff
+  sits in the note instead.
 - **Irish cutoffs above 625 include a test score** (HPAT or audition), so they
   are never turned into an IB figure or used to hide a course. HPAT Medicine
   shows the CAO's 480-point minimum (35 IB) instead (decided 2026-10-25).
@@ -484,6 +540,7 @@ a per-country system.
   selection). A bare number without those markers misleads. The CAO also
   publishes Round 2, which is lower than the Round 1 figure universities tend to
   advertise: UL's own page says 499 for Psychology, the CAO's Round 2 says 496.
+  Both rounds are quoted now (decided 2026-10-26, below), Round 1 first.
 - **Where several programmes share one CAO code, every row says so.** UL's
   LM116 is "Engineering (Common Entry)" and covers Civil, Biomedical and the
   rest; UL's LM002 Arts covers every Arts subject; UCD's DN250 covers three
