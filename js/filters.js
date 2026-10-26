@@ -11,6 +11,7 @@ export function createFilterState() {
     languages: new Set(),
     maxTuition: null,
     myIbPoints: null,
+    myMaths: null,
     shortlistOnly: false,
     sort: 'deadline',
   };
@@ -27,6 +28,7 @@ export function activeFilterCount(state) {
   if (state.languages.size) n++;
   if (state.maxTuition !== null) n++;
   if (state.myIbPoints !== null) n++;
+  if (state.myMaths !== null) n++;
   return n;
 }
 
@@ -55,6 +57,11 @@ export function applyFilters(rows, state, shortlist) {
     if (state.myIbPoints !== null &&
         row.ibPointsMin !== null &&
         row.ibPointsMin > state.myIbPoints) return false;
+
+    // Same rule: a programme whose maths requirement nobody has checked stays.
+    if (state.myMaths !== null &&
+        row.mathsAccepted !== null &&
+        !row.mathsAccepted.includes(state.myMaths)) return false;
 
     return true;
   });

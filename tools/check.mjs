@@ -136,6 +136,33 @@ equal('blank admission inherits the university default', admOf('a-inherit'), ['P
 equal('own admission wins and splits on the bullet', admOf('a-own'), ['Entrance exam', 'Can be waived']);
 equal('"?" admission does not inherit', admOf('a-unknown'), []);
 
+// ------------------------------------------------------------- maths filter
+
+section('ib_maths: accepted courses, "none", unknown, and the filter');
+const progM = [
+  'programme_id,university_id,programme,ib_maths,official_url,last_verified,verified_by',
+  'm-aa,a,AA HL only,AA HL,https://example.org,2026-08-14,TT',
+  'm-three,a,Three,AA HL · AA SL · AI HL,https://example.org,2026-08-14,TT',
+  'm-none,a,No maths,none,https://example.org,2026-08-14,TT',
+  'm-blank,a,Not checked,,https://example.org,2026-08-14,TT',
+  'm-q,a,Unknown,?,https://example.org,2026-08-14,TT',
+  'm-bad,a,Typo,AA Higher,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: mrows, meta: mmeta } = await load(uniA, progM);
+const mOf = (id) => mrows.find((p) => p.id === id).mathsAccepted;
+equal('a list splits on the bullet', mOf('m-three'), ['AA HL', 'AA SL', 'AI HL']);
+equal('"none" accepts every course', mOf('m-none'), ['AA HL', 'AA SL', 'AI HL', 'AI SL']);
+check('blank and "?" are unknown, never "none"', mOf('m-blank') === null && mOf('m-q') === null);
+check('a misspelt course is reported and treated as unknown',
+  mOf('m-bad') === null && mmeta.issues.some((i) => /AA Higher/.test(i)));
+const { applyFilters, createFilterState } = await import(new URL('../js/filters.js', import.meta.url));
+const mstate = createFilterState();
+mstate.myMaths = 'AI SL';
+equal('AI SL hides only what states it is not accepted',
+  applyFilters(mrows, mstate, new Set()).map((p) => p.id), ['m-none', 'm-blank', 'm-q', 'm-bad']);
+mstate.myMaths = 'AA HL';
+check('AA HL keeps everything here', applyFilters(mrows, mstate, new Set()).length === mrows.length);
+
 // ---------------------------------------------------------------- bad input
 
 section('Bad spreadsheet input is reported, never silently swallowed');

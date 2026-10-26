@@ -134,6 +134,20 @@
              title="The EU-student fee">
     </div>
 
+    <!-- Hides programmes whose stated maths requirement your course does not
+         meet. A programme nobody has checked the maths for is never hidden. -->
+    <div class="field field-maths">
+      <label for="f-maths">My maths</label>
+      <select id="f-maths" name="maths"
+              title="Hides programmes that don't accept your IB maths course">
+        <option value="">Any</option>
+        <option value="AA HL">AA HL</option>
+        <option value="AA SL">AA SL</option>
+        <option value="AI HL">AI HL</option>
+        <option value="AI SL">AI SL</option>
+      </select>
+    </div>
+
     <div class="filterbar-menus">
       <details class="dropdown" id="dd-subjects">
         <summary class="dropdown-button">

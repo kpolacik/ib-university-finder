@@ -193,6 +193,7 @@ function build(universityRows, programmeRows, today) {
       // to fill in must never read as "there is nothing to meet".
       ibSubjects: subjects === NO_REQUIREMENT ? '' : subjects,
       noSubjectsRequired: subjects === NO_REQUIREMENT,
+      mathsAccepted: mathsCourses(row.ib_maths, issues, `${where}, ib_maths`),
       otherRequirements: list(row.other_requirements, BULLET),
 
       // How the place is actually decided: open entry, a ranking, an entrance
@@ -246,6 +247,28 @@ function build(universityRows, programmeRows, today) {
 
 function text(value) {
   return value == null ? '' : String(value).trim();
+}
+
+// The four IB maths courses. ib_maths lists the ones a programme accepts, so
+// the maths filter can answer "can I apply with what I take?" — a yes/no on HL
+// alone could not, because some programmes take AA SL but not AI HL.
+export const MATHS_COURSES = ['AA HL', 'AA SL', 'AI HL', 'AI SL'];
+
+// Same three states as ib_subjects, plus "?":
+//   "none"  -> no maths requirement, so every course qualifies
+//   blank or "?" -> not known; returns null and the filter never hides the row
+//   list    -> the courses accepted, e.g. "AA HL · AA SL · AI HL"
+function mathsCourses(value, issues, label) {
+  const raw = text(value);
+  if (!raw || raw === UNKNOWN) return null;
+  if (raw === NO_REQUIREMENT) return [...MATHS_COURSES];
+  const courses = list(raw, BULLET);
+  const bad = courses.filter((c) => !MATHS_COURSES.includes(c));
+  if (bad.length) {
+    issues.push(`${label}: "${bad.join('", "')}" is not one of ${MATHS_COURSES.join(', ')} — treated as unknown.`);
+    return null;
+  }
+  return courses;
 }
 
 // Three states, not two:

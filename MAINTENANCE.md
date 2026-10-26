@@ -68,6 +68,7 @@ Only if it is not already on the `universities` tab.
 | `language` | Language of teaching. Several allowed, separated by `;` |
 | `ib_points_min` | **A number only**, or blank. Never `34-36`, never `34 (typical)` |
 | `ib_subjects` | Subject requirements only. Type `none` if the university says there are none. **Leave blank if you haven't checked** |
+| `ib_maths` | Which IB maths courses the programme accepts, separated by ` · `, from `AA HL`, `AA SL`, `AI HL`, `AI SL`. `none` = no maths requirement. `?` or blank = not known. Drives the "My maths" filter. See below |
 | `other_requirements` | Anything else you must do, separated by ` · `. See below |
 | `admission` | How places are decided, separated by ` · `. Blank uses the university's `admission_default`; `?` means unknown. See below |
 | `tuition_eu` | **Leave blank** unless this programme differs from the university default |
@@ -87,6 +88,7 @@ A card shows five kinds of requirement, and only the ones that apply:
 | `admission` | `Entrance exam: TSP aptitude test · Exam can be waived on set criteria` |
 | `ib_points_min` | `30` — most Dutch universities publish nothing here, which is fine |
 | `ib_subjects` | `Maths AA HL + Physics HL required` |
+| `ib_maths` | `AA HL` |
 | `other_requirements` | `Numerus fixus (440 places) · Selection exam` |
 | `english_requirement` | `IELTS 6.5 · or English B HL 6` |
 
@@ -101,6 +103,23 @@ mistake you can make on this site:**
 
 Blank means "not checked" on purpose. If you forget to fill a cell in, the card
 admits it rather than telling someone there is nothing to meet.
+
+**`ib_maths`** is the machine-readable half of the maths line in `ib_subjects`,
+so the "My maths" filter can hide what a student's course doesn't qualify for.
+List every course that is accepted, not just the minimum:
+
+| `ib_subjects` says | `ib_maths` |
+|---|---|
+| Maths AA HL | `AA HL` |
+| Maths AA SL/HL or AI HL | `AA HL · AA SL · AI HL` |
+| Maths HL 5 (any course) | `AA HL · AI HL` |
+| Maths SL 4 or HL 3 (any course) | `AA HL · AA SL · AI HL · AI SL` |
+| no maths requirement | `none` |
+| "Mathematics required", no IB course given | `?` |
+
+Grades stay in `ib_subjects`; `ib_maths` is only about the course and level.
+`?` and blank never hide a programme — the card says so instead. A misspelt
+course shows up under "spreadsheet problems" and is treated as unknown.
 
 **`other_requirements`** is for hurdles beyond grades — separate each with ` · `
 and keep them short, they render as chips:

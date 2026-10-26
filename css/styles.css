@@ -289,6 +289,7 @@ svg:not(.sprite) {
 }
 .field-search { flex: 1 1 18rem; }
 .field-number { flex: 0 0 7.5rem; }
+.field-maths { flex: 0 0 9rem; }
 .filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .filterbar #f-clear { align-self: flex-end; }
 
@@ -384,7 +385,7 @@ svg:not(.sprite) {
   padding: 0;
 }
 
-.field input, .sort-field select {
+.field input, .field select, .sort-field select {
   font: inherit;
   font-size: 0.94rem;
   padding: 0.55rem 0.7rem;
@@ -396,8 +397,8 @@ svg:not(.sprite) {
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .field input::placeholder { color: var(--ink-faint); }
-.field input:hover, .sort-field select:hover { border-color: var(--accent-line); }
-.field input:focus, .sort-field select:focus {
+.field input:hover, .field select:hover, .sort-field select:hover { border-color: var(--accent-line); }
+.field input:focus, .field select:focus, .sort-field select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);

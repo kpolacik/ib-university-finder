@@ -89,6 +89,9 @@ function card(row, { state, shortlist, onToggleStar }) {
   if (state.myIbPoints !== null && row.ibPointsMin === null) {
     article.append(el('p', 'note', 'Shown despite the points filter — no published minimum.'));
   }
+  if (state.myMaths !== null && row.mathsAccepted === null) {
+    article.append(el('p', 'note', 'Shown despite the maths filter — its maths requirement isn’t known yet.'));
+  }
 
   // --- provenance, on every card, never hidden --------------------------
   article.append(provenance(row));
