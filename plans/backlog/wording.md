@@ -12,8 +12,10 @@ pass (the cohort is Slovak; the site is English only today).
 
 ## Strings added or changed by the points-honesty batch (2026-10-26)
 
-Filled in by each phase, so the wording pass has the full list. Exact wording
-is provisional.
+The full list (final, 2026-10-26; commits fe8c1aa, 2bdad70, 6f3374c). Exact
+wording is provisional: the wording pass may change any of it. The CAO sentence
+must keep round-tripping through `parseCaoSentence` (js/points.js), so change
+it there, in `caoNote` (tools/lib/cao-points.mjs) and in check.mjs together.
 
 Phase 2 (the CAO sentence in `deadline_notes`, written by
 `tools/lib/cao-points.mjs`):

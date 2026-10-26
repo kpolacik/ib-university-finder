@@ -80,14 +80,24 @@ whether its figure is a published minimum or the IB equivalent of last year's
 CAO cutoff, with the round and year (Round 1 first). "My points" has an **HL
 Maths 4+** tick, and the count splits the shown programmes into within your
 points, only with HL Maths 4+, and points unknown. The tick changes labels and
-counts, never which programmes are shown.
+counts, never which programmes are shown. The kind of figure (`pointsKind`) is
+worked out in the browser from the university and the CAO sentence in the
+note; a value-kind column written by the importers is to replace it
+(plans/backlog/points-value-kind.md). Every string this added is listed in
+plans/backlog/wording.md.
 
 ## The next obvious jobs, in order
 
-1. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
+1. **The redesign, then the wording and Slovak pass** (decided 2026-10-26).
+   The visual direction is reopened: design interviews first, with Jakub, then
+   the redesign in Claude Design (plans/backlog/redesign.md). It inherits the
+   points work: minimum vs cutoff lines, one line per CAO round, the HL Maths
+   4+ tick and the split count. After it, one pass over every label and help
+   text, then Slovak (plans/backlog/wording.md, which lists the new strings).
+2. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
    initials. Do not attempt all 757.
-2. **DCU's English requirement.** Its requirements page is live but publishes no
+3. **DCU's English requirement.** Its requirements page is live but publishes no
    IB equivalence at all, so its 71 rows show no English requirement.
 
    UCD's fees are no longer a hole, though its page is still broken: the "EU
@@ -97,23 +107,23 @@ counts, never which programmes are shown.
    levy, which UCD does publish. See the Free Fees entry below.
 
 
-3. **Connect the Google Sheet.** *Not planned for now (decided 2026-10-25).*
+4. **Connect the Google Sheet.** *Not planned for now (decided 2026-10-25).*
    Two tabs, published to the web as CSV, URLs
    pasted into `js/config.js`. Until then the site reads `data/*.csv` from the
    repo and nobody can maintain it without Git.
-4. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
+5. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
    FEL, FJFI, FD and FBMI, and VŠE's FFÚ, FIS, NF and FM had not published their
    2027 round. Their rows carry no deadline and their admission line says
    `(2026 rules)`. Re-run `tools/import-cvut.mjs` and `tools/import-vse.mjs`
    after their pages update (usually by November), and fill the tables there.
-5. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
+6. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
    than re-running the importers; notes rewritten 2026-10-26 to quote both
    rounds, figures unchanged). Re-run it each August when the CAO
    replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
    600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
    the 2027 table is not out yet.
-6. **Living costs.** Blank for all 35 universities. Nineteen numbers would
+7. **Living costs.** Blank for all 35 universities. Nineteen numbers would
    improve the tuition filter more than anything else, because rent dwarfs
    tuition everywhere in this dataset.
 
@@ -137,7 +147,7 @@ counts, never which programmes are shown.
   Leiden deadlines and Tilburg Psychology were recovered on 2026-08-21.
 - 608 of 1240 say "Not checked yet" for the language requirement, counting the university default each
   programme inherits (Netherlands 173, Czechia 344, Italy 21). On the Irish side
-  only DCU's 70 are missing, for the reason in job 2.
+  only DCU's 70 are missing, for the reason in job 3.
 - 52 of 1240 show no tuition figure, after inheritance: 39 Italian rows (public
   fees depend on ISEE), 10 Czech, 2 Dutch and Trinity's Columbia dual
   degree, whose page does not say what each part costs. Was 147 on the Dutch and Irish rows alone — the Irish
@@ -720,7 +730,7 @@ browser user-agent**, which is the trap already documented two sections up under
 "Where each Irish university hides its data". Anything built on that tier should
 be re-checked rather than believed.
 
-The UCD fee gap is real anyway, but for the other reason in job 2: the page
+The UCD fee gap is real anyway, but for the other reason in job 3: the page
 loads fine and simply publishes nothing where it promises tables.
 
 ### Confirmed against the official pages, and fixed
@@ -808,7 +818,7 @@ EU numbers are therefore a year behind the non-EU one, and will rise.
 
 ### Still open
 
-- **UCD's fees**, 140 rows, for the reason in job 2 — the page publishes nothing.
+- **UCD's fees**, 140 rows, for the reason in job 3 — the page publishes nothing.
 - **VU Law in Society's deadline.** The programme is selective and its admissions
   page carries no date at all.
 - **Leiden Archaeology and Leiden University College deadlines**, above.
