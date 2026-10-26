@@ -659,6 +659,42 @@ PROGS.push(
     other_requirements: 'Six-year degree' }),
 );
 
+// Private universities, after the public ones.
+//
+// Luiss. luiss.it news of 23/10/2026: "Admissions are now open for the
+// Bachelor's Degree Programmes … for the 2027/2028 academic year"; EU/Schengen
+// applicants choose "Direct Admission with international qualifications (SAT,
+// LSAT, ACT or IB) … by 24 March 2027" or the "Luiss Test (Session I) … by 10
+// February 2027" (a second session, for programmes with places left, closes
+// 10 May 2027). The direct-admission page (…/direct-admission-certifications-
+// bachelors-degree-programmes-…-euschengen-students): "IB Diploma or IB
+// Predicted Grade — Minimum score of 36/45"; "If you are admitted on the basis
+// of a predicted grade, your final IB score must be at least 36/45"; "Courses
+// taught in English: Business Administration, Economics and Business, Global
+// Law, Management and Artificial Intelligence, Politics: Philosophy and
+// Economics"; enrolment booked "by 4 May 2027" with "the first instalment …
+// €5,000". The full annual fee is not on these pages, so tuition stays blank.
+// ib_points_min stays blank: 36 is the bar for one of two routes, not a
+// minimum for admission.
+UNIS.push({
+  university_id: 'luiss', name: 'Luiss Guido Carli University', city: 'Rome', country: 'Italy',
+  application_system: 'Direct (Luiss online application)',
+  baseline_requirement: 'a school-leaving diploma valid for entry to Italian universities',
+  admission_default: 'Direct admission with IB 36+ (predicted grades accepted), or the Luiss Test',
+});
+const LU_NOTE = 'Luiss Test route: apply by 10 February 2027 (second session for programmes with places left: by 10 May). Direct admission with IB 36+: apply by 24 March 2027. Admitted students book enrolment by 4 May 2027 with a first fee instalment of €5,000.';
+const lu = (slug, fields) => ({ university_id: 'luiss', language: 'English', degree_type: 'BSc',
+  application_deadline: '2027-02-10', deadline_notes: LU_NOTE,
+  official_url: `https://www.luiss.it/en/courses-and-masters-programmes/undergraduate-school/${slug}`, ...fields });
+PROGS.push(
+  // Each programme page: "Language English", "Duration 3 Years".
+  lu('business-administration', { programme_id: 'luiss-ba', programme: 'Business Administration', subject_area: 'Business & Management' }),
+  lu('economics-and-business', { programme_id: 'luiss-eb', programme: 'Economics and Business', subject_area: 'Economics; Business & Management' }),
+  lu('global-law', { programme_id: 'luiss-gl', programme: 'Global Law', degree_type: '', subject_area: 'Law' }),
+  lu('management-and-artificial-intelligence', { programme_id: 'luiss-mai', programme: 'Management and Artificial Intelligence', subject_area: 'Business & Management; Computer Science' }),
+  lu('politics-philosophy-and-economics', { programme_id: 'luiss-ppe', programme: 'Politics: Philosophy and Economics', subject_area: 'Politics & International Relations; Philosophy; Economics' }),
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

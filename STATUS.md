@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1291 programmes · 45 universities · 5 countries · all checks passing.
+1296 programmes · 46 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 13 | 89 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata |
+| Italy | 14 | 94 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -127,6 +127,16 @@ delivered entirely via distance learning* (34176) are "Language Italian", and
 no bachelor called *Management and Business Law* turns up at all. The rows
 `sapienza-econ-innov`, `sapienza-econ-online` and `sapienza-econ-law` came
 from the 2026-10-25 merge; this pass did not change them.
+
+Italy, Luiss +5 (new, private): Business Administration, Economics and
+Business, Global Law, Management and Artificial Intelligence, and Politics:
+Philosophy and Economics. **Luiss is the one Italian university here that
+publishes an IB figure**: direct admission with IB 36/45, predicted grades
+accepted (apply by 24 March 2027), as an alternative to the Luiss Test (apply
+by 10 February 2027). The rows carry 10 February and keep `ib_points_min`
+blank, because 36 is the bar for one route, not for admission. The full fee
+is not on the pages read (only the €5,000 first instalment), so it stays blank.
+Not added: Economics and Management and Political Science, partly English.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
