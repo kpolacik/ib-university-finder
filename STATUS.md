@@ -213,10 +213,14 @@ initials and it reads "Checked <date> by <initials>".
 
 ## The next obvious jobs, in order
 
-1. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
+1. **Groningen and Wageningen IB maths.** They hold 25 of the 30 `?` in
+   `ib_maths`. Groningen has a page per diploma
+   (rug.nl/education/…/international-baccalaureate-diploma) that the 2026-08
+   import didn't use; reading it would turn most of its `?` into real courses.
+2. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
    initials. Do not attempt all 757.
-2. ~~DCU's English requirement~~ — filled 2026-10-26. DCU's own pages give no
+3. ~~DCU's English requirement~~ — filled 2026-10-26. DCU's own pages give no
    IB English grade, but its entry-requirements page points EU applicants to
    the CAO's *Agreed Entry Requirements for EU/EFTA/UK* guide, which sets IB
    English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
@@ -231,21 +235,21 @@ initials and it reads "Checked <date> by <initials>".
    levy, which UCD does publish. See the Free Fees entry below.
 
 
-3. **Connect the Google Sheet.** Two tabs, published to the web as CSV, URLs
+4. **Connect the Google Sheet.** Two tabs, published to the web as CSV, URLs
    pasted into `js/config.js`. Until then the site reads `data/*.csv` from the
    repo and nobody can maintain it without Git.
-4. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
+5. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
    FEL, FJFI, FD and FBMI, and VŠE's FFÚ, FIS, NF and FM had not published their
    2027 round. Their rows carry no deadline and their admission line says
    `(2026 rules)`. Re-run `tools/import-cvut.mjs` and `tools/import-vse.mjs`
    after their pages update (usually by November), and fill the tables there.
-5. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
+6. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
    than re-running the importers). Re-run it each August when the CAO
    replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
    600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
    the 2027 table is not out yet.
-6. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
+7. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
    *Living costs* under Decisions). Re-check them each autumn with the rest.
 
 ## Known gaps
@@ -253,10 +257,10 @@ initials and it reads "Checked <date> by <initials>".
 - **Czech gaps** (424 rows): 65 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no
-  fee (`?`). 10 have no admission line. Every Czech-taught row shows
-  "Subjects: Not checked yet" — Czech faculties admit on their own exams, and
-  no page was found that states an IB subject list per programme, which is not
-  the same as stating there is none.
+  fee (`?`). 10 have no admission line. Subjects were filled on 2026-10-26:
+  every programme's admission section was searched and none sets a school
+  subject, so the cards say "No particular IB subjects" (see *IB subject
+  requirements* under Decisions).
 - **Three Czech deadlines fall before Christmas**: VUT Design and Volné umění
   (30 Nov 2026, portfolio by 3 Dec) and ČVUT Architektura a urbanismus (30 Nov).
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
@@ -285,12 +289,23 @@ initials and it reads "Checked <date> by <initials>".
   and a Slovak applicant goes through the CAO as an EU applicant. Left blank
   rather than borrowed from the wrong audience. The per-course `ib_points_min`
   carries the number that actually matters anyway.
-- **368 of the 555 Irish rows have a blank `ib_subjects`.** Only UCD and
-  Trinity publish subject requirements per course; the other five do not, so
-  blank here means "not checked", not "nothing to meet". A further 7 Trinity
-  rows say `none`, and there that is verified: Trinity runs its "Admission
-  Requirements" heading straight into "English Language Requirements" on those
-  pages, which is how it says a course asks for no particular subjects.
+- **6 programmes still have no subject requirements** (all Irish), each for a
+  reason: Trinity's Human Nutrition and Dietetics (joint with TU Dublin; Trinity
+  lists no subjects and TU Dublin's page was not read), Trinity's graduate-entry
+  Pharmacy and UCC's graduate-entry Medicine (a degree, not school subjects, is
+  the requirement), UL Cyber Security and IT Forensics (**UL's page now returns
+  404** — the programme may be gone; check before keeping the row), and UL
+  Contemporary Dance and Irish Dance (their pages give only the audition).
+- **30 programmes have `ib_maths` `?`** — the page says "Mathematics" without
+  saying which IB course is enough: Groningen (17 rows, it publishes no IB
+  levels), Wageningen (8), Radboud Economics and IBA (the IB level sits behind an
+  eligibility check that asks for a name and email), Erasmus IBA, and UL's
+  Mathematics and Economics as Arts subjects. The maths filter never hides them.
+- **Suspected duplicates, left alone**: `lei-polsci` is Leiden's Political
+  Science, which is taught in English only as the IRO specialisation
+  (`lei-iro`) — the two rows describe one programme. `tb-datascience` and
+  `tue-ds` are the same joint degree, and disagree on admission (open entry vs.
+  numerus fixus); TU/e runs the admission, so its row is the one to trust.
 
 ## The look of it
 
@@ -392,6 +407,36 @@ a per-country system.
   carries it. The importer follows that link once, which recovered 15 rows.
 
 ## Decisions already made, so they are not relitigated
+
+- **IB subject requirements, and the maths filter** (2026-10-26,
+  `tools/add-ib-subjects-2026-10-26.mjs`, which carries the source of every
+  row). The survey of 53 IB students put HL subject requirements among the most
+  wanted filters, and 974 of 1,301 rows said "Not checked yet". Now 6 do. The
+  script's header says how each country was read; in short:
+  - *Netherlands* — each university's own IB table (UvA's diploma finder,
+    Leiden's science PDF, Twente's IB page, Tilburg's maths page, VU's IB PDF,
+    Radboud's per-programme PDFs). Twente, Tilburg, UvA PPLE and VU PPE rows
+    that already had vaguer text were rewritten from those tables.
+  - *Ireland* — the course page's Leaving Certificate subject line converted
+    with the CAO's IB table in the *Agreed Entry Requirements* guide (H4/H5 =
+    HL 5, O6 = SL 4 and so on), which UCC's own worked IB example applies.
+    English stays in `english_requirement`. NUI universities waive Irish for
+    applicants born and living outside Ireland, and the cards say so.
+  - *Denmark* — Danish levels converted with Aalborg's and SDU's own IB
+    tables; a level they don't cover stays in Danish terms.
+  - *Italy* — no school subjects anywhere; every card states the national IB
+    rule (24+ points, 12 from HL, TOK/CAS/EE passed — MUR circular 2026-27).
+    Cattolica asks Maths SL 5 / HL 4 for its economics programmes and 31 points
+    at the end of DP Year 1 for several schools; both are on its cards.
+  - *Czechia* — no school subjects; four Charles programmes waive the
+    entrance exam for set IB HL subjects, and those waivers are written out.
+
+  `ib_maths` lists the maths courses each programme accepts (`AA HL · AA SL ·
+  AI HL · AI SL`, `none`, or `?`) and drives the "My maths" picker. A programme
+  whose maths is unknown is never hidden, the same rule as points and fees.
+  The picker answers "can I apply with my course?", not "is my grade enough" —
+  grades stay in the subjects text. The 327 rows that already had subjects got
+  `ib_maths` read off their existing wording.
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
   The Free Fees explanation that sat on all 555 Irish cards is gone — the reason
