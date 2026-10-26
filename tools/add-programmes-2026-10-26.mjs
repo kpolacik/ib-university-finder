@@ -517,6 +517,57 @@ PROGS.push(
     deadline_notes: "2027/28 call not out yet. 2026/27 had a spring and a summer round; summer registration closed on 17 August 2026 (test online on 26 August). Fees depend on family income (ISEE)." }),
 );
 
+// Turin. en.unito.it/studying-unito/programs/degree-programs filtered by
+// type and field_lingua_value=eng (the list is for 2026-2027): twelve
+// bachelors and one six-year degree. Only three bachelors are "Language
+// English"; the other nine are "English Italian" Italian-taught degrees
+// (Economia Aziendale and the like, admitted on the Italian TOLC-E) with
+// English modules and no English track on their pages, so they are not added.
+// The seat filter puts the three bachelors in TORINO and medicine in
+// ORBASSANO. Pages: "per essere ammessi occorre essere in possesso di un
+// diploma di scuola secondaria superiore … o di altro titolo di studio
+// conseguito all'estero, riconosciuto idoneo". No 2027/28 dates published.
+UNIS.push({
+  university_id: 'unito', name: 'University of Turin', city: 'Turin', country: 'Italy',
+  application_system: 'Direct (UniTo Esse3 portal)',
+  baseline_requirement: 'a school-leaving diploma the university recognises as valid for entry',
+});
+const TO_NOTE = '2027/28 dates not published yet. Fees depend on family income (ISEE).';
+const to = (slug, fields) => ({ university_id: 'unito', language: 'English', degree_type: 'BSc', deadline_notes: TO_NOTE,
+  official_url: `https://en.unito.it/studying-unito/programs/degree-programs/${slug}`, ...fields });
+PROGS.push(
+  // business-management: "Access Local programmed", "Language English";
+  // "dovranno sostenere il SAT Suite … la procedura consiste nella formazione
+  // di una graduatoria sulla base del punteggio conseguito nel SAT Suite".
+  to('business-management', { programme_id: 'unito-bm', programme: 'Business & Management', subject_area: 'Business & Management',
+    admission: 'SAT Suite score and a ranking', other_requirements: 'Limited access' }),
+  // economics-and-finance-data-science: the header says "Access Local
+  // programmed" but the requirements say "è ad accesso non programmato";
+  // "dovrà sostenere un test di valutazione in lingua inglese … logica,
+  // comprensione verbale e matematica"; failing it brings extra first-year
+  // requirements (OFA). Admission left "?" because the page contradicts itself.
+  to('economics-and-finance-data-science', { programme_id: 'unito-efds', programme: 'Economics and Finance with Data Science', subject_area: 'Economics; Mathematics',
+    admission: '?', other_requirements: 'UniTo\'s page says both "local programmed" and "not programmed" access · Entry assessment test in English (logic, verbal comprehension, maths); a low score brings extra first-year requirements, not refusal · Advanced English expected' }),
+  // global-law-and-transnational-legal-studies: "Access Free"; the TARM is
+  // given "attraverso il TOLC di CISIA", which also checks "la conoscenza della
+  // lingua inglese pari almeno al livello B2"; below the threshold students
+  // "potranno comunque immatricolarsi" with OFA.
+  to('global-law-and-transnational-legal-studies', { programme_id: 'unito-glt', programme: 'Global Law and Transnational Legal Studies', degree_type: '',
+    subject_area: 'Law', admission: 'Open access: no limit on places',
+    other_requirements: 'TOLC test (CISIA) required to check entry level and B2 English; a low score means extra first-year requirements, not refusal' }),
+  // medicine-and-surgery-0: "Single Cycle Master Degree 6 years", "Language
+  // English"; "accesso programmato nazionale disciplinato da decreto
+  // ministeriale"; patient-contact clerkships from year 3 need "un livello B2
+  // nella lingua italiana", met by passing the programme's own Italian
+  // medical-language courses.
+  { programme_id: 'unito-med', university_id: 'unito', city: 'Orbassano', programme: 'Medicine and Surgery', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree · B2 Italian needed for clinical placements from year 3 (taught within the degree)',
+    deadline_notes: 'No 2027/28 call yet; the national test for English-taught medicine was on 29 September in 2026. Fees depend on family income (ISEE).',
+    official_url: 'https://en.unito.it/studying-unito/programs/degree-programs/medicine-and-surgery-0' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1278 programmes · 43 universities · 5 countries · all checks passing.
+1282 programmes · 44 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 11 | 76 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari |
+| Italy | 12 | 80 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -95,6 +95,14 @@ e-Tourism, Italian and Mediterranean Studies, and Philosophy, International and
 Economic Studies. Worth knowing: for the TOLC-E programmes Ca' Foscari states
 "English TOLC-E tests will not be considered" — the cards say so. Ancient
 Civilizations is the Milan-run joint degree, listed under Milan.
+
+Italy, Turin +4 (new university): Business & Management (SAT-based),
+Economics and Finance with Data Science, Global Law and Transnational Legal
+Studies, and Medicine and Surgery (Orbassano). Economics and Finance with Data
+Science has admission `?`: UniTo's page says "Local programmed" in its header
+and "accesso non programmato" in its requirements. Not added: nine bachelors
+UniTo tags "English Italian" — Italian-taught degrees admitted on the Italian
+TOLC-E with English modules, and no English track on their pages.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
