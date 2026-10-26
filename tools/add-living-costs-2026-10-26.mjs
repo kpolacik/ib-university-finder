@@ -83,6 +83,49 @@ const COSTS = {
   // netherlands: "Students spend an average of € 1000 - € 1,500 a month." No
   // other university is in Delft.
   'tu-delft': [1000, 1500, 'national estimate (Study in NL)'],
+
+  // ----------------------------------------------------------------- Ireland
+  //
+  // An Irish academic year runs September to May: DCU's sheet below totals
+  // "September 2025 – May 2026", nine months. Figures given per academic year
+  // are divided by nine, per calendar year by twelve.
+
+  // tcd.ie/study/international/welcome/cost-of-living, "Total estimated annual
+  // costs … (including accommodation but excluding tuition)": "Undergraduate
+  // €19,937 – €29,050" — by twelve, €1,661 to €2,421.
+  tcd: [1660, 2420, UNI],
+  // ucd.ie/global/study-at-ucd/scholarshipsfinances/livingcosts, per month,
+  // "Total (last updated April 2026)": lowest €1,735, median €2,445 (high
+  // €4,035); "the costs incurred by most students align more closely with the
+  // median" — lowest to median.
+  ucd: [1735, 2445, UNI],
+  // ucc.ie/en/international/studentinfohub/beforeyouarrive/costofliving,
+  // "Average Cost Range per month": "Overall Expense (including Accommodation)
+  // €1,181 - €2,923 approx."
+  ucc: [1181, 2923, UNI],
+  // dcu.ie/sites/default/files/inline-files/cost-of-attending-university-
+  // 2025.26-away-from-home.pdf, "Monthly Costs of Living Away from Home":
+  // total 1822 (rent, average single room, 796).
+  dcu: [1822, null, UNI],
+  // ul.ie/media/cost-of-living-2024-25 ("Cost of Living 2024/25", linked from
+  // UL's cost-of-living page), "Monthly Costs": accommodation including
+  // utilities €700 - €1100, food €200 - €400, books €75, Leap Card €45, mobile
+  // €11-20, recreation €100 - €300 — €1,131 to €1,940.
+  ul: [1131, 1940, UNI],
+  // maynoothuniversity.ie/international/money-and-budgeting, "Costs estimator
+  // for your time in Maynooth (valid: Summer 2025)": accommodation 529 to
+  // 1,100 per month (on or off campus), groceries 300 – 425, social life 200 —
+  // €1,029 to €1,725. Utilities ("350-400 per month per household") are left
+  // out because the page does not say per person.
+  maynooth: [1029, 1725, UNI],
+  // University of Galway publishes rent (€700 - €1,200 a month) and sample
+  // prices but no total; its cost page sends readers to Numbeo. The other
+  // university in the city, ATU: atu.ie/study/global/international-faqs, "The
+  // cost of living includes accommodation, food, transport and other personal
+  // expenses … generally ranges between €10,000 and €15,000 per academic
+  // year" — by nine, €1,111 to €1,667. ATU's figure covers all its campuses,
+  // Galway included.
+  galway: [1110, 1670, 'estimate from ATU, same city'],
 };
 
 // ------------------------------------------------------------------- write
