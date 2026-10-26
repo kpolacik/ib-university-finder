@@ -226,12 +226,14 @@ function build(universityRows, programmeRows, today) {
     const tuitionEu = inheritNumber(row.tuition_eu, uni.tuitionEuDefault, issues, `${where}, tuition_eu`);
     const tuitionNonEu = inheritNumber(row.tuition_noneu, uni.tuitionNonEuDefault, issues, `${where}, tuition_noneu`);
 
-    const lastVerified = older(uni.lastVerified, date(row.last_verified, issues, `${where}, last_verified`));
+    // The programme row's own date and signer: signing a programme covers
+    // everything its card shows, including what it takes from the university
+    // row (T01, Q14 = A, 2026-10-26). The university's AI-DRAFT and its date
+    // used to be joined in, so a signed programme never showed as checked.
+    const lastVerified = date(row.last_verified, issues, `${where}, last_verified`);
     const deadline = date(row.application_deadline, issues, `${where}, application_deadline`);
 
-    // Usually the same person checked both rows; only name them twice if not.
-    const ownSigner = signer(row.verified_by, issues, where);
-    const verifiedBy = [...new Set([uni.verifiedBy, ownSigner].filter(Boolean))].join(' / ');
+    const verifiedBy = signer(row.verified_by, issues, where);
 
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);
@@ -317,10 +319,12 @@ function build(universityRows, programmeRows, today) {
       // Rows gathered automatically say AI-DRAFT until someone signs them off,
       // and invented rows say SAMPLE. Neither may pass as checked, and nor may a
       // blank cell: "nobody signed" used to read as "Checked" with no name (T04).
-      // Today both rows must be signed; which signer counts is registry Q14.
-      isSample: verifiedBy.includes('SAMPLE'),
-      isChecked: Boolean(uni.verifiedBy && ownSigner) &&
-                 !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE'),
+      // The programme's own signer decides (T01). SAMPLE on either row still
+      // marks the row as invented: a real signature cannot vouch for made-up
+      // university defaults.
+      isSample: verifiedBy.includes('SAMPLE') || uni.verifiedBy.includes('SAMPLE'),
+      isChecked: Boolean(verifiedBy) && !verifiedBy.includes('AI-DRAFT') &&
+                 !verifiedBy.includes('SAMPLE') && !uni.verifiedBy.includes('SAMPLE'),
 
       // Subject areas are in, so "medicine" finds a Medicine & Health row whose
       // title doesn't say it (S01). Language and degree type stay out: "english"
@@ -541,12 +545,6 @@ function utcDate(year, month, day) {
              d.getUTCMonth() === month - 1 &&
              d.getUTCDate() === day;
   return ok ? d : null;
-}
-
-function older(a, b) {
-  if (!a) return b;
-  if (!b) return a;
-  return a < b ? a : b;
 }
 
 function startOfDay(today) {

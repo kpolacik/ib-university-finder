@@ -70,8 +70,10 @@ starting point for research and to check every requirement, fee and deadline on
 the official page — it is shown while any row is still `AI-DRAFT`. It used to say
 it on every card too ("Gathered <date> · nobody has checked this yet"); that was
 removed on 2026-10-24 as noise repeated 757 times. A card now shows a
-provenance line only once someone signs it off — set `verified_by` to real
-initials and it reads "Checked <date> by <initials>".
+provenance line only once someone signs it off — set the programme row's
+`verified_by` to real initials and it reads "Checked <date> by <initials>", with
+the date and initials from that programme row alone. The university row's
+`AI-DRAFT` does not stop it (decided 2026-10-26, registry T01).
 
 ## The next obvious jobs, in order
 
@@ -389,6 +391,14 @@ a per-country system.
   screen), and "Skip to results" lands below it. `check.mjs` guards each.
 
 ## Decisions already made, so they are not relitigated
+
+- **A programme's own signature is enough** (Leon, 2026-10-26, registry T01).
+  A card says "Checked <date> by <initials>" when its programme row is signed,
+  even while its university row says `AI-DRAFT`; the date and initials come
+  from the programme row only. Signing a programme means checking everything
+  its card shows, including what it takes from the university row. Before, both
+  rows had to be signed, and all 35 university rows are `AI-DRAFT`, so a
+  programme sign-off could never show.
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
   The Free Fees explanation that sat on every Irish card is gone — the reason

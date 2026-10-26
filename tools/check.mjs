@@ -15,7 +15,7 @@ const read = (p) => readFileSync(join(root, p), 'utf8');
 
 const { parseCsv, csvToObjects } = await import(new URL('../js/csv.js', import.meta.url));
 const appSrcEarly = readFileSync(join(root, 'js/app.js'), 'utf8');
-const { safeUrl } = await import(new URL('../js/data.js', import.meta.url));
+const { safeUrl, applyToday: applyTodayEarly } = await import(new URL('../js/data.js', import.meta.url));
 
 let failures = 0;
 const section = (name) => console.log(`\n${name}`);
@@ -190,15 +190,42 @@ check('the baseline reaches every programme of its university',
   hcRow('h-blank').baselineRequirement === 'a recognised school diploma');
 check('the card shows a General row outside nothingAtAll',
   renderSrc.indexOf("reqRow(list, 'General'") > renderSrc.indexOf("const list = el('dl', 'req')"));
-// T04: a blank signer read as "Checked <date>" with no name.
-equal('only a row signed on both tabs, without AI-DRAFT, is checked',
-  ['h-blank', 'h-nosign', 'h-draft', 'h-uni-blank'].map((id) => hcRow(id).isChecked), [true, false, false, false]);
+// T04: a blank signer read as "Checked <date>" with no name. T01 (Q14 = A,
+// 2026-10-26): the programme's own signature is what counts, so a signed
+// programme under an unsigned university is checked.
+equal('a row is checked when its own signer is set and not AI-DRAFT',
+  ['h-blank', 'h-nosign', 'h-draft', 'h-uni-blank'].map((id) => hcRow(id).isChecked), [true, false, false, true]);
 check('a blank verified_by is reported, on either tab',
   hcMeta.issues.filter((i) => /verified_by is blank/.test(i)).length === 2
     && hcMeta.issues.some((i) => /^Universities row 3: verified_by is blank/.test(i))
     && hcMeta.issues.some((i) => /^Programmes row 5: verified_by is blank/.test(i)), JSON.stringify(hcMeta.issues));
-check('an unsigned row keeps the research banner up (draftCount counts it)', hcMeta.draftCount === 3,
+check('an unsigned row keeps the research banner up (draftCount counts it)', hcMeta.draftCount === 2,
   `draftCount ${hcMeta.draftCount}`);
+// T01: every university row is AI-DRAFT, so needing both signatures meant a
+// programme sign-off never showed. The "Checked" line's date and name come
+// from the programme row alone, so the university's AI-DRAFT and its older
+// date cannot leak into it.
+const uniT = [
+  'university_id,name,city,country,last_verified,verified_by',
+  't,Draft University,Town,Testland,2025-01-01,AI-DRAFT',
+  's,Sample University,Town,Testland,2026-08-14,SAMPLE',
+].join('\n') + '\n';
+const progT = [
+  'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by',
+  't-signed,t,Signed programme,,https://example.org,2026-08-14,JK',
+  't-draft,t,Draft programme,,https://example.org,2026-08-14,AI-DRAFT',
+  's-signed,s,Signed under a sample university,,https://example.org,2026-08-14,JK',
+].join('\n') + '\n';
+const { programmes: signRows } = await load(uniT, progT);
+const tRow = (id) => signRows.find((p) => p.id === id);
+check('a signed programme under an AI-DRAFT university is checked', tRow('t-signed').isChecked === true);
+equal('its Checked line uses the programme\'s own signer and date',
+  [tRow('t-signed').verifiedBy, tRow('t-signed').lastVerified && tRow('t-signed').lastVerified.toISOString().slice(0, 10)],
+  ['JK', '2026-08-14']);
+check('the university\'s older date does not make it look out of date',
+  (applyTodayEarly(signRows, new Date('2026-09-01')), tRow('t-signed').isStale === false));
+check('an AI-DRAFT programme stays unchecked, and a SAMPLE university still marks its rows as samples',
+  tRow('t-draft').isChecked === false && tRow('s-signed').isSample === true && tRow('s-signed').isChecked === false);
 check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
   renderSrc.includes('row.isChecked && row.lastVerified') && !renderSrc.includes('needsHumanCheck'));
 // A01: dimmed past-deadline cards fell below readable contrast.

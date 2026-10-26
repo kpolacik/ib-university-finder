@@ -229,6 +229,9 @@ opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered
 automatically and nobody has confirmed it — the site says so in a banner at the top
 and shows no "checked" line on that card.
 Replacing `AI-DRAFT` with your initials is how you sign it off.
+Signing a programme means you checked everything its card shows, including the
+values it takes from the university row. The card's "Checked" line uses the
+programme row's own date and initials, whatever the university row says.
 
 **Do not invent scores.** No "student life: 8/10", no rankings we made up.
 `student_life_url` is a link so people can judge for themselves. A number we
