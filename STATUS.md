@@ -213,10 +213,9 @@ initials and it reads "Checked <date> by <initials>".
 
 ## The next obvious jobs, in order
 
-1. **Groningen and Wageningen IB maths.** They hold 25 of the 30 `?` in
-   `ib_maths`. Groningen has a page per diploma
-   (rug.nl/education/…/international-baccalaureate-diploma) that the 2026-08
-   import didn't use; reading it would turn most of its `?` into real courses.
+1. ~~Groningen and Wageningen IB maths~~ — done 2026-10-26 from Groningen's IB
+   diploma table and Wageningen's 2027 Diploma Eligibility List, along with
+   RSM (Erasmus IBA), Radboud's non-Dutch diploma page and UL's subject pages.
 2. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
    initials. Do not attempt all 757.
@@ -289,18 +288,13 @@ initials and it reads "Checked <date> by <initials>".
   and a Slovak applicant goes through the CAO as an EU applicant. Left blank
   rather than borrowed from the wrong audience. The per-course `ib_points_min`
   carries the number that actually matters anyway.
-- **6 programmes still have no subject requirements** (all Irish), each for a
-  reason: Trinity's Human Nutrition and Dietetics (joint with TU Dublin; Trinity
-  lists no subjects and TU Dublin's page was not read), Trinity's graduate-entry
-  Pharmacy and UCC's graduate-entry Medicine (a degree, not school subjects, is
-  the requirement), UL Cyber Security and IT Forensics (**UL's page now returns
-  404** — the programme may be gone; check before keeping the row), and UL
-  Contemporary Dance and Irish Dance (their pages give only the audition).
-- **30 programmes have `ib_maths` `?`** — the page says "Mathematics" without
-  saying which IB course is enough: Groningen (17 rows, it publishes no IB
-  levels), Wageningen (8), Radboud Economics and IBA (the IB level sits behind an
-  eligibility check that asks for a name and email), Erasmus IBA, and UL's
-  Mathematics and Economics as Arts subjects. The maths filter never hides them.
+- **Every programme now has subject requirements and `ib_maths`** (no `?`
+  left). Two official pages contradict each other and the card says so:
+  Groningen's Global Politics & Sustainability (its IB table asks for maths,
+  its programme page says maths isn't required since 2023) and Radboud's
+  Artificial Intelligence (programme PDF: AA SL/HL or AI HL; general diploma
+  page: AA HL only). Neither changes what the maths filter hides much, but a
+  student applying to either should ask the university.
 - **Suspected duplicates, left alone**: `lei-polsci` is Leiden's Political
   Science, which is taught in English only as the IRO specialisation
   (`lei-iro`) — the two rows describe one programme. `tb-datascience` and
@@ -411,7 +405,7 @@ a per-country system.
 - **IB subject requirements, and the maths filter** (2026-10-26,
   `tools/add-ib-subjects-2026-10-26.mjs`, which carries the source of every
   row). The survey of 53 IB students put HL subject requirements among the most
-  wanted filters, and 974 of 1,301 rows said "Not checked yet". Now 6 do. The
+  wanted filters, and 974 of 1,301 rows said "Not checked yet". Now none do. The
   script's header says how each country was read; in short:
   - *Netherlands* — each university's own IB table (UvA's diploma finder,
     Leiden's science PDF, Twente's IB page, Tilburg's maths page, VU's IB PDF,
