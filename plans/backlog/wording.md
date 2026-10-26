@@ -46,9 +46,20 @@ CSV export joins the same lines with "; "):
   your IB total does not reach" (was "Shows programmes asking for this many IB
   points or fewer")
 
-Planned for Phase 4: "HL Maths 4+" (checkbox) and "Adds the 25 CAO bonus
-points on Irish courses"; "within your points" / "only with HL Maths 4+" /
-"points unknown" in the count; "Shown despite your points: points unknown.";
-"Shown despite your points: the cutoff includes a test, interview or
-audition."; "Within your points only with HL Maths 4+."; "Within your points on
-the Round 2 cutoff, not Round 1."
+Phase 4 (the HL Maths 4+ tick, the split count and the card notes; filters.js
+`pointsSummary` / `pointsNote`, index.html):
+
+- Checkbox `HL Maths 4+`, help (tooltip and hidden text) `Adds the 25 CAO
+  bonus points on Irish courses`
+- Count, while My points is set: `N of 1240 programmes · 410 within your points
+  · 41 only with HL Maths 4+ · 679 points unknown` (a zero bucket other than
+  "within" is left out)
+- Card notes: `Shown despite your points: points unknown.` (replaces "Shown
+  despite the points filter — no published minimum."); `Shown despite your
+  points: the cutoff includes a test, interview or audition.`; `Within your
+  points only with HL Maths 4+.`; `Within your points on the Round 2 cutoff,
+  not Round 1.`
+- Empty state: "Try changing … HL Maths 4+" (filtersInUse)
+- Note for the wording pass: "points unknown" counts the 678 rows with no
+  figure (mostly Czech entrance-exam rows), so it dominates the count; the
+  word may need to say "no IB figure" instead.

@@ -5,6 +5,7 @@
 // up as text rather than run.
 
 import { pointsLines } from './points.js';
+import { pointsNote } from './filters.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -96,9 +97,10 @@ function card(row, { state, shortlist, onToggleStar }) {
   if (state.maxTuition !== null && row.tuitionEu === null) {
     article.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
   }
-  if (state.myIbPoints !== null && row.ibPointsMin === null) {
-    article.append(el('p', 'note', 'Shown despite the points filter — no published minimum.'));
-  }
+  // My points: why an unknown row is shown, and when a cutoff is reached only
+  // with HL Maths 4+ or only on Round 2 (pointsNote in filters.js).
+  const pointsSays = pointsNote(row, state);
+  if (pointsSays) article.append(el('p', 'note', pointsSays));
 
   // --- provenance, on every card, never hidden --------------------------
   article.append(provenance(row));

@@ -2,6 +2,7 @@
 // in the requested order. No DOM in here, so this stays easy to reason about.
 
 import { foldAccents } from './data.js';
+import { caoPointsFor, MATHS_BONUS_POINTS } from './points.js';
 
 export function createFilterState() {
   return {
@@ -11,6 +12,9 @@ export function createFilterState() {
     languages: new Set(),
     maxTuition: null,
     myIbPoints: null,
+    // "HL Maths 4+": adds the 25 CAO bonus points on Irish cutoff rows. It
+    // changes labels and counts, never which rows are shown (pointsBucket).
+    hlMaths: false,
     shortlistOnly: false,
     sort: 'deadline',
   };
@@ -27,6 +31,7 @@ export function activeFilterCount(state) {
   if (state.languages.size) n++;
   if (state.maxTuition !== null) n++;
   if (state.myIbPoints !== null) n++;
+  if (state.hlMaths) n++;
   return n;
 }
 
@@ -52,12 +57,97 @@ export function applyFilters(rows, state, shortlist) {
         row.tuitionEu !== null &&
         row.tuitionEu > state.maxTuition) return false;
 
-    if (state.myIbPoints !== null &&
-        row.ibPointsMin !== null &&
-        row.ibPointsMin > state.myIbPoints) return false;
+    if (pointsBucket(row, state) === 'hidden') return false;
 
     return true;
   });
+}
+
+// ---------------------------------------------------------------- my points
+
+// Where a row stands against "My points" (and the HL Maths 4+ tick):
+//   'within'   reached
+//   'maths'    an Irish cutoff reached only with the 25 HL Maths bonus points,
+//              while the tick is off
+//   'unknown'  shown because we cannot tell: no figure, or a cutoff that
+//              includes a test, interview or audition (Q5: those never hide)
+//   'hidden'   not reached
+// or null while My points is empty.
+//
+// A minimum (non-Irish, UCD, HPAT Medicine) is compared in IB points, as
+// before. An Irish cutoff is compared in CAO points: the student's total
+// through the CAO table, plus 25 if ticked, against the lower published round.
+// The lower round, not Round 1 (the card's headline), because a student who
+// met last year's Round 2 cutoff did get a place, and hiding that course would
+// lose a real option; on our rows it is also the latest round, which
+// ib_points_min comes from (check.mjs asserts it). pointsNote says when Round 2
+// decided it.
+//
+// The bonus is read per student (plans/points-honesty.md, interpretation call
+// 1): unticked, a cutoff the student reaches only with +25 stays visible and is
+// labelled, not counted as within. So for every total, unticked shows at least
+// what the old "ibPointsMin <= my" rule showed, and ticked shows exactly the
+// same rows as unticked.
+export function pointsBucket(row, state) {
+  const my = state.myIbPoints;
+  if (my === null) return null;
+  if (row.ibPointsMin === null) return 'unknown';
+  if (row.pointsKind !== 'cutoff' || !row.cao) return row.ibPointsMin <= my ? 'within' : 'hidden';
+  const mine = caoPointsFor(my);
+  const lower = lowerRound(row.cao).points;
+  if (mine + (state.hlMaths ? MATHS_BONUS_POINTS : 0) >= lower) return 'within';
+  if (mine + MATHS_BONUS_POINTS >= lower) return 'maths';
+  return row.cao.test ? 'unknown' : 'hidden';
+}
+
+// The round with the lowest published cutoff (rounds with no figure, the
+// CAO's "every qualified applicant got a place", give no number). On a tie the
+// later round, the one ib_points_min was converted from.
+export function lowerRound(cao) {
+  return cao.rounds.filter((r) => r.points !== null)
+    .reduce((low, r) => (r.points <= low.points ? r : low));
+}
+
+// The note a card prints while My points is set, or null. Pure, so check.mjs
+// can test every sentence without a DOM.
+export function pointsNote(row, state) {
+  const bucket = pointsBucket(row, state);
+  if (bucket === null || bucket === 'hidden') return null;
+  if (bucket === 'unknown') {
+    return row.ibPointsMin === null
+      ? 'Shown despite your points: points unknown.'
+      : 'Shown despite your points: the cutoff includes a test, interview or audition.';
+  }
+  const parts = [];
+  if (bucket === 'maths') parts.push('Within your points only with HL Maths 4+.');
+  if (row.pointsKind === 'cutoff' && row.cao) {
+    // The card's headline is Round 1, so say when only Round 2 was reached:
+    // otherwise the headline would silently disagree with the filter.
+    const first = row.cao.rounds.find((r) => r.round === 1 && r.points !== null);
+    const bonus = bucket === 'maths' || state.hlMaths ? MATHS_BONUS_POINTS : 0;
+    if (first && caoPointsFor(state.myIbPoints) + bonus < first.points) {
+      parts.push('Within your points on the Round 2 cutoff, not Round 1.');
+    }
+  }
+  return parts.length ? parts.join(' ') : null;
+}
+
+// The split after the count while My points is set (Q3, P04): how many of the
+// shown rows are within, only with HL Maths 4+, or unknown. A zero bucket other
+// than "within" is left out. "points unknown", not "publish none": a cutoff
+// with a test has a figure, just not one we can compare. Empty when My points
+// is empty.
+export function pointsSummary(rows, state) {
+  if (state.myIbPoints === null) return '';
+  const n = { within: 0, maths: 0, unknown: 0 };
+  for (const row of rows) {
+    const bucket = pointsBucket(row, state);
+    if (bucket in n) n[bucket]++;
+  }
+  const parts = [`${n.within} within your points`];
+  if (n.maths) parts.push(`${n.maths} only with HL Maths 4+`);
+  if (n.unknown) parts.push(`${n.unknown} points unknown`);
+  return parts.join(' · ');
 }
 
 // ------------------------------------------------------------------- search
@@ -130,6 +220,7 @@ export function stateToParams(state) {
   const params = new URLSearchParams();
   if (state.search.trim()) params.set('q', state.search.trim());
   if (state.myIbPoints !== null) params.set('points', String(state.myIbPoints));
+  if (state.hlMaths) params.set('maths', '1');
   if (state.maxTuition !== null) params.set('fee', String(state.maxTuition));
   for (const v of state.subjectAreas) params.append('subject', v);
   for (const v of state.countries) params.append('country', v);
@@ -151,6 +242,8 @@ export function paramsToState(query, facets = null) {
   return {
     search: params.get('q') || '',
     myIbPoints: points.valid ? points.value : null,
+    // Only "1": a hand-edited "maths=yes" is ignored, like any other bad value.
+    hlMaths: params.get('maths') === '1',
     maxTuition: fee.valid ? fee.value : null,
     subjectAreas: known('subject', facets && facets.subjectAreas),
     countries: known('country', facets && facets.countries),

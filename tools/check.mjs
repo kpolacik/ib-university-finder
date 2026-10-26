@@ -1217,6 +1217,109 @@ check('every cutoff row\'s latest round converts to its ib_points_min',
   cutoffs.every((p) => p.cao.rounds[p.cao.rounds.length - 1].ib === p.ibPointsMin));
 console.log(`        ${cutoffs.length} cutoff rows, ${withFigure.length - cutoffs.length} minimum rows, ${live.length - withFigure.length} with no figure`);
 
+// ---------------------------------------------------------------- HL Maths tick
+section('HL Maths 4+ tick and the split count (Q5, Q3, D28)');
+// The tick adds the 25 CAO bonus points on Irish cutoff rows. It changes the
+// labels and the count, never which rows are shown; unknown never hides.
+const bucketProg = [
+  head,
+  kindRow('c-497', 'tcd', 36, '2026 CAO cutoff: Round 1 497 points (code TR101).'),
+  kindRow('c-625', 'tcd', 44, `2026 CAO cutoff: Round 1 625 points (code TR102). ${ie.BONUS_ONLY}`),
+  kindRow('c-test-520', 'tcd', 38, '2026 CAO cutoff: Round 1 520 points (code TR103).', dataMod.CAO_TEST),
+  kindRow('c-test-560', 'tcd', 40, '2026 CAO cutoff: Round 1 560 points (code TR104).', dataMod.CAO_TEST),
+  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 497 points (code TR105).'),
+  kindRow('c-r2-maths', 'tcd', 38, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
+  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 497 points, Round 2 520 points (code TR107).'),
+  kindRow('ucd-33', 'ucd', 33, "UCD's stated minimum: 33 IB points. 2026 CAO cutoff: Round 1 600 points (code DN101)."),
+  kindRow('ie-hpat35', 'tcd', 35, `2026 CAO cutoff: Round 1 738 points (code TR051). ${dataMod.HPAT_NOTE}`),
+  kindRow('nl-37', 'nl', 37, ''),
+  kindRow('blank', 'tcd', '', ''),
+].join('\n') + '\n';
+const { programmes: bk, meta: bkMeta } = await load(kindUni, bucketProg);
+check('the bucket fixture parses cleanly', bkMeta.issues.length === 0, JSON.stringify(bkMeta.issues));
+const fstate = (my, maths = false) => ({ ...filtersMod.createFilterState(), myIbPoints: my, hlMaths: maths });
+const buckets = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsBucket(p, fstate(my, maths))]));
+equal('buckets at 36 (497 CAO points), unticked', buckets(36, false), {
+  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
+  'c-r2-maths': 'maths', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
+});
+equal('buckets at 36, ticked: the bonus counts, nothing new is hidden or shown', buckets(36, true), {
+  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
+  'c-r2-maths': 'within', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
+});
+equal('buckets at 44 (600): a 601–625 cutoff is only with HL Maths 4+ unticked, within ticked',
+  [buckets(44, false)['c-625'], buckets(44, true)['c-625']], ['maths', 'within']);
+equal('buckets at 32: a UCD 33 and an HPAT 35 minimum hide, ticked or not; a test cutoff never hides',
+  [false, true].map((t) => [buckets(32, t)['ucd-33'], buckets(32, t)['ie-hpat35'], buckets(24, t)['c-test-560']]),
+  [['hidden', 'hidden', 'unknown'], ['hidden', 'hidden', 'unknown']]);
+equal('no bucket while My points is empty', filtersMod.pointsBucket(bk[0], filtersMod.createFilterState()), null);
+check('a higher Round 2 does not raise the bar: the lower round (Round 1) decides',
+  filtersMod.lowerRound(bk.find((p) => p.id === 'c-r2-higher').cao).round === 1);
+const notes = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsNote(p, fstate(my, maths))]));
+equal('card notes at 36, unticked', notes(36, false), {
+  'c-497': null, 'c-625': null,
+  'c-test-520': 'Within your points only with HL Maths 4+.',
+  'c-test-560': 'Shown despite your points: the cutoff includes a test, interview or audition.',
+  'c-r2': 'Within your points on the Round 2 cutoff, not Round 1.',
+  'c-r2-maths': 'Within your points only with HL Maths 4+. Within your points on the Round 2 cutoff, not Round 1.',
+  'c-r2-higher': null, 'ucd-33': null, 'ie-hpat35': null, 'nl-37': null,
+  blank: 'Shown despite your points: points unknown.',
+});
+equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (522 ≥ 520) but not of c-r2-maths (530)',
+  [notes(36, true)['c-r2'], notes(36, true)['c-r2-maths'], notes(36, true)['c-test-520']],
+  [null, 'Within your points on the Round 2 cutoff, not Round 1.', null]);
+const visible = (my, maths) => applyFilters(bk, fstate(my, maths)).map((p) => p.id);
+equal('applyFilters drops only the hidden bucket', visible(36, false),
+  bk.map((p) => p.id).filter((id) => !['c-625', 'nl-37'].includes(id)));
+equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, fstate(36)), filtersMod.pointsSummary(bk, fstate(36, true))],
+  ['5 within your points · 2 only with HL Maths 4+ · 2 points unknown', '7 within your points · 2 points unknown']);
+equal('pointsSummary leaves out an empty bucket and is empty without My points',
+  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
+  ['1 within your points', '']);
+
+// The real data, for every total a student can type.
+const today = (p, my) => p.ibPointsMin === null || p.ibPointsMin <= my;
+const realProblems = [];
+for (let my = 24; my <= 45; my++) {
+  const off = new Set(applyFilters(live, fstate(my, false)).map((p) => p.id));
+  const on = new Set(applyFilters(live, fstate(my, true)).map((p) => p.id));
+  for (const p of live) {
+    if (today(p, my) && !off.has(p.id)) realProblems.push(`${my}: ${p.id} hidden, the old rule showed it`);
+    if (off.has(p.id) !== on.has(p.id)) realProblems.push(`${my}: ${p.id} visibility changes with the tick`);
+    if ((p.ibPointsMin === null || p.cao?.test) && !off.has(p.id)) realProblems.push(`${my}: ${p.id} blank or test cutoff hidden`);
+    if (p.pointsKind !== 'cutoff' && filtersMod.pointsBucket(p, fstate(my, false)) !== filtersMod.pointsBucket(p, fstate(my, true))) {
+      realProblems.push(`${my}: ${p.id} (not a cutoff) changes bucket with the tick`);
+    }
+  }
+}
+check('every total 24–45: unticked shows all the old rule showed, ticked shows the same rows, blanks and test cutoffs never hide, minimums ignore the tick',
+  realProblems.length === 0, realProblems.slice(0, 8).join('\n        '));
+const lowerNotLatest = cutoffs.filter((p) => filtersMod.lowerRound(p.cao) !== p.cao.rounds[p.cao.rounds.length - 1]
+  || filtersMod.lowerRound(p.cao).ib !== p.ibPointsMin);
+check('every cutoff row\'s lower round is its latest round and converts to its ib_points_min',
+  lowerNotLatest.length === 0, lowerNotLatest.map((p) => p.id).join(', '));
+const r2Rows = cutoffs.filter((p) => p.cao.rounds.length === 2 && p.cao.rounds[0].ib !== p.cao.rounds[1].ib);
+console.log(`        ${r2Rows.length} cutoff rows convert differently between rounds; at 36 unticked: ${filtersMod.pointsSummary(applyFilters(live, fstate(36)), fstate(36))}`);
+
+equal('maths=1 survives the address round trip; maths=yes and no maths are unticked',
+  [paramsToState(stateToParams(fstate(36, true))).hlMaths, stateToParams(fstate(36, true)),
+    paramsToState('points=36&maths=yes').hlMaths, paramsToState('points=36').hlMaths],
+  [true, 'points=36&maths=1', false, false]);
+check('the tick counts as a filter, so Clear all clears it',
+  filtersMod.activeFilterCount(fstate(null, true)) === 1);
+check('app.js restores, reads, clears and names the tick, and the count carries the split',
+  appSrc.includes('dom.maths.checked = fromUrl.hlMaths') && appSrc.includes('state.hlMaths = dom.maths.checked')
+    && appSrc.includes('dom.maths.checked = false') && appSrc.includes("used.push('HL Maths 4+')")
+    && appSrc.includes('pointsSummary(rows, state)'));
+check('index.html has the HL Maths 4+ checkbox with its help text', /<input type="checkbox" id="f-maths"/.test(read('index.html'))
+  && read('index.html').includes('adds the 25 CAO bonus points on Irish courses'));
+// Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
+// digit per line, because .req-points did not wrap (A02).
+check('a Points line wraps its qualifier and keeps the number whole (320 px, A02)',
+  /\.req-points \{[^}]*flex-wrap: wrap/.test(css) && /\.req-number, \.req-unit \{ white-space: nowrap; \}/.test(css));
+check('the card prints pointsNote, and the old "no published minimum" note is gone',
+  renderSrc.includes('pointsNote(row, state)') && !renderSrc.includes('no published minimum'));
+
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes
 // anything. Checked as text: running it is exactly what must not happen here.

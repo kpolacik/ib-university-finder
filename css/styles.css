@@ -688,8 +688,12 @@ svg:not(.sprite) {
 }
 .req-value { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; align-items: baseline; }
 
-/* One line each: a two-round Irish cutoff gives two (js/points.js). */
-.req-points { display: flex; flex: 0 0 100%; align-items: baseline; gap: 0.35rem; }
+/* One line each: a two-round Irish cutoff gives two (js/points.js). The
+   qualifier ("Round 1 cutoff, 2026") wraps under the number on a narrow card;
+   without wrap and nowrap the number itself broke into one digit per line at
+   320 px (A02). */
+.req-points { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: baseline; gap: 0 0.35rem; }
+.req-number, .req-unit { white-space: nowrap; }
 .req-number {
   font-family: var(--font-display);
   font-size: 2.1rem;

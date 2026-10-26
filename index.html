@@ -132,6 +132,14 @@
       <p class="field-error" id="f-points-error" aria-live="polite"></p>
     </div>
 
+    <!-- Changes labels and the count, never which programmes are shown. The
+         help text is visible to a screen reader too, not only as a tooltip. -->
+    <label class="chip" title="Adds the 25 CAO bonus points on Irish courses">
+      <input type="checkbox" id="f-maths" name="maths">
+      <span>HL Maths 4+</span>
+      <span class="visually-hidden"> (adds the 25 CAO bonus points on Irish courses)</span>
+    </label>
+
     <div class="field field-number">
       <label for="f-tuition">Max fee &euro;/yr</label>
       <input type="number" id="f-tuition" name="tuition" min="0" step="1"

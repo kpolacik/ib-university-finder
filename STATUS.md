@@ -75,6 +75,13 @@ provenance line only once someone signs it off — set the programme row's
 the date and initials from that programme row alone. The university row's
 `AI-DRAFT` does not stop it (decided 2026-10-26, registry T01).
 
+**Points (2026-10-26, plans/archive/points-honesty.md).** Each card says
+whether its figure is a published minimum or the IB equivalent of last year's
+CAO cutoff, with the round and year (Round 1 first). "My points" has an **HL
+Maths 4+** tick, and the count splits the shown programmes into within your
+points, only with HL Maths 4+, and points unknown. The tick changes labels and
+counts, never which programmes are shown.
+
 ## The next obvious jobs, in order
 
 1. **Sign off the rows that matter.** Pick the 15–20 programmes actually being

@@ -126,6 +126,10 @@ linked to an official page. Run it after changing anything in `js/`.
 programme has no fee recorded, it still appears, with a line saying why.
 Silently dropping a university because a spreadsheet cell is empty could cost
 someone an option they wanted.
+With "My points" set, the count after the total says how many of the shown
+programmes are within your points, only with HL Maths 4+, and points unknown.
+The **HL Maths 4+** tick adds the 25 CAO bonus points on Irish courses: it
+changes those labels and that count, never which programmes are shown.
 
 **`verified_by` means a person looked.** Rows marked `AI-DRAFT` were gathered
 automatically; the banner at the top of the page says nothing has been checked

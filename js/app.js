@@ -3,7 +3,7 @@
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS,
-  parsePoints, parseFee, stateToParams, paramsToState,
+  parsePoints, parseFee, stateToParams, paramsToState, pointsSummary,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
@@ -29,6 +29,7 @@ const dom = {
   languagesCountNumber: document.getElementById('dd-languages-count-number'),
   search: document.getElementById('f-search'),
   points: document.getElementById('f-points'),
+  maths: document.getElementById('f-maths'),
   tuition: document.getElementById('f-tuition'),
   subjects: document.getElementById('f-subjects'),
   countries: document.getElementById('f-countries'),
@@ -63,6 +64,9 @@ const shortlist = loadShortlist();
 let allRows = [];
 let facets = { subjectAreas: [], countries: [], languages: [] };
 let currentlyShown = 0;
+// The "within / only with HL Maths 4+ / points unknown" split of the rows on
+// screen, worked out in update() so a count-only refresh can reuse it.
+let currentSummary = '';
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -114,6 +118,7 @@ function applyUrlFields() {
   const fromUrl = paramsToState(location.search);
   dom.search.value = fromUrl.search;
   if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
+  dom.maths.checked = fromUrl.hlMaths;
   if (fromUrl.maxTuition !== null) dom.tuition.value = String(fromUrl.maxTuition);
   state.sort = fromUrl.sort;
 }
@@ -192,6 +197,7 @@ function readFields() {
   state.search = dom.search.value;
   state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
     'Enter a whole number from 24 to 45.');
+  state.hlMaths = dom.maths.checked;
   state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
     'Enter a whole number of euros, 0 or more.');
 }
@@ -222,6 +228,11 @@ function wireInputs() {
       'Enter a whole number from 24 to 45.');
     update();
   }, 150));
+
+  dom.maths.addEventListener('change', () => {
+    state.hlMaths = dom.maths.checked;
+    update();
+  });
 
   dom.tuition.addEventListener('input', debounce(() => {
     state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
@@ -303,6 +314,7 @@ function clearAll() {
 
   dom.search.value = '';
   dom.points.value = '';
+  dom.maths.checked = false;
   dom.tuition.value = '';
   readFields();
   // Re-render the chips rather than reaching into render.js's markup with a
@@ -332,6 +344,7 @@ function update() {
 
   const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort);
   currentlyShown = rows.length;
+  currentSummary = pointsSummary(rows, state);
 
   renderCards(dom.results, rows, { state, shortlist, onToggleStar });
   renderEmptyState(rows.length);
@@ -345,7 +358,8 @@ function renderCounts(shown) {
 
   const countText = active === 0 && !state.shortlistOnly
     ? `${shown} ${plural(shown)}`
-    : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`;
+    : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`
+      + (currentSummary ? ` · ${currentSummary}` : '');
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
   if (dom.count.textContent !== countText) dom.count.textContent = countText;
@@ -400,6 +414,7 @@ function filtersInUse() {
   const used = [];
   if (state.search.trim()) used.push(`the search “${state.search.trim()}”`);
   if (state.myIbPoints !== null) used.push('your points');
+  if (state.hlMaths) used.push('HL Maths 4+');
   if (state.maxTuition !== null) used.push('the fee limit');
   if (state.subjectAreas.size) used.push('the subject areas');
   if (state.countries.size) used.push('the countries');
