@@ -8,15 +8,15 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1245 programmes · 35 universities · 5 countries · all checks passing.
+1248 programmes · 37 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 202 | **Complete** — every Dutch research university |
+| Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 5 | 46 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo |
-| Denmark | 5 | 25 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU |
+| Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
 merged on 2026-10-25 by `tools/merge-italy-denmark.mjs`, which records what
@@ -25,6 +25,28 @@ university publishes an IB minimum, 2027/28 round dates are not out, and
 public fees depend on family income (ISEE), so deadlines and fees show "Not
 published". The University of Copenhagen has no rows because it teaches every
 bachelor in Danish.
+
+**Missing English bachelors, 2026-10-26** (`tools/add-programmes-2026-10-26.mjs`,
+which quotes the page behind every row). Denmark +6: Aarhus Data Science, SDU
+Interactive Technology Engineering (Vejle; English per the Danish page, uniTEST
+dates for April 2027), ITU Data Science, and Roskilde's three international
+bachelors (Global Humanities, Natural Sciences, Social Sciences). ITU and
+Roskilde are new universities. Looked for and **not added**:
+
+- *Aalborg IT, Communication and New Media (Copenhagen)* — not offered. Neither
+  aau.dk's nor en.aau.dk's sitemap lists it; AAU's English bachelors are only
+  Applied Industrial Electronics, Chemical Engineering and Biotechnology,
+  Economics and Business Administration and Energy Engineering (all here), plus
+  Language and International Studies, English, whose page gives "Language:
+  Danish" and requires Danish A.
+- *SDU Economics and Business Administration (Sønderborg, English)* — not
+  offered. SDU's English programme list has twelve programmes and no
+  economics/business one; its business degree (HA) is Danish-taught.
+- *ITU Global Business Informatics* — taught in English, but requires "Dansk på
+  A-niveau" (passed), so it is not open to a Slovak IB applicant without Danish.
+- ITU's English site (en.itu.dk) reset or refused every connection from the
+  cloud machine; the Danish site www.itu.dk answered after retries, so ITU's
+  row links to the Danish page.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
