@@ -8,11 +8,11 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1301 programmes · 47 universities · 5 countries · all checks passing.
+1299 programmes · 47 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 199 | **Complete** — every Dutch research university |
+| Netherlands | 13 | 197 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
@@ -295,11 +295,15 @@ initials and it reads "Checked <date> by <initials>".
   Artificial Intelligence (programme PDF: AA SL/HL or AI HL; general diploma
   page: AA HL only). Neither changes what the maths filter hides much, but a
   student applying to either should ask the university.
-- **Suspected duplicates, left alone**: `lei-polsci` is Leiden's Political
-  Science, which is taught in English only as the IRO specialisation
-  (`lei-iro`) — the two rows describe one programme. `tb-datascience` and
-  `tue-ds` are the same joint degree, and disagree on admission (open entry vs.
-  numerus fixus); TU/e runs the admission, so its row is the one to trust.
+- **Duplicates merged 2026-10-26** (`tools/merge-duplicates-2026-10-26.mjs`):
+  `lei-polsci` into `lei-iro` (Leiden teaches Political Science in English
+  only as IRO) and `tb-datascience` into `tue-ds` (TU/e runs the joint degree's
+  admission). The same script corrected TU/e: every row said numerus fixus,
+  but for 2027-28 only Architecture, Computer Science and Engineering,
+  Mechanical Engineering and the English track of Chemical Engineering and
+  Chemistry select (deadline 15 January); the other nine are open entry.
+  Re-running an old Leiden, Tilburg or TU/e importer would bring the removed
+  rows back — delete them again if you ever do.
 
 ## The look of it
 
