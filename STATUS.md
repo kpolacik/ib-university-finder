@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1261 programmes · 39 universities · 5 countries · all checks passing.
+1265 programmes · 40 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 7 | 59 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale |
+| Italy | 8 | 63 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -68,6 +68,12 @@ applied for through Milan) and the International Medical School. Its pages
 still show the 2026/27 calls, so no deadline; each note gives last year's
 window. Artificial Intelligence, also on Milan's list, is administered by
 Pavia and is listed there.
+
+Italy, Trento +4 (new university): CEILS (law, all English) and the English
+tracks of Computer Science, Computer, Communications and Electronic
+Engineering, and Economics and Management. Its pages show only the 2026/27
+calls, so no deadline. Not added: *Biomolecular Sciences and Technology* —
+listed as "English Italian" with no separate English track and no English page.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the

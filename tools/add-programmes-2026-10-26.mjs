@@ -302,6 +302,60 @@ PROGS.push(
     official_url: 'https://www.unimi.it/en/education/single-cycle-master/international-medical-school-ims' },
 );
 
+// Trento. unitn.it/en/study/courses (all pages loaded) lists one bachelor
+// taught in English (CEILS) and four marked "English Italian"; three of those
+// have a full English track — Computer Science ("You can take the course in
+// Italian or English"), Computer, Communications and Electronic Engineering
+// ("You can choose to study in Italian or English") and Economics and
+// Management ("Economics and Management (in English)"). The places in the
+// catalogue cover both tracks. unitn.it/en/node/1433: a diploma "awarded
+// after at least 12 years of schooling" and an admission test with a ranking.
+// Every admissions page still shows the 2026/27 call, so no deadline.
+UNIS.push({
+  university_id: 'unitn', name: 'University of Trento', city: 'Trento', country: 'Italy',
+  application_system: 'Direct (UniTrento admissions portal)',
+  baseline_requirement: 'a school-leaving diploma after at least 12 years of schooling',
+  admission_default: 'Admission test and a ranking',
+});
+const tn = (slug, fields) => ({
+  university_id: 'unitn', language: 'English', degree_type: 'BSc',
+  official_url: `https://corsi.unitn.it/en/${slug}`, ...fields,
+});
+PROGS.push(
+  // corsi.unitn.it/en/comparative-european-and-international-legal-studies:
+  // "taught entirely in English"; catalogue "75 Places"; admission page: test
+  // organised by UniTrento, 2026/27 "Admission application: from mid December
+  // 2025 to 6 March 2026" (test 23 March online) and "from 9 April 2026 to 4
+  // May 2026" (test 14 May in person); "pay the application fee of €35,00".
+  tn('comparative-european-and-international-legal-studies', { programme_id: 'unitn-ceils', programme: 'Comparative, European and International Legal Studies (CEILS)', degree_type: '',
+    subject_area: 'Law', admission: 'UniTrento\'s own admission test and a ranking',
+    other_requirements: 'Limited access: 75 places · Two sessions (one online, one in Trento) · Application fee €35',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 the first session closed on 6 March (test 23 March, online) and the second on 4 May 2026 (test 14 May, in Trento). Fees depend on family income (ISEE).' }),
+  // corsi.unitn.it/en/computer-science-bachelor and …/enrollment/admission-and-
+  // enrollment: EU candidates take "TOLC-I test to enrol in the Italian or
+  // English programme" or "CEnT test in English to enrol in the English
+  // programme in the first session only"; 2026/27 sessions closed 23 March,
+  // 11 May and 31 July 2026; "235 Places".
+  tn('computer-science-bachelor', { programme_id: 'unitn-cs', programme: 'Computer Science (English track)',
+    subject_area: 'Computer Science', admission: 'TOLC-I or CEnT-S test (CISIA) and a ranking',
+    other_requirements: 'Limited access: 235 places across the Italian and English tracks · CEnT-S counts only in the first session; TOLC-I in any session',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 there were three sessions, closing 23 March, 11 May and 31 July 2026. Fees depend on family income (ISEE).' }),
+  // corsi.unitn.it/en/computer-communications-and-electronic-engineering and
+  // its admission page: the same call, tests and sessions as Computer Science.
+  tn('computer-communications-and-electronic-engineering', { programme_id: 'unitn-ccee', programme: 'Computer, Communications and Electronic Engineering (English track)',
+    subject_area: 'Engineering; Computer Science', admission: 'TOLC-I or CEnT-S test (CISIA) and a ranking',
+    other_requirements: 'Limited access: 235 places across the Italian and English tracks · CEnT-S counts only in the first session; TOLC-I in any session',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 there were three sessions, closing 23 March, 11 May and 31 July 2026. Fees depend on family income (ISEE).' }),
+  // corsi.unitn.it/en/economics-and-management and its admission page: EU
+  // candidates take "TOLC-E test to enrol in the Italian or English
+  // curriculum"; 2026/27 sessions closed 23 March, 11 May and 24 August 2026;
+  // "260 Places".
+  tn('economics-and-management', { programme_id: 'unitn-em', programme: 'Economics and Management (English track)',
+    subject_area: 'Economics; Business & Management', admission: 'TOLC-E test (CISIA) and a ranking',
+    other_requirements: 'Limited access: 260 places across the Italian and English tracks',
+    deadline_notes: '2027/28 call not out yet. In 2026/27 there were three sessions, closing 23 March, 11 May and 24 August 2026. Fees depend on family income (ISEE).' }),
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
