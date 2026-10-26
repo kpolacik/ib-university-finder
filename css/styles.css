@@ -712,6 +712,7 @@ svg:not(.sprite) {
 .facts dd.past { color: var(--danger); font-weight: 600; }
 .facts dd.urgent { color: var(--warn); font-weight: 600; }
 .facts dd.unknown { color: var(--warn); }
+.facts .fact-source { color: var(--ink-faint); font-size: 0.8rem; }
 .facts dd.sub {
   grid-column: 1 / -1;
   color: var(--ink-faint);

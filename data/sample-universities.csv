@@ -1,20 +1,20 @@
-university_id,name,city,country,application_system,living_cost_monthly,tuition_eu_default,tuition_noneu_default,baseline_requirement,english_requirement_default,admission_default,student_life_url,last_verified,verified_by
-tu-delft,Delft University of Technology,Delft,Netherlands,Studielink,950,2601,20200,a school diploma equivalent to Dutch VWO,IELTS 6.5,,https://www.tudelft.nl/en/student,2026-06-12,SAMPLE
-tue,Eindhoven University of Technology,Eindhoven,Netherlands,Studielink,900,2601,17600,a school diploma equivalent to Dutch VWO,IELTS 6.0,,https://www.tue.nl/en/education/student-life,2026-06-12,SAMPLE
-ku-leuven,KU Leuven,Leuven,Belgium,direct,880,1238,6000,,IELTS 6.5,,https://www.kuleuven.be/english,2026-05-30,SAMPLE
-tcd,Trinity College Dublin,Dublin,Ireland,CAO,1300,3000,22600,,IELTS 6.5,,https://www.tcdsu.org,2026-07-02,SAMPLE
-tum,Technical University of Munich,Munich,Germany,Uni-Assist,1150,0,6000,,IELTS 6.5,,https://www.sv.tum.de/en,2026-04-18,SAMPLE
-rwth,RWTH Aachen University,Aachen,Germany,Uni-Assist,900,0,0,,IELTS 6.0,,https://www.asta.rwth-aachen.de,2026-01-20,SAMPLE
-cuni,Charles University,Prague,Czechia,direct,720,0,,,IELTS 6.5,,https://cuni.cz/UKEN-1.html,2026-03-11,SAMPLE
-ctu,Czech Technical University,Prague,Czechia,direct,720,0,,,IELTS 6.0,,https://www.cvut.cz/en,2026-03-11,SAMPLE
-aarhus,Aarhus University,Aarhus,Denmark,direct,1050,0,14300,,IELTS 6.5,,https://studerende.au.dk/en,2026-06-01,SAMPLE
-kth,KTH Royal Institute of Technology,Stockholm,Sweden,universityadmissions.se,1250,0,15200,,IELTS 6.5,,https://ths.kth.se/en,2026-05-14,SAMPLE
-tuwien,TU Wien,Vienna,Austria,direct,1000,727,1454,,IELTS 6.0,,https://www.htu.at,2026-02-28,SAMPLE
-bocconi,Bocconi University,Milan,Italy,direct,1200,14000,14000,,IELTS 7.0,,https://www.unibocconi.it,2026-07-20,SAMPLE
-polimi,Politecnico di Milano,Milan,Italy,direct,1000,3900,3900,,IELTS 6.0,,https://www.polimi.it/en,2026-06-05,SAMPLE
-uc3m,Universidad Carlos III de Madrid,Madrid,Spain,direct,950,4200,8400,,IELTS 6.5,,https://www.uc3m.es/students,2025-11-30,SAMPLE
-uw,University of Warsaw,Warsaw,Poland,direct,680,0,3200,,IELTS 6.0,,https://en.uw.edu.pl/students,2026-04-02,SAMPLE
-jagiellonian,Jagiellonian University,Kraków,Poland,direct,650,,,,IELTS 6.0,,https://www.uj.edu.pl/en_GB/students,2026-05-08,SAMPLE
-aalto,Aalto University,Espoo,Finland,Studyinfo,1050,0,12000,,IELTS 6.5,,https://www.ayy.fi/en,2026-05-22,SAMPLE
-uniba,Comenius University,Bratislava,Slovakia,direct,600,0,5000,,IELTS 6.0,,https://uniba.sk/en,2026-07-10,SAMPLE
-tartu,University of Tartu,Tartu,Estonia,direct,650,0,4400,,IELTS 6.0,,https://www.ut.ee/en/students,2026-06-18,SAMPLE
+university_id,name,city,country,application_system,living_cost_min,living_cost_max,living_cost_source,tuition_eu_default,tuition_noneu_default,baseline_requirement,english_requirement_default,admission_default,student_life_url,last_verified,verified_by
+tu-delft,Delft University of Technology,Delft,Netherlands,Studielink,950,,,2601,20200,a school diploma equivalent to Dutch VWO,IELTS 6.5,,https://www.tudelft.nl/en/student,2026-06-12,SAMPLE
+tue,Eindhoven University of Technology,Eindhoven,Netherlands,Studielink,900,,,2601,17600,a school diploma equivalent to Dutch VWO,IELTS 6.0,,https://www.tue.nl/en/education/student-life,2026-06-12,SAMPLE
+ku-leuven,KU Leuven,Leuven,Belgium,direct,880,,,1238,6000,,IELTS 6.5,,https://www.kuleuven.be/english,2026-05-30,SAMPLE
+tcd,Trinity College Dublin,Dublin,Ireland,CAO,1300,,,3000,22600,,IELTS 6.5,,https://www.tcdsu.org,2026-07-02,SAMPLE
+tum,Technical University of Munich,Munich,Germany,Uni-Assist,1150,,,0,6000,,IELTS 6.5,,https://www.sv.tum.de/en,2026-04-18,SAMPLE
+rwth,RWTH Aachen University,Aachen,Germany,Uni-Assist,900,,,0,0,,IELTS 6.0,,https://www.asta.rwth-aachen.de,2026-01-20,SAMPLE
+cuni,Charles University,Prague,Czechia,direct,720,,,0,,,IELTS 6.5,,https://cuni.cz/UKEN-1.html,2026-03-11,SAMPLE
+ctu,Czech Technical University,Prague,Czechia,direct,720,,,0,,,IELTS 6.0,,https://www.cvut.cz/en,2026-03-11,SAMPLE
+aarhus,Aarhus University,Aarhus,Denmark,direct,1050,,,0,14300,,IELTS 6.5,,https://studerende.au.dk/en,2026-06-01,SAMPLE
+kth,KTH Royal Institute of Technology,Stockholm,Sweden,universityadmissions.se,1250,,,0,15200,,IELTS 6.5,,https://ths.kth.se/en,2026-05-14,SAMPLE
+tuwien,TU Wien,Vienna,Austria,direct,1000,,,727,1454,,IELTS 6.0,,https://www.htu.at,2026-02-28,SAMPLE
+bocconi,Bocconi University,Milan,Italy,direct,1200,,,14000,14000,,IELTS 7.0,,https://www.unibocconi.it,2026-07-20,SAMPLE
+polimi,Politecnico di Milano,Milan,Italy,direct,1000,,,3900,3900,,IELTS 6.0,,https://www.polimi.it/en,2026-06-05,SAMPLE
+uc3m,Universidad Carlos III de Madrid,Madrid,Spain,direct,950,,,4200,8400,,IELTS 6.5,,https://www.uc3m.es/students,2025-11-30,SAMPLE
+uw,University of Warsaw,Warsaw,Poland,direct,680,,,0,3200,,IELTS 6.0,,https://en.uw.edu.pl/students,2026-04-02,SAMPLE
+jagiellonian,Jagiellonian University,Kraków,Poland,direct,650,,,,,,IELTS 6.0,,https://www.uj.edu.pl/en_GB/students,2026-05-08,SAMPLE
+aalto,Aalto University,Espoo,Finland,Studyinfo,1050,,,0,12000,,IELTS 6.5,,https://www.ayy.fi/en,2026-05-22,SAMPLE
+uniba,Comenius University,Bratislava,Slovakia,direct,600,,,0,5000,,IELTS 6.0,,https://uniba.sk/en,2026-07-10,SAMPLE
+tartu,University of Tartu,Tartu,Estonia,direct,650,,,0,4400,,IELTS 6.0,,https://www.ut.ee/en/students,2026-06-18,SAMPLE

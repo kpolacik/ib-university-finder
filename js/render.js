@@ -8,6 +8,8 @@
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
 });
+// The top of a range: "€900–1,200", not "€900–€1,200".
+const plain = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 0 });
 
 const longDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -67,8 +69,13 @@ function card(row, { state, shortlist, onToggleStar }) {
     : (row.tuitionEu === 0 ? 'No tuition fee' : `${money.format(row.tuitionEu)} / year`);
   fact(facts, 'Tuition (EU)', tuition, row.tuitionEu === null ? 'unknown' : '');
 
-  if (row.livingCostMonthly !== null) {
-    fact(facts, 'Living costs', `${money.format(row.livingCostMonthly)} / month`);
+  if (row.livingCostMin !== null) {
+    const range = row.livingCostMax > row.livingCostMin
+      ? `${money.format(row.livingCostMin)}–${plain.format(row.livingCostMax)}`
+      : money.format(row.livingCostMin);
+    const value = el('dd', '', `${range} / month`);
+    if (row.livingCostSource) value.append(el('span', 'fact-source', ` · ${row.livingCostSource}`));
+    facts.append(el('dt', '', 'Living costs'), value);
   }
   if (row.languages.length) fact(facts, 'Taught in', row.languages.join(', '));
   if (row.applicationSystem) fact(facts, 'Apply via', row.applicationSystem);

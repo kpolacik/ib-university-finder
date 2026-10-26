@@ -44,7 +44,8 @@ Only if it is not already on the `universities` tab.
 | `name` | Full official name | `Delft University of Technology` |
 | `city`, `country` | | `Delft`, `Netherlands` |
 | `application_system` | How you apply | `Studielink`, `UCAS`, `CAO`, `direct` |
-| `living_cost_monthly` | Rough EUR per month. Leave blank if unsure. | `950` |
+| `living_cost_min`, `living_cost_max` | Monthly living costs in EUR, rent included, as a range. One figure? Put it in `min` and leave `max` blank. Leave both blank if unsure | `900`, `1200` |
+| `living_cost_source` | A few words saying whose estimate it is — the card shows it after the range | `university's estimate` |
 | `tuition_eu_default` | Normal EU fee, in EUR | `2694` |
 | `tuition_noneu_default` | Non-EU fee. **Optional** — nothing on the site reads it | `20200` |
 | `baseline_requirement` | What any diploma must clear here, before programme-specific rules | `a school diploma equivalent to Dutch VWO` |

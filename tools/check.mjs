@@ -94,6 +94,25 @@ equal('"?" english does not inherit', row('p-unknown').englishRequirement, []);
 equal('a bulleted english requirement splits into parts',
   row('p-bullets').englishRequirement, ['IELTS 6.5', 'or English B HL 6']);
 check('"?" city does not inherit either', row('p-unknown-city').city === '');
+check('the old single living-cost column still reads as one figure',
+  row('p-inherit').livingCostMin === 800 && row('p-inherit').livingCostMax === 800);
+
+section('Living costs are a range with a source');
+const rangeUni = 'university_id,name,city,country,application_system,living_cost_min,living_cost_max,living_cost_source,last_verified,verified_by\n'
+  + 'r,Range U,Town,Testland,direct,900,1200,university\'s estimate,2026-08-14,TT\n'
+  + 's,Single U,Town,Testland,direct,1000,,national estimate,2026-08-14,TT\n'
+  + 'b,Backwards U,Town,Testland,direct,1200,900,,2026-08-14,TT\n'
+  + 'n,No Cost U,Town,Testland,direct,,,,2026-08-14,TT\n';
+const rangeProg = [head, ...['r', 's', 'b', 'n'].map((u) =>
+  `p-${u},${u},,P,BSc,Engineering,English,,HL Maths,,,,,2027-05-01,,https://example.org,2026-08-14,TT`)].join('\n') + '\n';
+const { programmes: ranged, meta: rangedMeta } = await load(rangeUni, rangeProg);
+const rr = (id) => ranged.find((p) => p.id === id);
+check('a range keeps both ends', rr('p-r').livingCostMin === 900 && rr('p-r').livingCostMax === 1200);
+check('the source travels with it', rr('p-r').livingCostSource === 'university\'s estimate');
+check('a single figure is min = max', rr('p-s').livingCostMin === 1000 && rr('p-s').livingCostMax === 1000);
+check('a backwards range is swapped and reported',
+  rr('p-b').livingCostMin === 900 && rr('p-b').livingCostMax === 1200 && rangedMeta.issues.some((i) => /swapped/.test(i)));
+check('blank stays unknown, never zero', rr('p-n').livingCostMin === null && rr('p-n').livingCostMax === null);
 check('"none" means no subjects required', row('p-none').noSubjectsRequired === true);
 check('blank subjects means NOT CHECKED, not none',
   row('p-inherit').noSubjectsRequired === false && row('p-unknown').noSubjectsRequired === false);

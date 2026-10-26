@@ -105,7 +105,7 @@ function build(universityRows, programmeRows, today) {
       city: text(row.city),
       country: text(row.country),
       applicationSystem: text(row.application_system),
-      livingCostMonthly: number(row.living_cost_monthly, issues, `Universities row ${row.__row}, living_cost_monthly`),
+      ...livingCost(row, issues),
       tuitionEuDefault: number(row.tuition_eu_default, issues, `Universities row ${row.__row}, tuition_eu_default`),
       tuitionNonEuDefault: number(row.tuition_noneu_default, issues, `Universities row ${row.__row}, tuition_noneu_default`),
       englishRequirementDefault: text(row.english_requirement_default),
@@ -175,7 +175,9 @@ function build(universityRows, programmeRows, today) {
       city,
       country: uni.country,
       applicationSystem: uni.applicationSystem,
-      livingCostMonthly: uni.livingCostMonthly,
+      livingCostMin: uni.livingCostMin,
+      livingCostMax: uni.livingCostMax,
+      livingCostSource: uni.livingCostSource,
       baselineRequirement: uni.baselineRequirement,
 
       tuitionEu,
@@ -279,6 +281,26 @@ function inheritText(raw, fallback) {
 
 function list(value, separator = ';') {
   return text(value).split(separator).map((s) => s.trim()).filter(Boolean);
+}
+
+// Living costs are a monthly range, because that is how universities publish
+// them ("€900–1,200"), plus a few words saying whose estimate it is. A single
+// figure is min with a blank max. The old one-number column is still read, so
+// a Sheet that has not been updated keeps working.
+function livingCost(row, issues) {
+  const where = `Universities row ${row.__row}`;
+  let min = number(row.living_cost_min, issues, `${where}, living_cost_min`);
+  let max = number(row.living_cost_max, issues, `${where}, living_cost_max`);
+  if (min === null && max === null) {
+    min = number(row.living_cost_monthly, issues, `${where}, living_cost_monthly`);
+  }
+  if (min === null && max !== null) min = max;
+  if (max === null) max = min;
+  if (min !== null && max < min) {
+    issues.push(`${where}: living_cost_max (${max}) is below living_cost_min (${min}) — swapped.`);
+    [min, max] = [max, min];
+  }
+  return { livingCostMin: min, livingCostMax: max, livingCostSource: text(row.living_cost_source) };
 }
 
 function number(value, issues, label) {
