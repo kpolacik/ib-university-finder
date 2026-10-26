@@ -616,6 +616,49 @@ PROGS.push(
     other_requirements: 'Five-year degree · Limited access; the selection method is in the call, not on the programme page' }),
 );
 
+// Bologna, PoliMi, Sapienza: checked for English bachelors not yet listed.
+// Bologna: unibo.it/en/study/first-and-single-cycle-degree with the English
+// filter gives "15 Degree programmes" — the 15 already here. PoliMi:
+// polimi.it/en/education/laurea-programmes, "29 Bachelor of Science
+// programmes", seven marked ENG or ITA-ENG — the seven already here.
+// Sapienza: corsidilaurea.uniroma1.it/en filtered to _language=ENG, bachelor
+// and single-cycle, lists four programmes not yet here (below). Two more in
+// that list are "Language Italian, English" with no English track found
+// (Environmental Engineering for Sustainable Development, Oriental languages
+// and civilizations) and are not added.
+const SA_NOTE = 'No 2027/28 call yet. Fees depend on family income (ISEE).';
+const sa = (code, fields) => ({ university_id: 'sapienza', language: 'English', deadline_notes: SA_NOTE,
+  official_url: `https://corsidilaurea.uniroma1.it/en/course/${code}`, ...fields });
+PROGS.push(
+  // course/33502: "Course type Bachelor", "Bachelor class L-31", "Access
+  // procedure Admission test", "Language English". The 2026/27 ranking list
+  // (14824, uniroma1.it) ranks candidates on "ENGLISH TOLC-I", "TOLC-I",
+  // "TOLC-S" or "SAT" scores.
+  sa('33502', { programme_id: 'sapienza-acsai', programme: 'Applied Computer Science and Artificial Intelligence', degree_type: 'BSc',
+    subject_area: 'Computer Science', admission: 'TOLC-I (English or Italian), TOLC-S or SAT score and a ranking',
+    other_requirements: 'Limited access · Two selection rounds in 2026/27' }),
+  // course/28614: "Nursing - Roma Azienda Ospedaliera Sant'Andrea", "Course
+  // type Bachelor", "Bachelor class L/SNT1", "Access procedure Admission test",
+  // "Language English"; places set by "Ministerial Decree no. 1014 of 7 August
+  // 2026".
+  sa('28614', { programme_id: 'sapienza-nursing', programme: "Nursing (Sant'Andrea hospital)", degree_type: 'BSc',
+    subject_area: 'Medicine & Health', admission: 'Admission test and a ranking',
+    other_requirements: 'Places set each year by ministerial decree · Taught at Sant\'Andrea hospital, Rome' }),
+  // course/33454: "Medicine and Surgery \"F\"", "Single-cycle master's
+  // degree", "LM-41", "Duration 6 years", "Language English".
+  sa('33454', { programme_id: 'sapienza-med-f', programme: 'Medicine and Surgery "F"', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree' }),
+  // course/33563: "Dentistry and Dental Prosthodontics", "Single-cycle
+  // master's degree", "LM-46", "Duration 6 years", "Language English". The
+  // national English-language test covers "Medicina e Chirurgia, Odontoiatria
+  // e protesi dentaria e Medicina veterinaria, in lingua inglese" (D.M. 1005
+  // of 6-08-2026, as cited in Padova's call).
+  sa('33563', { programme_id: 'sapienza-dent', programme: 'Dentistry and Dental Prosthodontics', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', admission: 'National admission test for English-taught medicine and dentistry and a national ranking',
+    other_requirements: 'Six-year degree' }),
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

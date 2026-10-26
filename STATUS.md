@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1287 programmes · 45 universities · 5 countries · all checks passing.
+1291 programmes · 45 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 13 | 85 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata |
+| Italy | 13 | 89 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -111,6 +111,22 @@ and catalogocorsi.uniroma2.it returned 503, so these come from the Italian
 site web.uniroma2.it, whose programme pages state "Lingua: Inglese". Global
 Governance and Pharmacy have admission `?` — limited places, method only in
 the call.
+
+Italy, existing universities re-checked. Bologna's catalogue filtered to
+English lists 15 programmes, PoliMi's lists 7 English/ITA-ENG bachelors — both
+match what is here. Sapienza +4: Applied Computer Science and Artificial
+Intelligence, Nursing (Sant'Andrea hospital), Medicine and Surgery "F" and
+Dentistry, all "Language English" in corsidilaurea.uniroma1.it. Not added:
+Environmental Engineering for Sustainable Development and Oriental languages
+and civilizations ("Italian, English", no English track found).
+
+**Three existing Sapienza rows look wrong — left for Jakub to decide.** In
+Sapienza's 2026/27 catalogue (corsidilaurea.uniroma1.it, checked 2026-10-26)
+*Economics of Innovation* (course 34173, Rieti campus) and *Economics –
+delivered entirely via distance learning* (34176) are "Language Italian", and
+no bachelor called *Management and Business Law* turns up at all. The rows
+`sapienza-econ-innov`, `sapienza-econ-online` and `sapienza-econ-law` came
+from the 2026-10-25 merge; this pass did not change them.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
