@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1282 programmes · 44 universities · 5 countries · all checks passing.
+1287 programmes · 45 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 12 | 80 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin |
+| Italy | 13 | 85 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -103,6 +103,14 @@ Science has admission `?`: UniTo's page says "Local programmed" in its header
 and "accesso non programmato" in its requirements. Not added: nine bachelors
 UniTo tags "English Italian" — Italian-taught degrees admitted on the Italian
 TOLC-E with English modules, and no English track on their pages.
+
+Italy, Tor Vergata +5 (new university): Business Administration and
+Economics, Engineering Sciences, Global Governance, Medicine and Surgery and
+Pharmacy. **en.uniroma2.it refused every connection from the cloud machine**
+and catalogocorsi.uniroma2.it returned 503, so these come from the Italian
+site web.uniroma2.it, whose programme pages state "Lingua: Inglese". Global
+Governance and Pharmacy have admission `?` — limited places, method only in
+the call.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the

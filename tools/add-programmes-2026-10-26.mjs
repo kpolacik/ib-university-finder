@@ -568,6 +568,54 @@ PROGS.push(
     official_url: 'https://en.unito.it/studying-unito/programs/degree-programs/medicine-and-surgery-0' },
 );
 
+// Tor Vergata. en.uniroma2.it refused or dropped every connection from this
+// machine (and catalogocorsi.uniroma2.it answered 503), so this comes from
+// the Italian site web.uniroma2.it: the bachelor and single-cycle lists under
+// /it/percorso/offerta_formativa/sezione/, then each programme's page, whose
+// "Lingua" line says "Inglese" for the five below. All link 2026-27 notices
+// only, so no deadline.
+UNIS.push({
+  university_id: 'uniroma2', name: 'University of Rome Tor Vergata', city: 'Rome', country: 'Italy',
+  application_system: 'Direct (Tor Vergata Delphi portal)',
+});
+const TV_NOTE = '2027/28 call not out yet. Fees depend on family income (ISEE).';
+const tv = (slug, fields) => ({ university_id: 'uniroma2', language: 'English', degree_type: 'BSc', deadline_notes: TV_NOTE,
+  official_url: `https://web.uniroma2.it/it/percorso/offerta_formativa/corso/${slug}`, ...fields });
+PROGS.push(
+  // "Lingua del corso: Inglese"; "erogato interamente in lingua inglese";
+  // "Numero di posti programmato a livello locale"; "Aggiornamento scadenza
+  // test CISIA per ammissione BAE 2026-27".
+  tv('business_administration_and_economics', { programme_id: 'uniroma2-bae', programme: 'Business Administration and Economics',
+    subject_area: 'Business & Management; Economics', admission: 'CISIA test and a ranking', other_requirements: 'Limited access · Two curricula' }),
+  // "tutte le attività (lezioni, esercitazioni, materiale didattico ed esami)
+  // sono in lingua inglese"; "Accesso libero con prova di verifica
+  // obbligatoria … L'esito della prova non preclude la possibilità di
+  // immatricolarsi".
+  tv('engineering_sciences', { programme_id: 'uniroma2-engsci', programme: 'Engineering Sciences',
+    subject_area: 'Engineering', admission: 'Open access: no limit on places',
+    other_requirements: 'Compulsory entry check test; the result does not stop you enrolling · Mechanical, energy, electronics and ICT' }),
+  // "Lingua : Inglese"; "La didattica e tutte le attività si svolgono in lingua
+  // inglese"; "Numero di posti programmato a livello locale". The page does not
+  // say how places are allocated.
+  tv('global_governance-36050', { programme_id: 'uniroma2-gg', programme: 'Global Governance',
+    subject_area: 'Politics & International Relations; Economics; Law', admission: '?',
+    other_requirements: 'Limited access; the selection method is in the call, not on the programme page' }),
+  // "Corso di laurea a ciclo unico in lingua inglese … Durata 6 anni - Numero
+  // di posti programmato a livello nazionale"; "tenuto completamente in lingua
+  // inglese … Sono previsti corsi di lingua italiana per i rapporti con i
+  // pazienti".
+  tv('medicine_and_surgery', { programme_id: 'uniroma2-med', programme: 'Medicine and Surgery', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree · Italian courses for talking to patients are included',
+    deadline_notes: 'No 2027/28 call yet; the national test for English-taught medicine was on 29 September in 2026. Fees depend on family income (ISEE).' }),
+  // "Farmacia … a ciclo unico in lingua inglese, ha una durata quinquennale";
+  // "Numero di posti programmato a livello locale"; "Bando Farmacia - lingua
+  // inglese a.a.2026-2027".
+  tv('farmacia-27857', { programme_id: 'uniroma2-pharm', programme: 'Pharmacy', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health; Chemistry', admission: '?',
+    other_requirements: 'Five-year degree · Limited access; the selection method is in the call, not on the programme page' }),
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
