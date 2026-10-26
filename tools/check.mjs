@@ -226,6 +226,18 @@ check('the university\'s older date does not make it look out of date',
   (applyTodayEarly(signRows, new Date('2026-09-01')), tRow('t-signed').isStale === false));
 check('an AI-DRAFT programme stays unchecked, and a SAMPLE university still marks its rows as samples',
   tRow('t-draft').isChecked === false && tRow('s-signed').isSample === true && tRow('s-signed').isChecked === false);
+// Verify Impl: the university's date no longer fills in, so a signed programme
+// with no date of its own is checked but shows no line. It is reported instead.
+const progNoDate = [
+  'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by',
+  'n-signed,t,Signed without a date,,https://example.org,,JK',
+  'n-draft,t,Draft without a date,,https://example.org,,AI-DRAFT',
+  'n-dated,t,Signed with a date,,https://example.org,2026-08-14,JK',
+].join('\n') + '\n';
+const { meta: noDateMeta } = await load(uniT, progNoDate);
+const noDateIssues = noDateMeta.issues.filter((i) => /last_verified is blank/.test(i));
+check('a signed programme with no last_verified is reported; a draft or a dated one is not',
+  noDateIssues.length === 1 && /^Programmes row 2: /.test(noDateIssues[0]), JSON.stringify(noDateMeta.issues));
 check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
   renderSrc.includes('row.isChecked && row.lastVerified') && !renderSrc.includes('needsHumanCheck'));
 // A01: dimmed past-deadline cards fell below readable contrast.
@@ -547,6 +559,10 @@ check('Escape returns focus to the summary only from inside the open dropdown',
   /open\.contains\(document\.activeElement\)/.test(appSrc));
 check('the dropdown count reads "2 selected" (hidden text in its own span)',
   indexHtml.includes('<span class="visually-hidden"> selected</span>') && appSrc.includes("subjectsCountNumber"));
+// Verify Impl: a hidden ", " in the box was read as "Country , 1 selected", because the
+// browser already adds a space between the label and the count.
+check('the dropdown count has no hidden comma (it read "Country , 1 selected")',
+  !/dropdown-count[^>]*><span class="visually-hidden">,/.test(indexHtml));
 check('the live result count is written only when its text changes',
   /if \(dom\.count\.textContent !== countText\) dom\.count\.textContent = countText;/.test(appSrc));
 

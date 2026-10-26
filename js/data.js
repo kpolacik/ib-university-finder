@@ -234,6 +234,12 @@ function build(universityRows, programmeRows, today) {
     const deadline = date(row.application_deadline, issues, `${where}, application_deadline`);
 
     const verifiedBy = signer(row.verified_by, issues, where);
+    // The card's "Checked" line needs the date as well as the initials. Since
+    // the university's date no longer fills in, a signed row without its own
+    // date counted as checked but showed nothing, with no hint why.
+    if (verifiedBy && !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE') && !lastVerified) {
+      issues.push(`${where}: signed "${verifiedBy}" but last_verified is blank — the card shows no "Checked" line. Put today's date in last_verified.`);
+    }
 
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);

@@ -382,7 +382,7 @@ a per-country system.
   replaced by a ring nobody could see; they now show the same blue outline as
   everything else. A filter list stayed open after tabbing out of it, and
   Escape in Search moved the cursor to a filter button; both fixed. A screen
-  reader now hears "Subject area, 2 selected" instead of "Subject area 2", the
+  reader now hears "Subject area 2 selected" instead of "Subject area 2", the
   result count only when it changes, "Architektura a urbanismus, Bc." instead
   of the title and degree run together, Czech titles in Czech, the masthead
   without its decorative full stop, and each "Official admissions page" link

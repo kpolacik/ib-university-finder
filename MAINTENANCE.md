@@ -232,6 +232,7 @@ Replacing `AI-DRAFT` with your initials is how you sign it off.
 Signing a programme means you checked everything its card shows, including the
 values it takes from the university row. The card's "Checked" line uses the
 programme row's own date and initials, whatever the university row says.
+A signed row with an empty `last_verified` shows no line and is listed as a problem.
 
 **Do not invent scores.** No "student life: 8/10", no rankings we made up.
 `student_life_url` is a link so people can judge for themselves. A number we

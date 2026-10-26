@@ -15,9 +15,12 @@ const dom = {
   form: document.getElementById('filter-form'),
   resultsBar: document.querySelector('.results-bar'),
   dropdowns: [...document.querySelectorAll('.dropdown')],
-  // Each count is the number plus hidden ", " and " selected", so a screen
-  // reader names the button "Subject area, 2 selected" rather than
-  // "Subject area 2" (A06). Only the number is written; the box is hidden at 0.
+  // Each count is the number plus a hidden " selected", so a screen reader
+  // names the button "Subject area 2 selected" rather than "Subject area 2"
+  // (A06). No hidden comma: the browser already puts a space between the label
+  // and the count, so a comma read
+  // "Subject area , 2 selected". Only the number is written; the box is hidden
+  // at 0.
   subjectsCount: document.getElementById('dd-subjects-count'),
   countriesCount: document.getElementById('dd-countries-count'),
   languagesCount: document.getElementById('dd-languages-count'),
