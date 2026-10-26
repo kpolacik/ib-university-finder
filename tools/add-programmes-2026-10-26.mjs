@@ -695,6 +695,62 @@ PROGS.push(
   lu('politics-philosophy-and-economics', { programme_id: 'luiss-ppe', programme: 'Politics: Philosophy and Economics', subject_area: 'Politics & International Relations; Philosophy; Economics' }),
 );
 
+// Cattolica. international.unicatt.it/ucscinternational-undergraduate-
+// programmes: "3-year undergraduate degrees taught in English" — Business and
+// Finance (Brescia), Communication Management, Criminology, Economics and
+// Management, Finance (Milan), Food Production Management, International
+// Business Management (Piacenza), International Relations and Global Affairs,
+// Psychology (Milan); "Medicine and Surgery (Rome campus)" and "(Bolzano
+// campus)". Finance, Food Production Management and Medicine (Bolzano) have no
+// page on the site yet, so they are not added. For every bachelor below, its
+// "application timeline" page: "The application process opens on 4 November
+// 2026 and closes on 17 February 2027" (Criminology and International Business
+// Management add a Round 2, "18 February 2027 … 5 May 2027", only if places
+// remain); its "tuition fees" page: "a flat rate of € 6,632 per year, provided
+// your family income is under €150,000 … If documentation is not provided, or
+// income exceeds this threshold, the maximum fee of €11,500 applies"; "First
+// instalment (€ 1,500): Upon admission". Entry requirements: diploma "by
+// August 30, 2027" and "at least 12 years of total education". Admission is on
+// the application; the pages name no IB minimum.
+UNIS.push({
+  university_id: 'unicatt', name: 'Università Cattolica del Sacro Cuore', city: 'Milan', country: 'Italy',
+  application_system: 'Direct (Cattolica International online application)',
+  tuition_eu_default: '6632',
+  baseline_requirement: 'a school-leaving diploma after at least 12 years of education, awarded by 30 August of the year you start',
+  admission_default: 'Selective: assessed on your application',
+});
+const UC_NOTE = 'Round 1 runs 4 November 2026 - 17 February 2027. Fee for families with EU income under €150,000 (documented at enrolment); otherwise €11,500.';
+const UC_NOTE2 = 'Round 1 runs 4 November 2026 - 17 February 2027; Round 2 (18 February - 5 May 2027) opens only if places remain. Fee for families with EU income under €150,000 (documented at enrolment); otherwise €11,500.';
+const uc = (slug, fields) => ({ university_id: 'unicatt', language: 'English', degree_type: 'BSc',
+  application_deadline: '2027-02-17', deadline_notes: UC_NOTE,
+  official_url: `https://international.unicatt.it/ucscinternational-undergraduate-programs-${slug}`, ...fields });
+PROGS.push(
+  // "Campus: Brescia", "Language of instruction: English", "Next intake: September 2027".
+  uc('business-and-finance', { programme_id: 'unicatt-bf', city: 'Brescia', programme: 'Business and Finance', subject_area: 'Business & Management; Economics' }),
+  uc('communication-management', { programme_id: 'unicatt-cm', programme: 'Communication Management', subject_area: 'Media & Communication; Business & Management' }),
+  uc('criminology', { programme_id: 'unicatt-crim', programme: 'Criminology', subject_area: 'Sociology & Anthropology; Law; Psychology', deadline_notes: UC_NOTE2 }),
+  // timeline page: "Please refer to the Entry requirements > Mathematics
+  // requirements section to check if you must take the Cattolica Admission Test."
+  uc('economics-and-management', { programme_id: 'unicatt-em', programme: 'Economics and Management', subject_area: 'Economics; Business & Management',
+    other_requirements: 'Depending on your maths background, the Cattolica Admission Test may be required (see the programme\'s entry requirements)' }),
+  uc('international-business-management', { programme_id: 'unicatt-ibm', city: 'Piacenza', programme: 'International Business Management', subject_area: 'Business & Management', deadline_notes: UC_NOTE2 }),
+  uc('international-relations-and-global-affairs-irga', { programme_id: 'unicatt-irga', programme: 'International Relations and Global Affairs', subject_area: 'Politics & International Relations' }),
+  uc('psychology', { programme_id: 'unicatt-psy', programme: 'Psychology', subject_area: 'Psychology' }),
+  // …-medicine-and-surgery: "Campus: Rome", "6-year degree taught entirely in
+  // English … Gemelli Hospital". Application procedures: "110 seats in total …
+  // 40 seats for: Italian and EU citizens living anywhere". Timeline for
+  // 2027/2028: "17 February 2027: Application deadline", "17 March 2027:
+  // Entrance exam (online)", "7 April 2027: EU ranking released". Fees page:
+  // "The tuition fee for the Medicine and Surgery programme at the Rome campus
+  // is € 18,150 per year."
+  { programme_id: 'unicatt-med', university_id: 'unicatt', city: 'Rome', programme: 'Medicine and Surgery', degree_type: 'Single-cycle master',
+    subject_area: 'Medicine & Health', language: 'English', tuition_eu: '18150',
+    admission: 'Entrance exam: Cattolica\'s own written test (online) and a ranking',
+    other_requirements: 'Six-year degree at Gemelli Hospital · 40 places for EU applicants (110 in total)',
+    application_deadline: '2027-02-17', deadline_notes: 'Apply by 17 February 2027; the online entrance exam is on 17 March 2027 and the EU ranking comes out on 7 April 2027.',
+    official_url: 'https://international.unicatt.it/ucscinternational-undergraduate-programs-medicine-and-surgery' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));

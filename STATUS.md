@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1296 programmes · 46 universities · 5 countries · all checks passing.
+1304 programmes · 47 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 14 | 94 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss |
+| Italy | 15 | 102 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -137,6 +137,16 @@ by 10 February 2027). The rows carry 10 February and keep `ib_points_min`
 blank, because 36 is the bar for one route, not for admission. The full fee
 is not on the pages read (only the €5,000 first instalment), so it stays blank.
 Not added: Economics and Management and Political Science, partly English.
+
+Italy, Cattolica +8 (new, private): Business and Finance (Brescia),
+Communication Management, Criminology, Economics and Management, International
+Business Management (Piacenza), International Relations and Global Affairs,
+Psychology, and Medicine and Surgery (Rome). Cattolica publishes 2027/28 dates
+— Round 1 closes **17 February 2027** — and a flat **€6,632** fee for families
+with EU income under €150,000 (€11,500 otherwise; medicine €18,150), so these
+rows carry a real deadline and fee. Not added: Finance, Food Production
+Management and Medicine (Bolzano), which are on Cattolica's English list but
+have no programme page yet.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the
