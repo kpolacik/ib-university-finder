@@ -8,14 +8,14 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1248 programmes · 37 universities · 5 countries · all checks passing.
+1257 programmes · 38 universities · 5 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 199 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 5 | 46 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo |
+| Italy | 6 | 55 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
@@ -47,6 +47,20 @@ Roskilde are new universities. Looked for and **not added**:
 - ITU's English site (en.itu.dk) reset or refused every connection from the
   cloud machine; the Danish site www.itu.dk answered after retries, so ITU's
   row links to the Danish page.
+
+Italy, Padova +9 (new university): seven English bachelors plus the two
+English medicine degrees (Venice; MedTech in Padua). Padova is the first
+Italian university here with a 2027/28 date: its application portal gives the
+EU call as 15 March – 7 April 2027 for every bachelor (formal calls still
+"TBD"), so those rows carry 7 April. Medicine has no 2027/28 call yet; its
+note gives the 2026/27 dates. Not added: *Italian Medieval and Renaissance
+Studies* (first three semesters in English, the rest in Italian), and four
+bachelors Padova lists as "new programme 2027/2028 - to be approved" with no
+programme page yet (Management, Finance and Business Analytics; Physics for
+Technology; Food Safety for Global Health; Innovative Technologies in
+Agriculture) — add them once approved. Biology of Human and Environmental
+Health is the joint degree already listed under Bologna; it now has a Padova
+row too, because you apply to each university separately.
 
 **Four points the two runs disagreed on, re-fetched a third time
 (2026-10-25):** VUT Architektura pozemních staveb closes **2 January** (the

@@ -159,6 +159,90 @@ PROGS.push(
   },
 );
 
+// -------------------------------------------------------------------- Italy
+//
+// No Italian university publishes an IB minimum, so ib_points_min stays
+// blank. Public fees depend on family income (ISEE), so tuition stays blank
+// and the card shows "Not published".
+
+// Padova. www.unipd.it/en/corsi-laurea-lingua-inglese lists the English-taught
+// degrees; each programme's facts come from its unipd.it page ("Language
+// English", "Place …", "Access …") and its application page on
+// apply.unipd.it, which for every bachelor here says: "For Academic Year
+// 2027/2028 … Call for EU and EU-equated students: 15 March 2027 – 7 April
+// 2027", "English B2 level (CEFR) or equivalent", "Tuition fee €2,950 per
+// year". The formal calls are still "TBD". The CEnT-S programmes add: "the
+// first macro-period … (November 2026 – January 2027) … 26 November 2026, 17
+// December 2026".
+// www.unipd.it/en/ammissione-studenti-internazionali: "you need a minimum
+// 12-year school record"; medicine is the one programme not applied for on
+// apply.unipd.it.
+UNIS.push({
+  university_id: 'unipd', name: 'University of Padua', city: 'Padua', country: 'Italy',
+  application_system: 'Direct (apply.unipd.it)',
+  baseline_requirement: 'a school-leaving diploma after at least 12 years of schooling',
+  english_requirement_default: 'English at B2 (CEFR) or an equivalent certificate',
+});
+const PD_NOTE = 'Padova\'s application portal gives the 2027/28 EU call as 15 March - 7 April 2027 (non-EU applicants abroad: 7 January - 7 March); the formal call is not out yet. The portal lists €2,950 a year; fees depend on family income (ISEE).';
+const PD_CENTS = 'CEnT-S test (CISIA); first sittings 26 November and 17 December 2026';
+const pd = (slug, fields) => ({
+  university_id: 'unipd', language: 'English', degree_type: 'BSc',
+  application_deadline: '2027-04-07', deadline_notes: PD_NOTE,
+  official_url: `https://www.unipd.it/en/corsi-di-laurea/${slug}`, ...fields,
+});
+PROGS.push(
+  // "Place Legnaro"; "Applicants must have good command of Mathematics,
+  // Physics, Biology, Chemistry, Analytical and Logic skills"; 8 non-EU places.
+  pd('animal-care', { programme_id: 'unipd-animalcare', city: 'Legnaro', programme: 'Animal Care',
+    subject_area: 'Biology & Life Sciences', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: `Limited access: places assigned by ranking · ${PD_CENTS} · Good command of mathematics, physics, biology and chemistry expected` }),
+  // "Place BOLOGNA; PADOVA"; the same degree is unibo-5909 under Bologna.
+  pd('biology-human-and-environmental-health', { programme_id: 'unipd-bhe', programme: 'Biology of Human and Environmental Health',
+    subject_area: 'Biology & Life Sciences; Environmental Sciences', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: `Joint degree with the University of Bologna, taught in Bologna and Padua (also listed under Bologna) · Limited access: places assigned by ranking · ${PD_CENTS}` }),
+  // "Access Open admission with requirements"; no limited-access paragraph.
+  pd('earth-and-climate-dynamics', { programme_id: 'unipd-ecd', programme: 'Earth and Climate Dynamics',
+    subject_area: 'Environmental Sciences; Physics', admission: 'Open access: no limit on places',
+    other_requirements: `${PD_CENTS} (required, not a ranking)` }),
+  // "Please note that the first semester will be entirely held online."
+  pd('economics-governance-and-decision-making', { programme_id: 'unipd-egd', programme: 'Economics, Governance and Decision-Making',
+    subject_area: 'Economics; Politics & International Relations', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: `Limited access: places assigned by ranking · ${PD_CENTS} · First semester taught entirely online` }),
+  pd('information-engineering', { programme_id: 'unipd-infoeng', programme: 'Information Engineering',
+    subject_area: 'Engineering; Computer Science', admission: 'CEnT-S admission test (CISIA) and a ranking',
+    other_requirements: `Limited access: places assigned by ranking · ${PD_CENTS}` }),
+  // "This bachelor's programme requires an online entry test in English. More
+  // information will be available soon."
+  pd('psychological-science', { programme_id: 'unipd-psy', programme: 'Psychological Science',
+    subject_area: 'Psychology', admission: 'Online entry test in English and a ranking',
+    other_requirements: 'Limited access: places assigned by ranking · Padova\'s own online entry test in English; details not published yet' }),
+  // "Study location Italy, Padua (ONLINE)".
+  pd('techniques-and-methods-psychological-science', { programme_id: 'unipd-tmps', programme: 'Techniques and Methods in Psychological Science',
+    subject_area: 'Psychology', admission: 'Online entry test in English and a ranking',
+    other_requirements: 'Taught online · Limited access: places assigned by ranking · Padova\'s own online entry test in English; details not published yet' }),
+);
+// Medicine: unipd.it pages give "Single-cycle Master's Degree 6 years",
+// "Language English", Medicine and Surgery "Place Venice", MedTech "Place
+// Padua". The 2026/27 call (wwwassets.unipd.it/sites/default/files/2026-09/
+// 2026_Bando_L_MedicineAndSurgery_ENG_V2.pdf): places for EU candidates —
+// Venice 75, MedTech 70; registration on Universitaly "from 26th August until
+// … 9th September 2026"; test "September 29 2026"; EU candidates need "a
+// minimum score of twenty (20) points" to be ranked; one national ranking.
+// No 2027/28 call yet, so no deadline.
+const PD_MED_NOTE = 'No 2027/28 call yet. In 2026/27 registration ran on Universitaly from 26 August to 9 September and the test was on 29 September 2026. Fees depend on family income (ISEE).';
+PROGS.push(
+  { programme_id: 'unipd-med', university_id: 'unipd', city: 'Venice', programme: 'Medicine and Surgery',
+    degree_type: 'Single-cycle master', subject_area: 'Medicine & Health', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree taught in Venice · 2026/27: 75 places for EU applicants · At least 20 points in the test to be ranked',
+    deadline_notes: PD_MED_NOTE, official_url: 'https://www.unipd.it/en/corsi-di-laurea/medicine-and-surgery' },
+  { programme_id: 'unipd-medtech', university_id: 'unipd', programme: 'Medicine and Surgery - MedTech',
+    degree_type: 'Single-cycle master', subject_area: 'Medicine & Health; Engineering', language: 'English',
+    admission: 'National admission test for English-taught medicine and a national ranking',
+    other_requirements: 'Six-year degree with digital technology and AI; option of a second degree · 2026/27: 70 places for EU applicants · At least 20 points in the test to be ranked',
+    deadline_notes: PD_MED_NOTE, official_url: 'https://www.unipd.it/en/corsi-di-laurea/medicine-and-surgery-medtech' },
+);
+
 // -------------------------------------------------------------------- write
 
 const unis = read(new URL('universities.csv', DATA));
