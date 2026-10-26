@@ -84,7 +84,6 @@ export async function importUniversity(cfg) {
     const title = link.title.replace(/\s*\([A-Z]{2}\d{3}\)\s*$/, '').trim();
     const fees = (cfg.fees ? cfg.fees(text) : feeTable?.get(code)) ?? {};
     if (fees.eu) withFees++;
-    const needsMaths = /engineer|mathemat|physic|comput|actuarial|financ|econom/i.test(title);
 
     let ib = null;
     const notes = [caoNote(entry)];
@@ -96,7 +95,7 @@ export async function importUniversity(cfg) {
     // requirement", except on HPAT Medicine, which gets the CAO's minimum.
     const points = entry.latest.aqa ? null : entry.latest.points;
     const c = convertCutoff(points, {
-      test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+      test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
     });
     ib = c.ib;
     notes.push(...c.notes);

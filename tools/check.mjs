@@ -784,6 +784,12 @@ console.log(`        ${live.length} programmes across ${new Set(live.map((p) => 
 
 section('Irish importer rules (so a rerun cannot bring the fixed rows back)');
 const ie = await import(new URL('./lib/ireland.mjs', import.meta.url));
+const cp = await import(new URL('./lib/cao-points.mjs', import.meta.url));
+const pts = await import(new URL('../js/points.js', import.meta.url));
+// The CAO sentence on a row, read back (js/points.js), and its latest round:
+// Round 2 where the CAO published one. ib_points_min is converted from it.
+const caoOf = (p) => pts.parseCaoSentence(p.deadlineNotes);
+const latestOf = (p) => { const c = caoOf(p); return c && c.rounds.length ? c.rounds[c.rounds.length - 1] : null; };
 check('SKIP_TITLE drops graduate-entry Medicine', ie.SKIP_TITLE.test('Medicine (Graduate Entry)'));
 check('SKIP_TITLE drops graduate-entry Pharmacy', ie.SKIP_TITLE.test('Pharmacy - Graduate Entry to Pharmacy'));
 check('SKIP_TITLE keeps undergraduate-entry Medicine (UL LM301)', !ie.SKIP_TITLE.test('Undergraduate Entry Medicine - BMBS'));
@@ -799,8 +805,9 @@ check('HPAT_CODES holds the undergraduate Medicine codes only',
 // hub page has no IB block, so import-ucd.mjs skips it, and the two rows are
 // hand-added. This fails if a merge from an importer run loses one of them.
 // update-cao-points.mjs finds a row by the "(code XX000)" in its note and
-// rewrites the sentence its first OLD pattern matches, so both must hold.
-const oldCao = new RegExp(read('tools/update-cao-points.mjs').match(/const OLD = \[\n\s+\/(.+)\/,\n/)[1]);
+// rewrites the sentence the first OLD_CAO_SENTENCES pattern matches, so both
+// must hold.
+const oldCao = cp.OLD_CAO_SENTENCES[0];
 for (const code of ie.HPAT_CODES) {
   const rows = live.filter((p) => p.deadlineNotes.includes(`(code ${code})`));
   check(`HPAT code ${code} names a live Medicine row the CAO refresh can find`,
@@ -829,14 +836,13 @@ check('aboveIB: 602 and 625 with a test get the test-or-portfolio sentence',
   [602, 625].every((n) => ie.aboveIB(n, true) === ABOVE_TEST_601));
 check('aboveIB: 626 and 741 keep the "above the maximum" sentence',
   typeof ie.aboveIB === 'function' && [626, 741].every((n) => ie.aboveIB(n) === ABOVE_SCALE));
-const oldPatterns = [...read('tools/update-cao-points.mjs').match(/const OLD = \[([\s\S]*?)\n\];/)[1]
-  .matchAll(/^\s*\/(.+)\/,$/gm)].map((m) => new RegExp(m[1]));
-check('update-cao-points.mjs OLD removes every aboveIB sentence before rebuilding',
+const oldPatterns = cp.OLD_CAO_SENTENCES;
+check('OLD_CAO_SENTENCES removes every aboveIB sentence before rebuilding',
   typeof ie.aboveIB === 'function'
     && [ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true), ie.HPAT_NOTE]
       .every((t) => typeof t === 'string' && oldPatterns.some((re) => re.test(t))));
 const wronglyAbove = live.filter((p) => p.deadlineNotes.includes(ABOVE_SCALE)
-  && Number((p.deadlineNotes.match(/CAO cutoff: (\d+) points/) || [])[1]) <= 625);
+  && latestOf(p)?.points <= 625);
 check('no row calls a cutoff of 625 or less "above the 625-point IB maximum"', wronglyAbove.length === 0,
   wronglyAbove.map((p) => p.id).join(', '));
 
@@ -847,17 +853,27 @@ check('no row calls a cutoff of 625 or less "above the 625-point IB maximum"', w
 // and the BONUS_ONLY sentence, and the card says "needs HL Maths 4+".
 const cc = (...a) => (typeof ie.convertCutoff === 'function' ? ie.convertCutoff(...a) : null);
 equal('convertCutoff: 601 gives 42 with the bonus sentence', cc(601), { ib: 42, notes: [ie.BONUS_ONLY] });
-equal('convertCutoff: 625 gives 44 with the bonus sentence, whatever the title',
-  [cc(625), cc(625, { needsMaths: true })], [{ ib: 44, notes: [ie.BONUS_ONLY] }, { ib: 44, notes: [ie.BONUS_ONLY] }]);
+equal('convertCutoff: 625 gives 44 with the bonus sentence', cc(625), { ib: 44, notes: [ie.BONUS_ONLY] });
 equal('convertCutoff: 625 with a test gives no figure and no bonus sentence',
   cc(625, { test: true }), { ib: null, notes: [ABOVE_TEST_601] });
 equal('convertCutoff: 626 gives no figure and the above-625 sentence', cc(626), { ib: null, notes: [ABOVE_SCALE] });
-equal('convertCutoff: 600 with a maths title gives 44 and the informational bonus sentence',
-  cc(600, { needsMaths: true }), { ib: 44, notes: [ie.MATHS_BONUS] });
-equal('convertCutoff: 600 without a maths title gives 44 and no sentence', cc(600), { ib: 44, notes: [] });
-check('BONUS_ONLY and MATHS_BONUS are the sentences the tools always wrote',
-  ie.BONUS_ONLY === 'Only reachable with the 25 HL Maths bonus points.'
-    && ie.MATHS_BONUS === 'HL Maths 4+ adds 25 bonus points.');
+// D28 (2026-10-26): "HL Maths 4+ adds 25 bonus points." went on 126 rows by
+// course title, though the bonus applies to any course. It is gone; the HL
+// Maths 4+ tick says it once. convertCutoff no longer takes a title hint.
+equal('convertCutoff: 600 gives 44 and no sentence, whatever the title (D28)',
+  [cc(600), cc(600, { needsMaths: true })], [{ ib: 44, notes: [] }, { ib: 44, notes: [] }]);
+check('BONUS_ONLY is the sentence the tools always wrote, and MATHS_BONUS is gone (D28)',
+  ie.BONUS_ONLY === 'Only reachable with the 25 HL Maths bonus points.' && !('MATHS_BONUS' in ie));
+const D28_SENTENCE = 'HL Maths 4+ adds 25 bonus points.';
+const mathsLeft = live.filter((p) => p.deadlineNotes.includes(D28_SENTENCE));
+check('no row says "HL Maths 4+ adds 25 bonus points." (D28)', mathsLeft.length === 0,
+  mathsLeft.map((p) => p.id).join(', '));
+for (const f of ['tools/lib/ireland.mjs', 'tools/lib/irish-import.mjs', 'tools/lib/cao-points.mjs',
+  'tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/update-cao-points.mjs']) {
+  check(`${f} has no title-based maths hint (needsMaths, MATHS_TITLE) (D28)`, !/needsMaths|MATHS_TITLE/.test(read(f)));
+}
+check('OLD_CAO_SENTENCES still strips the D28 sentence, so a refresh removes any left over',
+  oldPatterns.some((re) => re.test(D28_SENTENCE)));
 for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
   const src = read(f);
   check(`${f} converts a cutoff with convertCutoff() and has no inline bonus maths`,
@@ -866,9 +882,9 @@ for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/up
 check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Maths|625',
   !read('tools/update-cao-points.mjs').includes('Maths|625'));
 const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);
-const cutoffOf = (p) => { const m = p.deadlineNotes.match(/CAO cutoff: (\d+) points/); return m ? Number(m[1]) : null; };
+const cutoffOf = (p) => latestOf(p)?.points ?? null;
 const ucdConverted = live.filter((p) => p.id.startsWith('ucd-')
-  && [ie.BONUS_ONLY, ie.MATHS_BONUS, ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true)]
+  && [ie.BONUS_ONLY, D28_SENTENCE, ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true)]
     .some((t) => p.deadlineNotes.includes(t)));
 check('no UCD row carries a conversion sentence (UCD\'s figure is its own)', ucdConverted.length === 0,
   ucdConverted.map((p) => p.id).join(', '));
@@ -924,7 +940,7 @@ for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/up
 }
 check('update-cao-points.mjs keeps HPAT_NOTE on UCD rows',
   /const ucdKeep = new Set\(.*HPAT_NOTE/.test(read('tools/update-cao-points.mjs')));
-check('update-cao-points.mjs OLD removes the plus-test sentence too',
+check('OLD_CAO_SENTENCES removes the plus-test sentence too',
   typeof ie.PLUS_TEST === 'string' && oldPatterns.some((re) => re.test(ie.PLUS_TEST)));
 const irish = live.filter(isIrish);
 const isHpatRow = (p) => p.otherRequirements.includes(ie.HPAT);
@@ -976,6 +992,143 @@ const shown = (n) => applyFilters(tp, withPoints(n)).map((p) => p.id);
 check('a plus-test row (no figure) is shown at 24 points', shown(24).includes('p-test'));
 check('an HPAT row (35) is hidden at 34 and shown at 35', !shown(34).includes('p-hpat') && shown(35).includes('p-hpat'));
 console.log(`        ${hpatLive.length} rows ranked with the HPAT, ${live.filter((p) => p.pointsPlusTest).length} with a test-score cutoff`);
+
+// ---------------------------------------------------------------- CAO table and rounds
+
+section('CAO table read by column, both rounds in the note (D29, Q4)');
+// D29: the table was split on runs of two spaces, so a title with two spaces
+// of its own (CK104, DC015) shifted Round 1 into Round 2, and a bare "#"
+// (MH002) dropped the course. parseCaoTable reads the columns under the
+// "RND 1" / "RND 2" headings instead. The fixture copies the real layout
+// (2026-10-26: headings at columns 82 and 91).
+const caoLine = (code, title, r1 = '', r2 = '') => `${`${code}  ${title}`.padEnd(82)}${r1.padEnd(9)}${r2}`.padEnd(127);
+const caoHead = [`${''.padEnd(82)}2026     2026`, `${''.padEnd(82)}RND 1    RND 2`];
+const caoFixture = [
+  '<PRE>Points Required for Entry to 2026 Level 8 Courses', ...caoHead,
+  '       University College Cork',
+  caoLine('CK104', 'Arts - Music - 3 years or 4 years  (BMus or Chinese/European/Internation', '#367'),
+  caoLine('DC015', 'Post Primary Teacher Education -  Technology, Engineering and Graphics', '420'),
+  caoLine('MH002', 'Education - Primary Teaching - Gaeltacht  Applicants (Froebel)', '#'),
+  caoLine('CM010', 'Education Studies', '316', '346v'),
+  caoLine('TR028', 'Ancient and Medieval History and Culture', '497', '495*'),
+  caoLine('TR093', 'General Nursing (Adelaide School of Nursing)', '#434', '#431'),
+  caoLine('NC020', 'Marketing Practice', 'AQA', 'AQA'),
+  caoLine('MH103', 'Music Audition', '#AQA', '#AQA'),
+  caoLine('ID001', 'Accounting and Finance'),
+  '', ...caoHead,
+  caoLine('GC212', 'Accounting [Cork]', ',236'),
+  caoLine('TR001', 'Both rounds drawn', '510*', '501*'),
+].join('\n');
+const caoMap = cp.parseCaoTable(caoFixture, { minCourses: 1 });
+const roundsOf = (code) => { const e = caoMap.get(code); return e && [e.round1, e.round2].map((v) => v && [v.points, v.aqa, v.test, v.notAll]); };
+equal('parseCaoTable: a title with two spaces keeps Round 1 in Round 1 (CK104, DC015)',
+  [roundsOf('CK104'), roundsOf('DC015')], [[[367, false, true, false], null], [[420, false, false, false], null]]);
+equal('parseCaoTable: a bare "#" is kept as a test with no figure (MH002)', roundsOf('MH002'), [[null, false, true, false], null]);
+equal('parseCaoTable: two rounds, with "v", "*", "#", AQA and "#AQA"',
+  ['CM010', 'TR028', 'TR093', 'NC020', 'MH103'].map(roundsOf),
+  [[[316, false, false, false], [346, false, false, false]], [[497, false, false, false], [495, false, false, true]],
+    [[434, false, true, false], [431, false, true, false]], [[null, true, false, false], [null, true, false, false]],
+    [[null, true, true, false], [null, true, true, false]]]);
+check('parseCaoTable: a course with no value is left out, and a second heading block reads the same',
+  !caoMap.has('ID001') && caoMap.get('GC212')?.round1?.points === 236 && caoMap.get('TR001')?.latest?.points === 501);
+equal('parseCaoTable: the title is the text between the code and the Round 1 column',
+  caoMap.get('CK104')?.title, 'Arts - Music - 3 years or 4 years  (BMus or Chinese/European/Internation');
+const throwsOn = (text) => { try { cp.parseCaoTable(text, { minCourses: 1 }); return false; } catch { return true; } };
+check('parseCaoTable: headings in different columns stop the run ("layout has changed")',
+  throwsOn(caoFixture.replace(`${''.padEnd(82)}RND 1    RND 2`, `${''.padEnd(80)}RND 1    RND 2`)));
+check('parseCaoTable: a title running into the Round 1 column stops the run',
+  throwsOn(caoFixture.replace(caoLine('CM010', 'Education Studies', '316', '346v'), `CM010  ${'x'.repeat(76)}316      346v`)));
+check('parseCaoTable: the real-size guard (500 courses) still applies by default', (() => {
+  try { cp.parseCaoTable(caoFixture); return false; } catch (e) { return /parsed only/.test(e.message); }
+})());
+check('fetchCaoPoints reads through parseCaoTable (no second parser)',
+  /parseCaoTable\(await getHtml\(SOURCE\)\)/.test(read('tools/lib/cao-points.mjs'))
+    && !/split\(\/\\s\\s\+\/\)/.test(read('tools/lib/cao-points.mjs')));
+
+// Q4 (Leon, 2026-10-26): the note quotes both rounds, each labelled, with its
+// own random-draw marker. Every shape caoNote writes must read back through
+// parseCaoSentence, which the cards will use.
+const v = (points, extra = {}) => ({ points, aqa: false, test: false, notAll: false, newComp: false, ...extra });
+const ent = (round1, round2 = null) => ({ code: 'TR028', year: 2026, round1, round2, latest: round2 ?? round1 });
+const shapes = [
+  [ent(v(495)), 'one round', '2026 CAO cutoff: Round 1 495 points (code TR028).',
+    [{ round: 1, points: 495, aqa: false, notAll: false }]],
+  [ent(v(510), v(495)), 'two rounds', '2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028).',
+    [{ round: 1, points: 510, aqa: false, notAll: false }, { round: 2, points: 495, aqa: false, notAll: false }]],
+  [ent(v(497), v(495, { notAll: true })), 'random draw in Round 2',
+    '2026 CAO cutoff: Round 1 497 points, Round 2 495 points (code TR028). Some applicants on that score missed out in Round 2 (random draw).',
+    [{ round: 1, points: 497, aqa: false, notAll: false }, { round: 2, points: 495, aqa: false, notAll: true }]],
+  [ent(v(497, { notAll: true }), v(495)), 'random draw in Round 1',
+    '2026 CAO cutoff: Round 1 497 points, Round 2 495 points (code TR028). Some applicants on that score missed out in Round 1 (random draw).',
+    [{ round: 1, points: 497, aqa: false, notAll: true }, { round: 2, points: 495, aqa: false, notAll: false }]],
+  [ent(v(510, { notAll: true }), v(501, { notAll: true })), 'random draw in both rounds',
+    '2026 CAO cutoff: Round 1 510 points, Round 2 501 points (code TR028). Some applicants on that score missed out in both rounds (random draw).',
+    [{ round: 1, points: 510, aqa: false, notAll: true }, { round: 2, points: 501, aqa: false, notAll: true }]],
+  [ent(v(420), v(null, { aqa: true })), 'AQA in Round 2',
+    '2026 CAO cutoff: Round 1 420 points, Round 2 every qualified applicant got a place (code TR028).',
+    [{ round: 1, points: 420, aqa: false, notAll: false }, { round: 2, points: null, aqa: true, notAll: false }]],
+  [ent(v(434, { test: true }), v(431, { test: true })), '"#" stays out of the sentence',
+    '2026 CAO cutoff: Round 1 434 points, Round 2 431 points (code TR028).',
+    [{ round: 1, points: 434, aqa: false, notAll: false }, { round: 2, points: 431, aqa: false, notAll: false }]],
+  [ent(v(null, { aqa: true }), v(null, { aqa: true })), 'whole-course AQA',
+    '2026: every qualified applicant got a place (code TR028) — no cutoff.', []],
+  [ent(v(null, { test: true })), 'a bare "#": no figure', 'No 2026 cutoff published (code TR028).', []],
+];
+for (const [entry, name, sentence, rounds] of shapes) {
+  const note = cp.caoNote(entry);
+  equal(`caoNote: ${name}`, note, sentence);
+  equal(`parseCaoSentence reads back caoNote: ${name}`, pts.parseCaoSentence(`Before. ${note} After.`),
+    { year: 2026, code: 'TR028', aqa: name === 'whole-course AQA', rounds });
+  check(`rebuildNote replaces caoNote in place: ${name}`,
+    cp.rebuildNote(`Before. ${note} After.`, 'NEW.') === 'Before. NEW. After.');
+}
+equal('parseCaoSentence reads the one-round sentence written before 2026-10-26 (round unknown)',
+  pts.parseCaoSentence('2025 CAO cutoff: 544 points (code MH002). Some applicants on that score missed out (random draw).'),
+  { year: 2025, code: 'MH002', aqa: false, rounds: [{ round: null, points: 544, aqa: false, notAll: true }] });
+equal('rebuildNote puts the fresh block where the old one-round sentence was and drops the D28 sentence',
+  cp.rebuildNote('Shared first. 2026 CAO cutoff: 497 points (code TR028). Some applicants on that score missed out (random draw). HL Maths 4+ adds 25 bonus points. Galway note.', 'NEW.'),
+  'Shared first. NEW. Galway note.');
+check('update-cao-points.mjs rebuilds notes with rebuildNote and keeps no OLD list of its own',
+  read('tools/update-cao-points.mjs').includes('rebuildNote(notes, fresh)') && !/const OLD = \[/.test(read('tools/update-cao-points.mjs')));
+
+// One conversion, in js/points.js, for the tools and the browser.
+check('tools/lib/ireland.mjs takes lowestIB from js/points.js (the same function)', ie.lowestIB === pts.lowestIB);
+check('the IB table is only in js/points.js', !/\[45, 600\]/.test(read('tools/lib/ireland.mjs')) && pts.TABLE[0][1] === 600);
+equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 497, 350, null, null]);
+const disagree = [];
+for (let n = 300; n <= 760; n++) {
+  for (const test of [false, true]) {
+    const a = ie.convertCutoff(n, { test });
+    const b = pts.ibForCutoff(n, { test });
+    if (a.ib !== b.ib || a.notes.includes(ie.BONUS_ONLY) !== b.bonusOnly) disagree.push(`${n}${test ? '#' : ''}`);
+  }
+}
+check('ibForCutoff agrees with convertCutoff for every cutoff 300–760, with and without a test', disagree.length === 0,
+  disagree.slice(0, 10).join(', '));
+
+// Real data: every non-UCD Irish row with a CAO code reads back, and its
+// figure is the conversion of the latest round.
+const nonUcdCao = live.filter(isIrish).filter((p) => !p.id.startsWith('ucd-') && /\(code [A-Z]{2}\d{3}\)/.test(p.deadlineNotes));
+const unparsed = nonUcdCao.filter((p) => !caoOf(p));
+check('every non-UCD Irish row with a CAO code has a CAO sentence that parses', unparsed.length === 0,
+  unparsed.map((p) => p.id).join(', '));
+const figureWrong = nonUcdCao.filter((p) => caoOf(p)).filter((p) => {
+  if (isHpatRow(p)) return p.ibPointsMin !== 35;
+  const test = p.otherRequirements.join(' · ') === CAO_TEST;
+  return p.ibPointsMin !== pts.ibForCutoff(latestOf(p)?.points ?? null, { test }).ib;
+});
+check('every non-UCD Irish ib_points_min is ibForCutoff of its latest round (HPAT rows 35)', figureWrong.length === 0,
+  figureWrong.map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
+const bonusWrong = nonUcdCao.filter((p) => caoOf(p) && !isHpatRow(p)).filter((p) => {
+  const test = p.otherRequirements.join(' · ') === CAO_TEST;
+  return pts.ibForCutoff(latestOf(p)?.points ?? null, { test }).bonusOnly !== p.deadlineNotes.includes(ie.BONUS_ONLY);
+});
+check('BONUS_ONLY is on a row exactly when its latest round is bonus-only', bonusWrong.length === 0,
+  bonusWrong.map((p) => p.id).join(', '));
+const twoRound = live.filter((p) => caoOf(p)?.rounds.length === 2);
+check('the two-round sentence is on the real rows (Round 1 first)', twoRound.length > 100
+  && twoRound.every((p) => caoOf(p).rounds.map((r) => r.round).join() === '1,2'), `${twoRound.length} rows`);
+console.log(`        ${nonUcdCao.length} non-UCD Irish rows with a CAO code, ${twoRound.length} rows quote two rounds`);
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

@@ -7,6 +7,12 @@
 // its subject parsing (ibFrom), because Trinity's pages are laid out
 // differently from the other five.
 
+// CAO's official IB conversion (TABLE), lowestIB and ibForCutoff live in
+// js/points.js, so the browser's "HL Maths 4+" tick and these tools read the
+// same table. lowestIB is re-exported so the tools keep one import path.
+import { lowestIB, ibForCutoff } from '../../js/points.js';
+export { lowestIB };
+
 const UA = {
   'user-agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
@@ -51,18 +57,6 @@ export const toText = (html) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-// CAO's official IB conversion, from the 2026 EU/EFTA guidelines document —
-// the same table import-tcd.mjs uses, so Irish rows stay comparable.
-const TABLE = [[45, 600], [44, 600], [43, 594], [42, 577], [41, 565], [40, 553], [39, 541], [38, 520],
-               [37, 508], [36, 497], [35, 481], [34, 466], [33, 453], [32, 442], [31, 430], [30, 412],
-               [29, 400], [28, 389], [27, 379], [26, 368], [25, 359], [24, 350]];
-
-/** Lowest IB total whose CAO equivalent still reaches `need` points, or null. */
-export const lowestIB = (need) => {
-  const ok = TABLE.filter(([, p]) => p >= need).map(([ib]) => ib);
-  return ok.length ? Math.min(...ok) : null;
-};
-
 /**
  * The sentence for a cutoff no IB total reaches on its own (lowestIB gave null).
  *
@@ -84,11 +78,15 @@ export const aboveIB = (points, test = false) => points > 625
     ? 'Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given.'
     : 'Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given.';
 
-// The exact sentences the card reads. js/data.js keeps a copy of BONUS_ONLY
+// The exact sentence the card reads. js/data.js keeps a copy of BONUS_ONLY
 // (the browser cannot import from tools/), and check.mjs asserts they match:
 // a row whose note carries BONUS_ONLY shows "needs HL Maths 4+" on its card.
+// The informational "HL Maths 4+ adds 25 bonus points." used to go on courses
+// whose title sounded mathematical (126 rows). The bonus applies to any
+// course, so it went on 2026-10-26 (registry D28); the "HL Maths 4+" tick next
+// to My points says it once instead. OLD_CAO_SENTENCES in cao-points.mjs still
+// strips it, so a refresh removes any left over.
 export const BONUS_ONLY = 'Only reachable with the 25 HL Maths bonus points.';
-export const MATHS_BONUS = 'HL Maths 4+ adds 25 bonus points.';
 
 /**
  * Every Irish cutoff above 625 includes a test score: the HPAT for Medicine,
@@ -123,24 +121,19 @@ export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff 
  * A cutoff with a test (`test`: the CAO "#" marker or an HPAT code) may include
  * test marks, so it is not a points total and gets no bonus figure.
  *
- * `needsMaths` (still title-based) only decides the informational MATHS_BONUS
- * sentence on cutoffs a 45 or less already reaches. `hpat` (the CAO code is in
- * HPAT_CODES) gives the CAO's Medicine minimum instead of any conversion.
+ * The figure itself comes from ibForCutoff in js/points.js, the same function
+ * the browser uses. `hpat` (the CAO code is in HPAT_CODES) gives the CAO's
+ * Medicine minimum instead of any conversion.
  */
-export function convertCutoff(points, { test = false, hpat = false, needsMaths = false } = {}) {
+export function convertCutoff(points, { test = false, hpat = false } = {}) {
   // An HPAT cutoff is never a points total, and the 480 minimum does not depend
   // on there having been a cutoff, so HPAT courses always get the CAO minimum,
   // even with no cutoff (AQA, none published, or no CAO entry: points null).
   if (hpat) return { ib: lowestIB(HPAT_MIN_POINTS), notes: [HPAT_NOTE] };
   if (points === null || points === undefined) return { ib: null, notes: [] };
+  const { ib, bonusOnly } = ibForCutoff(points, { test });
   const notes = [];
-  let ib = lowestIB(points);
-  if (ib === null && points <= 625 && !test) {
-    ib = lowestIB(points - 25);
-    if (ib !== null) notes.push(BONUS_ONLY);
-  } else if (ib !== null && needsMaths) {
-    notes.push(MATHS_BONUS);
-  }
+  if (bonusOnly) notes.push(BONUS_ONLY);
   if (ib === null) notes.push(aboveIB(points, test));
   return { ib, notes };
 }

@@ -8,40 +8,34 @@
 // long as each university lists its courses in the same order. This touches
 // only what the CAO table decides:
 //
-//   * the CAO sentence in deadline_notes ("2026 CAO cutoff: …", "every
-//     qualified applicant got a place", "No 2026 cutoff published") and the
-//     HL Maths bonus sentences that go with it;
+//   * the CAO sentence in deadline_notes ("2026 CAO cutoff: Round 1 …,
+//     Round 2 …", "every qualified applicant got a place", "No 2026 cutoff
+//     published") and the conversion sentences that go with it;
 //   * ib_points_min, for every university except UCD, whose figure is UCD's
 //     own stated minimum and not a conversion of the cutoff.
 //
-// The conversion is CAO's IB table for 2026 entry (tools/lib/ireland.mjs,
-// TABLE): 45 and 44 → 600 … 24 → 350, plus 25 points for HL Maths at 4 or
-// better. The 2027 table is not published yet.
+// ib_points_min is converted from the latest round (Round 2 where the CAO
+// published one), though the card's headline is Round 1. The latest round is
+// the lower one on every current row, and a student who met last year's
+// Round 2 cutoff did get a place, so filtering on Round 1 would hide a real
+// option (plans/points-honesty.md, second interpretation call; Leon's Q4,
+// 2026-10-26). check.mjs asserts the latest round is the lower one.
+//
+// The conversion is CAO's IB table for 2026 entry (js/points.js, TABLE):
+// 45 and 44 → 600 … 24 → 350, plus 25 points for HL Maths at 4 or better
+// where nothing else reaches the cutoff. The 2027 table is not published yet.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseCsv } from '../js/csv.js';
 import { convertCutoff, HPAT_CODES, HPAT_NOTE } from './lib/ireland.mjs';
-import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
+import { fetchCaoPoints, caoNote, rebuildNote } from './lib/cao-points.mjs';
 
 const IRISH = new Set(['tcd', 'ucd', 'ucc', 'galway', 'dcu', 'ul', 'maynooth']);
 // Rows whose note no longer names the code, because it was rewritten by hand.
 const CODE_BY_ID = { 'maynooth-bachelor-of-science': 'MH201' };
 
-// Every sentence the importers wrote from the CAO table. Removed and rebuilt.
-const OLD = [
-  /\d{4} CAO cutoff: \d+ points \(code [A-Z]{2}\d{3}\)\.( Changes yearly — not a guaranteed minimum\.)?( Some applicants on that score missed out \(random draw\)\.)?/,
-  /\d{4}: every qualified applicant got a place \(code [A-Z]{2}\d{3}\) — no cutoff\./,
-  /No \d{4} cutoff published \(code [A-Z]{2}\d{3}\)\./,
-  /UCD lists a \d+ point CAO cutoff for \d{4}( under code [A-Z]{2}\d{3})?\./,
-  /HL Maths 4\+ adds 25 bonus points\./,
-  /Only reachable with the 25 HL Maths bonus points\./,
-  /Above the 625-point IB maximum, so no IB equivalent\./,
-  /Above the 600 points a 45 converts to; reachable only with the 25 HL Maths bonus points, so no IB figure is given\./,
-  /Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given\./,
-  /The CAO minimum for Medicine is \d+ points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure\./,
-  /Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given\./,
-];
-const MATHS_TITLE = /engineer|mathemat|physic|comput|actuarial|financ|econom/i;
+// The sentences this rewrites are OLD_CAO_SENTENCES in lib/cao-points.mjs,
+// shared with any one-off rewrite so the two can't disagree.
 
 const cao = await fetchCaoPoints();
 const year = cao.values().next().value.year;
@@ -62,13 +56,12 @@ for (const r of rows) {
 
   // The figure, the way the importers worked it out.
   const isUcd = r[col.university_id] === 'ucd';
-  const needsMaths = MATHS_TITLE.test(r[col.programme]) || /mathemat/i.test(r[col.ib_subjects]);
   const sentences = [caoNote(entry)];
   // One conversion for all three Irish writers (lib/ireland.mjs), called even
   // with no cutoff (AQA: points null), so HPAT Medicine always gets the CAO's
   // minimum and HPAT_NOTE.
   const conv = convertCutoff(entry.latest.aqa ? null : entry.latest.points, {
-    test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+    test: entry.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
   });
   const ib = conv.ib;
   sentences.push(...conv.notes);
@@ -82,21 +75,10 @@ for (const r of rows) {
   const ucdKeep = new Set([sentences[0], HPAT_NOTE]);
   const fresh = (isUcd ? sentences.filter((s) => ucdKeep.has(s)) : sentences).join(' ');
 
-  // Rebuild the note: the new block where the first old sentence was, every
-  // other old sentence dropped, everything else (shared-code notes, Galway
-  // band notes, hand-written notes) kept in place.
-  let out = notes;
-  let at = -1;
-  for (const re of OLD) {
-    const m = out.match(re);
-    if (!m) continue;
-    if (at < 0 || m.index < at) at = m.index;
-    out = out.replace(re, '\u0000');
-  }
-  out = at < 0
-    ? `${fresh} ${out}`
-    : out.replace('\u0000', fresh).replace(/\u0000/g, '');
-  r[col.deadline_notes] = out.replace(/\s{2,}/g, ' ').trim();
+  // The new block where the first old sentence was, every other old sentence
+  // dropped, everything else (shared-code notes, Galway band notes,
+  // hand-written notes) kept in place.
+  r[col.deadline_notes] = rebuildNote(notes, fresh);
 
   if (!isUcd) {
     const next = ib === null ? '' : String(ib);

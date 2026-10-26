@@ -211,6 +211,15 @@ of thing that makes someone apply for a course they cannot get into. The one
 exception is HPAT Medicine in Ireland: there the figure is the CAO's published
 480-point minimum (35 IB points), which applies to every HPAT course.
 
+**The CAO sentence in Irish notes is written by the refresh, not by hand.**
+"2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028)." means
+the CAO's cutoff was 510 points in its first round of offers and 495 in its
+second (later, lower) round; a course with no second round names only Round 1.
+"Some applicants on that score missed out in Round 2 (random draw)." means not
+everyone on exactly that score got a place in that round. The IB figure is the
+conversion of the latest round. `tools/update-cao-points.mjs` rewrites these
+sentences each August, so don't edit them; anything else in the note is kept.
+
 **Some Irish notes contain a sentence the card reads.** When an Irish row's
 `deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
 points.", its card says "44 IB points, needs HL Maths 4+" (with its own number).

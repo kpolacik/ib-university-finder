@@ -20,7 +20,8 @@ Phase 2 (the CAO sentence in `deadline_notes`, written by
 
 - `2026 CAO cutoff: Round 1 495 points (code TR028).` (one round)
 - `2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028).`
-- `Round 2 every qualified applicant got a place` (a round with AQA)
+- `2026 CAO cutoff: Round 1 420 points, Round 2 every qualified applicant got
+  a place (code TR028).` (a round with the CAO's AQA; none of our rows today)
 - `Some applicants on that score missed out in Round 1 (random draw).` (also
   "in Round 2", "in both rounds")
 - Removed: "HL Maths 4+ adds 25 bonus points." (126 rows, D28)

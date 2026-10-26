@@ -118,7 +118,6 @@ for (const c of links) {
   }
 
   const entry = cao.get(code);
-  const needsMaths = /mathemat/i.test(subjects) || /engineer|mathemat|physic|comput/i.test(c.t);
   const notes = [];
   let ib = null;
 
@@ -133,7 +132,7 @@ for (const c of links) {
   // null and the figure stays blank, except on HPAT Medicine, which gets the
   // CAO's minimum whatever the cutoff.
   const conv = convertCutoff(entry ? entry.latest.points : null, {
-    test: entry?.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), needsMaths,
+    test: entry?.latest.test || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
   });
   ib = conv.ib;
   notes.push(...conv.notes);

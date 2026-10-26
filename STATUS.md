@@ -101,7 +101,8 @@ the date and initials from that programme row alone. The university row's
    after their pages update (usually by November), and fill the tables there.
 5. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
-   than re-running the importers). Re-run it each August when the CAO
+   than re-running the importers; notes rewritten 2026-10-26 to quote both
+   rounds, figures unchanged). Re-run it each August when the CAO
    replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
    600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
    the 2027 table is not out yet.
@@ -326,6 +327,25 @@ a per-country system.
   include an audition or test, so they still give no figure and the card reads
   "Cutoff includes a test score". No row says "Above the 625-point IB maximum"
   any more. The sentences come from `convertCutoff` in `tools/lib/ireland.mjs`.
+
+- **The CAO table was read by splitting on double spaces (fixed 2026-10-26,
+  registry D29).** The table is fixed-width text, and `fetchCaoPoints` split
+  each line wherever two or more spaces ran together. Some course titles have
+  two spaces of their own ("Arts - Music - 3 years or 4 years  (BMus or …",
+  CK104; "Post Primary Teacher Education -  Technology, …", DC015), so their
+  Round 1 figure was read as Round 2, and a bare `#` (MH002) dropped the
+  course. The figures on our rows happened to be right, because only the
+  latest round was quoted, but quoting both rounds would have mislabelled
+  them. `parseCaoTable` in `tools/lib/cao-points.mjs` now reads each value
+  from the column under its "RND 1" / "RND 2" heading, and stops with "layout
+  has changed" if the headings on the page disagree or a title runs into the
+  figures. `check.mjs` runs it on a copy of those lines.
+
+- **"HL Maths 4+ adds 25 bonus points." went on courses by title (removed
+  2026-10-26, registry D28).** 126 rows carried it because their name sounded
+  mathematical, though the bonus applies to any course. The sentence is gone
+  from the data and the tools (`OLD_CAO_SENTENCES` still strips it on a
+  refresh); the "HL Maths 4+" tick next to My points says it once instead.
 
 - **Passed-deadline cards were dimmed until unreadable (fixed 2026-10-26,
   registry A01).** A card whose deadline had gone was drawn at 65% opacity,
