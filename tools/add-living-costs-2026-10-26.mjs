@@ -154,6 +154,44 @@ const COSTS = {
   // guide/costs now gives "Student halls (month) 4 710 Kč / 186 EUR". It is
   // VUT's own figure, so it is used; STATUS.md flags it.
   vut: [300, 600, UNI],
+
+  // ----------------------------------------------------------------- Denmark
+  //
+  // Krone figures converted at the fixed peg, 7.46 to the euro, as elsewhere
+  // in this dataset.
+
+  // international.au.dk/…/Aarhus_University_Fact_Sheet_2026-2027.pdf,
+  // "BUDGET EURO": housing 350-600, meals 300, books 25, local transportation
+  // 30, personal expenses 100, "Monthly estimate 1.000".
+  aarhus: [1000, null, UNI],
+  // dtu.dk/english/-/media/…/budget-living-expenses.pdf, "Budget (living on
+  // Campus)": "TOTAL 1244-1840 EUR/month".
+  dtu: [1244, 1840, UNI],
+  // ruc.dk/sites/default/files/2026-07/Getting_Started_2026-27.pdf: "In total,
+  // you should expect to use approximately DKK 8,000 (€ 1,070) per month."
+  ruc: [1070, null, UNI],
+  // en.itu.dk/Programmes/International-students/Practical-information-for-
+  // international-students: "Living expenses in Copenhagen are on average 6.500
+  // DKK per month/ app. 870€ … (exchange rate November 2019)". Dated, but ITU's
+  // own; STATUS.md flags it.
+  itu: [870, null, UNI],
+  // sdu.dk/-/media/files/samarbejde/internationalt_samarbejde/fact_sheet_
+  // university_of_southern_denmark.pdf, "Approximate expenses per month in
+  // Euros": accommodation € 350 - 500, food € 250 - 350, public transport € 50,
+  // others € 100 - 200 for books — €750 to €1,100.
+  sdu: [750, 1100, UNI],
+  // Study in Denmark (the Danish Agency for Higher Education's portal),
+  // studyindenmark.dk/live-in-denmark/bank-budget: rent 3000-6,500 DKK,
+  // insurance 300, streaming 200, books 400-650, mobile 250, food 2,000-3,500,
+  // transport 300, other personal expenses 2,000 — DKK 7,450 to 13,000, €999
+  // to €1,743.
+  //   CBS gives no figure: cbs.dk/en/study-programmes/international-students
+  //   says "Staying in Copenhagen is not exactly cheap … You can get a broad
+  //   idea of the monthly expenditures … on studyindenmark.dk".
+  //   AAU publishes rent but no total, and no other university here is in
+  //   Aalborg.
+  cbs: [1000, 1740, 'national estimate (Study in Denmark)'],
+  aau: [1000, 1740, 'national estimate (Study in Denmark)'],
 };
 
 // ------------------------------------------------------------------- write
