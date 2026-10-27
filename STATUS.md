@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1394 programmes · 72 universities · 6 countries · all checks passing.
+1453 programmes · 84 universities · 7 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -18,6 +18,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
+| Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
 
 **Sweden** (`tools/add-sweden-2026-10-27.mjs`, which quotes every page). The
 list is UHR's: universityadmissions.se's search API, autumn 2027, bachelor
@@ -33,6 +34,22 @@ this machine, so their subjects and exam are "not checked"; Halmstad's Applied
 AI and LiU's Experimental Biomedicine show no specific requirements on their
 pages; living costs are one national floor (Migration Agency, SEK 10,656 →
 €957) rather than each university's own figure.
+
+**Finland** (`tools/add-finland-2026-10-27.mjs`, which quotes every page). The
+list is Studyinfo.fi's (national portal API): university bachelors whose
+teaching language is English only. Universities of applied sciences are left
+out, as everywhere else. IB holders mostly go through certificate-based
+admission: IB grades scored with the national tables on yliopistovalinnat.fi,
+whose IB thresholds are on the cards (technology: advanced maths and chemistry
+or physics, 2+ in both and 4 in one; business: maths 2+; Aalto's own: advanced
+maths 6+). Deadlines: joint application 21 January 2027, Aalto round B 22
+January, Helsinki group 2 (IB) 23 March, LUT rolling until 30 April. LUT's
+entrance exam is `waivable` (a maths test only if your maths falls short).
+Exams (`yes`): Aalto Design and Media, three UEF programmes, two at
+Jyväskylä (one by SAT/ACT), Uniarts Global Music. Gaps: Vaasa's 2027 round
+isn't on Studyinfo yet; UEF Lifelong Learning's threshold wasn't found; LUT's
+IB table is still headed "2026"; English requirements are filled only for
+Aalto, LUT and UEF.
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
 merged on 2026-10-25 by `tools/merge-italy-denmark.mjs`, which records what
@@ -273,9 +290,8 @@ initials and it reads "Checked <date> by <initials>".
    may not include a test), UL Music and Dance, Maynooth MH002, UCD Veterinary
    Nursing, and two Italian open-access programmes (Bologna 6653, Ca' Foscari
    IMS) whose pages name no entry check.
-9. **Finland and Norway** — next in the survey's Nordic order. Finland: the
-   joint application on studyinfo.fi (English-taught bachelors, January 2027
-   round). Norway: Samordna opptak (EU deadline 15 April).
+9. ~~Finland~~ — added 2026-10-27. **Norway** is next: Samordna opptak (EU
+   deadline 15 April).
 10. **Swedish gaps**: open the Linnaeus and Mid Sweden pages from a normal
    browser and fill their 11 rows; replace the national living-cost floor with
    each university's own estimate.
