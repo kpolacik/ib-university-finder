@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1453 programmes · 84 universities · 7 countries · all checks passing.
+1467 programmes · 89 universities · 8 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -18,6 +18,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
+| Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
 | Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
 
 **Sweden** (`tools/add-sweden-2026-10-27.mjs`, which quotes every page). The
@@ -50,6 +51,16 @@ Jyväskylä (one by SAT/ACT), Uniarts Global Music. Gaps: Vaasa's 2027 round
 isn't on Studyinfo yet; UEF Lifelong Learning's threshold wasn't found; LUT's
 IB table is still headed "2026"; English requirements are filled only for
 Aalto, LUT and UEF.
+
+**Norway** (`tools/add-norway-2026-10-27.mjs`). The list is Study in Norway's
+"full degree programmes taught in English", bachelor level (31), kept to
+universities: Agder 4, Nord 5, BI 3, NMBU 1, Oslo 1. Applicants with a
+non-Nordic diploma apply to each university directly (Samordna opptak asks for
+Norwegian), so deadlines differ: 1 December 2026 (NMBU, UiO), 15 December
+(UiA music), 1 March 2027 (UiA, BI priority), 15 April (Nord). BI is private
+(NOK 106,400 a year, €10,178). Left out: Stavanger's Dance (uis.no blocks this
+machine), the Academy of Music (mainly Norwegian), Nord Animal Science
+(Norwegian-language route). Living costs: UDI's NOK 15,488/month = €1,481.
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
 merged on 2026-10-25 by `tools/merge-italy-denmark.mjs`, which records what
@@ -290,8 +301,9 @@ initials and it reads "Checked <date> by <initials>".
    may not include a test), UL Music and Dance, Maynooth MH002, UCD Veterinary
    Nursing, and two Italian open-access programmes (Bologna 6653, Ca' Foscari
    IMS) whose pages name no entry check.
-9. ~~Finland~~ — added 2026-10-27. **Norway** is next: Samordna opptak (EU
-   deadline 15 April).
+9. ~~Finland and Norway~~ — added 2026-10-27. Norway has few English-taught
+   bachelors (14 here); its Norwegian maths codes (R1, S1+S2) have no IB
+   equivalent on the programme pages, so two rows show maths as unknown.
 10. **Swedish gaps**: open the Linnaeus and Mid Sweden pages from a normal
    browser and fill their 11 rows; replace the national living-cost floor with
    each university's own estimate.
