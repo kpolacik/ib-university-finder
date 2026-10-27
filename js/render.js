@@ -289,6 +289,21 @@ export function renderCount(node, lead, parts) {
   return true;
 }
 
+// The stuck phone bar's twin: the same lead, then only each bucket's number
+// with its mark ("1130 of 1240 programmes · 410 · 41 · 679"). The node is
+// aria-hidden; the full sentence stays the live region. Every
+// pointsSummaryParts text starts with its count.
+export function renderCountShort(node, lead, parts) {
+  const numbers = parts.map((p) => p.text.match(/^\d+/)?.[0] ?? p.text);
+  const text = [lead, ...numbers].join(' · ');
+  if (node.textContent === text) return false;
+  node.replaceChildren(el('b', '', lead));
+  parts.forEach((part, i) => {
+    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, numbers[i]));
+  });
+  return true;
+}
+
 function deadlineCell(row, { compact = false } = {}) {
   const cell = el(compact ? 'p' : 'div', 'cell c-ddl');
   cell.append(el('span', 'lab', 'Deadline'));
@@ -529,7 +544,9 @@ function countdown(days) {
 
 // One checkbox row per value, inside a filter drop-down's pick-list. (These were
 // pill-shaped chips until the filters moved into a bar above the results.)
-export function renderChips(container, values, selected, onToggle) {
+// flags maps a value to a sprite symbol (the Country list only). The flag is
+// aria-hidden, so the option is still named by the country alone.
+export function renderChips(container, values, selected, onToggle, { flags } = {}) {
   container.replaceChildren(...values.map((value) => {
     const label = el('label', 'option');
     const input = document.createElement('input');
@@ -537,7 +554,9 @@ export function renderChips(container, values, selected, onToggle) {
     input.value = value;
     input.checked = selected.has(value);
     input.addEventListener('change', () => onToggle(value, input.checked));
-    label.append(input, el('span', '', value));
+    label.append(input);
+    if (flags?.[value]) label.append(icon(flags[value], 'flag'));
+    label.append(el('span', '', value));
     return label;
   }));
 }

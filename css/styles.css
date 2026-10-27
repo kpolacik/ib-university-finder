@@ -193,7 +193,9 @@ body {
 }
 
 .shell {
-  margin: 16px auto 0;
+  /* No top margin: the count line sits straight under the header band, as in
+     mockup C1; its own padding spaces it (Stage 5). */
+  margin: 0 auto;
   padding-inline: var(--gut);
 }
 
@@ -320,150 +322,94 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------------- filters */
 
-/* One warm panel across the top of the results. Search takes the slack; the
-   two number fields stay narrow; the three pick-lists sit together. It sticks
-   to the top of the window on wider screens so the filters stay in reach while
-   you scroll 700 cards — the job the old sidebar did. */
-.filterbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 0.9rem;
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.15rem;
-  background: var(--panel);
-  border-radius: var(--r-panel);
-}
-.field-search { flex: 1 1 18rem; }
-.field-number { flex: 0 0 7.5rem; }
-/* Why My points or Max fee is not being applied (P05). Empty means valid. */
-.field-error { margin: 0.25rem 0 0; font-size: 0.8rem; line-height: 1.3; color: var(--ink); font-weight: 700; }
-.field-error:empty { display: none; }
-.filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.filterbar #f-clear { align-self: flex-end; }
-
-/* A pick-list: a native <details>, so it opens from the keyboard with no
-   script. app.js adds only one-open-at-a-time and closing on an outside click
-   or Escape. */
-.dropdown { position: relative; }
-
-.dropdown-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  /* Same box as the text inputs beside it — padding, font size and line height
-     — so the row lines up exactly rather than being off by a pixel. */
-  padding: 0.55rem 0.85rem;
-  line-height: 1.55;
-  border: 1px solid var(--edge);
-  border-radius: var(--r-cell);
-  background: var(--panel);
-  color: var(--ink);
-  font-size: 0.94rem;
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  white-space: nowrap;
-  transition: border-color var(--t-fast) var(--ease-out);
-}
-.dropdown-button::-webkit-details-marker { display: none; }
-.dropdown-button:hover { border-color: var(--accent); }
-.dropdown-button svg { color: var(--ink-2); }
-.dropdown[open] > .dropdown-button { border-color: var(--accent); }
-/* A list that is narrowing the results says so even when it is closed. */
-.dropdown:has(.dropdown-count:not([hidden])) > .dropdown-button { border-color: var(--accent); }
-
-.dropdown-count {
-  min-width: 1.35rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: var(--accent-tint);
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.dropdown-panel {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  left: 0;
-  z-index: 20;
-  width: max-content;
-  min-width: 15rem;
-  max-width: min(22rem, calc(100vw - 2.5rem));
-  max-height: min(22rem, 60vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.35rem;
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: var(--r-panel);
-}
-
-.options { display: grid; gap: 0.1rem; }
-
-.option {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: var(--r-cell);
-  font-size: 0.92rem;
-  cursor: pointer;
-  user-select: none;
-}
-.option:hover { background: var(--panel); }
-.option:has(input:checked) { font-weight: 600; }
-.option input { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
-
-.field { display: grid; gap: 0.4rem; margin: 0; padding: 0; border: 0; min-width: 0; }
-/* Direct children only. A filter chip is a <label> inside this fieldset, so an
-   unscoped `.field label` matches it and wins on specificity — which is exactly
-   what happened, and every chip rendered as an 11.5px uppercase micro-label
-   instead of readable sentence case. */
-.field > label, .field > legend, .sort-field label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-  padding: 0;
-}
-
-.field input, .sort-field select {
-  font: inherit;
-  font-size: 0.94rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--edge);
-  border-radius: var(--r-cell);
-  background: var(--panel);
-  color: var(--ink);
-  width: 100%;
-  transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
-}
-.field input::placeholder { color: var(--ink-3); }
-.field input:hover, .sort-field select:hover { border-color: var(--accent); }
-/* The global :focus-visible outline shows here too. The soft ring that
-   replaced it was 1.04:1 against the panel, so a keyboard user could not see
-   which field had focus (A03). */
-.field input:focus, .sort-field select:focus { border-color: var(--accent); }
-.field input[type="number"] { font-variant-numeric: tabular-nums; }
-
-/* Search gets its icon inside the field. */
-.input-wrap { position: relative; display: grid; }
+/* One form under the masthead (spec §6.3). Below 600 px the bar is two rows,
+   Search + Filters and My points + HL Maths; the fee, the three pick-lists,
+   Sort and Clear all live in .more-filters, which app.js moves into the sheet.
+   The band never sticks (A07). Classes follow the mockup (full/mockup.html);
+   .dropdown/.dropdown-panel/.options/.option are its .dd/.dd-panel/.opt. */
+.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "pts hl hl";align-items:end}
+/* Controls do not inherit the page font on their own. Zero specificity, so
+   every class rule below still wins. */
+:where(.fbar,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
+.fld{display:grid;gap:4px;min-width:0;position:relative}
+.fld>label,.help{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px}
+.help{margin:0;font-weight:400}
+.f-q>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.inp{width:100%;height:var(--ctl);margin:0;padding:0 10px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-ctl);color:var(--ink);font-variant-numeric:tabular-nums}
+.inp::placeholder{color:var(--ink-3)}
+.f-q{grid-area:q}.f-pts{grid-area:pts}.f-hl{grid-area:hl}.more{grid-area:more}
+.fbar .ic{width:16px;height:16px;fill:currentColor}
+.affix{position:relative;display:block}
 /* Centred with calc rather than translateY(-50%): a transform on an outer
    <svg> is ignored by some engines and the icon would sit off-centre. */
-.input-icon {
-  position: absolute;
-  left: 0.7rem;
-  top: calc(50% - 0.5em);
-  color: var(--ink-2);
-  pointer-events: none;
-}
-.input-wrap input { padding-left: 2.15rem; }
+.affix>.ic{position:absolute;left:10px;top:calc(50% - 8px);color:var(--ink-2);pointer-events:none}
+.f-q .inp{padding-left:34px}
+.affix>.unit{position:absolute;right:10px;top:calc(50% - 8px);font-size:var(--fs-12);line-height:16px;color:var(--ink-2);pointer-events:none}
+.f-fee .inp{padding-right:52px}
+.tick{display:flex;align-items:center;gap:8px;height:var(--ctl);font-size:var(--fs-14);font-weight:600;cursor:pointer;white-space:nowrap}
+.tick input,.option input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--accent)}
+/* Set: 2 px accent border and tint, label "· set". Padding drops by the extra
+   border pixel so the text does not move. */
+.is-set .inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
+.f-q.is-set .inp{padding-left:33px}
+.is-set>label::after{content:" · set";color:var(--accent)}
+/* Why My points or Max fee is not being applied (P05). Ink, never red. After
+   the set rule, so an invalid field always shows the ink border. */
+.inp[aria-invalid=true]{border:2px solid var(--ink);padding-left:9px}
+.err{margin:0;font-size:var(--fs-13);line-height:18px;font-weight:700;color:var(--ink)}
+.err:empty{display:none}
+/* Before app.js runs, the controls that belong in the phone sheet must not
+   flash in the bar. */
+.fbar .more-filters{display:none}
+/* .btn itself is defined further down (the detail footer), so these name it
+   too: at equal weight the later base rule would win and the quiet and small
+   buttons would draw as full bordered buttons. */
+.btn.btn-q{border-color:transparent;background:none;color:var(--accent);text-decoration:underline;text-underline-offset:3px;padding:0 8px}
+.btn.btn-q:hover{background:var(--hover)}
+.btn.btn-q:disabled{color:var(--ink-3);text-decoration:none;cursor:default}
+.btn.btn-s{height:var(--tap);padding:0 10px;font-size:var(--fs-13)}
+.btn.is-on{border:2px solid var(--accent);background:var(--accent-tint)}
 
+/* A pick-list: a native <details>, so it opens from the keyboard with no
+   script. app.js adds one-open-at-a-time and, for the floating panels in the
+   bar, closing on an outside click, on Tab out or on Escape. The chevron is
+   drawn in CSS; there is no icon in the summary. */
+.dropdown{position:relative}
+.dropdown>summary{list-style:none;position:relative;display:flex;align-items:center;gap:6px;padding-right:30px;cursor:pointer;white-space:nowrap;user-select:none}
+.dropdown>summary::-webkit-details-marker{display:none}
+.dropdown>summary::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:translateY(-70%) rotate(45deg)}
+.dropdown[open]>summary::after{transform:translateY(-20%) rotate(-135deg)}
+/* A02: a 16rem panel never wider than the screen, and the last one opens
+   leftward, so none pushes the page sideways. */
+.dropdown-panel{position:absolute;top:100%;left:0;z-index:20;margin-top:4px;width:16rem;max-width:calc(100vw - 2 * var(--gut));max-height:15.5rem;overflow:auto;overscroll-behavior:contain;padding:0 12px;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r-panel)}
+.dropdown:last-of-type .dropdown-panel{left:auto;right:0}
+.options{display:grid}
+.option{display:flex;align-items:center;gap:10px;min-height:var(--tap);border-top:1px solid var(--hairline);font-size:var(--fs-14);cursor:pointer;user-select:none}
+.option:first-child{border-top:0}
+.option:has(input:checked){font-weight:600}
+/* Flags only here. Out-ranks the global 1em icon size (svg:not(.sprite)). */
+.dropdown svg.flag{width:21px;height:14px;border-radius:2px;outline:1px solid var(--hairline);vertical-align:middle}
+
+/* The phone sheet: a native <dialog> opened with showModal(). Its UA margins,
+   padding, border and size limits are reset, and it is shown only while open:
+   a display rule on .sheet itself would render the closed dialog (the same
+   trap as [hidden], STATUS.md). The header and footer keep their height; the
+   body scrolls. ::backdrop is the only scrim. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:90dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0}
+.sheet[open]{display:flex;flex-direction:column}
+.sheet::backdrop{background:var(--scrim)}
+html:has(.sheet[open]){overflow:hidden}
+.sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
+.sheet-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
+.sheet-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 16px;display:grid;gap:16px;align-content:start}
+.sheet-b .more-filters{display:grid;gap:16px}
+/* In the sheet the pick-lists are inline accordions with 44 px rows. */
+.sheet-b .dropdown-panel{position:static;width:auto;max-width:none;max-height:none;overflow:visible}
+.sheet-b .copy{display:inline-flex;justify-self:start}
+.sheet-f{flex:none;display:flex;gap:8px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--hairline)}
+.sheet-f .btn-p{flex:1}
+
+/* The dormant shortlist bar's "Only my shortlist" tick (shortlist.js, hidden). */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -493,12 +439,23 @@ svg:not(.sprite) {
 
 /* --------------------------------------------------- results + shortlist */
 
-.status{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;padding:8px 0;background:var(--ground)}
+/* The count line (spec §6.4). It bleeds to the screen edges so the stuck bar
+   is full width; its text keeps the page gutter. Below 600 px it sticks, and
+   once the 1 px mark above it has scrolled away app.js adds .is-stuck: panel
+   white, a hairline, and the short twin in place of the full sentence. The
+   sentence is clipped like .visually-hidden, never display:none, so it stays
+   the one live region. */
+.stuck-mark{height:1px}
+.status{position:sticky;top:0;z-index:4;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-inline:calc(-1 * var(--gut));padding:8px var(--gut);background:var(--ground)}
+.cshort{display:none}
+.status.is-stuck{padding:6px var(--gut);background:var(--panel);border-bottom:1px solid var(--hairline)}
+.is-stuck .cfull{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.is-stuck .cshort{display:block}
+.copy{display:none;margin-left:auto}
 .count{margin:0;font-size:var(--fs-13);line-height:18px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .count b{color:var(--ink);font-weight:700}
 .count .k{white-space:nowrap;font-weight:600}
 .k-fit{color:var(--fit-ink)}.k-cond{color:var(--cond-ink)}.k-unk{color:var(--ink-2)}
-.sort-field { display: grid; gap: 0.3rem; min-width: 14rem; }
 
 .shortlist-bar {
   display: flex;
@@ -653,10 +610,24 @@ svg:not(.sprite) {
 .detail .ok .ic{width:14px;height:14px}
 
 @media (min-width: 600px) {
-  .status .sort-field{display:none}
+  /* The bar wraps to two lines at 768 and fits one at 1280. .more-filters
+     stays a real box (no display:contents) and wraps inside itself. */
+  .f-q>label{position:static;width:auto;height:auto;overflow:visible;clip-path:none}
+  .fbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px}
+  .f-q{flex:1 1 16rem}.f-pts{flex:none;width:5.5rem}.f-hl{flex:none;width:11.5rem}
+  .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
+  .f-fee{flex:none;width:8rem}
+  .fbar .more,.f-sort{display:none}
+  /* The count is static from 600 (the column header sticks instead). Every
+     stuck declaration is put back, in case .is-stuck is still on the bar. */
+  .status{position:static;padding:12px var(--gut) 8px}
+  .status.is-stuck{padding:12px var(--gut) 8px;background:var(--ground);border-bottom:0}
+  .is-stuck .cfull{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
+  .is-stuck .cshort{display:none}
+  .status .copy{display:inline-flex}
   .item{contain-intrinsic-size:auto 92px}
   .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.75rem 6.75rem 12px;grid-template-areas:"main pts ddl fee chev";column-gap:8px}
-  .cols{display:grid;padding:4px 12px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+  .cols{display:grid;position:sticky;top:0;z-index:3;padding:4px 12px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
   .c1{display:flex;align-items:center;gap:6px}
   .cols button{all:unset;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);cursor:pointer}
   .c1 button{padding:4px 6px}
@@ -696,6 +667,7 @@ svg:not(.sprite) {
 .pane-empty b{display:block;color:var(--ink);margin-bottom:4px}
 
 @media (min-width: 1024px) {
+  .f-q{flex-basis:13rem}.f-hl{width:auto}.f-hl .help{white-space:nowrap}
   .split{display:grid;grid-template-columns:minmax(0,1fr) 18rem;gap:16px;align-items:start}
   .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"}
   .chev,.cols .chv{display:none}
@@ -716,14 +688,6 @@ svg:not(.sprite) {
   .cols,.row{grid-template-columns:minmax(0,1fr) 12.75rem 6.75rem 6.75rem;column-gap:12px}
   .pane .detail{padding:16px 20px 20px}
   .pane .kv{grid-template-columns:8.5rem minmax(0,1fr)}
-}
-
-/* interim until Stage 5 (A07 retarget): capped layout, fonts ready, counts
-   and both errors shown. Bar maxima at 1024/1100:211.66px, 1279/1280:207.05px,
-   1440/1920:156.75px. ceil(12px + 211.66px + 12px) = 236px. */
-@media (min-width: 1024px) and (min-height: 600px) {
-  .pane{top:236px;max-height:calc(100vh - 236px - 12px)}
-  .item,.open,.goto{scroll-margin-top:236px}
 }
 
 /* The save control. An outline bookmark that fills when set — a state change
@@ -781,20 +745,17 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------- wider screens */
 
-@media (max-width: 719px) {
-  /* A02: dropdown panels span the menus row on narrow screens. */
-  .filterbar-menus { position: relative; }
-  .dropdown { position: static; }
-  .dropdown-panel { left: 0; right: 0; width: auto; min-width: 0; max-width: none; }
-}
-
-/* Sticky only where there is room for it. On a phone held sideways the bar
-   took 46% of the screen, and it covered the "Skip to results" target (A07). */
-@media (min-width: 720px) and (min-height: 600px) {
-  .filterbar { position: sticky; top: 0.75rem; z-index: 10; }
-  /* Skip to results lands below the bar, not under it. The bar is 154px tall
-     at 768 and 99px at 1280 (measured 2026-10-26), so 12rem clears both. */
-  #results { scroll-margin-top: 12rem; }
+/* Skip to results, Tab and the arrow keys land below whatever sticks: the
+   stuck count line below 600, the column header from 600 (A07). The arrow
+   keys also keep 8 px under a row. */
+/* measured 2026-10-27, fonts ready: the stuck count line is 31 px, 49 px at
+   320 when the short count wraps; 49 + 8 = 57 */
+#results,#results :is(li,a,button){scroll-margin-top:57px}
+#results>.item{scroll-margin-bottom:8px}
+@media (min-width: 600px) {
+  /* measured 2026-10-27: the sticky column header is 34.4 px, 51.8 px at 600
+     where its first label wraps; 52 + 8 = 60 */
+  #results,#results :is(li,a,button){scroll-margin-top:60px}
 }
 
 /* On a touch screen the controls grow to a 44px target. Hover styling is
@@ -822,8 +783,9 @@ svg:not(.sprite) {
 @media print {
   body { background: var(--panel); color: var(--ink); padding: 0; font-size: 11pt; }
 
-  .filterbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
-  .issues, .skip-link, .star, .skeletons, .cols, .chev, .pane, .goto { display:none; }
+  .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
+  .issues, .skip-link, .star, .skeletons, .cols, .chev, .pane, .goto,
+  .sheet, .cshort, .status .copy, .sheet .copy { display:none; }
 
   .shell { display: block; }
   .split{display:block}

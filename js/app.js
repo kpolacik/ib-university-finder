@@ -7,7 +7,7 @@ import {
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderRows, renderSlot, renderPane, renderCount, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
@@ -39,6 +39,17 @@ const dom = {
   clear: document.getElementById('f-clear'),
   sort: document.getElementById('f-sort'),
   count: document.getElementById('result-count'),
+  countShort: document.querySelector('.cshort'),
+  stuckMark: document.querySelector('.stuck-mark'),
+  copy: document.getElementById('f-copy'),
+  more: document.getElementById('f-more'),
+  moreFilters: document.querySelector('.more-filters'),
+  sheet: document.getElementById('filter-sheet'),
+  sheetHeading: document.getElementById('sheet-h'),
+  sheetDone: document.getElementById('sheet-done'),
+  sheetBody: document.querySelector('.sheet-b'),
+  sheetFoot: document.querySelector('.sheet-f'),
+  sheetShow: document.getElementById('sheet-show'),
   loading: document.getElementById('loading'),
   results: document.getElementById('results'),
   resultsSection: document.querySelector('section[aria-labelledby="results-h"]'),
@@ -76,6 +87,18 @@ let currentlyShown = 0;
 let currentSummary = [];
 const openIds = new Set();
 const wideQuery = matchMedia('(min-width: 1024px)');
+// From 600 px every filter sits in the bar; below it the fee, the pick-lists,
+// Sort, Clear all and Copy link live in the Filters sheet. Same query as the CSS.
+const barQuery = matchMedia('(min-width: 600px)');
+let appliedBar = null;
+// The last focused filter control, kept only across a pending 600 crossing:
+// CSS can clear focus (hide the control) before the change callback runs.
+let filterFocus = null;
+let returnFocusOnClose = true;
+let sentinelAbove = false;
+let copyTimer;
+// Flags only inside the Country options; any other country gets text only.
+const COUNTRY_FLAGS = { Czechia: 'f-cz', Denmark: 'f-dk', Ireland: 'f-ie', Italy: 'f-it', Netherlands: 'f-nl' };
 let selectedId = null;
 let shownRows = new Map();
 let appliedWide = null;
@@ -92,6 +115,10 @@ start();
 
 async function start() {
   dom.banner.addEventListener('click', openIssuesFromLink);
+  crossBar();
+  barQuery.addEventListener('change', crossBar);
+  wireSheet();
+  wireStuck();
   wireDropdowns();
   applyUrlFields();
   syncSort();
@@ -169,6 +196,10 @@ function keepAddress() {
 // hidden: there is nothing to filter or sort.
 function showTotalFailure(err) {
   loaded = false;
+  // An open sheet would hold its controls over an empty page. Its focus goes
+  // to Reload below, never back to the Filters button that is about to hide.
+  const sheetHadFocus = dom.sheet.open && dom.sheet.contains(document.activeElement);
+  closeSheet(false);
   dom.pane.hidden = true;
   const alert = document.createElement('div');
   alert.className = 'bn bn-fail';
@@ -188,6 +219,7 @@ function showTotalFailure(err) {
   dom.status.hidden = true;
   dom.listp.hidden = true;
   renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, err.reasons || [err.message]);
+  if (sheetHadFocus) reload.focus();
 }
 
 // The banner's "see the list" link points at #issues, a closed <details>.
@@ -198,7 +230,7 @@ function openIssuesFromLink(event) {
 
 function drawChips() {
   renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas));
-  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries));
+  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS });
   renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
 }
 
@@ -274,8 +306,13 @@ function wireInputs() {
     });
   }
 
-  dom.clear.addEventListener('click', clearAll);
+  dom.clear.addEventListener('click', () => {
+    clearAll();
+    // Clear all disables itself, so in the sheet focus would fall out of it.
+    if (dom.sheet.open && dom.sheet.contains(dom.clear)) dom.sheetHeading.focus();
+  });
   dom.emptyClear.addEventListener('click', clearAll);
+  dom.copy.addEventListener('click', copyLink);
 
   // A tab left open overnight: work the deadlines out again when it comes
   // back into view on a new day. No timer; any input does the same (S06).
@@ -486,8 +523,18 @@ function rowKeydown(event) {
   const item = event.target.closest('li.item');
   const next = event.key === 'ArrowUp' ? item.previousElementSibling : item.nextElementSibling;
   if (!next) return;
-  next.querySelector('button.open').focus();
+  next.querySelector('button.open').focus({ preventScroll: true });
   selectRow(next.dataset.id);
+  revealRow(next);
+}
+
+// Bring the whole new pick into view under the sticky column header (its
+// scroll-margin). Default focus scrolling showed only the title and left up to
+// 63 px of the row below the fold. A row taller than the room shows its top.
+function revealRow(item) {
+  const style = getComputedStyle(item);
+  const room = document.documentElement.clientHeight - parseFloat(style.scrollMarginTop) - parseFloat(style.scrollMarginBottom);
+  item.scrollIntoView({ block: item.getBoundingClientRect().height <= room ? 'nearest' : 'start' });
 }
 
 // Describe focus before removing a subtree: afterward activeElement can be body.
@@ -536,10 +583,16 @@ function restoreFocus(focus) {
 // Real focus moves or a blur within the current layout invalidate this record.
 function rememberFocus() {
   crossingFocus = snapshotFocus();
+  filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
 }
 
 function forgetFocus(event) {
   if (event.relatedTarget || appliedWide === wideQuery.matches) crossingFocus = null;
+  if (event.relatedTarget || appliedBar === barQuery.matches) filterFocus = null;
+}
+
+function isFilterControl(node) {
+  return !!node && node !== document.body && (dom.form.contains(node) || dom.sheet.contains(node) || node === dom.copy);
 }
 
 function crossWide() {
@@ -576,7 +629,116 @@ function crossWide() {
   }
   appliedWide = wide;
   restoreFocus(focus);
-  rememberFocus();
+  // Only the row/pane record: a 600 crossing may still be pending.
+  crossingFocus = snapshotFocus();
+}
+
+// Moves the one copy of each control between the bar and the sheet (§6.3).
+// Nothing is cloned, so values, ticks and open lists come along. A node
+// already in place is not touched: moving a focused node drops its focus.
+function placeFilters() {
+  const bar = barQuery.matches;
+  if (appliedBar === bar) return;
+  const active = document.activeElement;
+  const was = active && active !== document.body ? active : filterFocus;
+  const moved = !!was && (dom.moreFilters.contains(was) || was === dom.clear || was === dom.copy);
+  let target = null;
+  if (moved) target = bar ? was : dom.more;
+  // Widening from the sheet or the Filters button, which both disappear.
+  else if (bar && was && (dom.sheet.contains(was) || was === dom.more)) target = dom.tuition;
+  if (bar) closeSheet(false);
+  const put = (parent, node, before = null) => {
+    if (node.parentElement !== parent || node.nextElementSibling !== before) parent.insertBefore(node, before);
+  };
+  if (bar) {
+    put(dom.form, dom.moreFilters);
+    put(dom.moreFilters, dom.clear);
+    put(dom.status, dom.copy);
+  } else {
+    put(dom.sheetBody, dom.copy);
+    put(dom.sheetBody, dom.moreFilters, dom.copy);
+    put(dom.sheetFoot, dom.clear, dom.sheetShow);
+  }
+  appliedBar = bar;
+  if (target) target.focus({ preventScroll: true });
+  filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+}
+
+function crossBar() {
+  placeFilters();
+  // Narrowing while scrolled: the observer may not call back again, so read
+  // where the mark is now.
+  if (!barQuery.matches) sentinelAbove = dom.stuckMark.getBoundingClientRect().bottom <= 0;
+  syncStuck();
+}
+
+// The phone sheet: a native modal dialog, so the focus trap, Escape, the inert
+// page and the scrim come from the browser.
+function wireSheet() {
+  dom.more.addEventListener('click', openSheet);
+  dom.sheetDone.addEventListener('click', () => closeSheet());
+  // Filters apply live, so "Show N programmes" only closes the sheet.
+  dom.sheetShow.addEventListener('click', () => closeSheet());
+  // A tap on the backdrop reaches the dialog itself, outside its box. A click
+  // made from the keyboard targets the button, never the dialog.
+  dom.sheet.addEventListener('click', (event) => {
+    if (event.target !== dom.sheet) return;
+    const box = dom.sheet.getBoundingClientRect();
+    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeSheet();
+  });
+  dom.sheet.addEventListener('close', () => {
+    // A close queued before a quick reopen must not undo the reopen.
+    if (dom.sheet.open) return;
+    dom.more.setAttribute('aria-expanded', 'false');
+    // iOS does not focus a tapped button, so the browser's own return can miss.
+    if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus();
+    returnFocusOnClose = true;
+  });
+}
+
+function openSheet() {
+  if (dom.sheet.open || barQuery.matches) return;
+  returnFocusOnClose = true;
+  dom.sheet.showModal();
+  dom.more.setAttribute('aria-expanded', 'true');
+  dom.sheetHeading.focus();
+}
+
+// returnFocus false: widening or total failure, where Filters is hidden.
+function closeSheet(returnFocus = true) {
+  if (!dom.sheet.open) return;
+  returnFocusOnClose = returnFocus;
+  dom.sheet.close();
+}
+
+// Phone only: the count line is stuck once the mark above it has scrolled out
+// of the top of the window. Below the window is not stuck. No scroll handler.
+function wireStuck() {
+  if (typeof IntersectionObserver !== 'function') return;
+  new IntersectionObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    sentinelAbove = !entry.isIntersecting && entry.boundingClientRect.bottom <= (entry.rootBounds ? entry.rootBounds.top : 0);
+    syncStuck();
+  }).observe(dom.stuckMark);
+}
+
+function syncStuck() {
+  dom.status.classList.toggle('is-stuck', sentinelAbove && !barQuery.matches);
+}
+
+// Copies the address, which already holds the filters (S03). The button's own
+// text says what happened for 2 s; the count stays the only live region.
+async function copyLink() {
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(location.href);
+    copied = true;
+  } catch {
+    copied = false;
+  }
+  dom.copy.textContent = copied ? 'Link copied' : 'Copy failed: use the address bar';
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { dom.copy.textContent = 'Copy link'; }, 2000);
 }
 
 function syncSort() {
@@ -601,6 +763,7 @@ function renderCounts(shown) {
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
   renderCount(dom.count, lead, currentSummary);
+  renderCountShort(dom.countShort, lead, currentSummary);
 
   // Each pick-list button shows how many of its values are ticked, so a closed
   // drop-down still tells you it is narrowing the results.
@@ -608,6 +771,19 @@ function renderCounts(shown) {
   showCount(dom.countriesCount, dom.countriesCountNumber, state.countries.size);
   showCount(dom.languagesCount, dom.languagesCountNumber, state.languages.size);
   dom.clear.disabled = active === 0;
+  dom.clear.textContent = active ? `Clear all (${active})` : 'Clear all';
+  // Filters (n) counts only what lives in the sheet, one per group (§6.3).
+  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0]
+    .filter(Boolean).length;
+  dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
+  dom.more.classList.toggle('is-on', inSheet > 0);
+  dom.sheetShow.textContent = `Show ${shown} ${plural(shown)}`;
+  markSet(dom.search, state.search.trim() !== '');
+  markSet(dom.points, state.myIbPoints !== null);
+  markSet(dom.tuition, state.maxTuition !== null);
+  for (const [box, set] of [[dom.subjects, state.subjectAreas], [dom.countries, state.countries], [dom.languages, state.languages]]) {
+    box.closest('.dropdown').classList.toggle('is-set', set.size > 0);
+  }
 
   const saved = shortlist.size;
   // Always hidden. The per-card save button was removed on 2026-10-24, so
@@ -616,6 +792,12 @@ function renderCounts(shown) {
   // code is left in place so the feature can return by restoring the button.
   dom.shortlistBar.hidden = true;
   if (saved > 0) dom.shortlistCount.textContent = `${saved} saved ${plural(saved)}`;
+}
+
+// The "set" look on a field whose value is in force: valid, so fee 0 counts and
+// an invalid number does not.
+function markSet(input, set) {
+  input.closest('.fld').classList.toggle('is-set', set);
 }
 
 function showCount(box, number, n) {
@@ -681,15 +863,19 @@ function wireDropdowns() {
     // Tabbing past the last option left the panel open over the next control
     // (A06). A null relatedTarget is left alone: Safari does not focus a
     // clicked checkbox, so focus "leaves" to nothing on every tick.
+    // In the sheet the lists are inline accordions: only the floating panels
+    // in the bar close on Tab out or an outside click.
     d.addEventListener('focusout', (event) => {
-      if (d.open && event.relatedTarget && !d.contains(event.relatedTarget)) d.open = false;
+      if (d.open && event.relatedTarget && !d.contains(event.relatedTarget) && !dom.sheet.contains(d)) d.open = false;
     });
   }
   document.addEventListener('click', (event) => {
-    if (!dom.dropdowns.some((d) => d.contains(event.target))) closeAll();
+    if (dom.dropdowns.some((d) => d.contains(event.target))) return;
+    for (const d of dom.dropdowns) if (!dom.sheet.contains(d)) d.open = false;
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
+    // In the open sheet Escape belongs to the dialog: it closes the sheet.
+    if (event.key !== 'Escape' || dom.sheet.open) return;
     const open = dom.dropdowns.find((d) => d.open);
     if (!open) return;
     // Focus goes back to the button only from inside the list. Escape in

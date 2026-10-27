@@ -82,6 +82,15 @@
   <!-- Phosphor Regular clock, @phosphor-icons/core 2.1.1, MIT. -->
   <symbol id="i-clock" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></symbol>
   <!-- Phosphor Regular globe, @phosphor-icons/core 2.1.1, MIT. -->
+  <!-- Phosphor Regular funnel, @phosphor-icons/core 2.1.1, MIT. -->
+  <symbol id="i-filter" viewBox="0 0 256 256"><path d="M230.6,49.53A15.81,15.81,0,0,0,216,40H40A16,16,0,0,0,28.19,66.76l.08.09L96,139.17V216a16,16,0,0,0,24.87,13.32l32-21.34A16,16,0,0,0,160,194.66V139.17l67.74-72.32.08-.09A15.8,15.8,0,0,0,230.6,49.53ZM40,56h0Zm106.18,74.58A8,8,0,0,0,144,136v58.66L112,216V136a8,8,0,0,0-2.16-5.47L40,56H216Z"/></symbol>
+  <!-- Flags: only inside the Country filter options (simplified geometry). They
+       fill from the --flag-* tokens in styles.css, so no colour lives here. -->
+  <symbol id="f-cz" viewBox="0 0 6 4" preserveAspectRatio="none"><rect width="6" height="2" style="fill:var(--flag-white)"/><rect y="2" width="6" height="2" style="fill:var(--flag-cz-red)"/><path d="M0 0L3 2L0 4Z" style="fill:var(--flag-cz-blue)"/></symbol>
+  <symbol id="f-dk" viewBox="0 0 37 28" preserveAspectRatio="none"><rect width="37" height="28" style="fill:var(--flag-dk-red)"/><rect x="12" width="4" height="28" style="fill:var(--flag-white)"/><rect y="12" width="37" height="4" style="fill:var(--flag-white)"/></symbol>
+  <symbol id="f-ie" viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" style="fill:var(--flag-ie-green)"/><rect x="1" width="1" height="2" style="fill:var(--flag-white)"/><rect x="2" width="1" height="2" style="fill:var(--flag-ie-orange)"/></symbol>
+  <symbol id="f-it" viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" style="fill:var(--flag-it-green)"/><rect x="1" width="1" height="2" style="fill:var(--flag-white)"/><rect x="2" width="1" height="2" style="fill:var(--flag-it-red)"/></symbol>
+  <symbol id="f-nl" viewBox="0 0 9 6" preserveAspectRatio="none"><rect width="9" height="2" style="fill:var(--flag-nl-red)"/><rect y="2" width="9" height="2" style="fill:var(--flag-white)"/><rect y="4" width="9" height="2" style="fill:var(--flag-nl-blue)"/></symbol>
   <symbol id="i-globe" viewBox="0 0 256 256"><path d="M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z"/></symbol>
 </svg>
 
@@ -103,99 +112,100 @@
     </div>
     <p class="src" id="source-line" hidden></p>
   </div>
+
+  <!-- One form, one copy of each control. Below 600 px app.js moves
+       .more-filters, Clear all and Copy link into the Filters sheet and back
+       (placeFilters), so ids, values and open lists survive with no syncing.
+       The pick-lists are native <details>, so they open from the keyboard with
+       no script; app.js adds one-open-at-a-time and the closers. The band
+       (masthead and filters) never sticks (A07). -->
+  <form class="fbar" id="filter-form" autocomplete="off" aria-label="Filters">
+    <div class="fld f-q">
+      <label for="f-search">Search</label>
+      <span class="affix">
+        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+        <input class="inp" type="search" id="f-search" name="search" placeholder="UvA, TCD, law, Dublin">
+      </span>
+    </div>
+
+    <button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span>Filters</span></button>
+
+    <div class="fld f-pts">
+      <label for="f-points">My points</label>
+      <input class="inp" type="number" id="f-points" name="points" min="24" max="45" step="1"
+             inputmode="numeric" placeholder="e.g. 36"
+             aria-describedby="f-points-error"
+             title="Hides programmes whose minimum or last year’s cutoff your IB total does not reach">
+      <p class="err" id="f-points-error" aria-live="polite"></p>
+    </div>
+
+    <!-- Changes labels and the count, never which programmes are shown. The
+         help is visible and named by aria-describedby, not a tooltip (S08). -->
+    <div class="fld f-hl">
+      <p class="help" id="f-maths-help">Adds the 25 CAO bonus points on Irish courses</p>
+      <label class="tick"><input type="checkbox" id="f-maths" name="maths" aria-describedby="f-maths-help"> HL Maths 4+</label>
+    </div>
+
+    <div class="more-filters">
+      <div class="fld f-fee">
+        <label for="f-tuition">Max fee (EU)</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-tuition" name="tuition" min="0" step="1"
+                 inputmode="numeric" placeholder="Any"
+                 aria-describedby="f-tuition-error">
+          <span class="unit">&euro;/year</span>
+        </span>
+        <p class="err" id="f-tuition-error" aria-live="polite"></p>
+      </div>
+
+      <!-- Each count reads "Subject area · 2" on screen and "Subject area 2
+           selected" to a screen reader: the dot is aria-hidden and " selected"
+           is hidden text (A06). -->
+      <details class="dropdown" id="dd-subjects">
+        <summary class="inp"><span>Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <div class="dropdown-panel" role="group" aria-label="Subject area">
+          <div class="options" id="f-subjects"></div>
+        </div>
+      </details>
+      <details class="dropdown" id="dd-countries">
+        <summary class="inp"><span>Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <div class="dropdown-panel" role="group" aria-label="Country">
+          <div class="options" id="f-countries"></div>
+        </div>
+      </details>
+      <details class="dropdown" id="dd-languages">
+        <summary class="inp"><span>Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <div class="dropdown-panel" role="group" aria-label="Language">
+          <div class="options" id="f-languages"></div>
+        </div>
+      </details>
+
+      <!-- Phone only: from 600 px the column header sorts. -->
+      <div class="fld f-sort">
+        <label for="f-sort">Sort by</label>
+        <select class="inp" id="f-sort"></select>
+      </div>
+
+      <button type="button" id="f-clear" class="btn btn-q clear">Clear all</button>
+    </div>
+  </form>
 </header>
 
 <div id="source-banner" hidden></div>
 
 <main class="shell">
 
-  <!-- Filters run across the top of the results. Subject area, country and
-       language are drop-down pick-lists rather than walls of chips: 23 subject
-       areas laid out as chips took a full screen of height. Each is a native
-       <details>, so it opens from the keyboard with no script; app.js only adds
-       closing on an outside click or Escape, and one-open-at-a-time. -->
-  <form class="filterbar" id="filter-form" autocomplete="off" aria-label="Filters">
-
-    <div class="field field-search">
-      <label for="f-search">Search</label>
-      <div class="input-wrap">
-        <svg class="input-icon" aria-hidden="true"><use href="#i-search"/></svg>
-        <input type="search" id="f-search" name="search"
-               placeholder="University, city, programme, country">
-      </div>
-    </div>
-
-    <div class="field field-number">
-      <label for="f-points">My points</label>
-      <input type="number" id="f-points" name="points" min="24" max="45" step="1"
-             inputmode="numeric" placeholder="e.g. 36"
-             aria-describedby="f-points-error"
-             title="Hides programmes whose minimum or last year’s cutoff your IB total does not reach">
-      <p class="field-error" id="f-points-error" aria-live="polite"></p>
-    </div>
-
-    <!-- Changes labels and the count, never which programmes are shown. The
-         help text is visible to a screen reader too, not only as a tooltip. -->
-    <label class="chip" title="Adds the 25 CAO bonus points on Irish courses">
-      <input type="checkbox" id="f-maths" name="maths">
-      <span>HL Maths 4+</span>
-      <span class="visually-hidden"> (adds the 25 CAO bonus points on Irish courses)</span>
-    </label>
-
-    <div class="field field-number">
-      <label for="f-tuition">Max fee &euro;/yr</label>
-      <input type="number" id="f-tuition" name="tuition" min="0" step="1"
-             inputmode="numeric" placeholder="e.g. 3000"
-             aria-describedby="f-tuition-error"
-             title="The EU-student fee">
-      <p class="field-error" id="f-tuition-error" aria-live="polite"></p>
-    </div>
-
-    <div class="filterbar-menus">
-      <details class="dropdown" id="dd-subjects">
-        <summary class="dropdown-button">
-          <span>Subject area</span>
-          <span class="dropdown-count" id="dd-subjects-count" hidden><span id="dd-subjects-count-number"></span><span class="visually-hidden"> selected</span></span>
-          <svg aria-hidden="true"><use href="#i-chevron"/></svg>
-        </summary>
-        <div class="dropdown-panel" role="group" aria-label="Subject area">
-          <div class="options" id="f-subjects"></div>
-        </div>
-      </details>
-      <details class="dropdown" id="dd-countries">
-        <summary class="dropdown-button">
-          <span>Country</span>
-          <span class="dropdown-count" id="dd-countries-count" hidden><span id="dd-countries-count-number"></span><span class="visually-hidden"> selected</span></span>
-          <svg aria-hidden="true"><use href="#i-chevron"/></svg>
-        </summary>
-        <div class="dropdown-panel" role="group" aria-label="Country">
-          <div class="options" id="f-countries"></div>
-        </div>
-      </details>
-      <details class="dropdown" id="dd-languages">
-        <summary class="dropdown-button">
-          <span>Language</span>
-          <span class="dropdown-count" id="dd-languages-count" hidden><span id="dd-languages-count-number"></span><span class="visually-hidden"> selected</span></span>
-          <svg aria-hidden="true"><use href="#i-chevron"/></svg>
-        </summary>
-        <div class="dropdown-panel" role="group" aria-label="Language">
-          <div class="options" id="f-languages"></div>
-        </div>
-      </details>
-    </div>
-
-    <button type="button" id="f-clear" class="button button-quiet">Clear all</button>
-
-  </form>
-
   <div class="stream">
 
+    <!-- Below 600 px the count line sticks; app.js watches this 1 px mark
+         with an IntersectionObserver and adds .is-stuck once it has scrolled
+         away. The full sentence is the only live region; the short twin is
+         aria-hidden. -->
+    <div class="stuck-mark" aria-hidden="true"></div>
     <div class="status">
-      <p class="count" id="result-count" aria-live="polite"></p>
-      <div class="sort-field">
-        <label for="f-sort">Sort by</label>
-        <select id="f-sort"></select>
-      </div>
+      <p class="count cfull" id="result-count" aria-live="polite"></p>
+      <p class="count cshort" aria-hidden="true"></p>
+      <button type="button" id="f-copy" class="btn btn-s copy">Copy link</button>
     </div>
 
     <div class="shortlist-bar" id="shortlist-bar" hidden>
@@ -267,6 +277,20 @@
   </div>
 
 </main>
+
+<!-- The phone filter sheet. showModal() gives the focus trap, Escape, the inert
+     page and ::backdrop as the scrim. Its body and footer stay empty until
+     app.js moves the controls in below 600 px. -->
+<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">
+  <div class="sheet-h">
+    <h2 id="sheet-h" tabindex="-1">Filters</h2>
+    <button type="button" id="sheet-done" class="btn btn-q">Done</button>
+  </div>
+  <div class="sheet-b"></div>
+  <div class="sheet-f">
+    <button type="button" id="sheet-show" class="btn btn-p">Show programmes</button>
+  </div>
+</dialog>
 
 <footer class="foot">
   <p>

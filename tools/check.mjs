@@ -36,18 +36,27 @@ class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
     this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
+    this.listeners = {};
   }
   set textContent(text) { this.replaceChildren(String(text)); }
   get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
   get childElementCount() { return this.children.filter((c) => typeof c !== 'string').length; }
-  append(...nodes) {
-    for (const node of nodes) {
-      if (typeof node !== 'string') {
-        if (node.parent) node.parent.children = node.parent.children.filter((c) => c !== node);
-        node.parent = this;
+  get parentElement() { return this.parent; }
+  append(...nodes) { for (const node of nodes) this.insertBefore(node, null); }
+  // A move takes the node out of its old parent first, as the real DOM does.
+  // The harness can hook a move (a focused node loses focus when moved in Chrome).
+  insertBefore(node, ref) {
+    if (typeof node !== 'string') {
+      if (node.parent) {
+        stubDocument.moved?.(node);
+        node.parent.children = node.parent.children.filter((c) => c !== node);
       }
-      this.children.push(node);
+      node.parent = this;
     }
+    const at = ref ? this.children.indexOf(ref) : -1;
+    if (ref && at < 0) throw new Error('insertBefore: reference is not a child');
+    if (at < 0) this.children.push(node); else this.children.splice(at, 0, node);
+    return node;
   }
   replaceChildren(...nodes) {
     for (const c of this.children) if (typeof c !== 'string') c.parent = null;
@@ -62,17 +71,53 @@ class ChromeNode {
   get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5), v])); }
   contains(node) { return node === this || this.children.some((c) => typeof c !== 'string' && c.contains(node)); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
+  // Compound selectors (tag, #id, every .class, every [attr]) joined by
+  // descendant spaces, with comma lists. Enough for the selectors app.js uses.
   matches(selector) {
-    const tag = selector.match(/^[a-z][a-z0-9-]*/)?.[0], cls = selector.match(/\.([\w-]+)/)?.[1];
-    const attr = selector.match(/\[([\w-]+)(?:="?([^"\]]+)"?)?\]/);
-    return (!tag || this.tagName === tag) && (!cls || this.classList.contains(cls))
-      && (!attr || (this.getAttribute(attr[1]) !== null && (!attr[2] || this.getAttribute(attr[1]) === attr[2])));
+    const compound = (node, part) => {
+      const tag = part.match(/^[a-z][a-z0-9-]*/)?.[0], id = part.match(/#([\w-]+)/)?.[1];
+      const classes = [...part.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
+      const attrs = [...part.matchAll(/\[([\w-]+)(?:="?([^"\]]+)"?)?\]/g)];
+      return (!tag || node.tagName === tag) && (!id || node.id === id) && classes.every((c) => node.classList.contains(c))
+        && attrs.every((a) => node.getAttribute(a[1]) !== null && (!a[2] || node.getAttribute(a[1]) === a[2]));
+    };
+    return selector.split(',').some((one) => {
+      const parts = one.trim().split(/\s+/);
+      if (!compound(this, parts.at(-1))) return false;
+      let i = parts.length - 2;
+      for (let node = this.parent; node && i >= 0; node = node.parent) if (compound(node, parts[i])) i--;
+      return i < 0;
+    });
   }
   closest(selector) { return this.matches(selector) ? this : this.parent?.closest(selector) ?? null; }
   querySelectorAll(selector) { return [...nodesOf(this)].slice(1).filter((n) => n.matches(selector)); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
-  focus() { stubDocument.activeElement = this; }
-  addEventListener() {}
+  // The harness may say what CSS has hidden; focusing a hidden node does nothing.
+  focus(options) {
+    if (stubDocument.canFocus && !stubDocument.canFocus(this)) return;
+    stubDocument.activeElement = this; stubDocument.focusOptions = options;
+    stubDocument.focusLog?.push({ node: this, options });
+  }
+  addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
+  removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== fn); }
+  dispatchEvent(event) { return dispatchStub(this, event); }
+  getBoundingClientRect() { return this.rect ?? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; }
+  scrollIntoView(options) { (stubDocument.scrolls ??= []).push({ node: this, options, selected: this.classList.contains('is-sel') }); }
+  // <dialog>: close() puts focus back on what had it before showModal() and
+  // queues the close event, so it can run after a reopen.
+  showModal() {
+    if (this.open) throw new Error('InvalidStateError: the dialog is already open');
+    this.open = true; this.returnTo = stubDocument.activeElement;
+  }
+  close() {
+    if (!this.open) return;
+    this.open = false;
+    const back = this.returnTo; this.returnTo = null;
+    if (this.contains(stubDocument.activeElement) || stubDocument.activeElement === stubDocument.body) {
+      stubDocument.activeElement = stubDocument.body; back?.focus();
+    }
+    stubDocument.queueTask?.(() => dispatchStub(this, { type: 'close', bubbles: false }));
+  }
   get nextElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) + 1] ?? null; }
   get previousElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) - 1] ?? null; }
   get classList() {
@@ -81,13 +126,30 @@ class ChromeNode {
       add: (...add) => { this.className = [...new Set([...names(), ...add])].join(' '); },
       contains: (name) => names().includes(name),
       remove: (...remove) => { this.className = names().filter((n) => !remove.includes(n)).join(' '); },
+      toggle: (name, force = !names().includes(name)) => {
+        this.className = (force ? [...new Set([...names(), name])] : names().filter((n) => n !== name)).join(' ');
+        return force;
+      },
     };
   }
+}
+// Bubbles from the target through its parents, then to the document.
+function dispatchStub(target, init) {
+  const event = { bubbles: true, defaultPrevented: false, ...init, target,
+    preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; } };
+  for (let node = target; node; node = node.parent) {
+    for (const fn of [...(node.listeners?.[event.type] ?? [])]) { event.currentTarget = node; fn(event); }
+    if (event.stopped || !event.bubbles) return !event.defaultPrevented;
+  }
+  for (const fn of [...(stubDocument.listeners?.[event.type] ?? [])]) { event.currentTarget = stubDocument; fn(event); }
+  return !event.defaultPrevented;
 }
 const stubDocument = {
   createElement: (tag) => new ChromeNode(tag),
   createElementNS: (ns, tag) => new ChromeNode(tag),
   createTextNode: (text) => String(text),
+  addEventListener(type, fn) { ((this.listeners ??= {})[type] ??= []).push(fn); },
+  removeEventListener(type, fn) { if (this.listeners?.[type]) this.listeners[type] = this.listeners[type].filter((f) => f !== fn); },
 };
 // Installs the stand-in only while fn runs, then puts back whatever was there.
 function withStubDocument(fn) {
@@ -97,7 +159,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, renderSlot, renderCount, renderPane } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips } = await import(new URL('../js/render.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -760,25 +822,46 @@ check('app.js writes the URL values into the fields before loading, and keeps th
 // the plan cover how they behave.
 section('Keyboard, screen readers and narrow screens (A02-A07)');
 check('one .visually-hidden utility is defined', /\.visually-hidden \{[^}]*clip/.test(css));
+// Stage 5 retargets read the stylesheet with its media ancestry (cssTree,
+// further down), never as one flattened string.
+const cssText = css.replace(/\/\*[\s\S]*?\*\//g, '');
+const ruleAt = (source, selector, query) => cssTree(source).filter((r) => r.selector.split(',').map((s) => s.trim()).includes(selector)
+  && (query === undefined ? r.media.length === 0 : r.media.length === 1 && r.media[0] === `@media ${query}`)).map((r) => r.body).join(';');
 // A03: the text inputs and Sort replaced the outline with a 1.04:1 soft ring.
-check('text inputs and Sort keep the focus outline (no outline: none)',
-  !/\.field input:focus[^{]*\{[^}]*outline: none/.test(css) && !/select:focus[^{]*\{[^}]*outline: none/.test(css));
+// Stage 5 renamed the controls (.inp, summary, .btn, .tick), so the old
+// .field selectors would pass vacuously; any context is checked now.
+const keepsFocusOutline = (source) => cssTree(source.replace(/\/\*[\s\S]*?\*\//g, '')).every((r) =>
+  !(/(?:^|[\s,>+~(])(?:\.inp|select|summary|\.btn|\.tick\s+input)(?![\w-])/.test(r.selector)
+    && /outline\s*:\s*(?:none|0)\s*(?:[;!}]|$)/.test(r.body)));
+check('filter controls keep the global 2.5 px focus outline: no outline:none or 0 on .inp, select, summary, .btn or .tick input (A03)',
+  /outline:\s*2\.5px solid var\(--accent\)/.test(ruleAt(cssText, ':focus-visible')) && keepsFocusOutline(css)
+    && !keepsFocusOutline(css + '.inp:focus{outline:none}') && !keepsFocusOutline(css + '@media (min-width: 600px){.tick input:focus-visible{outline:0}}')
+    && !keepsFocusOutline(css + '.fbar summary{outline: none}'));
 // A05: the h1's decorative full stop was read out as part of the title.
 check('the h1 is plain IB University Finder with no generated full stop',
   /<h1>IB University Finder<\/h1>/.test(read('index.html')) && !/h1\s*::after/.test(css));
 // A02: dropdown panels and the masthead stat pushed a 320 px page to 354 px.
-const narrow = css.slice(css.indexOf('@media (max-width: 719px)'));
-check('below 720 px the dropdown panels span the menus row',
-  /\.filterbar-menus \{ position: relative; \}/.test(narrow) && /\.dropdown \{ position: static; \}/.test(narrow)
-    && /\.dropdown-panel \{[^}]*left: 0; right: 0; width: auto;/.test(narrow));
+// Stage 5: below 600 the panels are accordions in the sheet; in the bar every
+// panel is clamped to the viewport and the last one opens leftward.
+check('dropdown panels stay inside the viewport: every panel clamped, the last right-aligned, sheet panels static and full width (A02)',
+  /max-width:calc\(100vw - 2 \* var\(--gut\)\)/.test(ruleAt(cssText, '.dropdown-panel'))
+    && /left:auto;right:0/.test(ruleAt(cssText, '.dropdown:last-of-type .dropdown-panel'))
+    && /position:static;width:auto;max-width:none;max-height:none;overflow:visible/.test(ruleAt(cssText, '.sheet-b .dropdown-panel')));
 check('the source line wraps normally and phone hides stat and advice',
   /\.src\{[^}]*white-space:normal/.test(css) && /\.stat,\.src-more\{display:none\}/.test(css)
     && /@media \(min-width: 600px\)[\s\S]*?\.tagline,\.stat,\.src-more\{display:inline\}/.test(css));
 // A07: the sticky bar hid the skip-link target and filled a landscape phone.
-check('the filter bar is sticky only on screens at least 720 wide and 600 tall',
-  /@media \(min-width: 720px\) and \(min-height: 600px\) \{\s*\.filterbar \{ position: sticky;/.test(css)
-    && !/@media \(min-width: 720px\) \{\s*\.filterbar \{ position: sticky/.test(css));
-check('#results has a scroll-margin-top that clears the sticky bar', /#results \{[^}]*scroll-margin-top/.test(css));
+// Spec §10: the header band (masthead and filters) is never sticky; only the
+// column header from 600 and the count line below 600 stick.
+check('the header band is never sticky; .cols sticks only from 600 px and .status only below 600 (A07); negative fixtures fail',
+  stickyChromeOk(css) && !stickyChromeOk(css + '.fbar{position:sticky}')
+    && !stickyChromeOk(css + '@media (min-width: 1024px){.fbar .affix{position:sticky;top:0}}')
+    && !stickyChromeOk(css + '.mast-top{position:fixed}') && !stickyChromeOk(css + '.cols{position:sticky}')
+    && !stickyChromeOk(css + '@media (min-width: 600px){.status{position:sticky}}'));
+const marginRules = [...css.matchAll(/\/\*[^*]*measured[^*]*\*\/\s*#results,\s*#results :is\(li,\s*a,\s*button\)\s*\{\s*scroll-margin-top:\s*\d+px\s*;?\s*\}/g)];
+check('#results and its rows, links and buttons clear the sticky chrome with a measured scroll-margin-top below and from 600; no 236 px (A07)',
+  marginRules.length === 2 && /scroll-margin-top/.test(ruleAt(cssText, '#results')) && /scroll-margin-top/.test(ruleAt(cssText, '#results', '(min-width: 600px)'))
+    && !/236px/.test(cssText) && /scroll-margin-bottom:8px/.test(ruleAt(cssText, '#results>.item')));
 // A05, A04: names a screen reader reads out.
 check('a hidden ", " separates the title from the degree',
   renderSrc.includes("el('span', 'visually-hidden', ', ')"));
@@ -1563,8 +1646,15 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
   appSrc.includes('dom.maths.checked = fromUrl.hlMaths') && appSrc.includes('state.hlMaths = dom.maths.checked')
     && appSrc.includes('dom.maths.checked = false') && appSrc.includes("used.push('HL Maths 4+')")
     && appSrc.includes('pointsSummaryParts(rows, state)'));
-check('index.html has the HL Maths 4+ checkbox with its help text', /<input type="checkbox" id="f-maths"/.test(read('index.html'))
-  && read('index.html').includes('adds the 25 CAO bonus points on Irish courses'));
+// S08: the help lived only in a tooltip and a hidden copy. Spec §6.3: a
+// visible p.help that the tick names with aria-describedby.
+check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip or hidden copy; the fee reads "Max fee (EU)" with "€/year" (S08)',
+  /<p class="help" id="f-maths-help">Adds the 25 CAO bonus points on Irish courses<\/p>/.test(indexHtml)
+    && /<input type="checkbox" id="f-maths"[^>]*aria-describedby="f-maths-help"/.test(indexHtml)
+    && /<label class="tick">/.test(indexHtml) && !/<label class="tick"[^>]*title=/.test(indexHtml) && !indexHtml.includes('(adds the 25 CAO')
+    && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
+    && /<label for="f-tuition">Max fee \(EU\)<\/label>/.test(indexHtml) && /<span class="unit">&euro;\/year<\/span>/.test(indexHtml)
+    && !/id="f-tuition"[^>]*title=/.test(indexHtml));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
 // digit per line, because .req-points did not wrap (A02). Redesign stage 2:
 // the number is .plines b, the line .plines li, inside .detail.
@@ -2082,11 +2172,13 @@ for (let i = 0; i < cssRules.length; i++) {
     if (braceDepth === 0) ruleStart = i + 1;
   }
 }
-check('row CSS contains no copied mockup gallery, filter or sheet rules',
-  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.(?:fbar|fld|inp|cshort|is-stuck|copy)(?![\w-])|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])/.test(cssRules));
-check('Stage 3 chrome has exactly one base definition and count/columns stay static',
-  ['.status', '.mast', '.src', '.lang', '.bn', '.foot'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
-    && !/position\s*:\s*(?:sticky|fixed)/.test(ruleBody('.status') + ruleBody('.cols')));
+// Stage 5 owns the filter, sheet and count classes, so they are allowed now;
+// the gallery-only rules and the mockup's scrim node stay out.
+check('CSS contains no copied mockup gallery, container or scrim rules',
+  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])|\.scrim(?![\w-])|@container/.test(cssRules));
+check('chrome has exactly one base definition each, and stickiness follows A07',
+  ['.status', '.mast', '.src', '.lang', '.bn', '.foot', '.fbar', '.sheet', '.cols'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
+    && stickyChromeOk(css));
 check('every live and fixture requirements line preserves source facts in order', [...live, ...fxs, ...kinds, ...bk].every((row) => {
   const li = rowOf(row), line = byClass(li, 'line')[0];
   const wanted = [row.ibSubjects, ...row.otherRequirements,
@@ -2122,6 +2214,22 @@ function cssTree(source, media = []) {
   }
   return rules;
 }
+// A07 (spec §10): nothing in the header band sticks, in any media context;
+// .cols sticks only in the 600 block; .status sticks only in the base rules
+// and the 600 block puts it back to static.
+function stickyChromeOk(source) {
+  const rules = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+  const header = /(?:^|[\s,>+~(])(?:header|h1|\.(?:top|mast|mast-top|mast-id|tagline|lang|src|stat|src-more|fbar|fld|f-q|f-pts|f-hl|f-fee|f-sort|affix|unit|inp|tick|help|err|more|more-filters|dropdown|dropdown-panel|dropdown-count|options|option|clear))(?![\w-])/;
+  const sticky = (r) => /position\s*:\s*(?:sticky|fixed)/.test(r.body);
+  const arms = (r) => r.selector.split(',').map((x) => x.trim());
+  const in600 = (r) => r.media.length === 1 && r.media[0] === '@media (min-width: 600px)';
+  return rules.every((r) => !(sticky(r) && (header.test(r.selector)
+      || (arms(r).some((a) => /\.cols(?![\w-])/.test(a)) && !in600(r))
+      || (arms(r).some((a) => /\.status(?![\w-])/.test(a)) && r.media.length))))
+    && rules.some((r) => !r.media.length && arms(r).includes('.status') && /position:sticky;top:0/.test(r.body))
+    && rules.some((r) => in600(r) && arms(r).includes('.status') && /position:static/.test(r.body))
+    && rules.some((r) => in600(r) && arms(r).includes('.cols') && /position:sticky;top:0/.test(r.body));
+}
 const paneCss = cssTree(cssRules);
 const atMedia = (r, query) => r.media.length === 1 && r.media[0] === `@media ${query}`;
 const paneRule = (selector, query) => paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes(selector)
@@ -2131,8 +2239,7 @@ function confinedPaneRules(source) {
   return cssTree(source).every((r) => {
     const sels = r.selector.split(',').map((s) => s.trim());
     if (sels.includes('.split') && !atMedia(r, desktopQuery) && !atMedia(r, largeQuery) && !atMedia(r, 'print')) return false;
-    return !(sels.includes('.pane') && /position\s*:\s*sticky/.test(r.body) && !atMedia(r, desktopQuery)
-      && !atMedia(r, '(min-width: 1024px) and (min-height: 600px)'));
+    return !(sels.includes('.pane') && /position\s*:\s*sticky/.test(r.body) && !atMedia(r, desktopQuery));
   });
 }
 check('app and CSS share the desktop query and shadow belongs only to its pane rule',
@@ -2141,7 +2248,8 @@ check('app and CSS share the desktop query and shadow belongs only to its pane r
     && paneCss.filter((r) => /var\(--shadow\)/.test(r.body)).every((r) => r.selector === '.pane' && atMedia(r, desktopQuery)));
 check('desktop split and sticky pane stay in their media blocks; negative base fixtures fail',
   confinedPaneRules(cssRules) && !confinedPaneRules(cssRules + '.split{display:grid}')
-    && !confinedPaneRules(cssRules + '.pane{position:sticky}'));
+    && !confinedPaneRules(cssRules + '.pane{position:sticky}')
+    && !confinedPaneRules(cssRules + '@media (min-width: 1024px) and (min-height: 600px){.pane{position:sticky}}'));
 check('desktop pane and row columns follow the 1024/1280 templates',
   /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', largeQuery))
     && /grid-template-columns:minmax\(0,1fr\) 18rem/.test(paneRule('.split', desktopQuery))
@@ -2162,10 +2270,11 @@ check('selected tint/ring follow hover, focus inset and goto colours are explici
     && /left:-9999px;color:var\(--accent\);text-decoration:underline/.test(paneRule('.goto', desktopQuery))
     && /left:auto;right:12px;bottom:8px;z-index:2/.test(paneRule('.goto:focus', desktopQuery))
     && !paneCss.some((r) => /is-sel|is-past/.test(r.selector) && /opacity/.test(r.body)));
-check('interim pane and focus clearance share measured 236px only from 1024 by 600',
-  /top:236px;max-height:calc\(100vh - 236px - 12px\)/.test(paneRule('.pane', '(min-width: 1024px) and (min-height: 600px)'))
-    && ['.item', '.open', '.goto'].every((sel) => /scroll-margin-top:236px/.test(paneRule(sel, '(min-width: 1024px) and (min-height: 600px)')))
-    && css.includes('interim until Stage 5 (A07 retarget)'));
+// Stage 4 pushed the pane below the old sticky bar (236 px, 1024 x 600 and up).
+// The bar no longer sticks, so that block and its offset went together.
+check('no interim height-gated chrome: no (min-height: 600px) media and no 236 px offset; the pane is top 12 px at every height',
+  !/@media[^{]*min-height:\s*600px/.test(cssRules) && !/236px/.test(cssRules) && !css.includes('interim until Stage 5')
+    && /position:sticky;top:12px;max-height:calc\(100vh - 24px\)/.test(paneRule('.pane', desktopQuery)));
 check('print hides pane/goto and restores a block split without new motion',
   /display:none/.test(paneRule('.pane', 'print')) && /display:none/.test(paneRule('.goto', 'print'))
     && /display:block/.test(paneRule('.split', 'print'))
@@ -2212,42 +2321,131 @@ check('wide and narrow live rows use their own ARIA without selection decoration
   });
 })));
 
+// The real index.html as stand-in nodes, so the harness has the actual parents,
+// ids, dropdowns and sheet. Enough HTML for this file: tags, quoted attributes,
+// comments, void and self-closed elements.
+function parseHtml(source) {
+  const root = new ChromeNode('#document'), stack = [root];
+  const voids = new Set(['meta', 'link', 'input', 'br', 'img', 'hr', 'source']);
+  const decode = (t) => t.replace(/&euro;/g, '€').replace(/&ndash;/g, '–').replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  const token = /<!--[\s\S]*?-->|<!DOCTYPE[^>]*>|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>|([^<]+)/g;
+  for (const [, close, open, attrs, selfClose, text] of source.matchAll(token)) {
+    const top = stack.at(-1);
+    if (text !== undefined) { if (text.trim()) top.append(decode(text)); else if (text) top.append(' '); continue; }
+    if (close) { const at = stack.findLastIndex((n) => n.tagName === close.toLowerCase()); if (at > 0) stack.length = at; continue; }
+    if (!open) continue;
+    const node = new ChromeNode(open.toLowerCase());
+    for (const [, name, dq, sq, bare] of (attrs ?? '').matchAll(/([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)) {
+      const value = decode(dq ?? sq ?? bare ?? '');
+      if (name === 'id') node.id = value;
+      else if (name === 'hidden') node.hidden = true;
+      else if (name === 'open' || name === 'checked' || name === 'disabled') node[name] = true;
+      else node.setAttribute(name, value);
+      if (name === 'type' || name === 'value') node[name] = value;
+    }
+    if (node.tagName === 'input') { node.validity = { badInput: false }; node.value ??= ''; }
+    top.append(node);
+    if (!selfClose && !voids.has(node.tagName)) stack.push(node);
+  }
+  return root;
+}
+
 // Run actual app functions; only the platform and data load are controlled.
 // A wrong widening target, narrow arrow interception or failure unhide must fail.
+// start() runs for real up to its never-ending data load, so every handler and
+// the initial filter placement are the app's own. 600 and 1024 are separate
+// media objects (R4); media/flip still drive only 1024, as in Stage 4.
 function paneAppHarness(test) {
-  return withStubDocument(() => {
-    const ids = new Map();
-    const get = (id) => { if (!ids.has(id)) { const n = new ChromeNode('div'); n.id = id; ids.set(id, n); } return ids.get(id); };
-    const pane = get('pane'), heading = get('pane-h'), body = new ChromeNode('div');
-    body.className = 'pane-body'; pane.append(heading, body);
-    const resultsSection = new ChromeNode('section'), listp = new ChromeNode('div');
-    listp.className = 'listp'; listp.append(get('results')); resultsSection.append(listp);
-    const selectors = { '.status': new ChromeNode('div'), '.listp': listp, '.pane-body': body,
-      'section[aria-labelledby="results-h"]': resultsSection };
-    const original = { getElementById: stubDocument.getElementById, querySelector: stubDocument.querySelector, querySelectorAll: stubDocument.querySelectorAll };
-    Object.assign(stubDocument, { getElementById: get, querySelector: (sel) => selectors[sel] ?? null, querySelectorAll: () => [],
-      body: new ChromeNode('body'), activeElement: new ChromeNode('input') });
-    const media = { matches: false, addEventListener() {} };
-    const context = { document: stubDocument, matchMedia: () => media, location: { search: '', pathname: '/', hash: '' },
-      history: { replaceState() {} }, Date, console, setTimeout, clearTimeout,
-      ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(),
-      renderRows, renderSlot, renderPane, renderCount, renderIssues() {} };
-    const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '').replace(/^start\(\);/m, '');
-    try {
-      runInNewContext(code, context);
-      const run = (code) => runInNewContext(code, context);
-      context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
-      context.media = media;
-      run('allRows = fixture; loaded = true; update();');
-      const item = (id) => get('results').children.find((n) => n.dataset.id === id);
-      const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
-      const flip = (wide) => { media.matches = wide; run('crossWide();'); };
-      return test({ run, get, item, click, flip, media, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id) });
-    } finally { Object.assign(stubDocument, original); }
-  });
+  const originalGlobal = globalThis.document;
+  globalThis.document = stubDocument;
+  const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners',
+    'canFocus', 'moved', 'queueTask', 'scrolls', 'focusOptions', 'focusLog'];
+  const original = Object.fromEntries(keys.map((k) => [k, stubDocument[k]]));
+  const finish = () => { Object.assign(stubDocument, original); globalThis.document = originalGlobal; };
+  let result;
+  try {
+    const tree = parseHtml(indexHtml), all = () => [...nodesOf(tree)];
+    const extra = new Map();
+    const get = (id) => all().find((n) => n.id === id)
+      ?? (extra.has(id) ? extra.get(id) : extra.set(id, Object.assign(new ChromeNode('div'), { id })).get(id));
+    const html = tree.querySelector('html'), docBody = tree.querySelector('body');
+    html.clientHeight = 844;
+    const pane = get('pane'), body = tree.querySelector('.pane-body'), resultsSection = tree.querySelector('section[aria-labelledby="results-h"]');
+    // Virtual clock for debounces, the Copy link reset and queued dialog events.
+    let now = 0, nextId = 1; const timers = new Map();
+    const fakeSetTimeout = (fn, ms = 0) => { const id = nextId++; timers.set(id, { at: now + ms, fn }); return id; };
+    const fakeClearTimeout = (id) => { timers.delete(id); };
+    const advance = (ms) => {
+      const end = now + ms;
+      for (;;) {
+        const due = [...timers].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+        if (!due) break;
+        timers.delete(due[0]); now = due[1].at; due[1].fn();
+      }
+      now = end;
+    };
+    const media = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    const media600 = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    // What the stylesheet hides at each width; a hidden node cannot take focus.
+    const cssHidden = (n) => media600.matches
+      ? n.id === 'f-more' || n.classList.contains('f-sort')
+      : (n.classList.contains('more-filters') && n.parent?.id === 'filter-form') || (n.id === 'f-copy' && n.parent?.classList.contains('status'));
+    const observers = [];
+    class IntersectionObserver {
+      constructor(callback) { this.callback = callback; this.targets = []; observers.push(this); }
+      observe(node) { this.targets.push(node); }
+      disconnect() { this.targets = []; }
+    }
+    Object.assign(stubDocument, {
+      getElementById: get, querySelector: (sel) => tree.querySelector(sel), querySelectorAll: (sel) => tree.querySelectorAll(sel),
+      body: docBody, documentElement: html, activeElement: new ChromeNode('input'), listeners: {}, scrolls: [], focusOptions: undefined, focusLog: [],
+      canFocus: (node) => { for (let n = node; n; n = n.parent) if (n.hidden || cssHidden(n) || (n.tagName === 'dialog' && !n.open)) return false; return true; },
+      moved: (node) => { if (stubDocument.blurOnMove && node.contains(stubDocument.activeElement)) stubDocument.activeElement = docBody; },
+      queueTask: (fn) => fakeSetTimeout(fn, 0),
+    });
+    stubDocument.blurOnMove = true;
+    const clipboard = { mode: 'resolve', written: [], writeText(text) {
+      if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
+      this.written.push(text); return Promise.resolve();
+    } };
+    const context = { document: stubDocument, matchMedia: (q) => (q === '(min-width: 600px)' ? media600 : media),
+      location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
+      history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout,
+      IntersectionObserver, navigator: { clipboard }, getComputedStyle: (n) => n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' },
+      ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise(() => {}),
+      renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderSortOptions() {}, renderSourceLine() {},
+      renderSourceBanner() {}, renderIssues() {} };
+    const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
+    runInNewContext(code, context);
+    const run = (code) => runInNewContext(code, context);
+    context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
+    context.media = media;
+    run('allRows = fixture; loaded = true; update();');
+    const item = (id) => get('results').children.find((n) => n.dataset.id === id);
+    const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
+    const flip = (wide) => { media.matches = wide; run('crossWide();'); };
+    // A real 600 crossing: the query flips, then its change listeners run.
+    const flip600 = (bar) => { media600.matches = bar; for (const fn of media600.listeners) fn({ matches: bar }); };
+    const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+    result = test({ run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
+      docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id) });
+  } catch (err) { finish(); throw err; }
+  if (result && typeof result.then === 'function') return result.finally(finish);
+  finish();
+  return result;
 }
+// Strict: only a real true passes. A Promise or a truthy object is a FAIL.
 function appCheck(name, fn) {
-  try { check(name, paneAppHarness(fn)); } catch (err) { check(name, false, err.message); }
+  try {
+    const result = paneAppHarness(fn);
+    if (result && typeof result.then === 'function') { result.catch(() => {}); throw new Error('async check: use asyncAppCheck'); }
+    check(name, result === true);
+  } catch (err) { check(name, false, err.message); }
+}
+async function asyncAppCheck(name, fn) {
+  try { check(name, (await paneAppHarness(fn)) === true); } catch (err) { check(name, false, err.message); }
 }
 appCheck('actual handlers: narrow open A/B, close B selects A, widen clears slots, round trip reopens A', ({ run, click, flip, get, ids: [a, b] }) => {
   click(a); click(b);
@@ -2332,6 +2530,323 @@ appCheck('an update between the resize and its change event still moves the pick
   if (item(a).querySelectorAll('.expand').length !== 1) return false;
   media.matches = true; run('update();'); run('crossWide();');
   return !item(a).querySelector('.expand') && body.querySelector('h2')?.id === `p-${a}` && run('selectedId') === a;
+});
+
+// ---------------------------------------------------------------- stage 5
+section('Filters, phone sheet and sticky count (redesign stage 5)');
+// Source of the element whose opening tag matches openRe (same-tag nesting).
+function elementSource(html, openRe) {
+  const m = openRe.exec(html);
+  if (!m) return '';
+  const tag = m[0].match(/^<([a-z]+)/)[1], re = new RegExp(`<${tag}\\b|</${tag}>`, 'g');
+  re.lastIndex = m.index + 1;
+  let depth = 1, hit;
+  while (depth && (hit = re.exec(html))) depth += hit[0].startsWith('</') ? -1 : 1;
+  return html.slice(m.index, hit ? hit.index + hit[0].length : html.length);
+}
+const formSrc = elementSource(indexHtml, /<form class="fbar" id="filter-form"/);
+const moreSrc = elementSource(indexHtml, /<div class="more-filters">/);
+const statusSrc = elementSource(indexHtml, /<div class="status">/);
+const sheetSrc = elementSource(indexHtml, /<dialog /);
+const stageIds = ['filter-form', 'f-search', 'f-points', 'f-points-error', 'f-maths', 'f-maths-help', 'f-tuition', 'f-tuition-error',
+  'dd-subjects', 'dd-countries', 'dd-languages', 'f-subjects', 'f-countries', 'f-languages', 'f-sort', 'f-clear', 'result-count',
+  'f-more', 'f-copy', 'filter-sheet', 'sheet-h', 'sheet-done', 'sheet-show'];
+check('one copy of each control: every filter, sheet and copy id appears exactly once',
+  stageIds.every((id) => (indexHtml.match(new RegExp(`id="${id}"`, 'g')) ?? []).length === 1));
+check('.more-filters holds the fee, the three dropdowns, Sort and Clear all, inside the filter form in the header',
+  moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-sort"', 'id="f-clear"'].every((s) => moreSrc.includes(s))
+    && formSrc.includes(moreSrc) && elementSource(indexHtml, /<header class="top">/).includes(formSrc)
+    && ['id="f-search"', 'id="f-points"', 'id="f-maths"', 'id="f-more"'].every((s) => formSrc.includes(s) && !moreSrc.includes(s)));
+check('.status holds the live count, its aria-hidden twin and Copy link after a 1 px sentinel; Sort has left it; the footer holds Show N',
+  /<p class="count cfull" id="result-count" aria-live="polite"><\/p>/.test(statusSrc) && /<p class="count cshort" aria-hidden="true"><\/p>/.test(statusSrc)
+    && statusSrc.includes('id="f-copy"') && !statusSrc.includes('f-sort') && /<div class="stuck-mark" aria-hidden="true"><\/div>\s*<div class="status">/.test(indexHtml)
+    && elementSource(indexHtml, /<div class="sheet-f">/).includes('id="sheet-show"') && !indexHtml.includes('sort-field'));
+check('the sheet is a labelled native dialog with a focusable heading and Done, controlled by Filters',
+  /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
+    && /id="sheet-done"[^>]*>Done</.test(sheetSrc) && !/role="dialog"|aria-modal/.test(indexHtml)
+    && /<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet">/.test(formSrc));
+check('every button in the filter form and the sheet is type="button" (no implicit submit)', [formSrc, sheetSrc].every((src) => {
+  const buttons = src.match(/<button\b[^>]*>/g) ?? [];
+  return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
+}));
+check('the sprite has the Phosphor funnel and five flags filled only from the canonical flag tokens',
+  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && ['f-cz', 'f-dk', 'f-ie', 'f-it', 'f-nl'].every((id) => {
+    const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
+    return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
+  }));
+check('app and CSS share the 600 px query', appSrc.includes("matchMedia('(min-width: 600px)')") && paneCss.some((r) => atMedia(r, '(min-width: 600px)')));
+check('the closed sheet never renders: no screen display on bare .sheet, flex only when open, print may hide it; the page behind does not scroll',
+  paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes('.sheet') && /display\s*:/.test(r.body)).every((r) => atMedia(r, 'print') && /display:none/.test(r.body))
+    && /display:flex/.test(paneRule('.sheet[open]')) && /overflow:hidden/.test(paneRule('html:has(.sheet[open])'))
+    && /background:var\(--scrim\)/.test(paneRule('.sheet::backdrop')) && /min-height:0;overflow:auto/.test(paneRule('.sheet-b'))
+    && /margin:0;padding:0;border:0/.test(paneRule('.sheet')));
+check('stuck: the full sentence is clipped like .visually-hidden, never display:none; the 600 block resets every clip and hides the twin',
+  /position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect\(0 0 0 0\);clip-path:inset\(50%\);white-space:nowrap/.test(paneRule('.is-stuck .cfull'))
+    && !paneCss.some((r) => /\.cfull/.test(r.selector) && /display\s*:\s*none/.test(r.body))
+    && /position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal/.test(paneRule('.is-stuck .cfull', '(min-width: 600px)'))
+    && /display:none/.test(paneRule('.is-stuck .cshort', '(min-width: 600px)')) && /display:block/.test(paneRule('.is-stuck .cshort')));
+// Implement, 2026-10-27: .btn-q and .btn-s sat before the .btn base rule at
+// equal weight, so Clear all, Done and Copy link drew as full bordered buttons.
+check('quiet and small buttons out-rank the later .btn base rule',
+  /border-color:transparent;background:none;color:var\(--accent\);text-decoration:underline/.test(paneRule('.btn.btn-q'))
+    && /height:var\(--tap\);padding:0 10px;font-size:var\(--fs-13\)/.test(paneRule('.btn.btn-s'))
+    && !paneCss.some((r) => r.selector.split(',').map((x) => x.trim()).some((x) => /^\.btn-[qs](?![\w-])/.test(x))));
+// Implement, 2026-10-27: a bare .copy in the print list lost to the 600
+// block's .status .copy{display:inline-flex}, so print only hid it by luck
+// (its parent was hidden).
+check('print hides the filter bar, sheet, short count and Copy link with selectors that out-rank their screen rules',
+  ['.fbar', '.sheet', '.cshort', '.status .copy', '.sheet .copy'].every((sel) => /display:none/.test(paneRule(sel, 'print').replace(/\s/g, '')))
+    && !paneCss.some((r) => atMedia(r, 'print') && r.selector.split(',').map((x) => x.trim()).includes('.copy')));
+check('invalid fields get a 2 px ink border placed after the active look, so it wins; flags out-rank the 1em icon rule',
+  /border:2px solid var\(--ink\)/.test(paneRule('.inp[aria-invalid=true]'))
+    && cssRules.indexOf('.inp[aria-invalid=true]') > cssRules.indexOf('.is-set .inp')
+    && /width:21px;height:14px;border-radius:2px;outline:1px solid var\(--hairline\)/.test(paneRule('.dropdown svg.flag')));
+check('compact count twin: lead plus each bucket number with its mark, lead only without points, rewritten only on change',
+  typeof renderCountShort === 'function' && withStubDocument(() => {
+    const n = new ChromeNode('p');
+    n.setAttribute('aria-hidden', 'true');
+    const parts = [{ kind: 'fit', text: '410 within your points' }, { kind: 'cond', text: '41 only with HL Maths 4+' }, { kind: 'unk', text: '679 points unknown' }];
+    const first = renderCountShort(n, '1130 of 1240 programmes', parts), kids = [...n.children];
+    const same = renderCountShort(n, '1130 of 1240 programmes', parts);
+    return first === true && same === false && kids.every((c, i) => c === n.children[i])
+      && n.textContent === '1130 of 1240 programmes · 410 · 41 · 679' && byTag(n, 'b')[0]?.textContent === '1130 of 1240 programmes'
+      && byClass(n, 'k').map((x) => x.className).join(' ') === 'k k-fit m m-fit k k-cond m m-cond k k-unk m m-unk'
+      && renderCountShort(n, '1240 programmes', []) === true && n.textContent === '1240 programmes' && n.childElementCount === 1
+      && n.getAttribute('aria-hidden') === 'true';
+  }));
+check('country options get an aria-hidden flag between the tick and the name; an unmapped country gets text only',
+  typeof renderChips === 'function' && withStubDocument(() => {
+    const names = ['Czechia', 'Denmark', 'Ireland', 'Italy', 'Netherlands', 'Atlantis'];
+    const flags = { Czechia: 'f-cz', Denmark: 'f-dk', Ireland: 'f-ie', Italy: 'f-it', Netherlands: 'f-nl' };
+    const box = new ChromeNode('div'), plain = new ChromeNode('div');
+    renderChips(box, names, new Set(['Ireland']), () => {}, { flags });
+    renderChips(plain, ['Czechia'], new Set(), () => {});
+    return box.children.length === names.length && box.children.every((label, i) => {
+      const svg = byTag(label, 'svg')[0], name = names[i];
+      return label.textContent === name && label.children[0].tagName === 'input' && label.children[0].checked === (name === 'Ireland')
+        && (name === 'Atlantis' ? !svg : !!svg && svg.getAttribute('aria-hidden') === 'true' && svg.className === 'flag' && label.children[1] === svg
+          && byTag(svg, 'use')[0]?.getAttribute('href') === `#${flags[name]}`);
+    }) && !byTag(plain, 'svg').length && appSrc.includes('{ flags: COUNTRY_FLAGS }')
+      && Object.entries(flags).every(([c, f]) => appSrc.includes(`${c}: '${f}'`));
+  }));
+
+// Real handlers on the real markup. Each would pass with a wrong target only
+// if the app code were wrong in the same way, so every outcome is asserted.
+const kids = (n) => n.children.filter((c) => typeof c !== 'string');
+appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const more = tree.querySelector('.more-filters'), clear = get('f-clear'), copy = get('f-copy'), show = get('sheet-show');
+  const sheetB = tree.querySelector('.sheet-b'), sheetF = tree.querySelector('.sheet-f'), form = get('filter-form'), status = tree.querySelector('.status');
+  const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy].join() && kids(sheetB)[1] === copy
+    && clear.parent === sheetF && clear.nextElementSibling === show;
+  const wideOk = () => more.parent === form && kids(form).at(-1) === more && kids(more).at(-1) === clear && kids(status).at(-1) === copy;
+  if (!narrowOk()) return false;
+  const box = get('dd-countries'), tick = get('f-countries').querySelector('input');
+  box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition';
+  let moves = 0; const hook = stubDocument.moved;
+  stubDocument.moved = (n) => { moves++; hook(n); };
+  flip600(true);
+  if (!wideOk() || moves !== 3) return false;
+  flip600(true); run('placeFilters();');
+  if (moves !== 3) return false;
+  // A fresh placement (page load at 600 or wider) finds every node in place:
+  // nothing moves, so a control focused before the script ran keeps focus.
+  get('f-tuition').focus(); run('appliedBar = null; placeFilters();');
+  if (moves !== 3 || stubDocument.activeElement !== get('f-tuition')) return false;
+  for (let i = 0; i < 10; i++) { flip600(i % 2 === 0 ? false : true); if (!(i % 2 === 0 ? narrowOk() : wideOk())) return false; }
+  return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition'
+    && get('f-countries').querySelector('input') === tick && tree.querySelectorAll('.more-filters').length === 1;
+});
+appCheck('actual 600 focus: a moved control keeps focus, sheet focus and the vanishing Filters go to the fee, narrowing goes to Filters, others stay', ({ get, flip600, fire, item, ids: [a] }) => {
+  const fee = get('f-tuition'), more = get('f-more'), sheet = get('filter-sheet'), focus = (n) => { n.focus(); fire(n, 'focusin'); };
+  const active = () => stubDocument.activeElement;
+  fire(more, 'click'); focus(fee); flip600(true);
+  if (active() !== fee || sheet.open) return false;
+  flip600(false); if (active() !== more) return false;
+  for (const id of ['sheet-h', 'sheet-done', 'sheet-show']) {
+    fire(more, 'click'); focus(get(id)); flip600(true);
+    if (active() !== fee || sheet.open) return false;
+    flip600(false); if (active() !== more) return false;
+  }
+  focus(get('f-search')); flip600(true); if (active() !== get('f-search')) return false;
+  flip600(false); focus(item(a).querySelector('button.open')); flip600(true);
+  if (active() !== item(a).querySelector('button.open')) return false;
+  flip600(false); focus(get('f-points')); flip600(true); flip600(false);
+  return active() === get('f-points');
+});
+appCheck('actual 600 focus cleared by CSS before the callback: Filters and moved controls recover; a real move or same-mode blur forgets', ({ get, flip600, fire, media600, docBody, item, ids: [a] }) => {
+  const fee = get('f-tuition'), more = get('f-more'), focus = (n) => { n.focus(); fire(n, 'focusin'); };
+  const cssCross = (bar) => {
+    const was = stubDocument.activeElement;
+    media600.matches = bar; stubDocument.activeElement = docBody;
+    fire(was, 'focusout', { relatedTarget: null });
+    for (const fn of media600.listeners) fn({ matches: bar });
+  };
+  focus(more); cssCross(true); if (stubDocument.activeElement !== fee) return false;
+  cssCross(false); if (stubDocument.activeElement !== more) return false;
+  focus(more); focus(item(a).querySelector('button.open')); stubDocument.activeElement = docBody; cssCross(true);
+  if (stubDocument.activeElement !== docBody) return false;
+  flip600(false); focus(more); fire(more, 'focusout', { relatedTarget: null }); stubDocument.activeElement = docBody; cssCross(true);
+  return stubDocument.activeElement === docBody;
+});
+appCheck('actual sheet: Filters opens it on the heading; Done, Show N, Escape and a backdrop tap close it and return focus; inner taps do not', ({ get, fire, advance, docBody }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), heading = get('sheet-h');
+  sheet.rect = { top: 300, bottom: 844, left: 0, right: 390, width: 390, height: 544 };
+  // iOS does not focus a tapped button, so the native return target can be body.
+  const open = () => { stubDocument.activeElement = docBody; fire(more, 'click');
+    return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === heading; };
+  const closed = () => { advance(0); return !sheet.open && more.getAttribute('aria-expanded') === 'false' && stubDocument.activeElement === more; };
+  if (!open()) return false; fire(get('sheet-done'), 'click'); if (!closed()) return false;
+  if (!open()) return false; fire(get('sheet-show'), 'click'); if (!closed()) return false;
+  if (!open()) return false; if (fire(sheet, 'cancel', { bubbles: false })) sheet.close(); if (!closed()) return false;
+  if (!open()) return false; fire(sheet, 'click', { clientX: 200, clientY: 120 }); if (!closed()) return false;
+  if (!open()) return false;
+  fire(sheet, 'click', { clientX: 200, clientY: 500 }); fire(heading, 'click', { clientX: 0, clientY: 0 });
+  fire(get('f-tuition'), 'click', { clientX: 0, clientY: 0 }); advance(0);
+  return sheet.open && more.getAttribute('aria-expanded') === 'true';
+});
+appCheck('actual sheet: widening closes it without a focus return; a queued close after a quick reopen neither steals focus nor clears aria-expanded', ({ get, fire, flip600, advance }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), fee = get('f-tuition');
+  fire(more, 'click'); fee.focus(); fire(fee, 'focusin'); flip600(true); advance(0);
+  if (stubDocument.activeElement !== fee || more.getAttribute('aria-expanded') !== 'false') return false;
+  flip600(false); fire(more, 'click'); flip600(true); flip600(false); fire(more, 'click');
+  advance(0);
+  return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
+});
+appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; fee 0 + two countries is Filters (2)', ({ run, get, fire, advance, context }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const more = get('f-more'), clear = get('f-clear'), show = get('sheet-show'), label = () => more.querySelector('span').textContent;
+  const type = (id, value) => { get(id).value = value; fire(get(id), 'input'); advance(150); };
+  if (label() !== 'Filters' || more.classList.contains('is-on') || clear.textContent !== 'Clear all' || !clear.disabled
+    || show.textContent !== `Show ${context.fixture.length} programmes`) return false;
+  type('f-points', '36'); get('f-maths').checked = true; fire(get('f-maths'), 'change');
+  if (label() !== 'Filters' || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
+  fire(clear, 'click'); type('f-tuition', '0');
+  for (const tick of get('f-countries').querySelectorAll('input').slice(0, 2)) { tick.checked = true; fire(tick, 'change'); }
+  if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || clear.disabled
+    || get('dd-countries-count-number').textContent !== '2' || get('dd-countries-count').hidden
+    || !get('f-tuition').closest('.fld').classList.contains('is-set') || !get('dd-countries').classList.contains('is-set')
+    || get('dd-subjects').classList.contains('is-set') || !/^Show \d+ programmes?$/.test(show.textContent)) return false;
+  type('f-search', '  ' + context.fixture[0].programme + ' ');
+  if (clear.textContent !== 'Clear all (3)' || label() !== 'Filters (2)' || !get('f-search').closest('.fld').classList.contains('is-set')) return false;
+  fire(clear, 'click'); type('f-search', context.fixture[0].programme);
+  if (show.textContent !== 'Show 1 programme') return false;
+  type('f-tuition', '-5');
+  return get('f-tuition').getAttribute('aria-invalid') === 'true' && !get('f-tuition').closest('.fld').classList.contains('is-set') && label() === 'Filters';
+});
+appCheck('actual sheet Clear all clears every filter and moves focus to the sheet heading', ({ run, get, fire, advance }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const clear = get('f-clear');
+  fire(get('f-more'), 'click');
+  const tick = get('f-countries').querySelector('input'); tick.checked = true; fire(tick, 'change');
+  get('f-tuition').value = '3000'; fire(get('f-tuition'), 'input'); advance(150);
+  clear.focus(); fire(clear, 'click');
+  return stubDocument.activeElement === get('sheet-h') && clear.disabled && clear.textContent === 'Clear all'
+    && run('activeFilterCount(state)') === 0 && !get('f-countries').querySelector('input').checked && get('f-tuition').value === '';
+});
+appCheck('actual dropdowns: in the sheet Escape is left to the dialog and outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
+  const subjects = get('dd-subjects'), countries = get('dd-countries');
+  fire(get('f-more'), 'click'); subjects.open = true;
+  const summary = subjects.querySelector('summary'); summary.focus();
+  fire(summary, 'keydown', { key: 'Escape' });
+  if (!subjects.open || stubDocument.activeElement !== summary) return false;
+  fire(get('sheet-h'), 'click'); fire(subjects, 'focusout', { relatedTarget: get('sheet-done') });
+  if (!subjects.open) return false;
+  countries.open = true; fire(countries, 'toggle', { bubbles: false });
+  if (subjects.open || !countries.open) return false;
+  flip600(true);
+  fire(countries, 'focusout', { relatedTarget: null }); if (!countries.open) return false;
+  fire(countries, 'focusout', { relatedTarget: get('f-search') }); if (countries.open) return false;
+  subjects.open = true; fire(get('f-search'), 'click'); if (subjects.open) return false;
+  subjects.open = true; get('f-search').focus(); fire(get('f-search'), 'keydown', { key: 'Escape' });
+  if (subjects.open || stubDocument.activeElement !== get('f-search')) return false;
+  subjects.open = true; summary.focus(); fire(summary, 'keydown', { key: 'Escape' });
+  return !subjects.open && stubDocument.activeElement === summary;
+});
+appCheck('actual total failure closes an open sheet and gives sheet focus to the connected Reload; the queued close returns nothing', ({ run, get, fire, advance }) => {
+  const more = get('f-more'), sheet = get('filter-sheet');
+  fire(more, 'click'); if (stubDocument.activeElement !== get('sheet-h')) return false;
+  run("showTotalFailure(new Error('controlled failure'));");
+  const banner = get('source-banner'), reload = banner.querySelector('button');
+  if (sheet.open || !reload || stubDocument.activeElement !== reload || banner.hidden || !get('filter-form').hidden) return false;
+  advance(0);
+  return stubDocument.activeElement === reload && more.getAttribute('aria-expanded') === 'false';
+});
+appCheck('actual stuck count: only while narrow with the sentinel above the viewport; never below it; widening clears it; narrowing reconciles at once', ({ observers, tree, flip600 }) => {
+  const io = observers[0], mark = tree.querySelector('.stuck-mark'), status = tree.querySelector('.status');
+  const stuck = () => status.classList.contains('is-stuck');
+  const at = (top) => { mark.rect = { top, bottom: top + 1, left: 0, right: 390, width: 390, height: 1 };
+    io.callback([{ target: mark, isIntersecting: top + 1 > 0 && top < 844, boundingClientRect: mark.rect, rootBounds: { top: 0, bottom: 844 } }]); };
+  if (!io || io.targets[0] !== mark) return false;
+  at(200); if (stuck()) return false;
+  at(-300); if (!stuck()) return false;
+  at(1200); if (stuck()) return false;
+  at(-300); flip600(true); if (stuck()) return false;
+  at(-500); if (stuck()) return false;
+  at(200); mark.rect = { top: -300, bottom: -299 }; flip600(false); if (!stuck()) return false;
+  flip600(true); mark.rect = { top: 900, bottom: 901 }; flip600(false);
+  return !stuck();
+});
+await asyncAppCheck('actual Copy link: success, rejection and no clipboard change only its own text for 2 s; a second click restarts the timer', async ({ get, fire, advance, settle, clipboard, context }) => {
+  const copy = get('f-copy');
+  fire(copy, 'click'); await settle();
+  if (copy.textContent !== 'Link copied' || clipboard.written.at(-1) !== context.location.href) return false;
+  advance(1999); if (copy.textContent !== 'Link copied') return false;
+  advance(1); if (copy.textContent !== 'Copy link') return false;
+  fire(copy, 'click'); await settle(); advance(1500); fire(copy, 'click'); await settle(); advance(1500);
+  if (copy.textContent !== 'Link copied') return false;
+  advance(500); if (copy.textContent !== 'Copy link') return false;
+  clipboard.mode = 'reject'; fire(copy, 'click'); await settle();
+  if (copy.textContent !== 'Copy failed: use the address bar') return false;
+  advance(2000); if (copy.textContent !== 'Copy link') return false;
+  context.navigator.clipboard = undefined; fire(copy, 'click'); await settle();
+  if (copy.textContent !== 'Copy failed: use the address bar') return false;
+  advance(2000);
+  return copy.textContent === 'Copy link' && copy.getAttribute('aria-live') === null;
+});
+appCheck('actual arrows scroll the new pick after selecting it: nearest when it fits under the sticky header, start when taller; focus never scrolls', ({ run, flip, get, html, context }) => {
+  flip(true);
+  const items = kids(get('results'));
+  for (const li of items) li.computed = { scrollMarginTop: '52px', scrollMarginBottom: '8px' };
+  html.clientHeight = 600;
+  items[1].rect = { top: 500, bottom: 640, height: 140 }; items[2].rect = { top: 640, bottom: 1300, height: 660 };
+  let calm = true;
+  const key = (li, k) => {
+    stubDocument.focusLog = [];
+    context.keyEvent = { target: li.querySelector('button.open'), key: k, preventDefault() {} }; run('rowKeydown(keyEvent);');
+    calm = calm && stubDocument.focusLog.length > 0 && stubDocument.focusLog.every((f) => f.options?.preventScroll === true);
+  };
+  stubDocument.scrolls = [];
+  key(items[0], 'ArrowDown');
+  const down = stubDocument.scrolls.at(-1);
+  if (!down || down.node !== items[1] || down.options?.block !== 'nearest' || !down.selected || stubDocument.focusOptions?.preventScroll !== true) return false;
+  key(items[1], 'ArrowDown');
+  const tall = stubDocument.scrolls.at(-1);
+  if (tall.node !== items[2] || tall.options?.block !== 'start' || !tall.selected || stubDocument.focusOptions?.preventScroll !== true) return false;
+  key(items[2], 'ArrowUp');
+  const up = stubDocument.scrolls.at(-1);
+  return up.node === items[1] && up.options?.block === 'nearest' && stubDocument.scrolls.length === 3 && calm;
+});
+appCheck('simultaneous 600 and 1024 crossings stay independent in either order: the pick moves and a sheet control keeps focus', ({ run, click, get, fire, flip600, media, media600, docBody, body, item, ids: [a] }) => {
+  const fee = get('f-tuition'), more = get('f-more');
+  click(a); fire(more, 'click'); fee.focus(); fire(fee, 'focusin');
+  media.matches = true; run('crossWide();'); flip600(true);
+  if (stubDocument.activeElement !== fee || body.querySelector('h2')?.id !== `p-${a}` || get('filter-sheet').open) return false;
+  flip600(false); media.matches = false; run('crossWide();');
+  if (stubDocument.activeElement !== more || !item(a).querySelector('.expand')) return false;
+  fire(more, 'click'); fee.focus(); fire(fee, 'focusin');
+  media600.matches = true; media.matches = true; stubDocument.activeElement = docBody; fire(fee, 'focusout', { relatedTarget: null });
+  for (const fn of media600.listeners) fn({ matches: true });
+  run('crossWide();');
+  if (stubDocument.activeElement !== fee || body.querySelector('h2')?.id !== `p-${a}` || get('filter-sheet').open) return false;
+  // The 1024 callback first, with focus already cleared by CSS: it must not
+  // wipe the filter record the 600 callback still needs.
+  flip600(false); media.matches = false; run('crossWide();');
+  fire(more, 'click'); fee.focus(); fire(fee, 'focusin');
+  media600.matches = true; media.matches = true; stubDocument.activeElement = docBody; fire(fee, 'focusout', { relatedTarget: null });
+  run('crossWide();');
+  for (const fn of media600.listeners) fn({ matches: true });
+  return stubDocument.activeElement === fee && body.querySelector('h2')?.id === `p-${a}` && !get('filter-sheet').open;
 });
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
