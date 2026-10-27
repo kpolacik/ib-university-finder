@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -34,7 +35,7 @@ const equal = (name, actual, expected) =>
 class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
-    this.className = ''; this.parent = null;
+    this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
   }
   set textContent(text) { this.replaceChildren(String(text)); }
   get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
@@ -57,11 +58,29 @@ class ChromeNode {
     if (name === 'class') this.className = String(value); else this.attributes[name] = String(value);
   }
   getAttribute(name) { return name === 'class' ? this.className : (this.attributes[name] ?? null); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5), v])); }
+  contains(node) { return node === this || this.children.some((c) => typeof c !== 'string' && c.contains(node)); }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
+  matches(selector) {
+    const tag = selector.match(/^[a-z][a-z0-9-]*/)?.[0], cls = selector.match(/\.([\w-]+)/)?.[1];
+    const attr = selector.match(/\[([\w-]+)(?:="?([^"\]]+)"?)?\]/);
+    return (!tag || this.tagName === tag) && (!cls || this.classList.contains(cls))
+      && (!attr || (this.getAttribute(attr[1]) !== null && (!attr[2] || this.getAttribute(attr[1]) === attr[2])));
+  }
+  closest(selector) { return this.matches(selector) ? this : this.parent?.closest(selector) ?? null; }
+  querySelectorAll(selector) { return [...nodesOf(this)].slice(1).filter((n) => n.matches(selector)); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  focus() { stubDocument.activeElement = this; }
+  addEventListener() {}
+  get nextElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) + 1] ?? null; }
+  get previousElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) - 1] ?? null; }
   get classList() {
     const names = () => this.className.split(/\s+/).filter(Boolean);
     return {
       add: (...add) => { this.className = [...new Set([...names(), ...add])].join(' '); },
       contains: (name) => names().includes(name),
+      remove: (...remove) => { this.className = names().filter((n) => !remove.includes(n)).join(' '); },
     };
   }
 }
@@ -78,7 +97,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, renderSlot, renderCount } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, renderSlot, renderCount, renderPane } = await import(new URL('../js/render.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -484,7 +503,7 @@ check('a total failure is an alert with a plain sentence and a Reload button, no
     && appSrcEarly.includes('Could not load the programme list. Check your connection and reload the page.')
     && appSrcEarly.includes("'Reload'") && !appSrcEarly.includes('${err.message}'));
 check('a total failure hides the filters and lists the reasons in the problems panel',
-  appSrcEarly.includes('dom.form.hidden = true') && /renderIssues\([^)]*err\.reasons/.test(appSrcEarly));
+  appSrcEarly.includes('dom.form.hidden = true') && appSrcEarly.includes('dom.pane.hidden = true') && /renderIssues\([^)]*err\.reasons/.test(appSrcEarly));
 
 
 section('Stage 1 foundations: self-hosted fonts, colour policy and source chrome (L10, A05)');
@@ -1833,9 +1852,9 @@ check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-c
 check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
   (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
 check('renderRows keeps its call contract and the inert shortlist options',
-  /export function renderRows\(container, rows, \{ state, shortlist, onToggleStar \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state\)\)/.test(renderSrc)
-    && appSrc.includes('renderRows(dom.results, rows, { state, shortlist, onToggleStar })'));
+  /export function renderRows\(container, rows, \{ state, shortlist, onToggleStar, wide = false \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide\)\)/.test(renderSrc)
+    && /renderRows\(dom.results, rows, \{ state, shortlist, onToggleStar, wide: wideQuery.matches \}\)/.test(appSrc));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -2025,9 +2044,10 @@ check('sort header has all four SORTS keys, hidden direction text and one defaul
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
     && /state.sort = dom.sort.value;\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
-check('row toggle removes controls with the target, restores shown open ids and uses no arrow-key handler',
+check('row toggle retains slots while arrows select only wide without roving tabindex',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(item.dataset.id)')
-    && !/ArrowUp|ArrowDown|aria-current/.test(appSrc));
+    && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
+    && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
   (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
     && !/shimmer|@keyframes/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
@@ -2043,7 +2063,8 @@ check('row wraps whole point parts without clipping requirements; containment on
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
     new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap'].includes(t))
-    && !/var\(--shadow\)/.test(css));
+    && (css.match(/var\(--shadow\)/g) ?? []).length === 1
+    && /box-shadow:var\(--shadow\)/.test(cssRules.match(/\.pane\{display:block;[^}]+/)?.[0] ?? ''));
 
 // An overly broad slice starting at the gallery's first .listp copied chrome
 // as well as rows. Guard the actual duplicate-selector/static-layout failure.
@@ -2062,7 +2083,7 @@ for (let i = 0; i < cssRules.length; i++) {
   }
 }
 check('row CSS contains no copied mockup gallery, filter or sheet rules',
-  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.(?:fbar|fld|inp|cshort|is-stuck|split|copy)(?![\w-])|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])/.test(cssRules));
+  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.(?:fbar|fld|inp|cshort|is-stuck|copy)(?![\w-])|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])/.test(cssRules));
 check('Stage 3 chrome has exactly one base definition and count/columns stay static',
   ['.status', '.mast', '.src', '.lang', '.bn', '.foot'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
     && !/position\s*:\s*(?:sticky|fixed)/.test(ruleBody('.status') + ruleBody('.cols')));
@@ -2081,6 +2102,225 @@ check('every live and fixture requirements line preserves source facts in order'
     && byClass(li, 'open')[0].getAttribute('aria-hidden') === null
     && (!line || line.getAttribute('aria-hidden') === null);
 }));
+
+// Keep media ancestry: flattened selector matches cannot prove confinement.
+function cssTree(source, media = []) {
+  const rules = [];
+  let start = 0;
+  while (start < source.length) {
+    const brace = source.indexOf('{', start);
+    if (brace < 0) break;
+    let end = brace + 1, depth = 1;
+    for (; end < source.length && depth; end++) {
+      if (source[end] === '{') depth++;
+      if (source[end] === '}') depth--;
+    }
+    const selector = source.slice(start, brace).trim(), body = source.slice(brace + 1, end - 1);
+    if (selector.startsWith('@media')) rules.push(...cssTree(body, [...media, selector]));
+    else rules.push({ selector, body, media });
+    start = end;
+  }
+  return rules;
+}
+const paneCss = cssTree(cssRules);
+const atMedia = (r, query) => r.media.length === 1 && r.media[0] === `@media ${query}`;
+const paneRule = (selector, query) => paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes(selector)
+  && (query ? atMedia(r, query) : r.media.length === 0)).map((r) => r.body).join(';');
+const desktopQuery = '(min-width: 1024px)', largeQuery = '(min-width: 1280px)';
+function confinedPaneRules(source) {
+  return cssTree(source).every((r) => {
+    const sels = r.selector.split(',').map((s) => s.trim());
+    if (sels.includes('.split') && !atMedia(r, desktopQuery) && !atMedia(r, largeQuery) && !atMedia(r, 'print')) return false;
+    return !(sels.includes('.pane') && /position\s*:\s*sticky/.test(r.body) && !atMedia(r, desktopQuery)
+      && !atMedia(r, '(min-width: 1024px) and (min-height: 600px)'));
+  });
+}
+check('app and CSS share the desktop query and shadow belongs only to its pane rule',
+  appSrc.includes("matchMedia('(min-width: 1024px)')")
+    && paneCss.some((r) => atMedia(r, desktopQuery)) && paneCss.some((r) => atMedia(r, largeQuery))
+    && paneCss.filter((r) => /var\(--shadow\)/.test(r.body)).every((r) => r.selector === '.pane' && atMedia(r, desktopQuery)));
+check('desktop split and sticky pane stay in their media blocks; negative base fixtures fail',
+  confinedPaneRules(cssRules) && !confinedPaneRules(cssRules + '.split{display:grid}')
+    && !confinedPaneRules(cssRules + '.pane{position:sticky}'));
+check('desktop pane and row columns follow the 1024/1280 templates',
+  /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', largeQuery))
+    && /grid-template-columns:minmax\(0,1fr\) 18rem/.test(paneRule('.split', desktopQuery))
+    && /10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"/.test(paneRule('.row', desktopQuery))
+    && /12.75rem 6.75rem 6.75rem;column-gap:12px/.test(paneRule('.row', largeQuery))
+    && /display:none/.test(paneRule('.chev', desktopQuery)));
+check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
+  /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
+    && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
+    && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.pane .d-cells', desktopQuery))
+    && /grid-template-areas:"pts pts" "ddl fee"/.test(paneRule('.pane .d-cells', desktopQuery))
+    && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery))
+    && /grid-template-columns:minmax\(0,1fr\)/.test(paneRule('.pane .two', desktopQuery)));
+check('selected tint/ring follow hover, focus inset and goto colours are explicit',
+  /background:var\(--accent-tint\);box-shadow:inset 0 0 0 2px var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
+    && cssRules.lastIndexOf('.is-sel>.row') > cssRules.indexOf('.row:hover')
+    && /outline-offset:-6px/.test(paneRule('.is-sel .open:focus-visible::after', desktopQuery))
+    && /left:-9999px;color:var\(--accent\);text-decoration:underline/.test(paneRule('.goto', desktopQuery))
+    && /left:auto;right:12px;bottom:8px;z-index:2/.test(paneRule('.goto:focus', desktopQuery))
+    && !paneCss.some((r) => /is-sel|is-past/.test(r.selector) && /opacity/.test(r.body)));
+check('interim pane and focus clearance share measured 236px only from 1024 by 600',
+  /top:236px;max-height:calc\(100vh - 236px - 12px\)/.test(paneRule('.pane', '(min-width: 1024px) and (min-height: 600px)'))
+    && ['.item', '.open', '.goto'].every((sel) => /scroll-margin-top:236px/.test(paneRule(sel, '(min-width: 1024px) and (min-height: 600px)')))
+    && css.includes('interim until Stage 5 (A07 retarget)'));
+check('print hides pane/goto and restores a block split without new motion',
+  /display:none/.test(paneRule('.pane', 'print')) && /display:none/.test(paneRule('.goto', 'print'))
+    && /display:block/.test(paneRule('.split', 'print'))
+    && !paneCss.some((r) => /\.pane|\.goto|\.is-sel/.test(r.selector) && /transition|animation/.test(r.body)));
+
+// Stage 4: the stable pane changes its content and accessible name together.
+section('Desktop detail pane: renderer and responsive row controls');
+check('pane has a stable heading/body and the results section accepts fallback focus',
+  /<aside[^>]*id="pane"[^>]*tabindex="-1"[^>]*aria-labelledby="pane-h"/.test(indexHtml)
+    && indexHtml.includes('<h2 class="visually-hidden" id="pane-h">Programme details</h2>')
+    && /<section[^>]*aria-labelledby="results-h"[^>]*tabindex="-1"/.test(indexHtml));
+check('pane reuse removes old content, keeps stable nodes and resolves every name', typeof renderPane === 'function' && withStubDocument(() => {
+  const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
+  heading.id = 'pane-h'; heading.textContent = 'Programme details'; pane.append(heading, body);
+  const ctx = { pane, heading, body }, a = live[0], b = live.find((r) => r.languages.join() === 'Czech');
+  for (const [row, shown, expected] of [[a, true, 'content'], [b, true, 'content'], [b, false, 'hidden'], [null, false, 'empty'], [a, true, 'content']]) {
+    if (renderPane(ctx, row, shown, noFilters()) !== expected || pane.children[0] !== heading || pane.children[1] !== body) return false;
+    const title = byTag(body, 'h2');
+    if (expected === 'content') {
+      if (!heading.hidden || title.length !== 1 || title[0].id !== `p-${row.id}` || pane.getAttribute('aria-labelledby') !== title[0].id
+        || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-cells').length !== 1) return false;
+    } else if (heading.hidden || title.length || pane.getAttribute('aria-labelledby') !== 'pane-h'
+      || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} is hidden by your filters`)
+        || byTag(body, 'span')[0]?.lang !== 'cs'))
+      || (expected === 'empty' && body.textContent !== 'Pick a programmeIts full details appear here. Up and Down move through the list.')) return false;
+  }
+  return true;
+}));
+check('all live pane details have exactly one full heading, head and cells', typeof renderPane === 'function' && withStubDocument(() => {
+  const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
+  heading.id = 'pane-h'; pane.append(heading, body);
+  return live.every((row) => {
+    renderPane({ pane, heading, body }, row, true, noFilters());
+    return byTag(body, 'h2').length === 1 && byTag(body, 'h2')[0].id === `p-${row.id}`
+      && byClass(body, 'd-head').length === 1 && byClass(body, 'd-cells').length === 1;
+  });
+}));
+check('wide and narrow live rows use their own ARIA without selection decoration', withStubDocument(() => [false, true].every((wide) => {
+  const list = new ChromeNode('ul'); renderRows(list, live, { state: noFilters(), wide });
+  return list.children.every((li) => {
+    const b = byClass(li, 'open')[0];
+    return b.getAttribute('aria-controls') === (wide ? 'pane' : null) && b.getAttribute('aria-expanded') === (wide ? null : 'false')
+      && b.getAttribute('aria-current') === null && !li.classList.contains('is-sel') && !byClass(li, 'goto').length;
+  });
+})));
+
+// Run actual app functions; only the platform and data load are controlled.
+// A wrong widening target, narrow arrow interception or failure unhide must fail.
+function paneAppHarness(test) {
+  return withStubDocument(() => {
+    const ids = new Map();
+    const get = (id) => { if (!ids.has(id)) { const n = new ChromeNode('div'); n.id = id; ids.set(id, n); } return ids.get(id); };
+    const pane = get('pane'), heading = get('pane-h'), body = new ChromeNode('div');
+    body.className = 'pane-body'; pane.append(heading, body);
+    const resultsSection = new ChromeNode('section'), listp = new ChromeNode('div');
+    listp.className = 'listp'; listp.append(get('results')); resultsSection.append(listp);
+    const selectors = { '.status': new ChromeNode('div'), '.listp': listp, '.pane-body': body,
+      'section[aria-labelledby="results-h"]': resultsSection };
+    const original = { getElementById: stubDocument.getElementById, querySelector: stubDocument.querySelector, querySelectorAll: stubDocument.querySelectorAll };
+    Object.assign(stubDocument, { getElementById: get, querySelector: (sel) => selectors[sel] ?? null, querySelectorAll: () => [],
+      body: new ChromeNode('body'), activeElement: new ChromeNode('input') });
+    const media = { matches: false, addEventListener() {} };
+    const context = { document: stubDocument, matchMedia: () => media, location: { search: '', pathname: '/', hash: '' },
+      history: { replaceState() {} }, Date, console, setTimeout, clearTimeout,
+      ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(),
+      renderRows, renderSlot, renderPane, renderCount, renderIssues() {} };
+    const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '').replace(/^start\(\);/m, '');
+    try {
+      runInNewContext(code, context);
+      const run = (code) => runInNewContext(code, context);
+      context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
+      context.media = media;
+      run('allRows = fixture; loaded = true; update();');
+      const item = (id) => get('results').children.find((n) => n.dataset.id === id);
+      const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
+      const flip = (wide) => { media.matches = wide; run('crossWide();'); };
+      return test({ run, get, item, click, flip, media, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id) });
+    } finally { Object.assign(stubDocument, original); }
+  });
+}
+function appCheck(name, fn) {
+  try { check(name, paneAppHarness(fn)); } catch (err) { check(name, false, err.message); }
+}
+appCheck('actual handlers: narrow open A/B, close B selects A, widen clears slots, round trip reopens A', ({ run, click, flip, get, ids: [a, b] }) => {
+  click(a); click(b);
+  if (get('results').querySelectorAll('.expand').length !== 2 || run('selectedId') !== b) return false;
+  click(b); if (run('selectedId') !== a) return false;
+  flip(true);
+  if (run('selectedId') !== a || run('openIds.size') !== 0 || get('results').querySelectorAll('.expand').length !== 0) return false;
+  flip(false);
+  return run('[...openIds]').join() === a && get('results').querySelectorAll('.expand').length === 1;
+});
+appCheck('actual handlers: filtered B remains the hidden pick when A is still open', ({ run, click, flip, item, body, ids: [a, b] }) => {
+  click(a); click(b); run('state.search = fixture[0].programme; update();');
+  if (!item(a) || item(b) || run('openIds.size') !== 1) return false;
+  flip(true);
+  if (run('selectedId') !== b || !body.textContent.includes('is hidden by your filters') || item(a).classList.contains('is-sel')) return false;
+  run("state.search = ''; update();");
+  return item(b).classList.contains('is-sel') && body.querySelector('h2').id === `p-${b}`;
+});
+appCheck('actual arrows prevent ends without selecting them; narrow, modified and composing keys stay native', ({ run, flip, get, click, context, ids }) => {
+  const key = (button, key, extra = {}) => {
+    const e = { target: button, key, preventDefault() { this.defaultPrevented = true; }, ...extra };
+    context.keyEvent = e; run('rowKeydown(keyEvent);'); return !!e.defaultPrevented;
+  };
+  const first = get('results').children[0].querySelector('button.open'); first.focus();
+  if (key(first, 'ArrowDown')) return false;
+  flip(true); click(ids[1]);
+  if (!key(first, 'ArrowUp') || run('selectedId') !== ids[1] || stubDocument.activeElement !== first) return false;
+  for (const prop of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) if (key(first, 'ArrowDown', { [prop]: true })) return false;
+  if (!key(first, 'ArrowDown')) return false;
+  const second = get('results').children[1].querySelector('button.open');
+  if (stubDocument.activeElement !== second || run('selectedId') !== second.closest('li.item').dataset.id) return false;
+  const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
+  return key(last, 'ArrowDown') && stubDocument.activeElement === last && run('selectedId') === second.closest('li.item').dataset.id;
+});
+appCheck('actual Go to details preserves URL and modifiers and selection never enters address state', ({ run, flip, click, item, context, pane, ids: [a] }) => {
+  flip(true); click(a); const goto = item(a).querySelector('a.goto');
+  if (!goto || goto.getAttribute('href') !== '#pane' || goto.textContent !== 'Go to details') return false;
+  const event = { target: goto, button: 0, preventDefault() { this.defaultPrevented = true; } }; context.gotoEvent = event;
+  run('toggleRow(gotoEvent);');
+  if (!event.defaultPrevented || stubDocument.activeElement !== pane || context.location.hash !== '') return false;
+  event.defaultPrevented = false; event.metaKey = true; run('toggleRow(gotoEvent);');
+  return !event.defaultPrevented && !/selectedId/.test(appSrc.slice(appSrc.indexOf('function keepAddress'), appSrc.indexOf('function showTotalFailure')));
+});
+appCheck('actual focus: refresh links/goto, crossing links, hidden picks and zero-results fallback', ({ run, flip, click, item, get, pane, resultsSection, ids: [a] }) => {
+  click(a); let link = item(a).querySelector('a'); link.focus(); run('update();');
+  if (stubDocument.activeElement !== item(a).querySelector('a')) return false;
+  flip(true); if (!pane.contains(stubDocument.activeElement)) return false;
+  item(a).querySelector('a.goto').focus(); run('update();');
+  if (stubDocument.activeElement !== item(a).querySelector('a.goto')) return false;
+  flip(false); if (stubDocument.activeElement !== item(a).querySelector('button.open')) return false;
+  flip(true); pane.focus(); run("state.search = 'zzzznomatch'; update();"); flip(false);
+  if (stubDocument.activeElement !== resultsSection || !get('results').parent.hidden) return false;
+  return true;
+});
+appCheck('crossing recovers focus cleared by CSS but never steals it from another control', ({ run, flip, click, item, media, pane, ids: [a] }) => {
+  flip(true); click(a); pane.focus(); run('rememberFocus();');
+  media.matches = false; stubDocument.activeElement = stubDocument.body; run('crossWide();');
+  if (stubDocument.activeElement !== item(a).querySelector('button.open')) return false;
+  flip(true); pane.focus(); run('rememberFocus();');
+  const input = new ChromeNode('input'); input.focus(); run('rememberFocus();'); flip(false);
+  if (stubDocument.activeElement !== input) return false;
+  flip(true); pane.focus(); run('rememberFocus(); forgetFocus({ relatedTarget: null });');
+  media.matches = false; stubDocument.activeElement = stubDocument.body; run('crossWide();');
+  return stubDocument.activeElement === stubDocument.body;
+});
+appCheck('actual crossings ignore loading, stale/repeated mode notifications and total failure', ({ run, flip, media, pane, get }) => {
+  run('loaded = false;'); flip(true);
+  if (get('results').querySelectorAll('[aria-controls="pane"]').length) return false;
+  run('loaded = true; update();'); const first = get('results').children[0];
+  run('crossWide({ matches: false });'); if (get('results').children[0] !== first) return false;
+  run("showTotalFailure(new Error('controlled failure'));"); flip(false); flip(true);
+  return pane.hidden && get('results').parent.hidden && run('loaded') === false;
+});
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

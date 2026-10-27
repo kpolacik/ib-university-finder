@@ -24,12 +24,40 @@ const countryCodes = { Netherlands: 'NL', Ireland: 'IE', Czechia: 'CZ', Italy: '
 // purpose, unused: the save button was removed on 2026-10-24 at Jakub's
 // request, but its code stays in case it comes back (STATUS decisions). Until
 // the save button returns, the rows deliberately leave these hooks inert.
-export function renderRows(container, rows, { state, shortlist, onToggleStar }) {
-  container.replaceChildren(...rows.map((row) => renderRow(row, state)));
+export function renderRows(container, rows, { state, shortlist, onToggleStar, wide = false }) {
+  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide)));
 }
 
-// The full entry for one programme (design spec §6.7). Stage 4 will put one of
-// these in the pane; the slot keeps the full points lines and other facts.
+// Keep the aside and its fallback heading connected while its detail is rebuilt.
+export function renderPane({ pane, heading, body }, row, shown, state) {
+  let content;
+  const mode = !row ? 'empty' : shown ? 'content' : 'hidden';
+  if (mode === 'content') {
+    content = renderDetail(row, state);
+  } else {
+    content = el('div', 'pane-empty');
+    const lead = el('b');
+    if (row) {
+      const title = el('span', '', row.programme);
+      if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
+      lead.append(title, document.createTextNode(' is hidden by your filters'));
+    } else lead.textContent = 'Pick a programme';
+    content.append(lead, document.createTextNode(row
+      ? 'Change the filters to see it again, or pick another programme.'
+      : 'Its full details appear here. Up and Down move through the list.'));
+  }
+  heading.hidden = false;
+  pane.setAttribute('aria-labelledby', 'pane-h');
+  body.replaceChildren(content);
+  if (mode === 'content') {
+    pane.setAttribute('aria-labelledby', `p-${row.id}`);
+    heading.hidden = true;
+  }
+  return mode;
+}
+
+// The full entry for one programme (design spec §6.7). The pane has the full
+// head and cells; the slot keeps the full points lines and other facts.
 export function renderDetail(row, state, { slot = false } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
@@ -141,7 +169,7 @@ function pointsList(row) {
   return list;
 }
 
-function renderRow(row, state) {
+function renderRow(row, state, wide) {
   const item = el('li', 'item');
   item.setAttribute('data-id', row.id);
   if (row.deadlinePassed) item.classList.add('is-past');
@@ -151,7 +179,8 @@ function renderRow(row, state) {
   const heading = el('h3', 'r-t');
   const title = el('button', 'open', row.programme);
   title.type = 'button';
-  title.setAttribute('aria-expanded', 'false');
+  if (wide) title.setAttribute('aria-controls', 'pane');
+  else title.setAttribute('aria-expanded', 'false');
   if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
   if (row.degreeType) {
     const degree = el('span', 'deg', row.degreeType);

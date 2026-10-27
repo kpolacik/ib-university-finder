@@ -7,7 +7,7 @@ import {
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderRows, renderSlot, renderCount, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  renderRows, renderSlot, renderPane, renderCount, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
@@ -41,6 +41,10 @@ const dom = {
   count: document.getElementById('result-count'),
   loading: document.getElementById('loading'),
   results: document.getElementById('results'),
+  resultsSection: document.querySelector('section[aria-labelledby="results-h"]'),
+  pane: document.getElementById('pane'),
+  paneHeading: document.getElementById('pane-h'),
+  paneBody: document.querySelector('.pane-body'),
   empty: document.getElementById('empty-state'),
   emptyTitle: document.getElementById('empty-title'),
   emptyHint: document.getElementById('empty-hint'),
@@ -71,6 +75,12 @@ let currentlyShown = 0;
 // screen, worked out in update() so a count-only refresh can reuse it.
 let currentSummary = [];
 const openIds = new Set();
+const wideQuery = matchMedia('(min-width: 1024px)');
+let selectedId = null;
+let shownRows = new Map();
+let appliedWide = null;
+let paneId = null;
+let crossingFocus = null;
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -87,6 +97,10 @@ async function start() {
   syncSort();
   wireInputs();
   dom.results.addEventListener('click', toggleRow);
+  dom.results.addEventListener('keydown', rowKeydown);
+  wideQuery.addEventListener('change', crossWide);
+  document.addEventListener('focusin', rememberFocus);
+  document.addEventListener('focusout', forgetFocus);
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
@@ -154,6 +168,8 @@ function keepAddress() {
 // whoever maintains the Sheet. The filters and the empty Sort menu are
 // hidden: there is nothing to filter or sort.
 function showTotalFailure(err) {
+  loaded = false;
+  dom.pane.hidden = true;
   const alert = document.createElement('div');
   alert.className = 'bn bn-fail';
   alert.setAttribute('role', 'alert');
@@ -340,6 +356,8 @@ function clearAll() {
 function update() {
   if (!loaded) return;
 
+  const focus = snapshotFocus();
+
   // Deadlines are "today"-relative, so a new local day means working them out
   // again before filtering and sorting (S06).
   const now = new Date();
@@ -359,16 +377,21 @@ function update() {
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
-  const focusedId = dom.results.contains(document.activeElement)
-    ? document.activeElement.closest('li.item')?.dataset.id : null;
-  renderRows(dom.results, rows, { state, shortlist, onToggleStar });
-  const shown = new Map(rows.map((row) => [row.id, row]));
-  for (const id of openIds) if (!shown.has(id)) openIds.delete(id);
-  for (const item of dom.results.children) {
-    if (openIds.has(item.dataset.id)) openRow(item, shown.get(item.dataset.id));
-    if (item.dataset.id === focusedId) item.querySelector('button.open').focus({ preventScroll: true });
+  renderRows(dom.results, rows, { state, shortlist, onToggleStar, wide: wideQuery.matches });
+  shownRows = new Map(rows.map((row) => [row.id, row]));
+  appliedWide = wideQuery.matches;
+  if (appliedWide) {
+    openIds.clear();
+    decorateSelection();
+    drawPane();
+  } else {
+    for (const id of openIds) if (!shownRows.has(id)) openIds.delete(id);
+    for (const item of dom.results.children) {
+      if (openIds.has(item.dataset.id)) openRow(item, shownRows.get(item.dataset.id));
+    }
   }
   renderEmptyState(rows.length);
+  restoreFocus(focus);
   renderCounts(rows.length);
   keepAddress();
 }
@@ -383,20 +406,174 @@ function openRow(item, row) {
 }
 
 function toggleRow(event) {
+  const goto = event.target.closest('a.goto');
+  if (goto) {
+    if (event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      dom.pane.focus();
+    }
+    return;
+  }
   const button = event.target.closest('button.open');
   if (!button) return;
   const item = button.closest('li.item');
   const id = item.dataset.id;
-  if (openIds.has(id)) {
+  if (wideQuery.matches) {
+    selectRow(id);
+  } else if (openIds.has(id)) {
+    button.removeAttribute('aria-controls');
     item.querySelector('.expand').remove();
     item.classList.remove('is-open');
     button.setAttribute('aria-expanded', 'false');
-    button.removeAttribute('aria-controls');
     openIds.delete(id);
+    if (selectedId === id) selectedId = [...openIds].at(-1) ?? null;
   } else {
-    openRow(item, allRows.find((row) => row.id === id));
+    openRow(item, shownRows.get(id));
     openIds.add(id);
+    selectedId = id;
   }
+}
+
+function clearSelection() {
+  const old = dom.results.querySelector('li.is-sel');
+  if (!old) return;
+  old.classList.remove('is-sel');
+  old.querySelector('button.open').removeAttribute('aria-current');
+  old.querySelector('a.goto')?.remove();
+}
+
+function selectedItem(id = selectedId) {
+  return [...dom.results.children].find((item) => item.dataset.id === id);
+}
+
+function decorateSelection() {
+  clearSelection();
+  const item = selectedItem();
+  if (!item) return;
+  item.classList.add('is-sel');
+  item.querySelector('button.open').setAttribute('aria-current', 'true');
+  const goto = document.createElement('a');
+  goto.className = 'goto';
+  goto.setAttribute('href', '#pane');
+  goto.textContent = 'Go to details';
+  item.append(goto);
+}
+
+function drawPane() {
+  const scroll = paneId === selectedId ? dom.pane.scrollTop : 0;
+  const row = allRows.find((row) => row.id === selectedId) ?? null;
+  renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state);
+  paneId = selectedId;
+  dom.pane.scrollTop = Math.max(0, Math.min(scroll, dom.pane.scrollHeight - dom.pane.clientHeight));
+}
+
+function selectRow(id) {
+  const focus = snapshotFocus();
+  selectedId = id;
+  decorateSelection();
+  drawPane();
+  restoreFocus(focus);
+}
+
+function rowKeydown(event) {
+  if (!wideQuery.matches || !event.target.matches('button.open') || event.isComposing
+    || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+    || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  event.preventDefault();
+  const item = event.target.closest('li.item');
+  const next = event.key === 'ArrowUp' ? item.previousElementSibling : item.nextElementSibling;
+  if (!next) return;
+  next.querySelector('button.open').focus();
+  selectRow(next.dataset.id);
+}
+
+// Describe focus before removing a subtree: afterward activeElement can be body.
+function snapshotFocus() {
+  const active = document.activeElement;
+  const item = active.closest('li.item');
+  const id = item?.dataset.id;
+  if (active.matches('button.open') && item) return { kind: 'row', id };
+  if (active.matches('a.goto') && item) return { kind: 'goto', id };
+  const inPane = dom.pane.contains(active);
+  const inSlot = active.closest('.expand');
+  if (!inPane && !inSlot) return null;
+  const link = active.closest('a');
+  return { kind: inPane ? 'pane' : 'slot', id: inPane ? paneId : id,
+    href: link ? link.href || link.getAttribute('href') : null, text: link?.textContent };
+}
+
+function equivalentLink(root, focus) {
+  return root && focus.href ? [...root.querySelectorAll('a')].find((link) =>
+    (link.href || link.getAttribute('href')) === focus.href && link.textContent === focus.text) : null;
+}
+
+function focusResults() {
+  (dom.listp.hidden ? dom.resultsSection : dom.results).focus({ preventScroll: true });
+}
+
+function restoreFocus(focus) {
+  if (!focus) return;
+  const item = selectedItem(focus.id);
+  const button = item?.querySelector('button.open');
+  let target;
+  if (focus.kind === 'row') target = button;
+  else if (focus.kind === 'goto') target = item?.querySelector('a.goto') ?? button;
+  else if (wideQuery.matches) {
+    target = focus.kind === 'pane' || focus.id === selectedId
+      ? (focus.id === selectedId ? equivalentLink(dom.paneBody, focus) : null) ?? dom.pane
+      : button;
+  } else {
+    target = equivalentLink(item?.querySelector('.expand'), focus) ?? button;
+  }
+  if (target) target.focus({ preventScroll: true });
+  else focusResults();
+}
+
+// Chrome can clear focus when CSS hides the pane, before the change callback.
+// Real focus moves or a blur within the current layout invalidate this record.
+function rememberFocus() {
+  crossingFocus = snapshotFocus();
+}
+
+function forgetFocus(event) {
+  if (event.relatedTarget || appliedWide === wideQuery.matches) crossingFocus = null;
+}
+
+function crossWide() {
+  const wide = wideQuery.matches;
+  if (!loaded || appliedWide === wide) return;
+  const focus = snapshotFocus() ?? (document.activeElement === document.body ? crossingFocus : null);
+  clearSelection();
+  if (wide) {
+    for (const item of dom.results.children) {
+      const button = item.querySelector('button.open');
+      button.removeAttribute('aria-controls');
+      item.querySelector('.expand')?.remove();
+      item.classList.remove('is-open');
+      button.removeAttribute('aria-expanded');
+      button.setAttribute('aria-controls', 'pane');
+    }
+    openIds.clear();
+    decorateSelection();
+    drawPane();
+  } else {
+    for (const button of dom.results.querySelectorAll('button.open')) {
+      button.removeAttribute('aria-controls');
+      button.setAttribute('aria-expanded', 'false');
+    }
+    // Remove the full article before connecting its reduced slot form.
+    renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, null, false, state);
+    paneId = null;
+    openIds.clear();
+    const item = selectedItem();
+    if (item) {
+      openRow(item, shownRows.get(selectedId));
+      openIds.add(selectedId);
+    }
+  }
+  appliedWide = wide;
+  restoreFocus(focus);
+  rememberFocus();
 }
 
 function syncSort() {

@@ -193,7 +193,6 @@ body {
 }
 
 .shell {
-  max-width: 78rem;
   margin: 16px auto 0;
   padding-inline: var(--gut);
 }
@@ -526,7 +525,7 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------------ detail */
 
-/* Summary rows own containment; full detail exists only in open slots. */
+/* Summary rows own containment; detail is rendered only when requested. */
 .results{list-style:none;margin:0;padding:0}
 .row :where(h3,p){margin:0}
 .listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel)}
@@ -687,6 +686,46 @@ svg:not(.sprite) {
   .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 24px}
 }
 
+/* Uncapped title track: 494px / 51.5ch at 1440, 974px / 101.5ch at 1920
+   (Plex Sans 16px/600). Cap per spec §5 once it exceeds about 70ch. */
+.page{max-width:1440px;margin-inline:auto}
+/* The detail pane is the only surface with depth. The 18rem track is literal:
+   the canonical root token is immutable and supplies 25rem from 1280. */
+.pane,.goto{display:none}
+.pane-empty{padding:24px 20px;color:var(--ink-2)}
+.pane-empty b{display:block;color:var(--ink);margin-bottom:4px}
+
+@media (min-width: 1024px) {
+  .split{display:grid;grid-template-columns:minmax(0,1fr) 18rem;gap:16px;align-items:start}
+  .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"}
+  .chev,.cols .chv{display:none}
+  .is-sel>.row{background:var(--accent-tint);box-shadow:inset 0 0 0 2px var(--accent)}
+  .is-sel .open:focus-visible::after{outline-offset:-6px}
+  .goto{display:block;position:absolute;left:-9999px;color:var(--accent);text-decoration:underline}
+  .goto:hover{color:var(--accent-press)}
+  .goto:focus{left:auto;right:12px;bottom:8px;z-index:2;padding:4px 8px;background:var(--panel)}
+  .pane{display:block;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);box-shadow:var(--shadow)}
+  .pane .detail{padding:16px;border:0;border-radius:0}
+  .pane .d-cells{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"pts pts" "ddl fee"}
+  .pane .d-cells .c-pts{grid-column:1/-1}
+  .pane .two{grid-template-columns:minmax(0,1fr)}
+  .pane .kv{grid-template-columns:6.5rem minmax(0,1fr)}
+}
+@media (min-width: 1280px) {
+  .split{grid-template-columns:minmax(0,1fr) var(--pane-w)}
+  .cols,.row{grid-template-columns:minmax(0,1fr) 12.75rem 6.75rem 6.75rem;column-gap:12px}
+  .pane .detail{padding:16px 20px 20px}
+  .pane .kv{grid-template-columns:8.5rem minmax(0,1fr)}
+}
+
+/* interim until Stage 5 (A07 retarget): capped layout, fonts ready, counts
+   and both errors shown. Bar maxima at 1024/1100:211.66px, 1279/1280:207.05px,
+   1440/1920:156.75px. ceil(12px + 211.66px + 12px) = 236px. */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .pane{top:236px;max-height:calc(100vh - 236px - 12px)}
+  .item,.open,.goto{scroll-margin-top:236px}
+}
+
 /* The save control. An outline bookmark that fills when set — a state change
    you can read at a glance without colour alone carrying it. */
 .star {
@@ -784,9 +823,10 @@ svg:not(.sprite) {
   body { background: var(--panel); color: var(--ink); padding: 0; font-size: 11pt; }
 
   .filterbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
-  .issues, .skip-link, .star, .skeletons, .cols, .chev { display: none; }
+  .issues, .skip-link, .star, .skeletons, .cols, .chev, .pane, .goto { display:none; }
 
   .shell { display: block; }
+  .split{display:block}
 
   /* The "nobody has checked this" warning must survive onto paper — a printed
      sheet has lost every other bit of context. */

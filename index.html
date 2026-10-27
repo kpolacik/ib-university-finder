@@ -218,7 +218,8 @@
       </button>
     </div>
 
-    <section aria-labelledby="results-h">
+    <div class="split">
+    <section aria-labelledby="results-h" tabindex="-1">
       <h2 class="visually-hidden" id="results-h">Programmes</h2>
       <div class="listp">
         <div class="cols" role="group" aria-label="Sort programmes">
@@ -255,6 +256,13 @@
         <p class="hint">These rows are in the spreadsheet but could not be read, so they are not shown above.</p>
       </details>
     </section>
+    <aside class="pane" id="pane" tabindex="-1" aria-labelledby="pane-h">
+      <h2 class="visually-hidden" id="pane-h">Programme details</h2>
+      <div class="pane-body">
+        <div class="pane-empty"><b>Pick a programme</b>Its full details appear here. Up and Down move through the list.</div>
+      </div>
+    </aside>
+    </div>
 
   </div>
 
