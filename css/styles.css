@@ -102,22 +102,11 @@
   --line: #e6e2da; /* old: remove in stage 3 */
   --line-soft: #f0ede6; /* old: remove in stage 3 */
   --inset: #ffffff; /* old: remove in stage 3 */
-  --tint-nl: #eaf0fb; /* old: remove in stage 3 */
-  --tint-nl-ink: #14427d; /* old: remove in stage 3 */
-  --tint-ie: #e7f1ea; /* old: remove in stage 3 */
-  --tint-ie-ink: #1a5437; /* old: remove in stage 3 */
-  --tint-cz: #f1edf8; /* old: remove in stage 3 */
-  --tint-cz-ink: #4b2d7f; /* old: remove in stage 3 */
-  --tint-it: #fcefe6; /* old: remove in stage 3 */
-  --tint-it-ink: #8a3410; /* old: remove in stage 3 */
-  --tint-dk: #e5f3f3; /* old: remove in stage 3 */
-  --tint-dk-ink: #0e5a5e; /* old: remove in stage 3 */
   --warn: #8a5a00; /* old: remove in stage 3 */
   --warn-soft: #fdf5e6; /* old: remove in stage 3 */
   --warn-line: #ecd9ae; /* old: remove in stage 3 */
   --save: #956900; /* old: remove in stage 3 */
   --save-soft: #fdf6e4; /* old: remove in stage 3 */
-  --shadow-sm: 0 1px 2px rgba(20, 17, 15, 0.03); /* old: remove in stage 3 */
   --shadow-md: 0 18px 40px -20px rgba(20, 17, 15, 0.18); /* old: remove in stage 3 */
   --r-sm: 8px; /* old: remove in stage 3 */
   --r-md: 12px; /* old: remove in stage 3 */
@@ -126,8 +115,6 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1); /* old: remove in stage 3 */
   --dur: 220ms; /* old: remove in stage 3 */
   --old-print-ink: #000; /* old: remove in stage 3 */
-  --old-print-edge: #999; /* old: remove in stage 3 */
-  --old-print-inset-edge: #ccc; /* old: remove in stage 3 */
 }
 
 
@@ -569,120 +556,114 @@ svg:not(.sprite) {
 }
 .shortlist-icon { color: var(--ink-2); }
 
-.results { display: grid; gap: 1rem; }
+/* ------------------------------------------------------------ detail */
 
-/* ------------------------------------------------------------- cards */
+/* One article per shown programme (design spec §6.7) until stage 3 brings the
+   rows. All 1240 stay in the DOM, so Ctrl+F still finds every fact, but the
+   browser skips layout and paint for the ones off screen. The old cards went
+   from 99 ms of layout per filter change to 4 ms with this (historical, not
+   re-measured for the detail). The estimates are the median rendered detail
+   heights measured 2026-10-27: 721 px at 390 wide, 482 at 768 and 416 at 1280.
+   "auto" remembers each real height afterwards, so the scrollbar does not
+   jump. Scoped to the list: the stage 3 slot and the stage 4 pane must not
+   inherit it. */
+.results{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.results>.detail{content-visibility:auto;contain-intrinsic-size:auto 720px}
 
-.card {
-  position: relative;
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 1.4rem 1.4rem 1.2rem;
-  /* A column, so the footer can be pushed to the bottom when the row's taller
-     card stretches this one. */
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+/* The mockup leans on a global margin/list reset this stylesheet does not
+   have. Scoped here, and at zero specificity (:where) so the component rules
+   below still win. */
+.detail :where(h2,h3,p,ul,dl,dd){margin:0;padding:0}
+.detail ul{list-style:none}
 
-  /* All 700-odd cards stay in the DOM — Ctrl+F still finds them — but the
-     browser skips layout and paint for the ones off screen. Measured: a filter
-     change went from 99ms of layout to 4ms. 630px is the median card height,
-     and "auto" lets the browser remember each card's real height afterwards,
-     so the scrollbar does not jump. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 630px;
+/* Requirement strings are pasted from university pages and some are one long
+   unbroken run; without min-width and anywhere they widen the page.
+   Passed-deadline entries are not dimmed: 0.65 opacity took the old cards'
+   text below readable contrast (A01). The deadline cell says it in words. */
+.detail{display:grid;gap:16px;padding:12px 12px 16px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);min-width:0;overflow-wrap:anywhere}
+.d-head{display:grid;gap:2px}
+/* The title is first in the DOM, so heading navigation reads it first; the
+   place line is drawn above it. Nothing in the head is focusable. */
+.d-place{order:-1;font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
+.d-title{font-size:var(--fs-18);font-weight:700;line-height:24px}
+.d-title .deg{margin-left:6px;font-size:15px;font-weight:400;color:var(--ink-2)}
 
-  /* Requirement strings are pasted from university pages and some are one long
-     unbroken run. Without this they set the card's min-width and blow out the
-     grid. */
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* Cells: plain text unless the cell carries a verdict (§6.6). */
+.d-cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.d-cells .c-pts{grid-column:1/-1}
+.cell{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:8px 10px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:20px}
+.lab{font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
+/* --ink-2 on the time fill is 4.70:1, so its text stays at least 13 px. */
+.v-time .lab{font-size:var(--fs-13)}
+.fig{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.fig small{font-size:12.5px;font-weight:400;color:var(--ink-2)}
+.verd{margin-top:4px;font-size:var(--fs-13);line-height:18px;font-weight:600}
+.verd.m{padding-left:17px;text-indent:-17px}
+.v-fit{background:var(--fit-fill)}.v-fit .verd{color:var(--fit-ink)}
+.v-cond{background:var(--cond-fill)}.v-cond .verd{color:var(--cond-ink)}
+.v-time{background:var(--time-fill)}.v-time .verd{color:var(--time-ink)}
+.v-time .ic{width:14px;height:14px;margin-right:4px;vertical-align:-2px;color:var(--time-mark)}
+/* Unknown is a dashed box, never a grey fill. Padding drops by the border. */
+.v-unk{border:1.5px dashed var(--ink-3);padding:6.5px 8.5px}
+.v-unk .verd,.v-unk .fig{color:var(--ink-2);font-weight:600}
+/* Passed is neutral: never red, never dimmed. */
+.v-past .verd,.v-past s{color:var(--ink-2)}
+.v-past s{font-weight:400}
+
+/* Marks: the shape says it without the colour. */
+.m::before{content:"";display:inline-block;width:11px;height:11px;margin-right:6px;border-radius:50%;vertical-align:-1px;box-sizing:border-box}
+.m-fit::before{background:var(--fit-mark)}
+.m-cond::before{border:2px solid var(--cond-mark);background:linear-gradient(90deg,var(--cond-mark) 50%,transparent 50%)}
+.m-unk::before{border:2px dashed var(--ink-3)}
+
+/* Points lines. The qualifier wraps; the number never breaks (at 320 px "≈ 39"
+   once went one digit per line, A02). The gap after it is a real space. */
+.plines{display:grid;gap:2px}
+.plines li{font-variant-numeric:tabular-nums}
+.plines b{font-weight:700;margin-right:0;white-space:nowrap}
+
+/* Requirements | Applying. */
+.two{display:grid;gap:16px}
+.d-sec>h3{margin-bottom:2px;font-size:var(--fs-13);font-weight:700}
+.kv{display:grid;grid-template-columns:7.5rem minmax(0,1fr);font-size:var(--fs-14);line-height:20px}
+.kv dt{color:var(--ink-2)}
+.kv dt,.kv dd{margin:0;padding:6px 0;border-top:1px solid var(--hairline)}
+.kv dd p+p{margin-top:4px}
+.kv-none{font-size:var(--fs-14)}
+/* "Not published" / "Not checked yet": unknown is not "none" and must not
+   read like it. */
+.unk-t{display:inline-block;padding:0 6px;border:1.5px dashed var(--ink-3);border-radius:var(--r-cell);font-size:var(--fs-13);font-weight:600;line-height:20px;color:var(--ink-2)}
+.tag{display:inline-block;margin-left:4px;padding:0 5px;border:1px solid var(--edge);border-radius:var(--r-cell);font-size:var(--fs-12);line-height:16px;font-weight:600;color:var(--ink)}
+.tag-strong{border:2px solid var(--ink)}
+
+/* Notes, after the facts. Red and amber stay off the entry. */
+.notes{display:grid;gap:8px}
+.note{margin:0;padding-left:10px;border-left:3px solid var(--edge);font-size:13.5px;line-height:19px}
+.pnote{font-weight:600}
+.note-strong{border-left-color:var(--ink);font-weight:700}
+
+/* Footer: the official link, Student life, and who checked it. */
+.d-foot{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--ctl);padding:0 14px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-14);font-weight:600;color:var(--ink);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-p:hover{background:var(--accent-press);color:var(--on-accent)}
+/* --tap is 44 px on phone, so a thumb can hit it (notes S16). */
+.lnk{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap);color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.lnk:hover{color:var(--accent-press)}
+.detail .ic{width:16px;height:16px;flex:none;fill:currentColor}
+/* Wraps at 320 px: the date, the signer and the stale tag can be wider. */
+.ok{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0;max-width:100%;color:var(--ink);font-weight:600;white-space:normal}
+.detail .ok .ic{width:14px;height:14px}
+
+@media (min-width: 600px) {
+  .results>.detail{contain-intrinsic-size:auto 450px}
+  .detail{padding:16px 24px 20px}
+  .d-cells{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
+  .d-cells .c-pts{grid-column:auto}
+  .zf{display:block}.zf .dot{display:none}
+  .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 24px}
 }
-.card:hover { box-shadow: var(--shadow-md); }
-
-/* Country tints. The class comes from render.js off row.country, so a new
-   country needs a tint pair here and nothing else. A card with no country, or
-   one not listed, keeps the neutral --surface panel. */
-.c-netherlands { background: var(--tint-nl); }
-.c-netherlands .card-title,
-.c-netherlands .req-number { color: var(--tint-nl-ink); }
-.c-ireland { background: var(--tint-ie); }
-.c-ireland .card-title,
-.c-ireland .req-number { color: var(--tint-ie-ink); }
-.c-czechia { background: var(--tint-cz); }
-.c-czechia .card-title,
-.c-czechia .req-number { color: var(--tint-cz-ink); }
-.c-italy { background: var(--tint-it); }
-.c-italy .card-title,
-.c-italy .req-number { color: var(--tint-it-ink); }
-.c-denmark { background: var(--tint-dk); }
-.c-denmark .card-title,
-.c-denmark .req-number { color: var(--tint-dk-ink); }
-/* Passed-deadline cards are not dimmed: 0.65 opacity took their text below
-   readable contrast (A01). The red date and the "passed" badge mark them. */
-
-/* A saved card is marked by a rule down its edge, not a coloured border that
-   would fight the hover state. */
-.card.is-starred { box-shadow: var(--shadow-md); }
-.card.is-starred::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 1.1rem;
-  bottom: 1.1rem;
-  width: 3px;
-  border-radius: 0 999px 999px 0;
-  background: var(--save);
-}
-
-/* Only the first screenful animates in. Staggering 700 cards would queue
-   animations the reader will never see, and fights content-visibility. */
-@media (prefers-reduced-motion: no-preference) {
-  .results > .card:nth-child(-n+10) {
-    animation: card-in 380ms var(--ease) backwards;
-  }
-  .results > .card:nth-child(2) { animation-delay: 40ms; }
-  .results > .card:nth-child(3) { animation-delay: 80ms; }
-  .results > .card:nth-child(4) { animation-delay: 120ms; }
-  .results > .card:nth-child(5) { animation-delay: 160ms; }
-  .results > .card:nth-child(6) { animation-delay: 200ms; }
-  .results > .card:nth-child(7) { animation-delay: 240ms; }
-  .results > .card:nth-child(8) { animation-delay: 280ms; }
-  .results > .card:nth-child(9) { animation-delay: 320ms; }
-  .results > .card:nth-child(10) { animation-delay: 360ms; }
-}
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
-}
-
-.card-head { display: flex; align-items: flex-start; gap: 0.65rem; }
-.card-titles { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
-.card-title {
-  margin: 0;
-  font-family: var(--font);
-  font-size: 1.3rem;
-  font-weight: 600;
-  line-height: 1.22;
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-.degree {
-  margin-left: 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-faint);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 0.1rem 0.35rem;
-  vertical-align: 0.15em;
-  white-space: nowrap;
-}
-.card-uni { margin: 0; font-weight: 600; font-size: 0.92rem; color: var(--ink-soft); }
-.card-place { margin: 0; color: var(--ink-faint); font-size: 0.85rem; }
 
 /* The save control. An outline bookmark that fills when set — a state change
    you can read at a glance without colour alone carrying it. */
@@ -714,149 +695,6 @@ svg:not(.sprite) {
 }
 .star[aria-pressed="true"] svg { fill: currentColor; }
 
-/* The IB block is the differentiator, so it gets the visual weight. */
-.ib-block {
-  background: var(--inset);
-  border: 0;
-  border-radius: var(--r-lg);
-  padding: 0.9rem 1rem;
-  display: grid;
-  gap: 0.5rem;
-}
-.ib-label {
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--ink-faint);
-}
-/* Label / value rows. Labels stay narrow so the values line up. */
-.req {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 5.25rem minmax(0, 1fr);
-  gap: 0.4rem 0.75rem;
-  font-size: 0.88rem;
-}
-.req-label {
-  color: var(--ink-soft);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding-top: 0.35em;
-}
-.req-value { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; align-items: baseline; }
-
-/* One line each: a two-round Irish cutoff gives two (js/points.js). The
-   qualifier ("Round 1 cutoff, 2026") wraps under the number on a narrow card;
-   without wrap and nowrap the number itself broke into one digit per line at
-   320 px (A02). */
-.req-points { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: baseline; gap: 0 0.35rem; }
-.req-number, .req-unit { white-space: nowrap; }
-.req-number {
-  font-family: var(--font);
-  font-size: 2.1rem;
-  font-weight: 600;
-  line-height: 0.95;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.req-unit { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; color: var(--ink-faint); text-transform: uppercase; }
-
-/* The absence of a requirement is useful but must not shout like a number. */
-.req-quiet { color: var(--ink-soft); }
-
-/* "Not checked" is not the same as "none" and must never read like it. */
-.req-unknown { color: var(--warn); font-weight: 600; }
-
-/* Each extra hurdle as its own chip, so three of them scan as three. The
-   admission route reads the same way: "Entrance exam" and "can be waived" are
-   two facts, not one sentence. */
-.req-tag, .req-lang, .req-admission {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.12rem 0.5rem;
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-.req-lang { color: var(--ink-soft); border-color: var(--line); }
-.req-admission { font-weight: 600; }
-
-.req-none { margin: 0; font-size: 0.88rem; font-weight: 600; color: var(--ink-soft); }
-
-.facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.35rem 0.85rem;
-  font-size: 0.875rem;
-}
-.facts dt { color: var(--ink-faint); }
-.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-.facts dd.past { color: var(--ink); font-weight: 600; }
-.facts dd.urgent { color: var(--warn); font-weight: 600; }
-.facts dd.unknown { color: var(--warn); }
-.facts dd.sub {
-  grid-column: 1 / -1;
-  color: var(--ink-faint);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  font-variant-numeric: normal;
-}
-.facts dt:empty { display: none; }
-
-.badge-urgent, .badge-past, .badge-stale, .badge-danger {
-  display: inline-block;
-  margin-left: 0.4rem;
-  border-radius: 999px;
-  padding: 0.05rem 0.45rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  vertical-align: 0.05em;
-}
-.badge-urgent, .badge-stale { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
-.badge-past, .badge-danger  { background: var(--panel); color: var(--ink); border: 1px solid var(--edge); }
-
-.note {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-md);
-  padding: 0.45rem 0.6rem;
-}
-
-.card-foot {
-  margin-top: auto;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 0.75rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1rem;
-  font-size: 0.8rem;
-}
-.verified { margin: 0; color: var(--ink-faint); }
-.official-link, .life-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.official-link { font-weight: 600; color: var(--accent); }
-.official-link:hover { border-bottom-color: currentColor; }
-.life-link { color: var(--ink-soft); }
-.life-link:hover { color: var(--accent); border-bottom-color: currentColor; }
 
 /* ------------------------------------------------- loading + empty */
 
@@ -950,7 +788,7 @@ svg:not(.sprite) {
      the whole grid wider than the page. */
   /* Stretch, not start: the two cards in a row take the height of the taller
      one, so neighbours line up instead of ending at different heights. */
-  .results, .skeletons { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .skeletons { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 }
 
 /* On a touch screen the controls grow to a 44px target. Hover styling is
@@ -959,7 +797,6 @@ svg:not(.sprite) {
   .star { width: 2.75rem; height: 2.75rem; }
   .chip { padding: 0.5rem 0.85rem; }
   .button { padding: 0.65rem 0.95rem; }
-  .card:hover { border-color: var(--line); box-shadow: var(--shadow-sm); }
   .chip:hover { border-color: var(--line); background: var(--surface); }
 }
 
@@ -991,34 +828,16 @@ svg:not(.sprite) {
 
   .results { display: block; }
 
-  .card {
-    /* The country tints are screen-only. On paper they would waste ink, and a
-       browser set to drop background colours would print them inconsistently,
-       so the card falls back to a plain ruled box. */
-    background: none;
-    border: 1px solid var(--old-print-edge);
-    border-radius: 0;
-    box-shadow: none;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-bottom: 0.5rem;
-    opacity: 1;
-    animation: none;
-    /* Undo the on-screen skipping, or off-screen cards print blank. */
-    content-visibility: visible;
-  }
-  .card.is-starred::before { display: none; }
-  .ib-block { background: none; border: 1px solid var(--old-print-inset-edge); }
-  /* .card-title and .req-number take their colour from the country tint on
-     screen; on paper that colour has no panel behind it to relate to. */
-  .card-title, .req-number, .req-unit, .card-uni, .official-link, .ib-label { color: var(--old-print-ink); }
-
-  /* A printed link is useless without its address. */
-  .official-link::after {
+  /* Minimal until the print redesign (stage 6). Undo the on-screen skipping,
+     or off-screen entries print blank. */
+  .results > .detail { content-visibility: visible; break-inside: avoid; page-break-inside: avoid; margin-bottom: 0.5rem; }
+  /* A printed link is useless without its address, and the address must wrap. */
+  .d-foot .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
+  .d-foot .btn-p::after {
     content: " — " attr(href);
     font-weight: 400;
     font-size: 0.85em;
     word-break: break-all;
   }
-  .official-link svg, .life-link { display: none; }
+  .d-foot svg, .d-foot .lnk { display: none; }
 }

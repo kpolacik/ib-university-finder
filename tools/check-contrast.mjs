@@ -32,54 +32,54 @@ const css = readFileSync(join(root, 'css/styles.css'), 'utf8');
 // `min` defaults to 4.5. It drops to 3 only where WCAG allows it: text at or
 // above 24px (or 18.66px bold), and graphical objects such as an icon.
 const CANONICAL_PAIRS = [
-  ["--edge", "--panel", ".lang button; existing input/select/dropdown borders after retokening", 3.0],
+  ["--edge", "--panel", ".lang button; existing input/select/dropdown borders after retokening; .note rule, .tag border, .btn border (stage 2)", 3.0],
   ["--edge", "--ground", "Ground-side control edge: the old Sort select if it sits on ground after retokening; .status Sort (stage 3/5)", 3.0],
   ["--edge", "--accent-tint", ".is-set .inp control edge context (stage 5)", 3.0],
-  ["--ink", "--panel", ".mast h1, .src b, controls", 4.5],
+  ["--ink", "--panel", ".mast h1, .src b, controls; .detail text, .pnote, .note-strong rule, .tag-strong border (stage 2)", 4.5],
   ["--ink", "--ground", "body, .result-count", 4.5],
   ["--ink", "--hover", "Retokened .button:hover; .row:hover facts (stage 3)", 4.5],
   ["--ink", "--accent-tint", ".is-sel .fig (stage 3)", 4.5],
-  ["--ink", "--fit-fill", ".v-fit .fig (stage 2)", 4.5],
-  ["--ink", "--cond-fill", ".v-cond .fig (stage 2)", 4.5],
-  ["--ink", "--time-fill", ".v-time .fig (stage 2)", 4.5],
-  ["--ink-2", "--panel", ".tagline, .src, .bn-saved, language group", 4.5],
+  ["--ink", "--fit-fill", ".v-fit .fig: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--ink", "--cond-fill", ".v-cond .fig: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--ink", "--time-fill", ".v-time .fig: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--ink-2", "--panel", ".tagline, .src, .bn-saved, language group; .d-place, .lab, .kv dt, .fig small, .unk-t (stage 2)", 4.5],
   ["--ink-2", "--ground", ".foot; count secondary text (stage 3)", 4.5],
   ["--ink-2", "--hover", ".row:hover .sub (stage 3)", 4.5],
   ["--ink-2", "--accent-tint", ".is-sel .sub, .is-sel .line (stage 3)", 4.5],
-  ["--ink-2", "--fit-fill", ".v-fit .fig small, .lab (stage 2)", 4.5],
-  ["--ink-2", "--cond-fill", ".v-cond .fig small, .lab (stage 2)", 4.5],
-  ["--ink-2", "--time-fill", ".v-time .fig small, .lab (stage 2; keep secondary text at least 13px here)", 4.5],
-  ["--ink-3", "--panel", ".lang [aria-disabled=true], input placeholders; unknown dash (stage 2)", 4.5],
+  ["--ink-2", "--fit-fill", ".v-fit .fig small, .lab: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--ink-2", "--cond-fill", ".v-cond .fig small, .lab: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--ink-2", "--time-fill", ".v-time .lab: detail cells (stage 2); row cells (stage 3); keep secondary text at least 13px here", 4.5],
+  ["--ink-3", "--panel", ".lang [aria-disabled=true], input placeholders; .v-unk / .unk-t dash (stage 2)", 4.5],
   ["--ink-3", "--ground", "Ground control placeholder; .m-unk dash (stage 3)", 4.5],
   ["--ink-3", "--hover", ".row:hover .v-unk dash (stage 3; stronger text minimum retained)", 4.5],
   ["--ink-3", "--accent-tint", ".is-sel .v-unk dash / active input placeholder (stages 3/5)", 4.5],
-  ["--accent", "--panel", ".bn-saved a, links/focus", 4.5],
+  ["--accent", "--panel", ".bn-saved a, links/focus; .lnk (stage 2)", 4.5],
   ["--accent", "--ground", "Ground links / global focus", 4.5],
   ["--accent", "--hover", "Hovered row links / sort focus (stage 3)", 4.5],
   ["--accent", "--accent-tint", "Selected-row link/focus; active filter interaction (stages 3/5)", 4.5],
-  ["--accent", "--fit-fill", ".v-fit focus-ring context (stages 2/3)", 3.0],
-  ["--accent", "--cond-fill", ".v-cond focus-ring context (stages 2/3)", 3.0],
-  ["--accent", "--time-fill", ".v-time focus-ring context (stages 2/3)", 3.0],
-  ["--on-accent", "--accent-press", ".bn-fail .btn-p:hover Reload (stage 1); primary action (stage 2)", 4.5],
+  ["--accent", "--fit-fill", ".v-fit focus-ring context: detail cells (stage 2); row cells (stage 3)", 3.0],
+  ["--accent", "--cond-fill", ".v-cond focus-ring context: detail cells (stage 2); row cells (stage 3)", 3.0],
+  ["--accent", "--time-fill", ".v-time focus-ring context: detail cells (stage 2); row cells (stage 3)", 3.0],
+  ["--on-accent", "--accent-press", ".bn-fail .btn-p:hover Reload (stage 1); .d-foot .btn-p:hover (stage 2)", 4.5],
   ["--accent-press", "--panel", ".bn-saved a:hover, a:hover", 4.5],
-  ["--on-accent", "--accent", ".bn-fail .btn-p Reload (stage 1); primary action (stage 2)", 4.5],
+  ["--on-accent", "--accent", ".bn-fail .btn-p Reload (stage 1); .d-foot .btn-p (stage 2)", 4.5],
   ["--on-accent", "--alarm", ".bn-sample text", 4.5],
-  ["--fit-ink", "--fit-fill", ".v-fit .verd, .v-fit .r2 (stages 2/3)", 4.5],
+  ["--fit-ink", "--fit-fill", ".v-fit .verd: detail cells (stage 2); row cells and .r2 (stage 3)", 4.5],
   ["--fit-ink", "--ground", ".status .k-fit (stage 3)", 4.5],
   ["--fit-ink", "--panel", ".status.is-stuck .k-fit (stage 5)", 4.5],
   ["--fit-ink", "--accent-tint", ".is-sel .k-fit context (stage 3)", 4.5],
-  ["--fit-mark", "--fit-fill", ".v-fit .m-fit::before (stages 2/3)", 3.0],
+  ["--fit-mark", "--fit-fill", ".v-fit .m-fit::before: detail cells (stage 2); row cells (stage 3)", 3.0],
   ["--fit-mark", "--panel", ".status.is-stuck .m-fit::before (stage 5)", 3.0],
   ["--fit-mark", "--ground", ".status .m-fit::before (stage 3)", 3.0],
   ["--fit-mark", "--accent-tint", "Selected-row fit mark context (stage 3)", 3.0],
-  ["--cond-ink", "--cond-fill", ".v-cond .verd, .v-cond .r2 (stages 2/3)", 4.5],
+  ["--cond-ink", "--cond-fill", ".v-cond .verd: detail cells (stage 2); row cells and .r2 (stage 3)", 4.5],
   ["--cond-ink", "--ground", ".status .k-cond (stage 3)", 4.5],
   ["--cond-ink", "--panel", ".status.is-stuck .k-cond (stage 5)", 4.5],
-  ["--cond-mark", "--cond-fill", ".v-cond .m-cond::before (stages 2/3)", 3.0],
+  ["--cond-mark", "--cond-fill", ".v-cond .m-cond::before: detail cells (stage 2); row cells (stage 3)", 3.0],
   ["--cond-mark", "--panel", ".status.is-stuck .m-cond::before (stage 5)", 3.0],
   ["--cond-mark", "--ground", ".status .m-cond::before (stage 3)", 3.0],
-  ["--time-ink", "--time-fill", ".v-time .verd (stage 2)", 4.5],
-  ["--time-mark", "--time-fill", ".v-time .ic clock (stage 2)", 3.0],
+  ["--time-ink", "--time-fill", ".v-time .verd: detail cells (stage 2); row cells (stage 3)", 4.5],
+  ["--time-mark", "--time-fill", ".v-time .ic clock: detail cells (stage 2); row cells (stage 3)", 3.0],
   ["--time-mark", "--panel", "Clock mark on panel context (stage 2)", 3.0],
   ["--alarm", "--panel", ".bn-fail border", 3.0],
   ["--alarm-ink", "--panel", ".bn-fail p", 4.5],
@@ -87,49 +87,20 @@ const CANONICAL_PAIRS = [
   ["--panel", "--ink", ".lang [aria-pressed=true]", 4.5],
 ];
 
-// Temporary old-card coverage: remove only with the card CSS in stage 3.
-const OLD_CARD_PAIRS = [
-  ["--tint-nl-ink", "--inset", "Old card points", 3],
-  ["--tint-nl-ink", "--tint-nl", "Old card title", 4.5],
-  ["--ink", "--tint-nl", "Old card text", 4.5],
-  ["--ink-soft", "--tint-nl", "Old card text", 4.5],
-  ["--ink-faint", "--tint-nl", "Old card text", 4.5],
-  ["--tint-ie-ink", "--inset", "Old card points", 3],
-  ["--tint-ie-ink", "--tint-ie", "Old card title", 4.5],
-  ["--ink", "--tint-ie", "Old card text", 4.5],
-  ["--ink-soft", "--tint-ie", "Old card text", 4.5],
-  ["--ink-faint", "--tint-ie", "Old card text", 4.5],
-  ["--tint-cz-ink", "--inset", "Old card points", 3],
-  ["--tint-cz-ink", "--tint-cz", "Old card title", 4.5],
-  ["--ink", "--tint-cz", "Old card text", 4.5],
-  ["--ink-soft", "--tint-cz", "Old card text", 4.5],
-  ["--ink-faint", "--tint-cz", "Old card text", 4.5],
-  ["--tint-it-ink", "--inset", "Old card points", 3],
-  ["--tint-it-ink", "--tint-it", "Old card title", 4.5],
-  ["--ink", "--tint-it", "Old card text", 4.5],
-  ["--ink-soft", "--tint-it", "Old card text", 4.5],
-  ["--ink-faint", "--tint-it", "Old card text", 4.5],
-  ["--tint-dk-ink", "--inset", "Old card points", 3],
-  ["--tint-dk-ink", "--tint-dk", "Old card title", 4.5],
-  ["--ink", "--tint-dk", "Old card text", 4.5],
-  ["--ink-soft", "--tint-dk", "Old card text", 4.5],
-  ["--ink-faint", "--tint-dk", "Old card text", 4.5],
-  ["--ink", "--surface", "Old neutral card / inset", 4.5],
-  ["--ink-soft", "--surface", "Old neutral card / inset", 4.5],
-  ["--ink-faint", "--surface", "Old neutral card / inset", 4.5],
-  ["--ink", "--inset", "Old neutral card / inset", 4.5],
-  ["--ink-soft", "--inset", "Old neutral card / inset", 4.5],
-  ["--ink-faint", "--inset", "Old neutral card / inset", 4.5],
-  ["--warn", "--inset", "Old unknown / amber note", 4.5],
-  ["--warn", "--warn-soft", "Old unknown / amber note", 4.5],
-  ["--save", "--inset", "Old bookmark icon", 3],
-  ["--save", "--save-soft", "Old bookmark icon", 3],
-  ["--ink", "--panel", "Neutral past/sample badge", 4.5],
-  ["--ink-2", "--surface", "Old quiet hover text", 4.5],
-  ["--accent", "--inset", "Old official link", 4.5],
-  ["--save", "--panel", "Dormant shortlist text", 4.5],
+// Controls that still paint marked old tokens. Stage 2 deleted the old card
+// and retired its pairs (country tints, inset, amber notes, badges); these are
+// the empty state, issues panel, skip link and dormant save button, which
+// stages 3 and 5 retoken. A pair here must have a rule that still paints it.
+const OLD_CONTROL_PAIRS = [
+  ["--ink", "--surface", ".empty-state strong", 4.5],
+  ["--ink-soft", "--surface", ".empty-state", 4.5],
+  ["--ink-faint", "--surface", ".empty-icon", 4.5],
+  ["--ink-faint", "--inset", "plain dormant .star", 4.5],
+  ["--save", "--save-soft", ".star:hover, .star[aria-pressed=\"true\"]", 3],
+  ["--warn", "--warn-soft", ".issues", 4.5],
+  ["--accent", "--surface", ".skip-link text and border", 4.5],
 ];
-const PAIRS = [...CANONICAL_PAIRS, ...OLD_CARD_PAIRS];
+const PAIRS = [...CANONICAL_PAIRS, ...OLD_CONTROL_PAIRS];
 
 // ----------------------------------------------------------------- the tokens
 
@@ -210,7 +181,10 @@ const CANONICAL = {
   "--ease-out": "cubic-bezier(.2,.7,.3,1)",
   "--ease-in-out": "cubic-bezier(.45,0,.25,1)"
 };
-const TEMPORARY = new Set(["--surface", "--ink-soft", "--ink-faint", "--line", "--line-soft", "--inset", "--tint-nl", "--tint-nl-ink", "--tint-ie", "--tint-ie-ink", "--tint-cz", "--tint-cz-ink", "--tint-it", "--tint-it-ink", "--tint-dk", "--tint-dk-ink", "--warn", "--warn-soft", "--warn-line", "--save", "--save-soft", "--shadow-sm", "--shadow-md", "--r-sm", "--r-md", "--r-lg", "--r-xl", "--ease", "--dur", "--old-print-ink", "--old-print-edge", "--old-print-inset-edge"]);
+// Old tokens still painted by kept controls. Stage 2 removed the 13 only the
+// old card used; stage 3 removes the rest. A token here that no rule uses any
+// more is an error (below), so the list cannot outlive its users.
+const TEMPORARY = new Set(["--surface", "--ink-soft", "--ink-faint", "--line", "--line-soft", "--inset", "--warn", "--warn-soft", "--warn-line", "--save", "--save-soft", "--shadow-md", "--r-sm", "--r-md", "--r-lg", "--r-xl", "--ease", "--dur", "--old-print-ink"]);
 const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 
 // Check declaration values, not selectors (#issues) or URL fragments (#i-globe).
@@ -243,6 +217,13 @@ export function colourPolicyErrors(text) {
     }
   }
   const outside = clean.replace(/:root\s*\{[^{}]*\}/g, '');
+  // A marked old token that no rule outside root uses is dead weight that
+  // would keep its contrast pair alive after the thing it paints is gone.
+  for (const [, name] of declarations) {
+    if (TEMPORARY.has(name) && !new RegExp(`var\\(\\s*${name}\\s*[,)]`).test(outside)) {
+      errors.push(`Unused temporary token ${name}`);
+    }
+  }
   for (const [, property, rawValue] of outside.matchAll(/(?:^|[;{}])\s*([\w-]+)\s*:\s*([^;{}]*)(?=;|\})/g)) {
     const value = rawValue.replace(/url\([^)]*\)/gi, '');
     if (/#(?:[\da-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(/i.test(value)) {

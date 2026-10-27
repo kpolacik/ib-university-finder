@@ -27,6 +27,76 @@ const equal = (name, actual, expected) =>
   check(name, JSON.stringify(actual) === JSON.stringify(expected),
     `got ${JSON.stringify(actual)}\n        want ${JSON.stringify(expected)}`);
 
+// A tiny stand-in for the DOM: only the operations js/render.js uses, so the
+// renderers can run here with no browser or DOM package. Text nodes are plain
+// strings (not counted by childElementCount), and appending a node that already
+// has a parent moves it, as the real DOM does.
+class ChromeNode {
+  constructor(tag) {
+    this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
+    this.className = ''; this.parent = null;
+  }
+  set textContent(text) { this.replaceChildren(String(text)); }
+  get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
+  get childElementCount() { return this.children.filter((c) => typeof c !== 'string').length; }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (typeof node !== 'string') {
+        if (node.parent) node.parent.children = node.parent.children.filter((c) => c !== node);
+        node.parent = this;
+      }
+      this.children.push(node);
+    }
+  }
+  replaceChildren(...nodes) {
+    for (const c of this.children) if (typeof c !== 'string') c.parent = null;
+    this.children = [];
+    this.append(...nodes);
+  }
+  setAttribute(name, value) {
+    if (name === 'class') this.className = String(value); else this.attributes[name] = String(value);
+  }
+  getAttribute(name) { return name === 'class' ? this.className : (this.attributes[name] ?? null); }
+  get classList() {
+    const names = () => this.className.split(/\s+/).filter(Boolean);
+    return {
+      add: (...add) => { this.className = [...new Set([...names(), ...add])].join(' '); },
+      contains: (name) => names().includes(name),
+    };
+  }
+}
+const stubDocument = {
+  createElement: (tag) => new ChromeNode(tag),
+  createElementNS: (ns, tag) => new ChromeNode(tag),
+  createTextNode: (text) => String(text),
+};
+// Installs the stand-in only while fn runs, then puts back whatever was there.
+function withStubDocument(fn) {
+  const original = globalThis.document;
+  globalThis.document = stubDocument;
+  try { return fn(); } finally {
+    if (original === undefined) delete globalThis.document; else globalThis.document = original;
+  }
+}
+const { renderDetail } = await import(new URL('../js/render.js', import.meta.url));
+const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
+const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
+function* nodesOf(node) {
+  yield node;
+  for (const c of node.children) if (typeof c !== 'string') yield* nodesOf(c);
+}
+const findAll = (root, test) => [...nodesOf(root)].filter(test);
+const byClass = (root, name) => findAll(root, (n) => n.classList.contains(name));
+const byTag = (root, tag) => findAll(root, (n) => n.tagName === tag);
+// Every dt label with its dd, across both lists of a detail.
+const kvOf = (article) => {
+  const out = {};
+  for (const dl of byClass(article, 'kv')) {
+    for (let i = 0; i < dl.children.length; i += 2) out[dl.children[i].textContent] = dl.children[i + 1];
+  }
+  return out;
+};
+
 // Loads the data layer against whatever CSV text you give it. The stub fetch
 // also serves a snapshot (the fallback path), and can leave chosen URLs
 // unanswered: such a request settles only when its signal aborts, the way a
@@ -154,6 +224,11 @@ const renderSrc = read('js/render.js');
 check('the card shows "Not published" for an unknown admission route',
   /nothingAtAll[\s\S]{0,400}!row\.admissionUnknown/.test(renderSrc)
     && /else if \(row\.admissionUnknown\)[\s\S]{0,400}'Not published'/.test(renderSrc));
+{
+  const dd = kvOf(detailOf(adm.find((p) => p.id === 'a-unknown'))).Admission;
+  check('the detail\'s Admission row is a "Not published" tag for a "?" route',
+    Boolean(dd) && dd.textContent === 'Not published' && byClass(dd, 'unk-t').length === 1);
+}
 
 // ------------------------------------------------------------ honest cards
 
@@ -178,18 +253,29 @@ const hcRow = (id) => hc.find((p) => p.id === id);
 check('blank english (no default) is empty and not flagged unknown',
   hcRow('h-blank').englishRequirement.length === 0 && hcRow('h-blank').englishUnknown === false);
 check('"?" english is flagged as unknown', hcRow('h-q').englishUnknown === true);
-check('the card always has a Language row: "Not checked yet", or "Not published" for "?"',
-  /else if \(row\.englishUnknown\) \{\s*reqRow\(list, 'Language', \[el\('span', 'req-unknown', 'Not published'\)\]\);\s*\} else \{\s*reqRow\(list, 'Language', \[el\('span', 'req-unknown', 'Not checked yet'\)\]\);/.test(renderSrc));
+// Redesign stage 2: the row is "English requirement" and the tag .unk-t, so
+// this renders the two rows rather than matching the old source text.
+equal('the detail always has an English requirement row: "Not checked yet", or "Not published" for "?"',
+  ['h-blank', 'h-q'].map((id) => {
+    const dd = kvOf(detailOf(hcRow(id)))['English requirement'];
+    return dd && byClass(dd, 'unk-t').length === 1 ? dd.textContent : null;
+  }), ['Not checked yet', 'Not published']);
 // R04: a "?" city showed only the country.
 check('"?" city is flagged as unknown, blank is not',
   hcRow('h-city').cityUnknown === true && hcRow('h-blank').cityUnknown === false);
 check('the card says "City not published" for a "?" city',
   /row\.cityUnknown \? 'City not published'/.test(renderSrc));
+equal('the detail\'s place line says "City not published" for a "?" city',
+  byClass(detailOf(hcRow('h-city')), 'd-place')[0]?.textContent, 'Card University · City not published, Testland');
 // R03: the university baseline only appeared inside nothingAtAll.
 check('the baseline reaches every programme of its university',
   hcRow('h-blank').baselineRequirement === 'a recognised school diploma');
+// The anchor must exist, or a missing one (index -1) would pass.
+const kvAnchor = renderSrc.indexOf("const list = el('dl', 'kv')");
 check('the card shows a General row outside nothingAtAll',
-  renderSrc.indexOf("reqRow(list, 'General'") > renderSrc.indexOf("const list = el('dl', 'req')"));
+  kvAnchor >= 0 && renderSrc.indexOf("reqRow(list, 'General'") > kvAnchor);
+equal('the detail shows the baseline as General, first letter capitalised',
+  kvOf(detailOf(hcRow('h-blank'))).General?.textContent, 'A recognised school diploma');
 // T04: a blank signer read as "Checked <date>" with no name. T01 (Q14 = A,
 // 2026-10-26): the programme's own signature is what counts, so a signed
 // programme under an unsigned university is checked.
@@ -234,15 +320,27 @@ const progNoDate = [
   'n-draft,t,Draft without a date,,https://example.org,,AI-DRAFT',
   'n-dated,t,Signed with a date,,https://example.org,2026-08-14,JK',
 ].join('\n') + '\n';
-const { meta: noDateMeta } = await load(uniT, progNoDate);
+const { programmes: noDateRows, meta: noDateMeta } = await load(uniT, progNoDate);
 const noDateIssues = noDateMeta.issues.filter((i) => /last_verified is blank/.test(i));
 check('a signed programme with no last_verified is reported; a draft or a dated one is not',
   noDateIssues.length === 1 && /^Programmes row 2: /.test(noDateIssues[0]), JSON.stringify(noDateMeta.issues));
 check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
   renderSrc.includes('row.isChecked && row.lastVerified') && !renderSrc.includes('needsHumanCheck'));
-// A01: dimmed past-deadline cards fell below readable contrast.
+// A01: dimmed past-deadline cards fell below readable contrast. Redesign
+// stage 2 moved it to the detail: no rule on a passed article or cell sets
+// opacity, and a passed row's article and cell carry the classes and words.
 const css = read('css/styles.css');
-check('past-deadline cards are not dimmed', !/\.card\.is-past[^{]*\{[^}]*opacity/.test(css));
+const renderDetailSrc = renderSrc.slice(renderSrc.indexOf('export function renderDetail'),
+  renderSrc.indexOf('\nfunction pointsCell'));
+const { programmes: pastRows } = await load(uniT, 'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by\n'
+  + 'p-past,t,Past programme,2026-03-31,https://example.org,2026-08-14,AI-DRAFT\n');
+const pastDetail = detailOf(pastRows[0]);
+const dimmingRules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([, sel, body]) => /is-past|v-past/.test(sel) && /opacity/.test(body)).map(([, sel]) => sel.trim());
+check('past-deadline details are not dimmed',
+  dimmingRules.length === 0 && renderDetailSrc.includes("classList.add('is-past')")
+    && pastDetail.classList.contains('is-past') && byClass(pastDetail, 'c-ddl')[0]?.classList.contains('v-past')
+    && byClass(pastDetail, 'c-ddl')[0]?.textContent.includes('Passed, check next cycle'), dimmingRules.join(', '));
 
 // ------------------------------------------------------ application system
 
@@ -443,18 +541,9 @@ check('failure hides source, filters and results bar and uses a scoped primary R
     && appSrcEarly.includes('dom.sourceLine.hidden = true') && appSrcEarly.includes('dom.resultsBar.hidden = true')
     && appSrcEarly.includes("reload.addEventListener('click', () => location.reload())"));
 
-// Only the DOM operations these two renderers use; no browser or DOM package.
-class ChromeNode {
-  constructor(tag) { this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {}; }
-  set textContent(text) { this.children = [String(text)]; }
-  get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
-  get childElementCount() { return this.children.filter((c) => typeof c !== 'string').length; }
-  append(...nodes) { this.children.push(...nodes); }
-  replaceChildren(...nodes) { this.children = nodes; }
-  setAttribute(name, value) { this.attributes[name] = value; }
-}
+// The banners render through the shared DOM stand-in (ChromeNode, near the top).
 const originalDocument = globalThis.document;
-globalThis.document = { createElement: (tag) => new ChromeNode(tag) };
+globalThis.document = stubDocument;
 try {
   const { renderSourceLine, renderSourceBanner } = await import('../js/render.js');
   const rows = [{ university: 'A', country: 'Ireland' }, { university: 'A', country: 'Ireland' }, { university: 'B', country: 'Czechia' }];
@@ -675,8 +764,10 @@ check('#results has a scroll-margin-top that clears the sticky bar', /#results \
 check('a hidden ", " separates the title from the degree',
   renderSrc.includes("el('span', 'visually-hidden', ', ')"));
 check('a Czech-only title is marked lang="cs"', /title\.lang = 'cs'/.test(renderSrc));
-check('each card is named by its title (aria-labelledby, id from programme_id)',
-  renderSrc.includes("article.setAttribute('aria-labelledby'") && /title\.id = /.test(renderSrc));
+// Redesign stage 2: the source check is on renderDetail; every live row is
+// rendered and checked further down ("each detail is named by its title").
+check('each detail is named by its title (aria-labelledby, id from programme_id)',
+  renderDetailSrc.includes("article.setAttribute('aria-labelledby'") && /title\.id = `p-\$\{row\.id\}`/.test(renderDetailSrc));
 check('the official link names its programme and says it opens a new tab',
   renderSrc.includes('(opens in a new tab)') && /for \$\{row\.programme\}, \$\{row\.university\}/.test(renderSrc));
 // A06: the pick-lists and the live result count.
@@ -1456,11 +1547,323 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
 check('index.html has the HL Maths 4+ checkbox with its help text', /<input type="checkbox" id="f-maths"/.test(read('index.html'))
   && read('index.html').includes('adds the 25 CAO bonus points on Irish courses'));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
-// digit per line, because .req-points did not wrap (A02).
+// digit per line, because .req-points did not wrap (A02). Redesign stage 2:
+// the number is .plines b, the line .plines li, inside .detail.
+const cssRules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+const ruleBody = (selector) => [...cssRules.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([, sel]) => sel.split(',').map((x) => x.trim()).includes(selector)).map(([, , body]) => body).join(';');
 check('a Points line wraps its qualifier and keeps the number whole (320 px, A02)',
-  /\.req-points \{[^}]*flex-wrap: wrap/.test(css) && /\.req-number, \.req-unit \{ white-space: nowrap; \}/.test(css));
+  /white-space:\s*nowrap/.test(ruleBody('.plines b')) && !/nowrap/.test(ruleBody('.plines li'))
+    && /overflow-wrap:\s*anywhere/.test(ruleBody('.detail')) && /min-width:\s*0/.test(ruleBody('.detail')));
 check('the card prints pointsNote, and the old "no published minimum" note is gone',
   renderSrc.includes('pointsNote(row, state)') && !renderSrc.includes('no published minimum'));
+
+// ---------------------------------------------------------------- the detail
+section('Each programme renders as the detail article (redesign stage 2, A01 A02 A04 A05 R01)');
+// What a rendered detail must never do, on any row: an empty label, a dl that
+// does not alternate dt/dd, an empty element, the points note missing or said
+// twice, or the old "Tuition (EU)" / bare "No tuition fee" wording.
+function detailProblems(row, state) {
+  const out = [];
+  const a = detailOf(row, state);
+  const say = (what) => out.push(`${row.id}: ${what}`);
+  const head = a.children[0];
+  const title = head?.children[0];
+  if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
+  if (!head?.classList.contains('d-head') || title?.tagName !== 'h2') say('heading is not first in .d-head');
+  if (title?.id !== `p-${row.id}` || a.getAttribute('aria-labelledby') !== title?.id) say('not named by its title');
+  for (const dl of byTag(a, 'dl')) {
+    const kids = dl.children;
+    if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
+  }
+  if (byTag(a, 'dt').some((dt) => !dt.textContent.trim())) say('empty dt');
+  const empty = findAll(a, (n) => !['svg', 'use'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0);
+  if (empty.length) say(`empty ${empty.map((n) => `${n.tagName}.${n.className}`).join(' ')}`);
+  const note = filtersMod.pointsNote(row, state);
+  const pnotes = byClass(a, 'pnote');
+  const two = a.children.findIndex((c) => c.classList?.contains('two'));
+  const notesAt = a.children.findIndex((c) => c.classList?.contains('notes'));
+  if (note === null ? pnotes.length !== 0
+    : !(pnotes.length === 1 && pnotes[0].textContent === note && pnotes[0].parent === a.children[notesAt] && notesAt > two)) {
+    say(`points note ${JSON.stringify(note)} not said exactly once after the facts`);
+  }
+  const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
+  if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
+  if (/Tuition \(EU\)|No tuition fee/.test(a.textContent)) say('old fee wording');
+  return { out, id: title?.id };
+}
+const liveRuns = [['empty', noFilters()], ['36', fstate(36)], ['36 ticked', fstate(36, true)], ['37', fstate(37)]];
+for (const [label, state] of liveRuns) {
+  const shownRows = state.myIbPoints === null ? live : applyFilters(live, state);
+  const results = shownRows.map((row) => detailProblems(row, state));
+  const problems = results.flatMap((r) => r.out);
+  const ids = results.map((r) => r.id);
+  check(`every shown live row renders cleanly at My points ${label} (${shownRows.length} rows)`,
+    shownRows.length > 0 && problems.length === 0 && new Set(ids).size === ids.length,
+    problems.slice(0, 6).join('\n        '));
+}
+check('each detail is named by its title, on every live row (A05)', live.every((row) => {
+  const a = detailOf(row);
+  const h2 = byTag(a, 'h2')[0];
+  return h2.id === `p-${row.id}` && a.getAttribute('aria-labelledby') === h2.id;
+}));
+check('the Czech-only live title is lang="cs" and its degree stays English',
+  (() => {
+    const row = live.find((p) => p.id === 'muni-anthropology');
+    const h2 = row && byTag(detailOf(row), 'h2')[0];
+    return h2?.lang === 'cs' && byClass(h2, 'deg')[0]?.lang === 'en'
+      && byClass(h2, 'visually-hidden')[0]?.textContent === ', ';
+  })());
+
+// Named fixtures for the states no live row has today.
+const fxCols = head.split(',').concat('admission');
+const fxCsv = (rows) => `${fxCols.join(',')}\n${rows.map((r) => fxCols.map((c) => q(r[c] ?? '')).join(',')).join('\n')}\n`;
+const fxUniCols = 'university_id,name,city,country,application_system,living_cost_monthly,student_life_url,baseline_requirement,last_verified,verified_by';
+const fxUni = `${fxUniCols}\n`
+  + 'fx,Fixture University,Town,Netherlands,Studielink,1100,https://example.org/life,a school diploma equivalent to Dutch VWO,2026-08-14,AI-DRAFT\n'
+  + 'fy,Plain University,Town,Netherlands,,,,,2026-08-14,AI-DRAFT\n'
+  + 'fs,Sample University,Town,Netherlands,,,,,2026-08-14,SAMPLE\n';
+const fx = (id, extra = {}) => ({
+  programme_id: id, university_id: 'fx', programme: id, degree_type: 'BSc', subject_area: 'Engineering', language: 'English',
+  ib_points_min: '30', ib_subjects: 'HL Maths 5', tuition_eu: '2500', english_requirement: 'IELTS 6.5',
+  application_deadline: '2027-02-01', official_url: 'https://example.org', last_verified: '2026-08-14', verified_by: 'AI-DRAFT', ...extra,
+});
+const fxRows = [
+  fx('fx-plain'),
+  fx('fx-zero', { tuition_eu: '0' }),
+  fx('fx-fee-blank', { university_id: 'fy', tuition_eu: '' }),
+  fx('fx-fee-q', { tuition_eu: '?' }),
+  fx('fx-passed', { application_deadline: '2026-03-31' }),
+  fx('fx-today', { application_deadline: '2026-08-14' }),
+  fx('fx-tomorrow', { application_deadline: '2026-08-15' }),
+  fx('fx-34', { application_deadline: '2026-09-17' }),
+  fx('fx-no-deadline', { application_deadline: '' }),
+  fx('fx-subjects-none', { ib_subjects: 'none' }),
+  fx('fx-subjects-blank', { ib_subjects: '' }),
+  fx('fx-admission', { admission: 'Entrance exam · Can be waived' }),
+  fx('fx-admission-q', { admission: '?' }),
+  fx('fx-english-q', { english_requirement: '?' }),
+  fx('fx-nothing', { university_id: 'fx', ib_points_min: '', ib_subjects: 'none', english_requirement: '' }),
+  fx('fx-no-general', { university_id: 'fy' }),
+  fx('fx-nolink', { official_url: '' }),
+  fx('fx-checked', { verified_by: 'JK' }),
+  fx('fx-stale', { verified_by: 'JK', last_verified: '2025-06-01' }),
+  fx('fx-test-score', { ib_points_min: '', deadline_notes: dataMod.PLUS_TEST }),
+  fx('fx-other', { other_requirements: 'Portfolio · Interview' }),
+  fx('fx-no-applying', { university_id: 'fy', language: '' }),
+];
+const { programmes: fxs, meta: fxMeta } = await load(fxUni, fxCsv(fxRows));
+check('the detail fixture parses with only the blank official_url reported',
+  fxs.length === fxRows.length && fxMeta.issues.length === 1 && /official_url is blank/.test(fxMeta.issues[0]), JSON.stringify(fxMeta.issues));
+const fxRow = (id) => fxs.find((p) => p.id === id);
+const fxDetail = (id, state) => detailOf(fxRow(id), state);
+const cellOf = (a, name) => byClass(a, name)[0];
+const fillOf = (cell) => ['v-fit', 'v-cond', 'v-unk', 'v-time', 'v-past'].filter((c) => cell.classList.contains(c)).join(' ');
+check('every fixture row renders cleanly with My points empty and at 36',
+  [noFilters(), fstate(36)].every((st) => fxs.filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => detailProblems(r, st).out.length === 0)),
+  [noFilters(), fstate(36)].flatMap((st) => fxs.flatMap((r) => detailProblems(r, st).out)).slice(0, 6).join('\n        '));
+
+// EU fee: blank is not zero.
+equal('EU fee: €2,500 / year, "€0 · no tuition fee", and "Not published" (dashed) for blank and "?"',
+  ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => {
+    const cell = cellOf(fxDetail(id), 'c-fee');
+    return [cell.children[0].textContent, byClass(cell, 'fig')[0].textContent, fillOf(cell)];
+  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · no tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
+
+// Deadline: long date, urgent with the clock, passed (neutral, struck) and none.
+equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published',
+  ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
+    const cell = cellOf(fxDetail(id), 'c-ddl');
+    const verd = byClass(cell, 'verd')[0];
+    const clock = byTag(cell, 'use').some((u) => u.getAttribute('href') === '#i-clock');
+    return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length];
+  }), [
+    ['', null, '1 February 2027', false, 0],
+    ['v-time', 'in 34 days', '17 September 2026', true, 0],
+    ['v-time', 'tomorrow', '15 August 2026', true, 0],
+    ['v-time', 'today', '14 August 2026', true, 0],
+    ['v-past', 'Passed, check next cycle', '31 March 2026', false, 1],
+    ['v-unk', null, 'Not published', false, 0],
+  ]);
+check('a passed row says "Check the official page for the next cycle." under Applying, before its deadline notes',
+  kvOf(fxDetail('fx-passed'))['Deadline notes']?.children[0]?.textContent === 'Check the official page for the next cycle.'
+    && !kvOf(fxDetail('fx-plain'))['Deadline notes']);
+check('Irish deadline notes keep the CAO sentence in Applying', (() => {
+  const row = live.find((p) => p.id === 'tcd-computer-science');
+  return kvOf(detailOf(row))['Deadline notes']?.textContent === row.deadlineNotes && /TR033/.test(row.deadlineNotes);
+})());
+
+// Points lines: every form pointsLines can write, with a real space after the number.
+const lineRows = [...kinds, fxRow('fx-test-score')];
+const lineProblems = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[0].children.map((li, i) => {
+  const line = pts.pointsLines(row)[i];
+  const b = byTag(li, 'b')[0];
+  const ok = li.textContent === pts.pointsLineText(line)
+    && (line.number === null ? !b : b.textContent === line.number && li.children[1] === ` ${line.unit}, ${line.qualifier}`);
+  return ok ? null : `${row.id}: ${JSON.stringify(li.textContent)}`;
+})).filter(Boolean);
+const renderedLines = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[0].children.map((li) => li.textContent));
+const nineForms = [/IB points, minimum$/, /then ranked with the HPAT$/, /, with HL Maths 4\+$/, /^≈ 40 IB points, cutoff, 2025$/,
+  /every qualified applicant got a place$/, /not an IB figure \(includes a test score\)$/, /above what any IB total can reach$/,
+  /^Cutoff includes a test score$/, /^No minimum published$/];
+check('every Points line renders as its pointsLineText, number in bold then a real space, and all nine forms appear',
+  lineProblems.length === 0 && nineForms.every((re) => renderedLines.some((t) => re.test(t))),
+  [...lineProblems, ...nineForms.filter((re) => !renderedLines.some((t) => re.test(t))).map(String)].join(', '));
+
+// The verdict: a short marked line in the cell, the full pointsNote once after the facts.
+const bkRow = (id) => bk.find((p) => p.id === id);
+const verdictOf = (row, state) => {
+  const a = detailOf(row, state);
+  const cell = cellOf(a, 'c-pts');
+  const verd = byClass(cell, 'verd');
+  return [fillOf(cell), verd.length ? `${verd[0].className}: ${verd[0].textContent}` : null,
+    byClass(a, 'pnote')[0]?.textContent ?? null, byClass(cell, 'pnote').length];
+};
+equal('verdict matrix: cell fill, short verdict, full note after the facts (never in the cell)', [
+  verdictOf(bkRow('c-497'), fstate(36)),
+  verdictOf(bkRow('c-r2'), fstate(36)),
+  verdictOf(bkRow('ie-hpat35'), fstate(36)),
+  verdictOf(bkRow('c-test-520'), fstate(36)),
+  verdictOf(bkRow('c-r2-maths'), fstate(36)),
+  verdictOf(bkRow('c-test-520'), fstate(36, true)),
+  verdictOf(bkRow('c-test-560'), fstate(36)),
+  verdictOf(bkRow('blank'), fstate(36)),
+  verdictOf(fxRow('fx-test-score'), fstate(36)),
+  verdictOf(bkRow('c-497'), noFilters()),
+  verdictOf(bkRow('blank'), noFilters()),
+], [
+  ['v-fit', 'verd m m-fit: Within your points', null, 0],
+  ['v-fit', 'verd m m-fit: Within your points', 'Within your points on the Round 2 cutoff, not Round 1.', 0],
+  ['v-fit', 'verd m m-fit: Within your points, then HPAT', null, 0],
+  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your points only with HL Maths 4+.', 0],
+  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your points only with HL Maths 4+. Within your points on the Round 2 cutoff, not Round 1.', 0],
+  ['v-fit', 'verd m m-fit: Within your points', null, 0],
+  ['v-unk', 'verd m m-unk: Cutoff includes a test', 'Shown despite your points: the cutoff includes a test, interview or audition.', 0],
+  ['v-unk', 'verd m m-unk: No minimum published', 'Shown despite your points: points unknown.', 0],
+  ['v-unk', 'verd m m-unk: No IB figure', 'Shown despite your points: points unknown.', 0],
+  ['', null, null, 0],
+  ['v-unk', null, null, 0],
+]);
+check('TCD Computer Science reads its live band: HL Maths 4+ at 36, within on Round 2 only at 37, no invented degree', (() => {
+  const row = live.find((p) => p.id === 'tcd-computer-science');
+  const at36 = verdictOf(row, fstate(36));
+  const at37 = verdictOf(row, fstate(37));
+  console.log(`        tcd-computer-science: ${pts.pointsLines(row).map(pts.pointsLineText).join(' | ')}; degree ${JSON.stringify(row.degreeType)}`);
+  return at36[0] === 'v-cond' && at36[2] === 'Within your points only with HL Maths 4+.'
+    && at37[0] === 'v-fit' && at37[2] === 'Within your points on the Round 2 cutoff, not Round 1.'
+    && byClass(detailOf(row), 'deg').length === (row.degreeType ? 1 : 0);
+})());
+
+// Data rules in the markup.
+equal('Subjects: "None required" for none, a dashed "Not checked yet" for blank',
+  ['fx-subjects-none', 'fx-subjects-blank'].map((id) => {
+    const dd = kvOf(fxDetail(id)).Subjects;
+    return [dd.textContent, byClass(dd, 'unk-t').length];
+  }), [['None required', 0], ['Not checked yet', 1]]);
+equal('Admission and Other join their items with " · "; "?" admission is a dashed "Not published"',
+  [kvOf(fxDetail('fx-admission')).Admission.textContent, kvOf(fxDetail('fx-other')).Other.textContent,
+    byClass(kvOf(fxDetail('fx-admission-q')).Admission, 'unk-t')[0]?.textContent, Boolean(kvOf(fxDetail('fx-plain')).Admission)],
+  ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
+equal('a "?" English requirement is a dashed "Not published"',
+  byClass(kvOf(fxDetail('fx-english-q'))['English requirement'], 'unk-t')[0]?.textContent, 'Not published');
+check('"nothing at all" is a plain sentence and no list',
+  (() => {
+    const a = fxDetail('fx-nothing');
+    const req = byClass(a, 'd-sec')[0];
+    return byTag(req, 'dl').length === 0
+      && byClass(req, 'kv-none')[0]?.textContent === 'No requirements beyond a school diploma equivalent to Dutch VWO';
+  })());
+check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general')).General
+  && kvOf(fxDetail('fx-plain')).General?.textContent === 'A school diploma equivalent to Dutch VWO');
+check('an Applying section with nothing to say is left out, not drawn empty',
+  (() => {
+    const a = fxDetail('fx-no-applying');
+    return byClass(a, 'd-sec').length === 1 && byClass(a, 'two')[0].children.length === 1;
+  })());
+equal('Applying: living costs, taught in and apply via',
+  ['Living costs', 'Taught in', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
+  ['€1,100 / month', 'English', 'Studielink']);
+
+// Notes, links and provenance.
+const tuitionNote = 'Shown despite the tuition filter — we do not have a fee for this one.';
+const feeState = { ...noFilters(), maxTuition: 3000 };
+check('the tuition note appears for an unknown fee only while Max fee is set',
+  byClass(fxDetail('fx-fee-blank', feeState), 'note').some((n) => n.textContent === tuitionNote)
+    && !byClass(fxDetail('fx-fee-blank'), 'note').length && !byClass(fxDetail('fx-plain', feeState), 'note').length);
+check('no official link: a strong note, no button, and the row is still rendered',
+  (() => {
+    const a = fxDetail('fx-nolink');
+    return byClass(a, 'note-strong')[0]?.textContent === 'No official link on file — do not rely on this entry.'
+      && byClass(a, 'btn-p').length === 0;
+  })());
+check('the official link names its programme, opens a new tab safely, and has the external icon (A04)',
+  (() => {
+    const link = byClass(fxDetail('fx-plain'), 'btn-p')[0];
+    return link?.tagName === 'a' && link.textContent === 'Official admissions page for fx-plain, Fixture University (opens in a new tab)'
+      && link.href === 'https://example.org/' && link.target === '_blank' && link.rel === 'noopener noreferrer'
+      && byTag(link, 'use')[0]?.getAttribute('href') === '#i-ext' && byTag(link, 'svg')[0]?.getAttribute('aria-hidden') === 'true';
+  })());
+check('a Student life link from the university, with its new-tab phrase',
+  (() => {
+    const link = byClass(fxDetail('fx-plain'), 'lnk')[0];
+    return link?.textContent === 'Student life (opens in a new tab)' && link.href === 'https://example.org/life'
+      && link.target === '_blank' && link.rel === 'noopener noreferrer'
+      && !byClass(fxDetail('fx-no-general'), 'lnk').length;
+  })());
+const okOf = (row) => byClass(detailOf(row), 'ok')[0];
+equal('provenance: AI-DRAFT none; signed "Checked <date> by JK"; stale adds the tag; signed without a date none',
+  [okOf(fxRow('fx-plain')), okOf(fxRow('fx-checked'))?.textContent, okOf(fxRow('fx-stale'))?.textContent,
+    byClass(okOf(fxRow('fx-stale')) ?? new ChromeNode('p'), 'tag')[0]?.textContent, okOf(tRow('t-signed'))?.textContent,
+    okOf(noDateRows.find((p) => p.id === 'n-signed')), byClass(detailOf(fxRow('fx-plain')), 'tag').length],
+  [undefined, 'Checked 14 August 2026 by JK', 'Checked 1 June 2025 by JK may be out of date', 'may be out of date',
+    'Checked 14 August 2026 by JK', undefined, 0]);
+check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-checked').isChecked && !fxRow('fx-checked').isStale
+  && byClass(okOf(fxRow('fx-checked')), 'tag').length === 0 && byTag(okOf(fxRow('fx-checked')), 'use')[0]?.getAttribute('href') === '#i-check');
+{
+  const { programmes: sampleRows } = await load(fxUni, fxCsv([fx('fx-sample', { university_id: 'fs', verified_by: 'JK' })]));
+  const a = detailOf(sampleRows[0]);
+  check('a sample row shows its tag instead of any Checked line, and the article is marked',
+    a.classList.contains('is-sample') && byClass(a, 'tag-strong')[0]?.textContent === 'Invented sample row · not real data'
+      && byClass(a, 'ok').length === 0);
+}
+check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
+  (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
+check('renderCards keeps its call contract and the inert shortlist options',
+  /export function renderCards\(container, rows, \{ state, shortlist, onToggleStar \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderDetail\(row, state\)\)/.test(renderSrc)
+    && appSrc.includes('renderCards(dom.results, rows, { state, shortlist, onToggleStar })'));
+
+// CSS: the detail paints canonical tokens only, and the old card is gone.
+const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
+  '--save', '--save-soft', '--shadow-md', '--r-sm', '--r-md', '--r-lg', '--r-xl', '--ease', '--dur', '--old-print-ink'];
+const detailFamily = /\.(?:detail|d-[\w-]+|cell|c-pts|c-ddl|c-fee|v-[\w-]+|m|m-[\w-]+|plines|two|kv|kv-none|unk-t|tag|tag-strong|ok|notes|note|pnote|note-strong|btn|btn-p|lnk|lab|fig|verd|zf|dot)(?![\w-])/;
+const detailRules = [...cssRules.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([, sel]) => sel.split(',').some((arm) => detailFamily.test(arm) && !/\.bn-fail/.test(arm)));
+const oldInDetail = detailRules.filter(([, , body]) => oldTokens.some((t) => new RegExp(`var\\(\\s*${t}\\s*[,)]`).test(body)));
+check('detail rules use no old token', detailRules.length > 40 && oldInDetail.length === 0,
+  oldInDetail.map(([sel]) => sel.trim()).join(', '));
+check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.test(cssRules)
+  && !/\.card(?![\w-])/.test(cssRules) && /\.skeleton-card/.test(cssRules));
+check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
+  /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
+check('off-screen details are skipped on screen and printed in full',
+  /content-visibility:\s*auto/.test(ruleBody('.results>.detail'))
+    && /@media print[\s\S]*\.results > \.detail \{[^}]*content-visibility: visible/.test(cssRules));
+check('the sprite has the Phosphor i-ext, i-check and i-clock, and no old i-external',
+  ['i-ext', 'i-check', 'i-clock'].every((id) => indexHtml.includes(`<symbol id="${id}" viewBox="0 0 256 256">`))
+    && !indexHtml.includes('id="i-external"') && !renderSrc.includes('i-external'));
+
+// The temporary-token registry cannot outlive the rules that use it.
+{
+  const unused = css.replace(/var\(--old-print-ink\)/g, 'var(--ink)');
+  // Root itself mentioning the token is not a use.
+  const rootUse = unused.replace('--surface: #f7f6f3;', '--surface: var(--old-print-ink);');
+  check('an old token that no rule uses is reported, even if root itself mentions it',
+    colourPolicyErrors(css).length === 0
+      && colourPolicyErrors(unused).includes('Unused temporary token --old-print-ink')
+      && colourPolicyErrors(rootUse).includes('Unused temporary token --old-print-ink'),
+    JSON.stringify([colourPolicyErrors(unused), colourPolicyErrors(rootUse)]));
+}
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

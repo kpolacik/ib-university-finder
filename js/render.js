@@ -5,7 +5,7 @@
 // up as text rather than run.
 
 import { pointsLines } from './points.js';
-import { pointsNote } from './filters.js';
+import { pointsBucket, pointsNote } from './filters.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -15,31 +15,30 @@ const longDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 });
 
-export function renderCards(container, rows, options) {
-  container.replaceChildren(...rows.map((row) => card(row, options)));
+// shortlist and onToggleStar are still passed by app.js and kept here on
+// purpose, unused: the save button was removed on 2026-10-24 at Jakub's
+// request, but its code stays in case it comes back (STATUS decisions). Until
+// the rows arrive (redesign stage 3) every shown programme is one full detail.
+export function renderCards(container, rows, { state, shortlist, onToggleStar }) {
+  container.replaceChildren(...rows.map((row) => renderDetail(row, state)));
 }
 
-function card(row, { state, shortlist, onToggleStar }) {
-  const article = el('article', 'card');
-  // The panel tint is driven by the country, so the colour carries information
-  // rather than decorating. styles.css has a tint pair per country; a country
-  // with no pair falls back to the neutral panel, so adding one is a CSS-only
-  // change. The class sits on the card itself, which is the content-visibility
-  // containment root, so it restyles reliably — a class on a descendant would
-  // not.
-  if (row.country) {
-    article.classList.add(`c-${row.country.toLowerCase().replace(/[^a-z]+/g, '-')}`);
-  }
+// The full entry for one programme (design spec §6.7). Stage 4 will put one of
+// these in the pane; for now there is one per shown row.
+export function renderDetail(row, state) {
+  const article = el('article', 'detail');
+  // State sits on the article itself, the content-visibility root, so it
+  // restyles reliably; a class on a descendant inside a skipped subtree would
+  // not (STATUS trap). Passed rows are never dimmed (A01).
   if (row.deadlinePassed) article.classList.add('is-past');
+  if (row.isSample) article.classList.add('is-sample');
 
-  // --- heading -----------------------------------------------------------
-  const head = el('div', 'card-head');
-
-  const titles = el('div', 'card-titles');
-  const title = el('h2', 'card-title');
-  // The card is named by its title, so a screen reader's list of articles reads
-  // as a list of programmes (A05). programme_id never changes, so neither does
-  // the id; the prefix keeps it from colliding with the page's own ids.
+  // --- head ----------------------------------------------------------------
+  const head = el('header', 'd-head');
+  const title = el('h2', 'd-title');
+  // The article is named by its title, so a screen reader's list of articles
+  // reads as a list of programmes (A05). programme_id never changes, so neither
+  // does the id; the prefix keeps it from colliding with the page's own ids.
   title.id = `p-${row.id}`;
   article.setAttribute('aria-labelledby', title.id);
   title.append(document.createTextNode(row.programme));
@@ -49,69 +48,137 @@ function card(row, { state, shortlist, onToggleStar }) {
   if (row.degreeType) {
     // Hidden ", " so it is not read as "Architektura a urbanismusBc." (A05).
     // The degree keeps the page's language even inside a Czech title.
-    const degree = el('span', 'degree', row.degreeType);
+    const degree = el('span', 'deg', row.degreeType);
     if (title.lang) degree.lang = 'en';
     title.append(el('span', 'visually-hidden', ', '), degree);
   }
-  titles.append(title);
-  titles.append(el('p', 'card-uni', row.university));
   // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
   const city = row.cityUnknown ? 'City not published' : row.city;
-  titles.append(el('p', 'card-place', [city, row.country].filter(Boolean).join(', ')));
-  head.append(titles);
-  // No save button. It was removed on 2026-10-24 at Jakub's request, and the
-  // shortlist it fed went with it; see the note in app.js.
-
+  const place = [city, row.country].filter(Boolean).join(', ');
+  // The title comes first so heading navigation reads it first; CSS draws the
+  // place line above it, as the design has it.
+  head.append(title, el('p', 'd-place', [row.university, place].filter(Boolean).join(' · ')));
   article.append(head);
 
-  article.append(requirements(row));
+  // --- the three cells -------------------------------------------------------
+  const cells = el('div', 'd-cells');
+  cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row));
+  article.append(cells);
 
-  // --- facts -------------------------------------------------------------
-  const facts = el('dl', 'facts');
+  // --- Requirements | Applying -----------------------------------------------
+  const two = el('div', 'two');
+  two.append(requirementsSection(row));
+  const applying = applyingSection(row);
+  if (applying) two.append(applying);
+  article.append(two);
 
-  const deadlineValue = el('dd', deadlineClass(row));
-  deadlineValue.textContent = row.deadline ? longDate.format(row.deadline) : 'Not published';
-  if (row.isUrgent) deadlineValue.append(el('span', 'badge-urgent', countdown(row.daysUntilDeadline)));
-  if (row.deadlinePassed) deadlineValue.append(el('span', 'badge-past', 'passed'));
-  facts.append(el('dt', '', 'Deadline'), deadlineValue);
-
-  if (row.deadlinePassed) {
-    fact(facts, '', 'Check the official page for the next cycle.', 'sub');
-  }
-  if (row.deadlineNotes) fact(facts, '', row.deadlineNotes, 'sub');
-
-  const tuition = row.tuitionEu === null
-    ? 'Not published'
-    : (row.tuitionEu === 0 ? 'No tuition fee' : `${money.format(row.tuitionEu)} / year`);
-  fact(facts, 'Tuition (EU)', tuition, row.tuitionEu === null ? 'unknown' : '');
-
-  if (row.livingCostMonthly !== null) {
-    fact(facts, 'Living costs', `${money.format(row.livingCostMonthly)} / month`);
-  }
-  if (row.languages.length) fact(facts, 'Taught in', row.languages.join(', '));
-  if (row.applicationSystem) fact(facts, 'Apply via', row.applicationSystem);
-
-  article.append(facts);
-
-  // --- why a row survived a filter it looks like it should have failed ---
-  if (state.maxTuition !== null && row.tuitionEu === null) {
-    article.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
-  }
+  // --- notes, after the facts -------------------------------------------------
   // My points: why an unknown row is shown, and when a cutoff is reached only
-  // with HL Maths 4+ or only on Round 2 (pointsNote in filters.js).
+  // with HL Maths 4+ or only on Round 2 (pointsNote in filters.js). The cell
+  // carries the short verdict; the full sentence is said once, here (spec §0:
+  // §6.7 outranks the mockup, which merged the two).
   const pointsSays = pointsNote(row, state);
-  if (pointsSays) article.append(el('p', 'note', pointsSays));
+  const said = notes(row, state, pointsSays);
+  if (said) article.append(said);
 
-  // --- provenance, on every card, never hidden --------------------------
-  article.append(provenance(row));
+  const foot = footer(row);
+  if (foot) article.append(foot);
   return article;
 }
 
-// The block this whole site exists for. Four kinds of requirement, each on its
-// own row, and a row only appears when there is something to say.
-function requirements(row) {
-  const block = el('div', 'ib-block');
-  block.append(el('p', 'ib-label', 'Requirements'));
+// Points lines come from pointsLines (js/points.js), shared with the CSV
+// export, one line each so a two-round cutoff reads as two. The verdict is
+// from pointsBucket, the same test the filter uses, so they cannot disagree.
+function pointsCell(row, state) {
+  const cell = el('div', 'cell c-pts');
+  cell.append(el('span', 'lab', 'Points'));
+  const list = el('ul', 'plines');
+  for (const line of pointsLines(row)) {
+    const item = el('li');
+    if (line.number === null) {
+      item.textContent = line.qualifier;
+    } else {
+      // The space after the number is real text, so reading and copying the
+      // line gives "≈ 38 IB points, …", not "≈ 38IB points".
+      item.append(el('b', '', line.number), document.createTextNode(` ${line.unit}, ${line.qualifier}`));
+    }
+    list.append(item);
+  }
+  cell.append(list);
+
+  const bucket = pointsBucket(row, state);
+  let fill = '';
+  let mark = '';
+  let verdict = '';
+  if (bucket === 'within') {
+    [fill, mark] = ['v-fit', 'm-fit'];
+    verdict = row.rankedWithHpat ? 'Within your points, then HPAT' : 'Within your points';
+  } else if (bucket === 'maths') {
+    [fill, mark, verdict] = ['v-cond', 'm-cond', 'Only with HL Maths 4+'];
+  } else if (bucket === 'unknown') {
+    [fill, mark] = ['v-unk', 'm-unk'];
+    if (row.ibPointsMin !== null) verdict = 'Cutoff includes a test';
+    else verdict = row.pointsPlusTest ? 'No IB figure' : 'No minimum published';
+  } else if (bucket === null && row.ibPointsMin === null) {
+    // My points empty: the dashed box and the line already say it is unknown.
+    fill = 'v-unk';
+  }
+  if (fill) cell.classList.add(fill);
+  if (verdict) cell.append(el('span', `verd m ${mark}`, verdict));
+  return cell;
+}
+
+function deadlineCell(row) {
+  const cell = el('div', 'cell c-ddl');
+  cell.append(el('span', 'lab', 'Deadline'));
+  if (!row.deadline) {
+    cell.classList.add('v-unk');
+    cell.append(el('span', 'fig', 'Not published'));
+    return cell;
+  }
+  const date = longDate.format(row.deadline);
+  if (row.deadlinePassed) {
+    // Neutral, never red and never dimmed: it is still a fact worth reading.
+    cell.classList.add('v-past');
+    const fig = el('span', 'fig');
+    fig.append(el('s', '', date));
+    cell.append(el('span', 'verd', 'Passed, check next cycle'), fig);
+  } else if (row.isUrgent) {
+    cell.classList.add('v-time');
+    const verd = el('span', 'verd');
+    verd.append(icon('i-clock', 'ic'), document.createTextNode(countdown(row.daysUntilDeadline)));
+    cell.append(verd, el('span', 'fig', date));
+  } else {
+    cell.append(el('span', 'fig', date));
+  }
+  return cell;
+}
+
+// Blank is not zero: a null fee is "Not published", a 0 is a real claim.
+function feeCell(row) {
+  const cell = el('div', 'cell c-fee');
+  cell.append(el('span', 'lab', 'EU fee'));
+  const fig = el('span', 'fig');
+  if (row.tuitionEu === null) {
+    cell.classList.add('v-unk');
+    fig.textContent = 'Not published';
+  } else if (row.tuitionEu === 0) {
+    // From 600 px the dot hides and "no tuition fee" drops under "€0".
+    const zero = el('small', 'zf');
+    zero.append(el('span', 'dot', '· '), document.createTextNode('no tuition fee'));
+    fig.append(document.createTextNode(`${money.format(0)} `), zero);
+  } else {
+    fig.append(document.createTextNode(`${money.format(row.tuitionEu)} `), el('small', '', '/ year'));
+  }
+  cell.append(fig);
+  return cell;
+}
+
+// The block this whole site exists for. Each kind of requirement on its own
+// row, and a row only appears when there is something to say.
+function requirementsSection(row) {
+  const section = el('section', 'd-sec');
+  section.append(el('h3', '', 'Requirements'));
 
   const nothingAtAll = row.ibPointsMin === null &&
                        row.noSubjectsRequired &&
@@ -126,65 +193,47 @@ function requirements(row) {
     // Falling back to a country-neutral sentence keeps this honest the day a
     // non-Dutch university is added.
     const baseline = row.baselineRequirement || 'a qualifying secondary school diploma';
-    block.append(el('p', 'req-none', `No requirements beyond ${baseline}`));
-    return block;
+    section.append(el('p', 'kv-none', `No requirements beyond ${baseline}`));
+    return section;
   }
 
-  const list = el('dl', 'req');
+  const list = el('dl', 'kv');
 
   // --- admission ---------------------------------------------------------
   // First, because it frames the rest: a points figure means something
   // different under open entry, a CAO ranking and a Czech entrance exam.
   if (row.admission.length) {
-    reqRow(list, 'Admission', row.admission.map((t) => el('span', 'req-admission', t)));
+    reqRow(list, 'Admission', [row.admission.join(' · ')]);
   } else if (row.admissionUnknown) {
     // A "?" route is not "no route": it exists and differs from the default,
-    // but is unpublished. Same style as the Subjects row's "Not checked yet".
-    reqRow(list, 'Admission', [el('span', 'req-unknown', 'Not published')]);
+    // but is unpublished. Same tag as the Subjects row's "Not checked yet".
+    reqRow(list, 'Admission', [unknownTag('Not published')]);
   }
-
-  // --- points ------------------------------------------------------------
-  // What the row says comes from pointsLines (js/points.js), shared with the
-  // CSV export. Each line is its own .req-points, so a two-round cutoff reads
-  // as two lines. The comma sits in the unit span and the qualifier gets its
-  // own span: .req-points is flex with a gap, so a bare text node would put a
-  // gap before the comma.
-  reqRow(list, 'Points', pointsLines(row).map((line) => {
-    const value = el('span', 'req-points');
-    if (line.number === null) {
-      value.append(el('span', 'req-quiet', line.qualifier));
-    } else {
-      value.append(el('span', 'req-number', line.number));
-      value.append(el('span', 'req-unit', `${line.unit},`));
-      value.append(el('span', 'req-quiet', line.qualifier));
-    }
-    return value;
-  }));
 
   // --- subjects ----------------------------------------------------------
+  // "none" is the university saying there are none; blank is nobody checked.
   if (row.noSubjectsRequired) {
-    reqRow(list, 'Subjects', [el('span', 'req-quiet', 'None required')]);
+    reqRow(list, 'Subjects', ['None required']);
   } else if (row.ibSubjects) {
-    reqRow(list, 'Subjects', [document.createTextNode(row.ibSubjects)]);
+    reqRow(list, 'Subjects', [row.ibSubjects]);
   } else {
-    reqRow(list, 'Subjects', [el('span', 'req-unknown', 'Not checked yet')]);
+    reqRow(list, 'Subjects', [unknownTag('Not checked yet')]);
   }
 
-  // --- other -------------------------------------------------------------
   if (row.otherRequirements.length) {
-    reqRow(list, 'Other', row.otherRequirements.map((t) => el('span', 'req-tag', t)));
+    reqRow(list, 'Other', [row.otherRequirements.join(' · ')]);
   }
 
-  // --- language ----------------------------------------------------------
+  // --- English -----------------------------------------------------------
   // Always shown. Leaving the row out made 608 cards look as if there were no
   // language requirement, when nobody had looked (R01). "?" means it differs
   // from the university's and is unpublished, as on the Admission row.
   if (row.englishRequirement.length) {
-    reqRow(list, 'Language', row.englishRequirement.map((t) => el('span', 'req-lang', t)));
+    reqRow(list, 'English requirement', [row.englishRequirement.join(' · ')]);
   } else if (row.englishUnknown) {
-    reqRow(list, 'Language', [el('span', 'req-unknown', 'Not published')]);
+    reqRow(list, 'English requirement', [unknownTag('Not published')]);
   } else {
-    reqRow(list, 'Language', [el('span', 'req-unknown', 'Not checked yet')]);
+    reqRow(list, 'English requirement', [unknownTag('Not checked yet')]);
   }
 
   // --- general -----------------------------------------------------------
@@ -195,56 +244,92 @@ function requirements(row) {
   // baseline shows nothing: six Irish ones are blank on purpose (STATUS).
   if (row.baselineRequirement) {
     const general = row.baselineRequirement;
-    reqRow(list, 'General', [document.createTextNode(general[0].toUpperCase() + general.slice(1))]);
+    reqRow(list, 'General', [general[0].toUpperCase() + general.slice(1)]);
   }
 
-  block.append(list);
-  return block;
+  section.append(list);
+  return section;
 }
 
+function applyingSection(row) {
+  const list = el('dl', 'kv');
+  const deadlineNotes = [];
+  if (row.deadlinePassed) deadlineNotes.push('Check the official page for the next cycle.');
+  // On Irish rows this is the CAO sentence the points lines were read from.
+  if (row.deadlineNotes) deadlineNotes.push(row.deadlineNotes);
+  if (deadlineNotes.length) reqRow(list, 'Deadline notes', deadlineNotes.map((t) => el('p', '', t)));
+  if (row.livingCostMonthly !== null) {
+    reqRow(list, 'Living costs', [`${money.format(row.livingCostMonthly)} / month`]);
+  }
+  if (row.languages.length) reqRow(list, 'Taught in', [row.languages.join(', ')]);
+  if (row.applicationSystem) reqRow(list, 'Apply via', [row.applicationSystem]);
+  if (list.childElementCount === 0) return null;
+
+  const section = el('section', 'd-sec');
+  section.append(el('h3', '', 'Applying'), list);
+  return section;
+}
+
+// Never called with an empty label, so no dt is ever empty (A05).
 function reqRow(dl, label, nodes) {
-  dl.append(el('dt', 'req-label', label));
-  const dd = el('dd', 'req-value');
-  dd.append(...nodes);
+  dl.append(el('dt', '', label));
+  const dd = el('dd');
+  dd.append(...nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n)));
   dl.append(dd);
 }
 
-function provenance(row) {
-  const foot = el('div', 'card-foot');
+function unknownTag(text) {
+  return el('span', 'unk-t', text);
+}
 
-  // Every card used to end "Gathered <date> · nobody has checked this yet".
-  // Removed 2026-10-24 at Jakub's request: the banner at the top of the page
-  // already says it once for the whole dataset, and repeated on 757 cards it was
-  // noise. A line now appears only when there is something specific to say —
-  // a row a person has actually signed off, or an invented sample row.
-  //
-  // One chain, so the text and its badge are chosen together.
-  if (row.isSample) {
-    const verified = el('p', 'verified', 'Invented sample row');
-    verified.append(el('span', 'badge-danger', 'not real data'));
-    foot.append(verified);
-  } else if (row.isChecked && row.lastVerified) {
-    const verified = el('p', 'verified', `Checked ${longDate.format(row.lastVerified)}`);
-    if (row.verifiedBy) verified.textContent += ` by ${row.verifiedBy}`;
-    if (row.isStale) verified.append(el('span', 'badge-stale', 'may be out of date'));
-    foot.append(verified);
+// Why a row survived a filter it looks like it should have failed, and the
+// one warning that matters more than any fact on the entry.
+function notes(row, state, pointsSays) {
+  const box = el('div', 'notes');
+  if (state.maxTuition !== null && row.tuitionEu === null) {
+    box.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
   }
+  if (pointsSays) box.append(el('p', 'note pnote', pointsSays));
+  if (!row.officialUrl) {
+    box.append(el('p', 'note note-strong', 'No official link on file — do not rely on this entry.'));
+  }
+  return box.childElementCount ? box : null;
+}
+
+function footer(row) {
+  const foot = el('footer', 'd-foot');
 
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
   if (row.officialUrl) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
-    foot.append(externalLink('official-link', 'Official admissions page', row.officialUrl,
+    foot.append(externalLink('btn btn-p', 'Official admissions page', row.officialUrl,
       ` for ${row.programme}, ${row.university}`));
-  } else {
-    foot.append(el('p', 'note', 'No official link on file — do not rely on this entry.'));
   }
   if (row.studentLifeUrl) {
-    foot.append(externalLink('life-link', 'Student life', row.studentLifeUrl));
+    foot.append(externalLink('lnk', 'Student life', row.studentLifeUrl));
   }
 
-  return foot;
+  // Every card used to end "Gathered <date> · nobody has checked this yet".
+  // Removed 2026-10-24 at Jakub's request: the source line at the top of the
+  // page already says it once for the whole dataset, and repeated on every
+  // entry it was noise. A line now appears only when there is something
+  // specific to say — a row a person has signed off, or an invented sample row.
+  //
+  // One chain, so the text and its tag are chosen together.
+  if (row.isSample) {
+    foot.append(el('span', 'tag tag-strong', 'Invented sample row · not real data'));
+  } else if (row.isChecked && row.lastVerified) {
+    const ok = el('p', 'ok');
+    let text = `Checked ${longDate.format(row.lastVerified)}`;
+    if (row.verifiedBy) text += ` by ${row.verifiedBy}`;
+    ok.append(icon('i-check', 'ic'), document.createTextNode(text));
+    if (row.isStale) ok.append(document.createTextNode(' '), el('span', 'tag', 'may be out of date'));
+    foot.append(ok);
+  }
+
+  return foot.childElementCount ? foot : null;
 }
 
 // Both links open a new tab, which a screen reader user is not told unless
@@ -256,27 +341,21 @@ function externalLink(className, label, href, hiddenName = '') {
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
   // The icon says "this leaves the site" without spending a word on it.
-  link.append(icon('i-external'));
+  link.append(icon('i-ext', 'ic'));
   return link;
 }
 
 // Icons come from the sprite in index.html, referenced rather than inlined so
-// the same path is not repeated 757 times in the DOM.
-function icon(id) {
+// the same path is not repeated 1240 times in the DOM.
+function icon(id, className) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  if (className) svg.setAttribute('class', className);
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   use.setAttribute('href', `#${id}`);
   svg.append(use);
   return svg;
-}
-
-function deadlineClass(row) {
-  if (row.deadlinePassed) return 'past';
-  if (row.isUrgent) return 'urgent';
-  if (!row.deadline) return 'unknown';
-  return '';
 }
 
 function countdown(days) {
@@ -385,8 +464,4 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function fact(dl, term, value, className) {
-  dl.append(el('dt', '', term), el('dd', className, value));
 }
