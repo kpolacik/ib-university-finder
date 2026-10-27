@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1299 programmes · 47 universities · 5 countries · all checks passing.
+1394 programmes · 72 universities · 6 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -17,6 +17,22 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
+| Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
+
+**Sweden** (`tools/add-sweden-2026-10-27.mjs`, which quotes every page). The
+list is UHR's: universityadmissions.se's search API, autumn 2027, bachelor
+level, all English-taught. Subject lines are converted with UHR's own IB table
+(Maths 3c = any IB maths course, AI SL with a 4; Maths 4 = AA SL 4+ or any HL;
+Civics 1b is met by the IB Diploma itself). Deadline 15 January 2027 for the
+international round; EU citizens can also use the 15 April round where a
+programme is still offered. Selection is on grades (merit rating); the SweSAT
+the pages mention is optional and in Swedish, so it counts as no exam. Music
+auditions, Gothenburg's admission tests and SSE's SAT/ACT/ITB-Business are
+`yes`. Gaps: Linnaeus University (10 rows) and Mid Sweden University (1) block
+this machine, so their subjects and exam are "not checked"; Halmstad's Applied
+AI and LiU's Experimental Biomedicine show no specific requirements on their
+pages; living costs are one national floor (Migration Agency, SEK 10,656 →
+€957) rather than each university's own figure.
 
 Italy and Denmark were researched by a second model (CAS/verification/) and
 merged on 2026-10-25 by `tools/merge-italy-denmark.mjs`, which records what
@@ -250,13 +266,19 @@ initials and it reads "Checked <date> by <initials>".
    the 2027 table is not out yet.
 7. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
    *Living costs* under Decisions). Re-check them each autumn with the rest.
-8. **The 13 entrance-exam unknowns** (`entrance_exam` = `?`): five VŠE English
-   bachelors and Masaryk's Informatika ve vzdělávání (their 2027 rules are not
-   out), "See the faculty's English admission rules" at one Czech faculty,
-   Radboud Psychology (its four-part Matching Assignment may or may not include
-   a test), UL Music and Dance, Maynooth MH002, UCD Veterinary Nursing, and two
-   Italian open-access programmes (Bologna 6653, Ca' Foscari IMS) whose pages
-   name no entry check.
+8. **The 13 entrance-exam unknowns** outside Sweden (`entrance_exam` = `?`):
+   five VŠE English bachelors and Masaryk's Informatika ve vzdělávání (their
+   2027 rules are not out), "See the faculty's English admission rules" at one
+   Czech faculty, Radboud Psychology (its four-part Matching Assignment may or
+   may not include a test), UL Music and Dance, Maynooth MH002, UCD Veterinary
+   Nursing, and two Italian open-access programmes (Bologna 6653, Ca' Foscari
+   IMS) whose pages name no entry check.
+9. **Finland and Norway** — next in the survey's Nordic order. Finland: the
+   joint application on studyinfo.fi (English-taught bachelors, January 2027
+   round). Norway: Samordna opptak (EU deadline 15 April).
+10. **Swedish gaps**: open the Linnaeus and Mid Sweden pages from a normal
+   browser and fill their 11 rows; replace the national living-cost floor with
+   each university's own estimate.
 
 ## Known gaps
 

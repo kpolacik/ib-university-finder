@@ -186,7 +186,9 @@ function rule(r) {
     case 'Italy': return italy(id, adm, other);
     case 'Denmark': return NO;
     case 'Netherlands': return adm === '?' ? UNKNOWN : NO;
-    default: return UNKNOWN;
+    // Countries added after this script set their own value when imported
+    // (tools/add-sweden-2026-10-27.mjs); a re-run must not wipe it.
+    default: return r[c('entrance_exam')] || UNKNOWN;
   }
 }
 
