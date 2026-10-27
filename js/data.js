@@ -194,6 +194,7 @@ function build(universityRows, programmeRows, today) {
       ibSubjects: subjects === NO_REQUIREMENT ? '' : subjects,
       noSubjectsRequired: subjects === NO_REQUIREMENT,
       mathsAccepted: mathsCourses(row.ib_maths, issues, `${where}, ib_maths`),
+      entranceExam: examState(row.entrance_exam, issues, `${where}, entrance_exam`),
       otherRequirements: list(row.other_requirements, BULLET),
 
       // How the place is actually decided: open entry, a ranking, an entrance
@@ -269,6 +270,23 @@ function mathsCourses(value, issues, label) {
     return null;
   }
   return courses;
+}
+
+// Whether you have to sit an entrance exam, test or audition:
+//   "yes"       every applicant sits one
+//   "waivable"  there is one, but some IB applicants can skip it
+//   "no"        none: grades, documents, interviews, matching or a lottery
+//   blank or "?" -> not known; returns null and the filter never hides the row
+export const EXAM_STATES = ['yes', 'waivable', 'no'];
+
+function examState(value, issues, label) {
+  const raw = text(value);
+  if (!raw || raw === UNKNOWN) return null;
+  if (!EXAM_STATES.includes(raw)) {
+    issues.push(`${label}: "${raw}" is not one of ${EXAM_STATES.join(', ')} — treated as unknown.`);
+    return null;
+  }
+  return raw;
 }
 
 // Three states, not two:

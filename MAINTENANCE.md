@@ -71,6 +71,7 @@ Only if it is not already on the `universities` tab.
 | `ib_maths` | Which IB maths courses the programme accepts, separated by ` · `, from `AA HL`, `AA SL`, `AI HL`, `AI SL`. `none` = no maths requirement. `?` or blank = not known. Drives the "My maths" filter. See below |
 | `other_requirements` | Anything else you must do, separated by ` · `. See below |
 | `admission` | How places are decided, separated by ` · `. Blank uses the university's `admission_default`; `?` means unknown. See below |
+| `entrance_exam` | `yes`, `waivable`, `no`, or `?`/blank for not known. Drives the "Entrance exam" filter. See below |
 | `tuition_eu` | **Leave blank** unless this programme differs from the university default |
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
 | `english_requirement` | Leave blank unless it differs from the university default |
@@ -120,6 +121,20 @@ List every course that is accepted, not just the minimum:
 Grades stay in `ib_subjects`; `ib_maths` is only about the course and level.
 `?` and blank never hide a programme — the card says so instead. A misspelt
 course shows up under "spreadsheet problems" and is treated as unknown.
+
+**`entrance_exam`** answers one question: will I have to sit something?
+
+| Cell | Card shows | Means |
+|---|---|---|
+| `yes` | "Entrance exam or test" | Every applicant sits one: a selection test (online or not), Scio/TSP, CEnT-S/TOLC/SAT, HPAT, a talent exam or an audition |
+| `waivable` | "Entrance exam — some IB applicants can skip it" | There is one, but it can be waived on IB points or grades, or only applies if your maths falls short |
+| `no` | "No entrance exam" | Grades, documents, letters, interviews, portfolios, matching or a lottery only |
+| `?` or blank | "Not checked yet" | Nobody has checked — never hidden by the filter |
+
+Interviews, portfolios, motivation videos and matching are not exams. A test
+you can only sit to *add* to your chances (SDU's uniTEST for IB holders, who
+already compete on converted grades) is `no`. Write the exam itself in
+`admission` or `other_requirements` as before; this column is only the yes/no.
 
 **`other_requirements`** is for hurdles beyond grades — separate each with ` · `
 and keep them short, they render as chips:

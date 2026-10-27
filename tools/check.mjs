@@ -163,6 +163,32 @@ equal('AI SL hides only what states it is not accepted',
 mstate.myMaths = 'AA HL';
 check('AA HL keeps everything here', applyFilters(mrows, mstate, new Set()).length === mrows.length);
 
+// ------------------------------------------------------------- exam filter
+
+section('entrance_exam: yes, waivable, no, unknown, and the filter');
+const progE = [
+  'programme_id,university_id,programme,entrance_exam,official_url,last_verified,verified_by',
+  'e-yes,a,Exam,yes,https://example.org,2026-08-14,TT',
+  'e-waive,a,Waivable,waivable,https://example.org,2026-08-14,TT',
+  'e-no,a,No exam,no,https://example.org,2026-08-14,TT',
+  'e-blank,a,Not checked,,https://example.org,2026-08-14,TT',
+  'e-q,a,Unknown,?,https://example.org,2026-08-14,TT',
+  'e-bad,a,Typo,maybe,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: erows, meta: emeta } = await load(uniA, progE);
+const eOf = (id) => erows.find((p) => p.id === id).entranceExam;
+check('the three states load as written', eOf('e-yes') === 'yes' && eOf('e-waive') === 'waivable' && eOf('e-no') === 'no');
+check('blank and "?" are unknown, never "no"', eOf('e-blank') === null && eOf('e-q') === null);
+check('an unexpected value is reported and treated as unknown',
+  eOf('e-bad') === null && emeta.issues.some((i) => /"maybe"/.test(i)));
+const estate = createFilterState();
+estate.exam = 'none';
+equal('"No exam" hides exams, waivable or not, and keeps unknowns',
+  applyFilters(erows, estate, new Set()).map((p) => p.id), ['e-no', 'e-blank', 'e-q', 'e-bad']);
+estate.exam = 'skippable';
+equal('"No exam, or one I can skip" hides only compulsory exams',
+  applyFilters(erows, estate, new Set()).map((p) => p.id), ['e-waive', 'e-no', 'e-blank', 'e-q', 'e-bad']);
+
 // ---------------------------------------------------------------- bad input
 
 section('Bad spreadsheet input is reported, never silently swallowed');

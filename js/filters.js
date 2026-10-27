@@ -12,6 +12,8 @@ export function createFilterState() {
     maxTuition: null,
     myIbPoints: null,
     myMaths: null,
+    // null, "none" (no exam at all) or "skippable" (none, or one I can skip)
+    exam: null,
     shortlistOnly: false,
     sort: 'deadline',
   };
@@ -29,6 +31,7 @@ export function activeFilterCount(state) {
   if (state.maxTuition !== null) n++;
   if (state.myIbPoints !== null) n++;
   if (state.myMaths !== null) n++;
+  if (state.exam !== null) n++;
   return n;
 }
 
@@ -62,6 +65,12 @@ export function applyFilters(rows, state, shortlist) {
     if (state.myMaths !== null &&
         row.mathsAccepted !== null &&
         !row.mathsAccepted.includes(state.myMaths)) return false;
+
+    // And for exams: a programme nobody has checked stays.
+    if (state.exam !== null && row.entranceExam !== null) {
+      if (state.exam === 'none' && row.entranceExam !== 'no') return false;
+      if (state.exam === 'skippable' && row.entranceExam === 'yes') return false;
+    }
 
     return true;
   });

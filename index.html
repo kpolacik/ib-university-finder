@@ -148,6 +148,18 @@
       </select>
     </div>
 
+    <!-- Hides programmes with an entrance exam. A programme nobody has checked
+         for an exam is never hidden. -->
+    <div class="field field-exam">
+      <label for="f-exam">Entrance exam</label>
+      <select id="f-exam" name="exam"
+              title="Hides programmes where you'd have to sit an entrance exam or test">
+        <option value="">Any</option>
+        <option value="none">No exam</option>
+        <option value="skippable">No exam, or one I can skip</option>
+      </select>
+    </div>
+
     <div class="filterbar-menus">
       <details class="dropdown" id="dd-subjects">
         <summary class="dropdown-button">

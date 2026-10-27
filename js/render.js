@@ -92,6 +92,9 @@ function card(row, { state, shortlist, onToggleStar }) {
   if (state.myMaths !== null && row.mathsAccepted === null) {
     article.append(el('p', 'note', 'Shown despite the maths filter — its maths requirement isn’t known yet.'));
   }
+  if (state.exam !== null && row.entranceExam === null) {
+    article.append(el('p', 'note', 'Shown despite the exam filter — we haven’t checked whether it has an entrance exam.'));
+  }
 
   // --- provenance, on every card, never hidden --------------------------
   article.append(provenance(row));
@@ -128,6 +131,11 @@ function requirements(row) {
     reqRow(list, 'Admission', row.admission.map((t) => el('span', 'req-admission', t)));
   }
 
+  // --- entrance exam -----------------------------------------------------
+  // The admission line names the exam; this row answers the yes/no question
+  // the exam filter asks, so the card and the filter never disagree.
+  reqRow(list, 'Exam', [EXAM_TEXT[row.entranceExam ?? 'unknown']()]);
+
   // --- points ------------------------------------------------------------
   if (row.ibPointsMin === null) {
     // Worth stating rather than omitting: "there is no points threshold" is
@@ -162,6 +170,13 @@ function requirements(row) {
   block.append(list);
   return block;
 }
+
+const EXAM_TEXT = {
+  yes: () => el('span', '', 'Entrance exam or test'),
+  waivable: () => el('span', '', 'Entrance exam — some IB applicants can skip it'),
+  no: () => el('span', 'req-quiet', 'No entrance exam'),
+  unknown: () => el('span', 'req-unknown', 'Not checked yet'),
+};
 
 function reqRow(dl, label, nodes) {
   dl.append(el('dt', 'req-label', label));

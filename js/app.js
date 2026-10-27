@@ -19,6 +19,7 @@ const dom = {
   points: document.getElementById('f-points'),
   tuition: document.getElementById('f-tuition'),
   maths: document.getElementById('f-maths'),
+  exam: document.getElementById('f-exam'),
   subjects: document.getElementById('f-subjects'),
   countries: document.getElementById('f-countries'),
   languages: document.getElementById('f-languages'),
@@ -125,6 +126,11 @@ function wireInputs() {
     update();
   });
 
+  dom.exam.addEventListener('change', () => {
+    state.exam = dom.exam.value || null;
+    update();
+  });
+
   dom.sort.addEventListener('change', () => {
     state.sort = dom.sort.value;
     update();
@@ -135,6 +141,7 @@ function wireInputs() {
     state.maxTuition = null;
     state.myIbPoints = null;
     state.myMaths = null;
+    state.exam = null;
     state.subjectAreas.clear();
     state.countries.clear();
     state.languages.clear();
@@ -143,6 +150,7 @@ function wireInputs() {
     dom.points.value = '';
     dom.tuition.value = '';
     dom.maths.value = '';
+    dom.exam.value = '';
     // Re-render the chips rather than reaching into render.js's markup with a
     // selector — a class rename there would silently break unchecking here.
     drawChips();

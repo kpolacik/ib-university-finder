@@ -250,6 +250,13 @@ initials and it reads "Checked <date> by <initials>".
    the 2027 table is not out yet.
 7. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
    *Living costs* under Decisions). Re-check them each autumn with the rest.
+8. **The 13 entrance-exam unknowns** (`entrance_exam` = `?`): five VŠE English
+   bachelors and Masaryk's Informatika ve vzdělávání (their 2027 rules are not
+   out), "See the faculty's English admission rules" at one Czech faculty,
+   Radboud Psychology (its four-part Matching Assignment may or may not include
+   a test), UL Music and Dance, Maynooth MH002, UCD Veterinary Nursing, and two
+   Italian open-access programmes (Bologna 6653, Ca' Foscari IMS) whose pages
+   name no entry check.
 
 ## Known gaps
 
@@ -265,8 +272,10 @@ initials and it reads "Checked <date> by <initials>".
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
   Kondiční trenér are listed as Czech-taught but carry a fee "za studium v
   cizím jazyce". Their fee is `?` and the note says so.
-- 5 programmes have no deadline: VU Law in Society, Leiden Archaeology, Leiden
-  University College, and the two Utrecht colleges. Was 20 — fourteen Leiden
+- 3 programmes have no deadline: VU Law in Society, Leiden University College
+  (Early Bird 1 December; its regular deadline isn't on the how-to-apply page)
+  and University College Utrecht. Leiden Archaeology and UCR got theirs on
+  2026-10-27. Was 20 — fourteen Leiden
   deadlines and Tilburg Psychology were recovered on 2026-08-21.
 - 249 of 757 show no English requirement, counting the university default each
   programme inherits. Almost all are Dutch. DCU's 70 were filled on
@@ -405,6 +414,31 @@ a per-country system.
   carries it. The importer follows that link once, which recovered 15 rows.
 
 ## Decisions already made, so they are not relitigated
+
+- **Entrance exams, and the exam filter** (2026-10-27,
+  `tools/add-entrance-exam-2026-10-27.mjs`, which quotes the page behind every
+  hand-checked row). The survey asked for an exam filter. `entrance_exam` is
+  `yes` / `waivable` / `no` / `?`; the picker offers "No exam" and "No exam, or
+  one I can skip", and unknown rows are never hidden. Most rows follow from the
+  sourced `admission` text (Czech "can be waived on set criteria" is
+  `waivable`, unless the only waiver is Czech/Slovak school grades; Irish CAO
+  points are `no` unless HPAT/GAMSAT, a music test or an audition is named;
+  Italian tests are `yes`, Luiss's IB 36+ route `waivable`). Every Dutch
+  selective and numerus fixus programme was read on its 2027-28 selection page.
+  A conditional maths test (Erasmus Econometrics with AA SL, RSM IBA) is
+  `waivable`. Denmark is `no`: SDU's uniTEST page says convertible grades are
+  assessed in quota 1, and every Danish row has a quota 1 route.
+
+  Checking the selection pages turned up wrong admission data, fixed in
+  `tools/fix-admission-2026-10-27.mjs`: Groningen's AI, Computing Science and
+  UCG are not numerus fixus (Groningen has five for 2027-28: Medicine,
+  International Business 400, Psychology NL 390 and EN 225, Dentistry); the six
+  Tilburg international bachelors marked "selective" are open entry with
+  mandatory matching, deadline 1 May; Erasmus IBEB has 500 places, not 700; and
+  a dozen Irish "audition or portfolio" labels were wrong (Galway Drama: "not
+  required to audition or submit portfolios"; TCD Music and five UCD
+  music/drama courses list grades only). Leiden Archaeology, LUC and UCR got
+  their admission lines and the 1 May deadlines their pages give.
 
 - **IB subject requirements, and the maths filter** (2026-10-26,
   `tools/add-ib-subjects-2026-10-26.mjs`, which carries the source of every

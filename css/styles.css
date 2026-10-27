@@ -290,6 +290,7 @@ svg:not(.sprite) {
 .field-search { flex: 1 1 18rem; }
 .field-number { flex: 0 0 7.5rem; }
 .field-maths { flex: 0 0 9rem; }
+.field-exam { flex: 0 0 14rem; }
 .filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .filterbar #f-clear { align-self: flex-end; }
 
