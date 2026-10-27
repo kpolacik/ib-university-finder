@@ -2321,6 +2321,18 @@ appCheck('actual crossings ignore loading, stale/repeated mode notifications and
   run("showTotalFailure(new Error('controlled failure'));"); flip(false); flip(true);
   return pane.hidden && get('results').parent.hidden && run('loaded') === false;
 });
+// A debounced filter can run update() after the viewport crosses 1024 but
+// before the change event. update() then recorded the new mode, the event did
+// nothing, and the pick never moved from the hidden pane into its slot.
+appCheck('an update between the resize and its change event still moves the pick both ways', ({ run, flip, click, item, media, body, ids: [a] }) => {
+  flip(true); click(a);
+  media.matches = false; run('update();');
+  if (item(a).querySelectorAll('.expand').length !== 1 || body.querySelector('article') || run('[...openIds]').join() !== a) return false;
+  run('crossWide();');
+  if (item(a).querySelectorAll('.expand').length !== 1) return false;
+  media.matches = true; run('update();'); run('crossWide();');
+  return !item(a).querySelector('.expand') && body.querySelector('h2')?.id === `p-${a}` && run('selectedId') === a;
+});
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

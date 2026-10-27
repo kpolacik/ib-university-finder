@@ -355,6 +355,9 @@ function clearAll() {
 
 function update() {
   if (!loaded) return;
+  // A debounced filter can land after the viewport crosses 1024 but before the
+  // change event. Finish the crossing first, or the pick stays in the hidden pane.
+  if (appliedWide !== null && appliedWide !== wideQuery.matches) crossWide();
 
   const focus = snapshotFocus();
 
