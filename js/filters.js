@@ -120,16 +120,17 @@ export function pointsNote(row, state) {
   }
   const parts = [];
   if (bucket === 'maths') parts.push('Within your points only with HL Maths 4+.');
-  if (row.pointsKind === 'cutoff' && row.cao) {
-    // The card's headline is Round 1, so say when only Round 2 was reached:
-    // otherwise the headline would silently disagree with the filter.
-    const first = row.cao.rounds.find((r) => r.round === 1 && r.points !== null);
-    const bonus = bucket === 'maths' || state.hlMaths ? MATHS_BONUS_POINTS : 0;
-    if (first && caoPointsFor(state.myIbPoints) + bonus < first.points) {
-      parts.push('Within your points on the Round 2 cutoff, not Round 1.');
-    }
-  }
+  if (roundTwoOnly(row, state)) parts.push('Within your points on the Round 2 cutoff, not Round 1.');
   return parts.length ? parts.join(' ') : null;
+}
+
+// The row and the full note must agree when only the later round is reached.
+export function roundTwoOnly(row, state) {
+  const bucket = pointsBucket(row, state);
+  if (!['within', 'maths'].includes(bucket) || row.pointsKind !== 'cutoff' || !row.cao) return false;
+  const first = row.cao.rounds.find((r) => r.round === 1 && r.points !== null);
+  const bonus = bucket === 'maths' || state.hlMaths ? MATHS_BONUS_POINTS : 0;
+  return Boolean(first && caoPointsFor(state.myIbPoints) + bonus < first.points);
 }
 
 // The split after the count while My points is set (Q3, P04): how many of the
@@ -138,16 +139,20 @@ export function pointsNote(row, state) {
 // with a test has a figure, just not one we can compare. Empty when My points
 // is empty.
 export function pointsSummary(rows, state) {
-  if (state.myIbPoints === null) return '';
+  return pointsSummaryParts(rows, state).map((p) => p.text).join(' · ');
+}
+
+export function pointsSummaryParts(rows, state) {
+  if (state.myIbPoints === null) return [];
   const n = { within: 0, maths: 0, unknown: 0 };
   for (const row of rows) {
     const bucket = pointsBucket(row, state);
     if (bucket in n) n[bucket]++;
   }
-  const parts = [`${n.within} within your points`];
-  if (n.maths) parts.push(`${n.maths} only with HL Maths 4+`);
-  if (n.unknown) parts.push(`${n.unknown} points unknown`);
-  return parts.join(' · ');
+  const parts = [{ kind: 'fit', text: `${n.within} within your points` }];
+  if (n.maths) parts.push({ kind: 'cond', text: `${n.maths} only with HL Maths 4+` });
+  if (n.unknown) parts.push({ kind: 'unk', text: `${n.unknown} points unknown` });
+  return parts;
 }
 
 // ------------------------------------------------------------------- search

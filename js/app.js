@@ -3,17 +3,19 @@
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS,
-  parsePoints, parseFee, stateToParams, paramsToState, pointsSummary,
+  parsePoints, parseFee, stateToParams, paramsToState, pointsSummaryParts,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderCards, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  renderRows, renderSlot, renderCount, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
   banner: document.getElementById('source-banner'),
   form: document.getElementById('filter-form'),
-  resultsBar: document.querySelector('.results-bar'),
+  status: document.querySelector('.status'),
+  listp: document.querySelector('.listp'),
+  sortButtons: [...document.querySelectorAll('.cols [data-sort]')],
   dropdowns: [...document.querySelectorAll('.dropdown')],
   // Each count is the number plus a hidden " selected", so a screen reader
   // names the button "Subject area 2 selected" rather than "Subject area 2"
@@ -43,6 +45,7 @@ const dom = {
   emptyTitle: document.getElementById('empty-title'),
   emptyHint: document.getElementById('empty-hint'),
   emptyClear: document.getElementById('empty-clear'),
+  emptyTips: document.getElementById('empty-tips'),
   pointsError: document.getElementById('f-points-error'),
   tuitionError: document.getElementById('f-tuition-error'),
   shortlistBar: document.getElementById('shortlist-bar'),
@@ -66,7 +69,8 @@ let facets = { subjectAreas: [], countries: [], languages: [] };
 let currentlyShown = 0;
 // The "within / only with HL Maths 4+ / points unknown" split of the rows on
 // screen, worked out in update() so a count-only refresh can reuse it.
-let currentSummary = '';
+let currentSummary = [];
+const openIds = new Set();
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -80,7 +84,9 @@ async function start() {
   dom.banner.addEventListener('click', openIssuesFromLink);
   wireDropdowns();
   applyUrlFields();
+  syncSort();
   wireInputs();
+  dom.results.addEventListener('click', toggleRow);
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
@@ -91,6 +97,7 @@ async function start() {
     renderSourceBanner(dom.banner, meta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, meta.issues);
     renderSortOptions(dom.sort, SORTS, state.sort);
+    syncSort();
 
     facets = buildFacets(allRows);
     applyUrlLists();
@@ -162,7 +169,8 @@ function showTotalFailure(err) {
   dom.sourceLine.hidden = true;
   dom.banner.hidden = false;
   dom.form.hidden = true;
-  dom.resultsBar.hidden = true;
+  dom.status.hidden = true;
+  dom.listp.hidden = true;
   renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, err.reasons || [err.message]);
 }
 
@@ -236,8 +244,19 @@ function wireInputs() {
 
   dom.sort.addEventListener('change', () => {
     state.sort = dom.sort.value;
+    syncSort();
     update();
   });
+
+  for (const button of dom.sortButtons) {
+    button.addEventListener('click', () => {
+      const key = button.dataset.sort;
+      if (state.sort === key) return;
+      state.sort = key;
+      syncSort();
+      update();
+    });
+  }
 
   dom.clear.addEventListener('click', clearAll);
   dom.emptyClear.addEventListener('click', clearAll);
@@ -338,25 +357,70 @@ function update() {
 
   const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort);
   currentlyShown = rows.length;
-  currentSummary = pointsSummary(rows, state);
+  currentSummary = pointsSummaryParts(rows, state);
 
-  renderCards(dom.results, rows, { state, shortlist, onToggleStar });
+  const focusedId = dom.results.contains(document.activeElement)
+    ? document.activeElement.closest('li.item')?.dataset.id : null;
+  renderRows(dom.results, rows, { state, shortlist, onToggleStar });
+  const shown = new Map(rows.map((row) => [row.id, row]));
+  for (const id of openIds) if (!shown.has(id)) openIds.delete(id);
+  for (const item of dom.results.children) {
+    if (openIds.has(item.dataset.id)) openRow(item, shown.get(item.dataset.id));
+    if (item.dataset.id === focusedId) item.querySelector('button.open').focus({ preventScroll: true });
+  }
   renderEmptyState(rows.length);
   renderCounts(rows.length);
   keepAddress();
+}
+
+function openRow(item, row) {
+  const slot = renderSlot(row, state);
+  item.append(slot);
+  item.classList.add('is-open');
+  const button = item.querySelector('button.open');
+  button.setAttribute('aria-expanded', 'true');
+  button.setAttribute('aria-controls', slot.id);
+}
+
+function toggleRow(event) {
+  const button = event.target.closest('button.open');
+  if (!button) return;
+  const item = button.closest('li.item');
+  const id = item.dataset.id;
+  if (openIds.has(id)) {
+    item.querySelector('.expand').remove();
+    item.classList.remove('is-open');
+    button.setAttribute('aria-expanded', 'false');
+    button.removeAttribute('aria-controls');
+    openIds.delete(id);
+  } else {
+    openRow(item, allRows.find((row) => row.id === id));
+    openIds.add(id);
+  }
+}
+
+function syncSort() {
+  const directions = { name: 'by university, A to Z', points: 'lowest first', deadline: 'soonest first', tuition: 'cheapest first' };
+  dom.sort.value = state.sort;
+  for (const button of dom.sortButtons) {
+    const active = button.dataset.sort === state.sort;
+    button.setAttribute('aria-pressed', String(active));
+    button.querySelector('.visually-hidden').textContent = `, ${active ? 'sorted' : 'sort'} ${directions[button.dataset.sort]}`;
+    button.querySelector('.dir').hidden = !active;
+    button.querySelector('svg').hidden = active;
+  }
 }
 
 function renderCounts(shown) {
   const active = activeFilterCount(state);
   const scope = state.shortlistOnly ? ' in your shortlist' : '';
 
-  const countText = active === 0 && !state.shortlistOnly
+  const lead = active === 0 && !state.shortlistOnly
     ? `${shown} ${plural(shown)}`
-    : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`
-      + (currentSummary ? ` · ${currentSummary}` : '');
+    : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`;
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
-  if (dom.count.textContent !== countText) dom.count.textContent = countText;
+  renderCount(dom.count, lead, currentSummary);
 
   // Each pick-list button shows how many of its values are ticked, so a closed
   // drop-down still tells you it is narrowing the results.
@@ -380,12 +444,14 @@ function showCount(box, number, n) {
 }
 
 function renderEmptyState(shown) {
+  dom.listp.hidden = shown === 0;
   if (shown > 0) {
     dom.empty.hidden = true;
     return;
   }
   dom.empty.hidden = false;
   dom.emptyClear.hidden = true;
+  dom.emptyTips.hidden = true;
 
   if (state.shortlistOnly && shortlist.size === 0) {
     dom.emptyTitle.textContent = 'Your shortlist is empty.';
@@ -401,6 +467,8 @@ function renderEmptyState(shown) {
     dom.emptyTitle.textContent = 'No programmes match these filters.';
     dom.emptyHint.textContent = `Try changing ${listOf(filtersInUse())}.`;
     dom.emptyClear.hidden = false;
+    dom.emptyClear.textContent = `Clear all (${activeFilterCount(state)})`;
+    dom.emptyTips.hidden = false;
   }
 }
 

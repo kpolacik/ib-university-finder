@@ -73,11 +73,9 @@
           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 4.75 3.5 19.25h17L12 4.75Z"/><path d="M12 10v4"/><path d="M12 17h.01"/>
   </symbol>
-  <symbol id="i-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="8.25"/><path d="m15 9-2.1 4.9L8 16l2.1-4.9L15 9Z"/>
-  </symbol>
   <!-- Phosphor Regular arrow-square-out, @phosphor-icons/core 2.1.1, MIT. -->
+  <!-- Phosphor Regular arrows-down-up, MIT, @phosphor-icons/core 2.1.1. -->
+  <symbol id="i-sort" viewBox="0 0 256 256"><path d="M117.66,170.34a8,8,0,0,1,0,11.32l-32,32a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,11.32-11.32L72,188.69V48a8,8,0,0,1,16,0V188.69l18.34-18.35A8,8,0,0,1,117.66,170.34Zm96-96-32-32a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L168,67.31V208a8,8,0,0,0,16,0V67.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
   <symbol id="i-ext" viewBox="0 0 256 256"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></symbol>
   <!-- Phosphor Regular check-circle, @phosphor-icons/core 2.1.1, MIT. -->
   <symbol id="i-check" viewBox="0 0 256 256"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
@@ -192,8 +190,8 @@
 
   <div class="stream">
 
-    <div class="results-bar">
-      <p class="result-count" id="result-count" aria-live="polite"></p>
+    <div class="status">
+      <p class="count" id="result-count" aria-live="polite"></p>
       <div class="sort-field">
         <label for="f-sort">Sort by</label>
         <select id="f-sort"></select>
@@ -220,29 +218,43 @@
       </button>
     </div>
 
-    <!-- Skeletons rather than a spinner: they occupy the space the cards will
-         take, so nothing jumps when the data lands. -->
-    <div class="skeletons" id="loading" aria-hidden="true">
-      <div class="skeleton-card"><span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-block"></span><span class="sk sk-line short"></span></div>
-      <div class="skeleton-card"><span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-block"></span><span class="sk sk-line short"></span></div>
-      <div class="skeleton-card"><span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-block"></span><span class="sk sk-line short"></span></div>
-      <div class="skeleton-card"><span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-block"></span><span class="sk sk-line short"></span></div>
-    </div>
+    <section aria-labelledby="results-h">
+      <h2 class="visually-hidden" id="results-h">Programmes</h2>
+      <div class="listp">
+        <div class="cols" role="group" aria-label="Sort programmes">
+          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false">University A–Z<span class="visually-hidden">, sort by university, A to Z</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button></span>
+          <button type="button" data-sort="points" aria-pressed="false">Points<span class="visually-hidden">, sort lowest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
+          <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted soonest first</span><svg class="ic" aria-hidden="true" hidden><use href="#i-sort"/></svg><span class="dir" aria-hidden="true"></span></button>
+          <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort cheapest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
+          <span class="chv" aria-hidden="true"></span>
+        </div>
+        <div class="skeletons" id="loading" aria-hidden="true">
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+          <div class="sk-row"><span class="sk-title"></span><span class="sk-sub"></span><span class="sk-cell"></span><span class="sk-cell"></span><span class="sk-cell"></span></div>
+        </div>
+        <ul class="results" id="results" tabindex="-1"></ul>
+      </div>
 
-    <div class="results" id="results" tabindex="-1"></div>
+      <div class="empty" id="empty-state" hidden>
+        <h2 id="empty-title"></h2>
+        <p id="empty-hint"></p>
+        <ul id="empty-tips">
+          <li>Search matches words in any order, so “Dublin computer” works.</li>
+          <li>Short words match the start of a word: “uva”, “tcd”, “law”.</li>
+        </ul>
+        <button type="button" id="empty-clear" class="btn btn-p" hidden>Clear all</button>
+      </div>
 
-    <div class="empty-state" id="empty-state" hidden>
-      <svg class="empty-icon" aria-hidden="true"><use href="#i-compass"/></svg>
-      <p><strong id="empty-title"></strong></p>
-      <p id="empty-hint"></p>
-      <button type="button" id="empty-clear" class="button" hidden>Clear all</button>
-    </div>
-
-    <details class="issues" id="issues" hidden>
-      <summary id="issues-summary">Spreadsheet problems</summary>
-      <ul id="issues-list"></ul>
-      <p class="hint">These rows are in the spreadsheet but could not be read, so they are not shown above.</p>
-    </details>
+      <details class="issues" id="issues" hidden>
+        <summary id="issues-summary">Spreadsheet problems</summary>
+        <ul id="issues-list"></ul>
+        <p class="hint">These rows are in the spreadsheet but could not be read, so they are not shown above.</p>
+      </details>
+    </section>
 
   </div>
 

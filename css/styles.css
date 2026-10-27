@@ -95,26 +95,6 @@
   --ease-out:cubic-bezier(.2,.7,.3,1);      /* anything entering */
   --ease-in-out:cubic-bezier(.45,0,.25,1);  /* anything moving between two states */
 
-  /* Temporary old-card compatibility, until the row stage. */
-  --surface: #f7f6f3; /* old: remove in stage 3 */
-  --ink-soft: #4a4641; /* old: remove in stage 3 */
-  --ink-faint: #5f5a54; /* old: remove in stage 3 */
-  --line: #e6e2da; /* old: remove in stage 3 */
-  --line-soft: #f0ede6; /* old: remove in stage 3 */
-  --inset: #ffffff; /* old: remove in stage 3 */
-  --warn: #8a5a00; /* old: remove in stage 3 */
-  --warn-soft: #fdf5e6; /* old: remove in stage 3 */
-  --warn-line: #ecd9ae; /* old: remove in stage 3 */
-  --save: #956900; /* old: remove in stage 3 */
-  --save-soft: #fdf6e4; /* old: remove in stage 3 */
-  --shadow-md: 0 18px 40px -20px rgba(20, 17, 15, 0.18); /* old: remove in stage 3 */
-  --r-sm: 8px; /* old: remove in stage 3 */
-  --r-md: 12px; /* old: remove in stage 3 */
-  --r-lg: 18px; /* old: remove in stage 3 */
-  --r-xl: 26px; /* old: remove in stage 3 */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1); /* old: remove in stage 3 */
-  --dur: 220ms; /* old: remove in stage 3 */
-  --old-print-ink: #000; /* old: remove in stage 3 */
 }
 
 
@@ -236,13 +216,12 @@ svg:not(.sprite) {
   position: absolute;
   left: -9999px;
   top: 0.5rem;
-  background: var(--surface);
+  background: var(--panel);
   color: var(--accent);
   padding: 0.6rem 1rem;
   border: 1px solid var(--accent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-cell);
   font-weight: 600;
-  box-shadow: var(--shadow-md);
   z-index: 10;
 }
 .skip-link:focus { left: 1.25rem; }
@@ -317,13 +296,13 @@ svg:not(.sprite) {
   color: var(--ink);
   cursor: pointer;
   box-shadow: none;
-  transition: border-color var(--dur) var(--ease),
-              color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              transform 120ms var(--ease),
-              box-shadow var(--dur) var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-out),
+              box-shadow var(--t-fast) var(--ease-out);
 }
-.button svg { color: var(--ink-2); transition: color var(--dur) var(--ease); }
+.button svg { color: var(--ink-2); transition: color var(--t-fast) var(--ease-out); }
 .button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
@@ -386,7 +365,7 @@ svg:not(.sprite) {
   user-select: none;
   list-style: none;
   white-space: nowrap;
-  transition: border-color var(--dur) var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out);
 }
 .dropdown-button::-webkit-details-marker { display: none; }
 .dropdown-button:hover { border-color: var(--accent); }
@@ -422,7 +401,6 @@ svg:not(.sprite) {
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: var(--r-panel);
-  box-shadow: var(--shadow-md);
 }
 
 .options { display: grid; gap: 0.1rem; }
@@ -432,7 +410,7 @@ svg:not(.sprite) {
   align-items: center;
   gap: 0.65rem;
   padding: 0.5rem 0.65rem;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-cell);
   font-size: 0.92rem;
   cursor: pointer;
   user-select: none;
@@ -464,7 +442,7 @@ svg:not(.sprite) {
   background: var(--panel);
   color: var(--ink);
   width: 100%;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
 }
 .field input::placeholder { color: var(--ink-3); }
 .field input:hover, .sort-field select:hover { border-color: var(--accent); }
@@ -498,10 +476,10 @@ svg:not(.sprite) {
   font-size: 0.85rem;
   cursor: pointer;
   user-select: none;
-  transition: border-color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              color var(--dur) var(--ease),
-              transform 120ms var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-out);
 }
 .chip:hover { border-color: var(--accent); background: var(--hover); }
 .chip:active { transform: scale(0.97); }
@@ -516,21 +494,11 @@ svg:not(.sprite) {
 
 /* --------------------------------------------------- results + shortlist */
 
-.results-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin: 0 0 1rem;
-}
-.result-count {
-  font-weight: 600;
-  font-size: 1.05rem;
-  letter-spacing: -0.015em;
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
+.status{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;padding:8px 0;background:var(--ground)}
+.count{margin:0;font-size:var(--fs-13);line-height:18px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.count b{color:var(--ink);font-weight:700}
+.count .k{white-space:nowrap;font-weight:600}
+.k-fit{color:var(--fit-ink)}.k-cond{color:var(--cond-ink)}.k-unk{color:var(--ink-2)}
 .sort-field { display: grid; gap: 0.3rem; min-width: 14rem; }
 
 .shortlist-bar {
@@ -558,17 +526,45 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------------ detail */
 
-/* One article per shown programme (design spec §6.7) until stage 3 brings the
-   rows. All 1240 stay in the DOM, so Ctrl+F still finds every fact, but the
-   browser skips layout and paint for the ones off screen. The old cards went
-   from 99 ms of layout per filter change to 4 ms with this (historical, not
-   re-measured for the detail). The estimates are the median rendered detail
-   heights measured 2026-10-27: 721 px at 390 wide, 482 at 768 and 416 at 1280.
-   "auto" remembers each real height afterwards, so the scrollbar does not
-   jump. Scoped to the list: the stage 3 slot and the stage 4 pane must not
-   inherit it. */
-.results{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
-.results>.detail{content-visibility:auto;contain-intrinsic-size:auto 720px}
+/* Summary rows own containment; full detail exists only in open slots. */
+.results{list-style:none;margin:0;padding:0}
+.row :where(h3,p){margin:0}
+.listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel)}
+.cols{display:none}
+.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 154px}
+.item+.item{border-top:1px solid var(--hairline)}
+.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"main main" "pts pts" "ddl fee";gap:4px 8px;padding:8px 12px}
+.row:hover{background:var(--hover)}
+.is-open>.row{background:var(--hover)}
+.r-main{grid-area:main;min-width:0;padding-right:24px;margin-bottom:2px}
+.r-t{font-size:var(--fs-16);font-weight:600;line-height:20px}
+.open{all:unset;cursor:pointer}
+.open::after{content:"";position:absolute;inset:0}
+.open:focus-visible::after{outline:2.5px solid var(--accent);outline-offset:-3px;border-radius:var(--r-cell)}
+.sub,.line{font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
+.line b{color:var(--ink);font-weight:600}
+.cc{margin-left:4px;font-size:var(--fs-12);font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
+.chev{position:absolute;top:18px;right:14px;width:8px;height:8px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none}
+.is-open .chev{transform:translateY(3px) rotate(-135deg)}
+.deg{margin-left:6px;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+.row .ic{width:14px;height:14px;fill:currentColor;flex:none}
+.row .cell{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:0 8px;padding:4px 8px;font-size:var(--fs-13);line-height:18px}
+.c-pts{grid-area:pts}.c-ddl{grid-area:ddl}.c-fee{grid-area:fee}
+.row .c-fee{justify-content:flex-end;text-align:right}
+.row :is(.c-pts,.c-ddl){justify-self:start;max-width:100%}
+.row .c-pts .lab,.row .v-time .lab,.row .v-past .lab,.row .c-fee:not(.v-unk) .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.row .c-pts.v-none .lab{position:static;width:auto;height:auto;clip-path:none}
+.row .fig{font-size:var(--fs-14);line-height:18px}
+.row .verd{margin:0}
+.row .c-pts .verd{order:-1}
+.row .v-unk{padding:2.5px 6.5px}
+.pt{white-space:nowrap}
+.q{font-size:12.5px;color:var(--ink-2)}
+.r2{order:3;flex-basis:100%;padding-left:17px;font-size:var(--fs-12);font-weight:600}
+.v-fit .r2{color:var(--fit-ink)}.v-cond .r2{color:var(--cond-ink)}
+.expand{border-top:1px solid var(--hairline)}
+.expand>.detail{border:0;border-radius:0}
+.d-pts{display:grid;gap:2px}
 
 /* The mockup leans on a global margin/list reset this stylesheet does not
    have. Scoped here, and at zero specificity (:where) so the component rules
@@ -657,7 +653,32 @@ svg:not(.sprite) {
 .detail .ok .ic{width:14px;height:14px}
 
 @media (min-width: 600px) {
-  .results>.detail{contain-intrinsic-size:auto 450px}
+  .status .sort-field{display:none}
+  .item{contain-intrinsic-size:auto 92px}
+  .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.75rem 6.75rem 12px;grid-template-areas:"main pts ddl fee chev";column-gap:8px}
+  .cols{display:grid;padding:4px 12px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+  .c1{display:flex;align-items:center;gap:6px}
+  .cols button{all:unset;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);cursor:pointer}
+  .c1 button{padding:4px 6px}
+  .cols button:hover{background:var(--hover)}
+  .cols button:focus-visible{outline:2.5px solid var(--accent);outline-offset:0}
+  .cols .ic{width:14px;height:14px}
+  .cols [aria-pressed=true]{color:var(--ink);font-weight:700}
+  .dir{width:0;height:0;border:5px solid transparent;border-top:6px solid var(--accent);border-bottom:0}
+  .cols .r{justify-self:end}
+  .row{padding:8px 12px;align-items:start}
+  .row :is(.c-pts,.c-ddl){justify-self:stretch}
+  .r-main{margin:0;padding:0}
+  .sub{display:flex;align-items:baseline;min-width:0}
+  .uc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sub>:not(.uc){flex:none}
+  .chev{position:static;grid-area:chev;margin-top:6px}
+  .row .cell{flex-direction:column;align-items:flex-start;flex-wrap:nowrap;padding:4px 8px}
+  .row .v-unk{padding:2.5px 6.5px}
+  .row :is(.c-ddl,.c-fee){align-items:flex-end;text-align:right}
+  .row .lab,.row .c-pts.v-none .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .row .c-pts .verd{order:0}
+  .row .v-time .verd{order:1}
   .detail{padding:16px 24px 20px}
   .d-cells{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
   .d-cells .c-pts{grid-column:auto}
@@ -675,94 +696,48 @@ svg:not(.sprite) {
   width: 2.35rem;
   height: 2.35rem;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink-faint);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-cell);
+  background: var(--panel);
+  color: var(--ink-2);
   cursor: pointer;
-  transition: color var(--dur) var(--ease),
-              border-color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              transform 120ms var(--ease);
+  transition: color var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-out);
 }
 .star svg { width: 1.2rem; height: 1.2rem; }
-.star:hover { color: var(--save); border-color: var(--save); background: var(--save-soft); }
+.star:hover { color: var(--accent); border-color: var(--accent); background: var(--hover); }
 .star:active { transform: scale(0.92); }
 .star[aria-pressed="true"] {
-  color: var(--save);
-  border-color: var(--save);
-  background: var(--save-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 .star[aria-pressed="true"] svg { fill: currentColor; }
 
 
 /* ------------------------------------------------- loading + empty */
 
-.skeletons { display: grid; gap: 1rem; }
-.skeleton-card {
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 1.4rem;
-  display: grid;
-  gap: 0.7rem;
+.skeletons{display:grid}
+.sk-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;min-height:145px;border-top:1px solid var(--hairline)}
+.sk-row>span{display:block;border-radius:var(--r-cell);background:var(--hover);height:18px}
+.sk-row .sk-title{grid-column:1/-1;width:65%;height:20px}
+.sk-row .sk-sub{grid-column:1/-1;width:45%}
+.sk-row .sk-cell{height:28px}
+.empty{margin:12px 0;padding:20px 16px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);display:grid;gap:8px;justify-items:start}
+.empty :where(h2,p,ul){margin:0}
+.empty h2{font-size:var(--fs-16);font-weight:700}
+.empty ul{list-style:disc;padding-left:18px;color:var(--ink-2)}
+.issues{padding:12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13)}
+.issues summary{font-weight:600;cursor:pointer}
+.issues ul{list-style:disc;padding-left:18px;margin:6px 0;color:var(--ink-2)}
+@media (min-width: 600px) {
+  .sk-row{grid-template-columns:minmax(0,1fr) 10.5rem 6.75rem 6.75rem;min-height:75px}
+  .sk-row .sk-title{grid-column:1;grid-row:1;width:80%}
+  .sk-row .sk-sub{grid-column:1;grid-row:2;width:60%}
+  .sk-row .sk-cell{grid-row:1/3}
 }
-.sk {
-  display: block;
-  border-radius: var(--r-sm);
-  background: var(--line-soft);
-  position: relative;
-  overflow: hidden;
-}
-.sk-title { height: 1.15rem; width: 62%; }
-.sk-line { height: 0.8rem; width: 40%; }
-.sk-line.short { height: 0.75rem; width: 28%; }
-.sk-block { height: 4.5rem; width: 100%; border-radius: var(--r-lg); }
-
-@media (prefers-reduced-motion: no-preference) {
-  .sk::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--panel) 55%, transparent), transparent);
-    animation: shimmer 1.4s infinite;
-  }
-}
-@keyframes shimmer { to { transform: translateX(100%); } }
-
-.empty-state {
-  display: grid;
-  justify-items: center;
-  gap: 0.2rem;
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 3.25rem 1.5rem;
-  text-align: center;
-  color: var(--ink-soft);
-}
-.empty-icon {
-  width: 2rem;
-  height: 2rem;
-  color: var(--ink-faint);
-  margin-bottom: 0.5rem;
-}
-.empty-state p { margin: 0.15rem 0; max-width: 40ch; }
-.empty-state strong { font-family: var(--font); color: var(--ink); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
-
-.issues {
-  margin-top: 1.75rem;
-  font-size: 0.85rem;
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-lg);
-  padding: 0.7rem 1rem;
-}
-.issues summary { cursor: pointer; font-weight: 600; }
-.issues ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
-.issues li { margin-bottom: 0.25rem; }
 
 /* ------------------------------------------------------- wider screens */
 
@@ -776,19 +751,10 @@ svg:not(.sprite) {
 /* Sticky only where there is room for it. On a phone held sideways the bar
    took 46% of the screen, and it covered the "Skip to results" target (A07). */
 @media (min-width: 720px) and (min-height: 600px) {
-  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: var(--shadow-md); }
+  .filterbar { position: sticky; top: 0.75rem; z-index: 10; }
   /* Skip to results lands below the bar, not under it. The bar is 154px tall
      at 768 and 99px at 1280 (measured 2026-10-26), so 12rem clears both. */
   #results { scroll-margin-top: 12rem; }
-}
-
-@media (min-width: 720px) {
-  /* minmax(0, 1fr), never plain 1fr: a bare 1fr refuses to shrink below its
-     content's min-width, and one long unbroken requirement string then pushes
-     the whole grid wider than the page. */
-  /* Stretch, not start: the two cards in a row take the height of the taller
-     one, so neighbours line up instead of ending at different heights. */
-  .skeletons { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 }
 
 /* On a touch screen the controls grow to a 44px target. Hover styling is
@@ -797,7 +763,7 @@ svg:not(.sprite) {
   .star { width: 2.75rem; height: 2.75rem; }
   .chip { padding: 0.5rem 0.85rem; }
   .button { padding: 0.65rem 0.95rem; }
-  .chip:hover { border-color: var(--line); background: var(--surface); }
+  .chip:hover { border-color: var(--edge); background: var(--panel); }
 }
 
 /* ------------------------------------------------- motion preferences */
@@ -814,23 +780,23 @@ svg:not(.sprite) {
 /* ------------------------------------------------------------- printing */
 
 @media print {
-  body { background: var(--panel); color: var(--old-print-ink); padding: 0; font-size: 11pt; }
+  body { background: var(--panel); color: var(--ink); padding: 0; font-size: 11pt; }
 
-  .filterbar, .results-bar, .shortlist-bar, .foot, .lang, .tagline, .stat,
-  .issues, .skip-link, .star, .skeletons, .empty-icon { display: none; }
+  .filterbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
+  .issues, .skip-link, .star, .skeletons, .cols, .chev { display: none; }
 
   .shell { display: block; }
 
   /* The "nobody has checked this" warning must survive onto paper — a printed
      sheet has lost every other bit of context. */
-  .bn { border: 1px solid var(--old-print-ink); color: var(--old-print-ink); background: none; box-shadow: none; }
+  .bn { border: 1px solid var(--ink); color: var(--ink); background: none; box-shadow: none; }
   .src-more { display: inline; }
 
   .results { display: block; }
 
   /* Minimal until the print redesign (stage 6). Undo the on-screen skipping,
      or off-screen entries print blank. */
-  .results > .detail { content-visibility: visible; break-inside: avoid; page-break-inside: avoid; margin-bottom: 0.5rem; }
+  .item { content-visibility: visible; break-inside: avoid; page-break-inside: avoid; }
   /* A printed link is useless without its address, and the address must wrap. */
   .d-foot .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
   .d-foot .btn-p::after {

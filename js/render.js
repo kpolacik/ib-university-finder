@@ -4,8 +4,8 @@
 // spreadsheet that any student can edit, and a pasted <script> tag should show
 // up as text rather than run.
 
-import { pointsLines } from './points.js';
-import { pointsBucket, pointsNote } from './filters.js';
+import { pointsLines, pointsShort } from './points.js';
+import { pointsBucket, pointsNote, roundTwoOnly } from './filters.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -15,55 +15,64 @@ const longDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 });
 
+const shortDate = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+});
+const countryCodes = { Netherlands: 'NL', Ireland: 'IE', Czechia: 'CZ', Italy: 'IT', Denmark: 'DK' };
+
 // shortlist and onToggleStar are still passed by app.js and kept here on
 // purpose, unused: the save button was removed on 2026-10-24 at Jakub's
 // request, but its code stays in case it comes back (STATUS decisions). Until
-// the rows arrive (redesign stage 3) every shown programme is one full detail.
-export function renderCards(container, rows, { state, shortlist, onToggleStar }) {
-  container.replaceChildren(...rows.map((row) => renderDetail(row, state)));
+// the save button returns, the rows deliberately leave these hooks inert.
+export function renderRows(container, rows, { state, shortlist, onToggleStar }) {
+  container.replaceChildren(...rows.map((row) => renderRow(row, state)));
 }
 
 // The full entry for one programme (design spec §6.7). Stage 4 will put one of
-// these in the pane; for now there is one per shown row.
-export function renderDetail(row, state) {
+// these in the pane; the slot keeps the full points lines and other facts.
+export function renderDetail(row, state, { slot = false } = {}) {
   const article = el('article', 'detail');
-  // State sits on the article itself, the content-visibility root, so it
-  // restyles reliably; a class on a descendant inside a skipped subtree would
-  // not (STATUS trap). Passed rows are never dimmed (A01).
+  // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
   if (row.isSample) article.classList.add('is-sample');
 
-  // --- head ----------------------------------------------------------------
-  const head = el('header', 'd-head');
-  const title = el('h2', 'd-title');
-  // The article is named by its title, so a screen reader's list of articles
-  // reads as a list of programmes (A05). programme_id never changes, so neither
-  // does the id; the prefix keeps it from colliding with the page's own ids.
-  title.id = `p-${row.id}`;
-  article.setAttribute('aria-labelledby', title.id);
-  title.append(document.createTextNode(row.programme));
-  // Czech-taught programmes have Czech titles; without lang a screen reader
-  // reads "Architektura a urbanismus" with English pronunciation (A05).
-  if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
-  if (row.degreeType) {
-    // Hidden ", " so it is not read as "Architektura a urbanismusBc." (A05).
-    // The degree keeps the page's language even inside a Czech title.
-    const degree = el('span', 'deg', row.degreeType);
-    if (title.lang) degree.lang = 'en';
-    title.append(el('span', 'visually-hidden', ', '), degree);
-  }
-  // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
-  const city = row.cityUnknown ? 'City not published' : row.city;
-  const place = [city, row.country].filter(Boolean).join(', ');
-  // The title comes first so heading navigation reads it first; CSS draws the
-  // place line above it, as the design has it.
-  head.append(title, el('p', 'd-place', [row.university, place].filter(Boolean).join(' · ')));
-  article.append(head);
+  if (slot) {
+    const points = el('div', 'd-pts');
+    points.append(el('p', 'lab', 'Points'), pointsList(row));
+    article.append(points);
+  } else {
+    // --- head ----------------------------------------------------------------
+    const head = el('header', 'd-head');
+    const title = el('h2', 'd-title');
+    // The article is named by its title, so a screen reader's list of articles
+    // reads as a list of programmes (A05). programme_id never changes, so neither
+    // does the id; the prefix keeps it from colliding with the page's own ids.
+    title.id = `p-${row.id}`;
+    article.setAttribute('aria-labelledby', title.id);
+    title.append(document.createTextNode(row.programme));
+    // Czech-taught programmes have Czech titles; without lang a screen reader
+    // reads "Architektura a urbanismus" with English pronunciation (A05).
+    if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
+    if (row.degreeType) {
+      // Hidden ", " so it is not read as "Architektura a urbanismusBc." (A05).
+      // The degree keeps the page's language even inside a Czech title.
+      const degree = el('span', 'deg', row.degreeType);
+      if (title.lang) degree.lang = 'en';
+      title.append(el('span', 'visually-hidden', ', '), degree);
+    }
+    // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
+    const city = row.cityUnknown ? 'City not published' : row.city;
+    const place = [city, row.country].filter(Boolean).join(', ');
+    // The title comes first so heading navigation reads it first; CSS draws the
+    // place line above it, as the design has it.
+    head.append(title, el('p', 'd-place', [row.university, place].filter(Boolean).join(' · ')));
+    article.append(head);
 
-  // --- the three cells -------------------------------------------------------
-  const cells = el('div', 'd-cells');
-  cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row));
-  article.append(cells);
+    // --- the three cells -------------------------------------------------------
+    const cells = el('div', 'd-cells');
+    cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row));
+    article.append(cells);
+  }
 
   // --- Requirements | Applying -----------------------------------------------
   const two = el('div', 'two');
@@ -92,19 +101,7 @@ export function renderDetail(row, state) {
 function pointsCell(row, state) {
   const cell = el('div', 'cell c-pts');
   cell.append(el('span', 'lab', 'Points'));
-  const list = el('ul', 'plines');
-  for (const line of pointsLines(row)) {
-    const item = el('li');
-    if (line.number === null) {
-      item.textContent = line.qualifier;
-    } else {
-      // The space after the number is real text, so reading and copying the
-      // line gives "≈ 38 IB points, …", not "≈ 38IB points".
-      item.append(el('b', '', line.number), document.createTextNode(` ${line.unit}, ${line.qualifier}`));
-    }
-    list.append(item);
-  }
-  cell.append(list);
+  cell.append(pointsList(row));
 
   const bucket = pointsBucket(row, state);
   let fill = '';
@@ -118,7 +115,7 @@ function pointsCell(row, state) {
   } else if (bucket === 'unknown') {
     [fill, mark] = ['v-unk', 'm-unk'];
     if (row.ibPointsMin !== null) verdict = 'Cutoff includes a test';
-    else verdict = row.pointsPlusTest ? 'No IB figure' : 'No minimum published';
+    else verdict = pointsShort(row).unknown.verdict;
   } else if (bucket === null && row.ibPointsMin === null) {
     // My points empty: the dashed box and the line already say it is unknown.
     fill = 'v-unk';
@@ -128,15 +125,147 @@ function pointsCell(row, state) {
   return cell;
 }
 
-function deadlineCell(row) {
-  const cell = el('div', 'cell c-ddl');
+function pointsList(row) {
+  const list = el('ul', 'plines');
+  for (const line of pointsLines(row)) {
+    const item = el('li');
+    if (line.number === null) {
+      item.textContent = line.qualifier;
+    } else {
+      // The space after the number is real text, so reading and copying the
+      // line gives "≈ 38 IB points, …", not "≈ 38IB points".
+      item.append(el('b', '', line.number), document.createTextNode(` ${line.unit}, ${line.qualifier}`));
+    }
+    list.append(item);
+  }
+  return list;
+}
+
+function renderRow(row, state) {
+  const item = el('li', 'item');
+  item.setAttribute('data-id', row.id);
+  if (row.deadlinePassed) item.classList.add('is-past');
+  if (row.isSample) item.classList.add('is-sample');
+  const body = el('div', 'row');
+  const main = el('div', 'r-main');
+  const heading = el('h3', 'r-t');
+  const title = el('button', 'open', row.programme);
+  title.type = 'button';
+  title.setAttribute('aria-expanded', 'false');
+  if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
+  if (row.degreeType) {
+    const degree = el('span', 'deg', row.degreeType);
+    if (title.lang) degree.lang = 'en';
+    title.append(el('span', 'visually-hidden', ', '), degree);
+  }
+  heading.append(title);
+  const sub = el('p', 'sub');
+  const city = row.cityUnknown ? 'City not published' : row.city;
+  sub.append(el('span', 'uc', [row.university, city].filter(Boolean).join(' · ')));
+  if (row.country) {
+    const code = countryCodes[row.country];
+    const country = el('span', 'cc', code || row.country);
+    if (code) country.setAttribute('aria-hidden', 'true');
+    sub.append(country);
+    if (code) sub.append(el('span', 'visually-hidden', `, ${row.country}`));
+  }
+  if (row.isSample) sub.append(el('span', 'tag tag-strong', 'Invented sample row · not real data'));
+  main.append(heading, sub);
+  const line = rowRequirements(row);
+  if (line) main.append(line);
+  const chevron = el('span', 'chev');
+  chevron.setAttribute('aria-hidden', 'true');
+  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true }), chevron);
+  item.append(body);
+  return item;
+}
+
+function rowRequirements(row) {
+  const line = el('p', 'line');
+  const group = (label, text) => {
+    if (line.childElementCount || line.textContent) line.append(document.createTextNode(' · '));
+    if (label) line.append(el('b', '', label), document.createTextNode(' '));
+    line.append(document.createTextNode(text));
+  };
+  const requires = [row.ibSubjects, ...row.otherRequirements].filter(Boolean);
+  if (requires.length) group('Requires', requires.join(' · '));
+  if (row.languages.length && !(row.languages.length === 1 && row.languages[0] === 'English')) {
+    group('Taught in', row.languages.join(', '));
+  }
+  const admission = row.admission.filter((text) => !(row.country === 'Ireland' && text === 'Places offered in order of CAO points'));
+  if (admission.length) group('', admission.join(' · '));
+  if (!row.isSample && row.isChecked && row.lastVerified) {
+    const ok = el('span', 'ok');
+    ok.append(icon('i-check', 'ic'), document.createTextNode(`Checked${row.verifiedBy ? ` by ${row.verifiedBy}` : ''}`));
+    line.append(ok);
+    if (row.isStale) line.append(el('span', 'tag', 'may be out of date'));
+  }
+  return line.textContent ? line : null;
+}
+
+function rowPointsCell(row, state) {
+  const cell = el('p', 'cell c-pts');
+  cell.append(el('span', 'lab', 'Points'));
+  const short = pointsShort(row);
+  const bucket = pointsBucket(row, state);
+  let fill = 'v-none';
+  let verdict = '';
+  if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.verdict];
+  else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? 'Within your points, then HPAT' : 'Within your points'];
+  else if (bucket === 'maths') [fill, verdict] = ['v-cond', 'Only with HL Maths 4+'];
+  else if (bucket === 'unknown') [fill, verdict] = ['v-unk', 'Cutoff includes a test'];
+  cell.classList.add(fill);
+  if (verdict) cell.append(el('span', `verd m m-${fill.slice(2)}`, verdict));
+  if (short.parts.length) {
+    const fig = el('span', 'fig');
+    short.parts.forEach((part, i) => {
+      if (i) fig.append(document.createTextNode(' · '));
+      const pt = el('span', 'pt');
+      if (part.figure !== null) pt.append(document.createTextNode(`${part.figure} `));
+      const label = row.rankedWithHpat && bucket === 'within' ? 'minimum' : part.label;
+      pt.append(el('small', '', label));
+      fig.append(pt);
+    });
+    cell.append(fig);
+  } else if (short.unknown.reason) {
+    const fig = el('span', 'fig');
+    fig.append(el('small', '', short.unknown.reason));
+    cell.append(fig);
+  }
+  if (short.after && !verdict) cell.append(el('span', 'q', short.after));
+  if (roundTwoOnly(row, state)) cell.append(el('span', 'r2', 'on the Round 2 cutoff only'));
+  return cell;
+}
+
+export function renderSlot(row, state) {
+  const slot = el('div', 'expand');
+  slot.id = `x-${row.id}`;
+  slot.setAttribute('role', 'region');
+  slot.setAttribute('aria-label', `${row.programme}, details`);
+  slot.append(renderDetail(row, state, { slot: true }));
+  return slot;
+}
+
+// The count is the one live region: identical text must leave its nodes alone.
+export function renderCount(node, lead, parts) {
+  const text = [lead, ...parts.map((p) => p.text)].join(' · ');
+  if (node.textContent === text) return false;
+  node.replaceChildren(el('b', '', lead));
+  for (const part of parts) {
+    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, part.text));
+  }
+  return true;
+}
+
+function deadlineCell(row, { compact = false } = {}) {
+  const cell = el(compact ? 'p' : 'div', 'cell c-ddl');
   cell.append(el('span', 'lab', 'Deadline'));
   if (!row.deadline) {
     cell.classList.add('v-unk');
     cell.append(el('span', 'fig', 'Not published'));
     return cell;
   }
-  const date = longDate.format(row.deadline);
+  const date = (compact ? shortDate : longDate).format(row.deadline);
   if (row.deadlinePassed) {
     // Neutral, never red and never dimmed: it is still a fact worth reading.
     cell.classList.add('v-past');
@@ -155,8 +284,8 @@ function deadlineCell(row) {
 }
 
 // Blank is not zero: a null fee is "Not published", a 0 is a real claim.
-function feeCell(row) {
-  const cell = el('div', 'cell c-fee');
+function feeCell(row, { compact = false } = {}) {
+  const cell = el(compact ? 'p' : 'div', 'cell c-fee');
   cell.append(el('span', 'lab', 'EU fee'));
   const fig = el('span', 'fig');
   if (row.tuitionEu === null) {

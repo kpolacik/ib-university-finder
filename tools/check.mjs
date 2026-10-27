@@ -78,7 +78,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, renderSlot, renderCount } = await import(new URL('../js/render.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -526,7 +526,7 @@ check('alarm guard accepts banners and rejects mixed selectors and root override
     && policyRejects('.card{--ink:var(--alarm)}')
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:var(--ink-2);')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--ink:#16202c;')).length > 0
-    && colourPolicyErrors(css.replace('/* old: remove in stage 3 */', '')).length > 0);
+    && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--stray:1px;')).includes('Unapproved root token --stray'));
 check('language buttons expose the selected English and described unavailable Slovak',
   /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
     && /type="button" aria-pressed="true">EN/.test(foundationHtml)
@@ -538,7 +538,7 @@ check('source line starts hidden without a live region and uses allRows once aft
     && (appSrcEarly.match(/renderSourceLine\(/g) ?? []).length === 1);
 check('failure hides source, filters and results bar and uses a scoped primary Reload',
   appSrcEarly.includes("alert.className = 'bn bn-fail'") && appSrcEarly.includes("reload.className = 'btn btn-p'")
-    && appSrcEarly.includes('dom.sourceLine.hidden = true') && appSrcEarly.includes('dom.resultsBar.hidden = true')
+    && appSrcEarly.includes('dom.sourceLine.hidden = true') && appSrcEarly.includes('dom.status.hidden = true') && appSrcEarly.includes('dom.listp.hidden = true')
     && appSrcEarly.includes("reload.addEventListener('click', () => location.reload())"));
 
 // The banners render through the shared DOM stand-in (ChromeNode, near the top).
@@ -781,7 +781,7 @@ check('the dropdown count reads "2 selected" (hidden text in its own span)',
 check('the dropdown count has no hidden comma (it read "Country , 1 selected")',
   !/dropdown-count[^>]*><span class="visually-hidden">,/.test(indexHtml));
 check('the live result count is written only when its text changes',
-  /if \(dom\.count\.textContent !== countText\) dom\.count\.textContent = countText;/.test(appSrc));
+  renderSrc.includes('if (node.textContent === text) return false;') && appSrc.includes('renderCount(dom.count, lead, currentSummary)'));
 
 // ---------------------------------------------------------------- export
 
@@ -1543,7 +1543,7 @@ check('the tick counts as a filter, so Clear all clears it',
 check('app.js restores, reads, clears and names the tick, and the count carries the split',
   appSrc.includes('dom.maths.checked = fromUrl.hlMaths') && appSrc.includes('state.hlMaths = dom.maths.checked')
     && appSrc.includes('dom.maths.checked = false') && appSrc.includes("used.push('HL Maths 4+')")
-    && appSrc.includes('pointsSummary(rows, state)'));
+    && appSrc.includes('pointsSummaryParts(rows, state)'));
 check('index.html has the HL Maths 4+ checkbox with its help text', /<input type="checkbox" id="f-maths"/.test(read('index.html'))
   && read('index.html').includes('adds the 25 CAO bonus points on Irish courses'));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
@@ -1563,15 +1563,16 @@ section('Each programme renders as the detail article (redesign stage 2, A01 A02
 // What a rendered detail must never do, on any row: an empty label, a dl that
 // does not alternate dt/dd, an empty element, the points note missing or said
 // twice, or the old "Tuition (EU)" / bare "No tuition fee" wording.
-function detailProblems(row, state) {
+function detailProblems(row, state, slot = false) {
   const out = [];
-  const a = detailOf(row, state);
+  const a = withStubDocument(() => renderDetail(row, state, { slot }));
   const say = (what) => out.push(`${row.id}: ${what}`);
   const head = a.children[0];
   const title = head?.children[0];
   if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
-  if (!head?.classList.contains('d-head') || title?.tagName !== 'h2') say('heading is not first in .d-head');
-  if (title?.id !== `p-${row.id}` || a.getAttribute('aria-labelledby') !== title?.id) say('not named by its title');
+  if (!slot && (!head?.classList.contains('d-head') || title?.tagName !== 'h2')) say('heading is not first in .d-head');
+  if (!slot && (title?.id !== `p-${row.id}` || a.getAttribute('aria-labelledby') !== title?.id)) say('not named by its title');
+  if (slot && (!head?.classList.contains('d-pts') || byClass(a, 'd-head').length || byClass(a, 'd-cells').length || byTag(a, 'h2').length || a.getAttribute('aria-labelledby'))) say('slot repeats head or cells');
   for (const dl of byTag(a, 'dl')) {
     const kids = dl.children;
     if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
@@ -1648,6 +1649,7 @@ const fxRows = [
   fx('fx-nolink', { official_url: '' }),
   fx('fx-checked', { verified_by: 'JK' }),
   fx('fx-stale', { verified_by: 'JK', last_verified: '2025-06-01' }),
+  fx('fx-entrance', { ib_points_min: '', admission: 'Entrance exam: maths' }),
   fx('fx-test-score', { ib_points_min: '', deadline_notes: dataMod.PLUS_TEST }),
   fx('fx-other', { other_requirements: 'Portfolio · Interview' }),
   fx('fx-no-applying', { university_id: 'fy', language: '' }),
@@ -1729,6 +1731,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   verdictOf(bkRow('c-test-560'), fstate(36)),
   verdictOf(bkRow('blank'), fstate(36)),
   verdictOf(fxRow('fx-test-score'), fstate(36)),
+  verdictOf(fxRow('fx-entrance'), fstate(36)),
   verdictOf(bkRow('c-497'), noFilters()),
   verdictOf(bkRow('blank'), noFilters()),
 ], [
@@ -1740,6 +1743,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   ['v-fit', 'verd m m-fit: Within your points', null, 0],
   ['v-unk', 'verd m m-unk: Cutoff includes a test', 'Shown despite your points: the cutoff includes a test, interview or audition.', 0],
   ['v-unk', 'verd m m-unk: No minimum published', 'Shown despite your points: points unknown.', 0],
+  ['v-unk', 'verd m m-unk: No IB figure', 'Shown despite your points: points unknown.', 0],
   ['v-unk', 'verd m m-unk: No IB figure', 'Shown despite your points: points unknown.', 0],
   ['', null, null, 0],
   ['v-unk', null, null, 0],
@@ -1828,10 +1832,10 @@ check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-c
 }
 check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
   (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
-check('renderCards keeps its call contract and the inert shortlist options',
-  /export function renderCards\(container, rows, \{ state, shortlist, onToggleStar \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderDetail\(row, state\)\)/.test(renderSrc)
-    && appSrc.includes('renderCards(dom.results, rows, { state, shortlist, onToggleStar })'));
+check('renderRows keeps its call contract and the inert shortlist options',
+  /export function renderRows\(container, rows, \{ state, shortlist, onToggleStar \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderRow\(row, state\)\)/.test(renderSrc)
+    && appSrc.includes('renderRows(dom.results, rows, { state, shortlist, onToggleStar })'));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -1840,30 +1844,237 @@ const detailFamily = /\.(?:detail|d-[\w-]+|cell|c-pts|c-ddl|c-fee|v-[\w-]+|m|m-[
 const detailRules = [...cssRules.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
   .filter(([, sel]) => sel.split(',').some((arm) => detailFamily.test(arm) && !/\.bn-fail/.test(arm)));
 const oldInDetail = detailRules.filter(([, , body]) => oldTokens.some((t) => new RegExp(`var\\(\\s*${t}\\s*[,)]`).test(body)));
-check('detail rules use no old token', detailRules.length > 40 && oldInDetail.length === 0,
+check('all stylesheet rules use no old token', detailRules.length > 40 && oldInDetail.length === 0 && oldTokens.every((t) => !new RegExp(t + '(?![\\w-])').test(css)),
   oldInDetail.map(([sel]) => sel.trim()).join(', '));
 check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.test(cssRules)
-  && !/\.card(?![\w-])/.test(cssRules) && /\.skeleton-card/.test(cssRules));
+  && !/\.card(?![\w-])/.test(cssRules) && /\.sk-row/.test(cssRules));
 check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
   /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
-check('off-screen details are skipped on screen and printed in full',
-  /content-visibility:\s*auto/.test(ruleBody('.results>.detail'))
-    && /@media print[\s\S]*\.results > \.detail \{[^}]*content-visibility: visible/.test(cssRules));
+check('off-screen rows are skipped on screen and printed in full',
+  /content-visibility:\s*auto/.test(ruleBody('.item'))
+    && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
 check('the sprite has the Phosphor i-ext, i-check and i-clock, and no old i-external',
-  ['i-ext', 'i-check', 'i-clock'].every((id) => indexHtml.includes(`<symbol id="${id}" viewBox="0 0 256 256">`))
+  ['i-ext', 'i-check', 'i-clock', 'i-sort'].every((id) => indexHtml.includes(`<symbol id="${id}" viewBox="0 0 256 256">`))
     && !indexHtml.includes('id="i-external"') && !renderSrc.includes('i-external'));
 
-// The temporary-token registry cannot outlive the rules that use it.
+// Retired tokens are rejected even with the old marker.
 {
-  const unused = css.replace(/var\(--old-print-ink\)/g, 'var(--ink)');
-  // Root itself mentioning the token is not a use.
-  const rootUse = unused.replace('--surface: #f7f6f3;', '--surface: var(--old-print-ink);');
-  check('an old token that no rule uses is reported, even if root itself mentions it',
-    colourPolicyErrors(css).length === 0
-      && colourPolicyErrors(unused).includes('Unused temporary token --old-print-ink')
-      && colourPolicyErrors(rootUse).includes('Unused temporary token --old-print-ink'),
-    JSON.stringify([colourPolicyErrors(unused), colourPolicyErrors(rootUse)]));
+  const retired = css.replace(':root{', ':root{--surface: #f7f6f3; /* old: remove in stage 3 */');
+  check('a marked old token is an unapproved root token', colourPolicyErrors(css).length === 0
+    && colourPolicyErrors(retired).includes('Unapproved root token --surface'));
 }
+
+// ---------------------------------------------------------------- summary rows
+section('Summary rows, on-demand slots and structured counts (redesign stage 3)');
+const rowOf = (row, state = noFilters()) => withStubDocument(() => {
+  const list = new ChromeNode('ul');
+  renderRows(list, [row], { state, shortlist: new Set(), onToggleStar: () => {} });
+  return list.children[0];
+});
+const ptsShort = (row) => pts.pointsShort(row);
+const shortCases = {
+  'ie-two': [['≈38', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
+  'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1 no IB figure'], ['≈44', 'R2']],
+  'ie-test-r1': [[null, 'R1 no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2 all qualified']],
+  'ie-legacy': [['≈40', 'cutoff 2025']], 'ucd-x': [['33', 'minimum']],
+  'ie-hpat': [['35', 'then HPAT']], 'nl-min': [['36', 'minimum']], 'ie-blank': [],
+};
+equal('pointsShort: each minimum, HPAT, round, bonus, legacy, AQA and absent figure',
+  Object.fromEntries(kinds.map((p) => [p.id, ptsShort(p).parts.map((x) => [x.figure, x.label])])), shortCases);
+const mixed = { ...kindOf('ie-bonus'), cao: { ...kindOf('ie-bonus').cao,
+  rounds: [{ round: 1, ib: 44, bonusOnly: true }, { round: 2, ib: 43, bonusOnly: false }] } };
+const bothBonus = { ...mixed, cao: { ...mixed.cao, rounds: mixed.cao.rounds.map((r) => ({ ...r, ib: 44, bonusOnly: true })) } };
+equal('pointsShort: mixed bonus labels stay per part; all bonus labels share an after line',
+  [ptsShort(mixed), ptsShort(bothBonus)], [
+    { parts: [{ figure: '≈44', label: 'R1 with HL Maths 4+' }, { figure: '≈43', label: 'R2' }], after: null, unknown: null },
+    { parts: [{ figure: '≈44', label: 'R1' }, { figure: '≈44', label: 'R2' }], after: 'with HL Maths 4+', unknown: null },
+  ]);
+equal('pointsShort: null figures explain test, entrance exam or no minimum',
+  ['fx-test-score', 'fx-entrance', 'fx-nothing'].map((id) => ptsShort(fxRow(id))), [
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'cutoff includes a test score' } },
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam' } },
+    { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null } },
+  ]);
+check('pointsShort: every live figure matches the corresponding pointsLines number, and unknown is exclusive', live.every((row) => {
+  const short = ptsShort(row), lines = pts.pointsLines(row);
+  return row.ibPointsMin === null ? short.parts.length === 0 && !!short.unknown
+    : short.unknown === null && short.parts.length > 0 && short.parts.length === lines.length
+      && short.parts.every((p, i) => p.figure === (lines[i].number?.replace(' ', '') ?? null));
+}));
+check('pointsShort dispatch stays null, cutoff, HPAT, minimum, even with overlapping flags',
+  ptsShort({ ...kindOf('ie-two'), rankedWithHpat: true }).parts.length === 2
+    && ptsShort({ ...kindOf('ie-two'), ibPointsMin: null }).unknown.verdict === 'No minimum published');
+let helperAgreement = true;
+for (let my = 24; my <= 45; my++) for (const tick of [false, true]) {
+  const state = fstate(my, tick);
+  const shown = applyFilters(live, state);
+  if (filtersMod.pointsSummaryParts(shown, state).map((p) => p.text).join(' · ') !== filtersMod.pointsSummary(shown, state)) helperAgreement = false;
+  for (const row of live) if (filtersMod.roundTwoOnly(row, state) !== !!filtersMod.pointsNote(row, state)?.includes('Within your points on the Round 2 cutoff, not Round 1.')) helperAgreement = false;
+}
+check('all live totals 24–45, ticked and unticked: summary parts and Round-2-only match the original sentences', helperAgreement);
+equal('Round-2-only is false for empty, unknown and hidden buckets',
+  [filtersMod.roundTwoOnly(bkRow('c-r2'), noFilters()), filtersMod.roundTwoOnly(bkRow('blank'), fstate(36)), filtersMod.roundTwoOnly(bkRow('c-r2'), fstate(24))], [false, false, false]);
+check('pointsNote uses roundTwoOnly and render.js never duplicates its Round-1 comparison',
+  read('js/filters.js').includes('if (roundTwoOnly(row, state))') && renderSrc.includes('roundTwoOnly(row, state)') && !renderSrc.includes('first.points'));
+const rowPoints = (row, state) => {
+  const c = cellOf(rowOf(row, state), 'c-pts');
+  return [c.className.split(' ').find((s) => s.startsWith('v-')), byClass(c, 'verd')[0]?.textContent ?? null,
+    byClass(c, 'fig')[0]?.textContent ?? null, byClass(c, 'r2')[0]?.textContent ?? null, byClass(c, 'q')[0]?.textContent ?? null];
+};
+equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
+  rowPoints(bkRow('c-497'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
+  rowPoints(bkRow('c-r2-maths'), fstate(36)), rowPoints(bkRow('c-test-520'), fstate(36, true)), rowPoints(bkRow('c-test-560'), fstate(36)),
+  rowPoints(fxRow('fx-entrance'), noFilters()), rowPoints(bkRow('blank'), fstate(36)), rowPoints(kindOf('ie-bonus'), noFilters()),
+  rowPoints(bkRow('c-625'), fstate(44)), rowPoints(bkRow('c-625'), fstate(44, true)),
+], [
+  ['v-fit', 'Within your points', '≈36 R1', null, null],
+  ['v-fit', 'Within your points', '≈38 R1 · ≈36 R2', 'on the Round 2 cutoff only', null],
+  ['v-fit', 'Within your points, then HPAT', '35 minimum', null, null],
+  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'on the Round 2 cutoff only', null],
+  ['v-fit', 'Within your points', '≈38 R1', null, null],
+  ['v-unk', 'Cutoff includes a test', '≈41 R1', null, null],
+  ['v-unk', 'No IB figure', 'entrance exam', null, null],
+  ['v-unk', 'No minimum published', null, null, null],
+  ['v-none', null, '≈44 R1', null, 'with HL Maths 4+'],
+  ['v-cond', 'Only with HL Maths 4+', '≈44 R1', null, null],
+  ['v-fit', 'Within your points', '≈44 R1', null, null],
+]);
+check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
+  const row = live.find((p) => p.id === 'tcd-computer-science');
+  const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
+  return rowPoints(row, fstate(36))[0] === 'v-cond' && rowPoints(row, fstate(36, true))[0] === 'v-fit'
+    && rowPoints(row, fstate(37))[3] === 'on the Round 2 cutoff only'
+    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(36))[2] === figure;
+})());
+equal('row deadline: short plain date, countdowns, neutral passed and dashed unknown',
+  ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
+    const c = cellOf(rowOf(fxRow(id)), 'c-ddl');
+    return [fillOf(c), byClass(c, 'verd')[0]?.textContent ?? null, byClass(c, 'fig')[0].textContent, byTag(c, 's').length];
+  }), [['', null, '1 Feb 2027', 0], ['v-time', 'in 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'tomorrow', '15 Aug 2026', 0],
+    ['v-time', 'today', '14 Aug 2026', 0], ['v-past', 'Passed, check next cycle', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+equal('row date: November and December use short names', [11, 12].map((m) => byClass(rowOf({ ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) }), 'c-ddl')[0].textContent),
+  ['Deadline1 Nov 2026', 'Deadline1 Dec 2026']);
+equal('row fee: known, zero, blank and ? keep distinct meanings',
+  ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => byClass(rowOf(fxRow(id)), 'c-fee')[0].textContent),
+  ['EU fee€2,500 / year', 'EU fee€0 · no tuition fee', 'EU feeNot published', 'EU feeNot published']);
+const sentenceRow = { ...fxRow('fx-checked'), languages: ['Czech'], otherRequirements: ['Portfolio'], admission: ['Entrance exam: maths'], isStale: true };
+equal('row requirement groups are ordered and provenance follows them', byClass(rowOf(sentenceRow), 'line')[0].textContent,
+  'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: mathsChecked by JKmay be out of date');
+check('Irish CAO default is dropped only on Irish rows; English-only and empty requirements add no line', (() => {
+  const clean = { ...fxRow('fx-plain'), ibSubjects: '', otherRequirements: [], admission: [], languages: ['English'] };
+  const cao = { ...clean, admission: ['Places offered in order of CAO points'] };
+  return byClass(rowOf(clean), 'line').length === 0 && byClass(rowOf({ ...cao, country: 'Ireland' }), 'line').length === 0
+    && byClass(rowOf(cao), 'line')[0].textContent === cao.admission[0];
+})());
+check('row provenance keeps the detail signature/date/sample chain',
+  !byClass(rowOf(fxRow('fx-plain')), 'ok').length && !byClass(rowOf(noDateRows.find((p) => p.id === 'n-signed')), 'ok').length
+    && byClass(rowOf(fxRow('fx-checked')), 'ok')[0]?.textContent === 'Checked by JK'
+    && byClass(rowOf(fxRow('fx-stale')), 'tag')[0]?.textContent === 'may be out of date');
+check('row sub line: known, unknown, blank city and unknown country are honest', (() => {
+  const r = fxRow('fx-plain');
+  return byClass(rowOf(r), 'uc')[0].textContent === 'Fixture University · Town'
+    && byClass(rowOf({ ...r, cityUnknown: true }), 'uc')[0].textContent.endsWith('City not published')
+    && byClass(rowOf({ ...r, city: '' }), 'uc')[0].textContent === 'Fixture University'
+    && byClass(rowOf({ ...r, country: 'Elsewhere' }), 'cc')[0].textContent === 'Elsewhere';
+})());
+for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
+  const shown = applyFilters(live, state);
+  const list = withStubDocument(() => { const n = new ChromeNode('ul'); renderRows(n, shown, { state }); return n; });
+  const rowProblems = list.children.filter((li, i) => li.tagName !== 'li' || !li.classList.contains('item') || li.getAttribute('data-id') !== shown[i].id
+    || byClass(li, 'cell').length !== 3 || byClass(li, 'lab').length !== 3 || byTag(li, 'article').length
+    || !byClass(li, 'cc')[0]?.getAttribute('aria-hidden') || byClass(li, 'open')[0].getAttribute('aria-expanded') !== 'false');
+  check(`all live rows are light, labelled and country coded at ${label}`, list.childElementCount === shown.length && !rowProblems.length);
+  const problems = shown.flatMap((row) => detailProblems(row, state, true).out);
+  check(`all live slot details preserve every fact and note at ${label}`, !problems.length, problems.slice(0, 6).join(', '));
+}
+check('all fixture slots render cleanly, including every short points form', [noFilters(), fstate(36), fstate(36, true), fstate(37)].every((st) =>
+  [...fxs, ...kinds, ...bk].filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => !detailProblems(r, st, true).out.length)));
+check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
+  const slot = withStubDocument(() => renderSlot(row, noFilters()));
+  return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `${row.programme}, details`
+    && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-cells').length;
+}));
+check('row button name separates degree and keeps Czech pronunciation', (() => {
+  const row = live.find((p) => p.id === 'muni-anthropology'), b = byClass(rowOf(row), 'open')[0];
+  return b.lang === 'cs' && byClass(b, 'deg')[0]?.lang === 'en' && b.textContent === `${row.programme}, ${row.degreeType}`;
+})());
+check('sample row carries its tag and never a Checked line', (() => {
+  const row = { ...fxRow('fx-checked'), isSample: true }, li = rowOf(row);
+  return li.classList.contains('is-sample') && byClass(li, 'tag-strong')[0]?.textContent === 'Invented sample row · not real data' && !byClass(li, 'ok').length;
+})());
+check('count builds marks with identical text, preserves nodes on no change and rebuilds on change', withStubDocument(() => {
+  const n = new ChromeNode('p'), parts = filtersMod.pointsSummaryParts(bk, fstate(36));
+  const first = renderCount(n, '9 of 11 programmes', parts), children = [...n.children];
+  const same = renderCount(n, '9 of 11 programmes', parts);
+  const kept = children.every((c, i) => c === n.children[i]);
+  const text = n.textContent === `9 of 11 programmes · ${filtersMod.pointsSummary(bk, fstate(36))}`;
+  const marks = byClass(n, 'k').map((x) => x.className).join(' ') === 'k k-fit m m-fit k k-cond m m-cond k k-unk m m-unk';
+  return first && !same && kept && text && marks && renderCount(n, '11 programmes', []) && n.textContent === '11 programmes';
+}));
+const headerButtons = [...indexHtml.matchAll(/<button[^>]*data-sort="([^"]+)"[^>]*>[\s\S]*?<\/button>/g)];
+check('sort header has all four SORTS keys, hidden direction text and one default pressed button',
+  headerButtons.length === 4 && headerButtons.map((m) => m[1]).sort().join() === Object.keys(filtersMod.SORTS).sort().join()
+    && headerButtons.filter((m) => /aria-pressed="true"/.test(m[0])).length === 1
+    && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
+check('sort sync runs before load, after options and from both sort controls',
+  /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
+    && /state.sort = dom.sort.value;\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
+check('row toggle removes controls with the target, restores shown open ids and uses no arrow-key handler',
+  appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(item.dataset.id)')
+    && !/ArrowUp|ArrowDown|aria-current/.test(appSrc));
+check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
+  (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
+    && !/shimmer|@keyframes/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
+    && !indexHtml.includes('i-compass') && !/<div[^>]*(?:role|aria-live)=[^>]*id="empty-state"|id="empty-state"[^>]*(?:role|aria-live)=/.test(indexHtml));
+check('empty h2, search tips and Clear all count are present',
+  indexHtml.includes('<h2 id="empty-title">') && indexHtml.includes('Search matches words in any order')
+    && indexHtml.includes('Short words match the start of a word') && appSrc.includes('`Clear all (${activeFilterCount(state)})`'));
+check('row wraps whole point parts without clipping requirements; containment only on items',
+  /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
+    && !/line-clamp|max-height|overflow\s*:\s*hidden/.test(ruleBody('.line'))
+    && !/content-visibility/.test(ruleBody('.detail') + ruleBody('.expand') + ruleBody('.results>.detail'))
+    && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand>.detail')));
+check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
+  [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
+    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap'].includes(t))
+    && !/var\(--shadow\)/.test(css));
+
+// An overly broad slice starting at the gallery's first .listp copied chrome
+// as well as rows. Guard the actual duplicate-selector/static-layout failure.
+const baseSelectors = [];
+let braceDepth = 0, ruleStart = 0;
+for (let i = 0; i < cssRules.length; i++) {
+  if (cssRules[i] === '{') {
+    if (braceDepth === 0) {
+      const selector = cssRules.slice(ruleStart, i).trim();
+      if (!selector.startsWith('@')) baseSelectors.push(...selector.split(',').map((x) => x.trim()));
+    }
+    braceDepth++;
+  } else if (cssRules[i] === '}') {
+    braceDepth--;
+    if (braceDepth === 0) ruleStart = i + 1;
+  }
+}
+check('row CSS contains no copied mockup gallery, filter or sheet rules',
+  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.(?:fbar|fld|inp|cshort|is-stuck|split|copy)(?![\w-])|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])/.test(cssRules));
+check('Stage 3 chrome has exactly one base definition and count/columns stay static',
+  ['.status', '.mast', '.src', '.lang', '.bn', '.foot'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
+    && !/position\s*:\s*(?:sticky|fixed)/.test(ruleBody('.status') + ruleBody('.cols')));
+check('every live and fixture requirements line preserves source facts in order', [...live, ...fxs, ...kinds, ...bk].every((row) => {
+  const li = rowOf(row), line = byClass(li, 'line')[0];
+  const wanted = [row.ibSubjects, ...row.otherRequirements,
+    ...(row.languages.length === 1 && row.languages[0] === 'English' ? [] : row.languages),
+    ...row.admission.filter((text) => !(row.country === 'Ireland' && text === 'Places offered in order of CAO points'))].filter(Boolean);
+  let at = 0;
+  for (const text of wanted) {
+    const found = line?.textContent.indexOf(text, at) ?? -1;
+    if (found < 0) return false;
+    at = found + text.length;
+  }
+  return li.getAttribute('aria-hidden') === null
+    && byClass(li, 'open')[0].getAttribute('aria-hidden') === null
+    && (!line || line.getAttribute('aria-hidden') === null);
+}));
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes
