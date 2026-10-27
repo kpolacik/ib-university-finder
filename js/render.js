@@ -197,6 +197,9 @@ function rowRequirements(row) {
   if (!row.isSample && row.isChecked && row.lastVerified) {
     const ok = el('span', 'ok');
     ok.append(icon('i-check', 'ic'), document.createTextNode(`Checked${row.verifiedBy ? ` by ${row.verifiedBy}` : ''}`));
+    // A real space, as in the mockup: without it a screen reader and a copy
+    // read "Entrance exam: mathsChecked by JK".
+    if (line.textContent) line.append(document.createTextNode(' '));
     line.append(ok);
     if (row.isStale) line.append(el('span', 'tag', 'may be out of date'));
   }

@@ -1959,7 +1959,13 @@ equal('row fee: known, zero, blank and ? keep distinct meanings',
   ['EU fee€2,500 / year', 'EU fee€0 · no tuition fee', 'EU feeNot published', 'EU feeNot published']);
 const sentenceRow = { ...fxRow('fx-checked'), languages: ['Czech'], otherRequirements: ['Portfolio'], admission: ['Entrance exam: maths'], isStale: true };
 equal('row requirement groups are ordered and provenance follows them', byClass(rowOf(sentenceRow), 'line')[0].textContent,
-  'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: mathsChecked by JKmay be out of date');
+  'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: maths Checked by JKmay be out of date');
+// Verify pass, 2026-10-27: the row's "Checked" badge was glued to the text
+// before it ("mathsChecked by JK"), on screen and when read aloud. The mockup
+// has a space and an 8px gap.
+check('row Checked badge is spaced from the requirement text, and leads a provenance-only line with no space',
+  /margin-left:8px/.test(ruleBody('.line .ok'))
+    && byClass(rowOf({ ...fxRow('fx-checked'), ibSubjects: '', otherRequirements: [], admission: [], languages: ['English'] }), 'line')[0].textContent === 'Checked by JK');
 check('Irish CAO default is dropped only on Irish rows; English-only and empty requirements add no line', (() => {
   const clean = { ...fxRow('fx-plain'), ibSubjects: '', otherRequirements: [], admission: [], languages: ['English'] };
   const cao = { ...clean, admission: ['Places offered in order of CAO points'] };

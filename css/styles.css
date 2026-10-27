@@ -543,6 +543,7 @@ svg:not(.sprite) {
 .open:focus-visible::after{outline:2.5px solid var(--accent);outline-offset:-3px;border-radius:var(--r-cell)}
 .sub,.line{font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
 .line b{color:var(--ink);font-weight:600}
+.line .ok{margin-left:8px}
 .cc{margin-left:4px;font-size:var(--fs-12);font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
 .chev{position:absolute;top:18px;right:14px;width:8px;height:8px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none}
 .is-open .chev{transform:translateY(3px) rotate(-135deg)}
