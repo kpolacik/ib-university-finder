@@ -2,12 +2,12 @@
 
 import { loadData, applyToday } from './data.js';
 import {
-  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS,
+  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS,
   parsePoints, parseFee, stateToParams, paramsToState, pointsSummaryParts,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
@@ -36,6 +36,14 @@ const dom = {
   subjects: document.getElementById('f-subjects'),
   countries: document.getElementById('f-countries'),
   languages: document.getElementById('f-languages'),
+  deadline: document.getElementById('f-deadline'),
+  degrees: document.getElementById('f-degrees'),
+  cities: document.getElementById('f-cities'),
+  degreesCount: document.getElementById('dd-degrees-count'),
+  degreesCountNumber: document.getElementById('dd-degrees-count-number'),
+  citiesCount: document.getElementById('dd-cities-count'),
+  citiesCountNumber: document.getElementById('dd-cities-count-number'),
+  applied: document.getElementById('applied-filters'),
   clear: document.getElementById('f-clear'),
   sort: document.getElementById('f-sort'),
   count: document.getElementById('result-count'),
@@ -80,7 +88,7 @@ const dom = {
 const state = createFilterState();
 const shortlist = loadShortlist();
 let allRows = [];
-let facets = { subjectAreas: [], countries: [], languages: [] };
+let facets = buildFacets([]);
 let currentlyShown = 0;
 // The "within / only with HL Maths 4+ / points unknown" split of the rows on
 // screen, worked out in update() so a count-only refresh can reuse it.
@@ -152,7 +160,7 @@ async function start() {
 
     renderSourceBanner(dom.banner, meta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, meta.issues);
-    renderSortOptions(dom.sort, SORTS, state.sort);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
     syncSort();
 
     facets = buildFacets(allRows);
@@ -183,7 +191,9 @@ function applyUrlFields() {
   if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
   dom.maths.checked = fromUrl.hlMaths;
   if (fromUrl.maxTuition !== null) dom.tuition.value = String(fromUrl.maxTuition);
+  dom.deadline.value = fromUrl.deadlineWindow;
   state.sort = fromUrl.sort;
+  state.dir = fromUrl.dir;
 }
 
 // Subjects, countries and languages can only be checked against the data,
@@ -193,6 +203,8 @@ function applyUrlLists() {
   fromUrl.subjectAreas.forEach((v) => state.subjectAreas.add(v));
   fromUrl.countries.forEach((v) => state.countries.add(v));
   fromUrl.languages.forEach((v) => state.languages.add(v));
+  fromUrl.degreeTypes.forEach((v) => state.degreeTypes.add(v));
+  fromUrl.cities.forEach((v) => state.cities.add(v));
 }
 
 // replaceState, not pushState: one history entry per keystroke would make the
@@ -248,6 +260,8 @@ function drawChips() {
   renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas));
   renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS });
   renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
+  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes));
+  renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities));
 }
 
 function toggle(set) {
@@ -261,6 +275,7 @@ function toggle(set) {
 // once after loading, for anything typed while the data was on its way.
 function readFields() {
   state.search = dom.search.value;
+  state.deadlineWindow = dom.deadline.value;
   state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
     'Enter a whole number from 24 to 45.');
   state.hlMaths = dom.maths.checked;
@@ -306,8 +321,13 @@ function wireInputs() {
     update();
   }, 150));
 
+  dom.deadline.addEventListener('change', () => {
+    state.deadlineWindow = dom.deadline.value;
+    update();
+  });
+
   dom.sort.addEventListener('change', () => {
-    state.sort = dom.sort.value;
+    [state.sort, state.dir] = dom.sort.value.split(':');
     syncSort();
     update();
   });
@@ -315,7 +335,7 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
-      if (state.sort === key) return;
+      state.dir = state.sort === key && state.dir === 'asc' ? 'desc' : 'asc';
       state.sort = key;
       syncSort();
       update();
@@ -338,7 +358,7 @@ function wireInputs() {
   });
 
   dom.exportCsv.addEventListener('click', () => {
-    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort);
+    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadCsv(`my-shortlist-${stamp}.csv`, toCsv(rows));
   });
@@ -389,12 +409,16 @@ function clearAll() {
   state.subjectAreas.clear();
   state.countries.clear();
   state.languages.clear();
+  state.degreeTypes.clear();
+  state.cities.clear();
+  dom.deadline.value = 'any';
 
   dom.search.value = '';
   dom.points.value = '';
   dom.maths.checked = false;
   dom.tuition.value = '';
   readFields();
+  // Re-render the option lists to clear their local searches as well as ticks.
   // Re-render the chips rather than reaching into render.js's markup with a
   // selector — a class rename there would silently break unchecking here.
   drawChips();
@@ -439,7 +463,7 @@ function update() {
     dom.shortlistOnly.checked = false;
   }
 
-  const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort);
+  const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir);
   // Read before the rows are rebuilt: afterwards it forces a layout of the
   // whole new list (about 120 ms at 4x CPU throttling, L09).
   const paneScroll = appliedWide ? dom.pane.scrollTop : 0;
@@ -874,15 +898,57 @@ async function copyLink() {
 }
 
 function syncSort() {
-  const directions = { name: 'by university, A to Z', points: 'lowest first', deadline: 'soonest first', tuition: 'cheapest first' };
-  dom.sort.value = state.sort;
+  dom.sort.value = `${state.sort}:${state.dir}`;
   for (const button of dom.sortButtons) {
-    const active = button.dataset.sort === state.sort;
+    const key = button.dataset.sort;
+    const active = key === state.sort;
+    const current = active && state.dir === 'desc' ? REVERSE_SORTS[key] : SORTS[key];
+    const next = active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
     button.setAttribute('aria-pressed', String(active));
-    button.querySelector('.visually-hidden').textContent = `, ${active ? 'sorted' : 'sort'} ${directions[button.dataset.sort]}`;
+    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? 'University Z–A' : 'University A–Z';
+    button.querySelector('.visually-hidden').textContent = active
+      ? `, sorted ${current}. Activate to sort ${next}.` : `, sort ${next}.`;
     button.querySelector('.dir').hidden = !active;
+    button.querySelector('.dir').setAttribute('data-direction', state.dir);
     button.querySelector('svg').hidden = active;
   }
+}
+
+// One chip per value, while counts remain one per active group.
+function drawAppliedChips() {
+  const chips = [];
+  const scalar = (key, label, active) => { if (active) chips.push({ key, label }); };
+  scalar('search', `search: ${state.search.trim()}`, state.search.trim());
+  scalar('myIbPoints', `My points: ${state.myIbPoints}`, state.myIbPoints !== null);
+  scalar('hlMaths', 'HL Maths 4+', state.hlMaths);
+  scalar('maxTuition', `Max fee: €${state.maxTuition}`, state.maxTuition !== null);
+  scalar('deadlineWindow', `Deadline: ${DEADLINE_WINDOWS[state.deadlineWindow]}`, state.deadlineWindow !== 'any');
+  for (const [key, label] of [['subjectAreas', 'Subject'], ['countries', 'Country'], ['languages', 'Language'], ['degreeTypes', 'Degree type'], ['cities', 'City']]) {
+    for (const value of state[key]) chips.push({ key: `${key}:${value}`, label: `${label}: ${value}` });
+  }
+  renderAppliedChips(dom.applied, chips, removeChip);
+}
+
+function removeChip(key) {
+  const before = [...dom.applied.children];
+  const at = before.findIndex((button) => button.getAttribute('data-chip') === key);
+  const inSheet = dom.sheet.open && dom.sheet.contains(dom.applied);
+  const colon = key.indexOf(':');
+  if (colon >= 0) {
+    const group = key.slice(0, colon), value = key.slice(colon + 1);
+    state[group].delete(value);
+    const box = { subjectAreas: dom.subjects, countries: dom.countries, languages: dom.languages, degreeTypes: dom.degrees, cities: dom.cities }[group];
+    for (const input of box.querySelectorAll('input')) if (input.type === 'checkbox') input.checked = state[group].has(input.value);
+  } else {
+    const input = { search: dom.search, myIbPoints: dom.points, hlMaths: dom.maths, maxTuition: dom.tuition, deadlineWindow: dom.deadline }[key];
+    if (key === 'hlMaths') input.checked = false;
+    else input.value = key === 'deadlineWindow' ? 'any' : '';
+    readFields();
+  }
+  update();
+  const remaining = [...dom.applied.children];
+  const target = remaining[at] || remaining[at - 1] || (inSheet ? dom.sheetHeading : dom.search);
+  target.focus({ preventScroll: true });
 }
 
 function renderCounts(shown) {
@@ -902,10 +968,13 @@ function renderCounts(shown) {
   showCount(dom.subjectsCount, dom.subjectsCountNumber, state.subjectAreas.size);
   showCount(dom.countriesCount, dom.countriesCountNumber, state.countries.size);
   showCount(dom.languagesCount, dom.languagesCountNumber, state.languages.size);
+  showCount(dom.degreesCount, dom.degreesCountNumber, state.degreeTypes.size);
+  showCount(dom.citiesCount, dom.citiesCountNumber, state.cities.size);
+  drawAppliedChips();
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? `Clear all (${active})` : 'Clear all';
   // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0]
+  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.degreeTypes.size > 0, state.cities.size > 0]
     .filter(Boolean).length;
   dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
   dom.more.classList.toggle('is-on', inSheet > 0);
@@ -916,7 +985,8 @@ function renderCounts(shown) {
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
   markSet(dom.tuition, state.maxTuition !== null);
-  for (const [box, set] of [[dom.subjects, state.subjectAreas], [dom.countries, state.countries], [dom.languages, state.languages]]) {
+  markSet(dom.deadline, state.deadlineWindow !== 'any');
+  for (const [box, set] of [[dom.subjects, state.subjectAreas], [dom.countries, state.countries], [dom.languages, state.languages], [dom.degrees, state.degreeTypes], [dom.cities, state.cities]]) {
     box.closest('.dropdown').classList.toggle('is-set', set.size > 0);
   }
 
@@ -978,6 +1048,9 @@ function filtersInUse() {
   if (state.subjectAreas.size) used.push('the subject areas');
   if (state.countries.size) used.push('the countries');
   if (state.languages.size) used.push('the languages');
+  if (state.deadlineWindow !== 'any') used.push('the deadline window');
+  if (state.degreeTypes.size) used.push('the degree types');
+  if (state.cities.size) used.push('the cities');
   return used;
 }
 

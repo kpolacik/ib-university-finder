@@ -10,6 +10,9 @@ export function createFilterState() {
     subjectAreas: new Set(),
     countries: new Set(),
     languages: new Set(),
+    degreeTypes: new Set(),
+    cities: new Set(),
+    deadlineWindow: 'any',
     maxTuition: null,
     myIbPoints: null,
     // "HL Maths 4+": adds the 25 CAO bonus points on Irish cutoff rows. It
@@ -17,6 +20,7 @@ export function createFilterState() {
     hlMaths: false,
     shortlistOnly: false,
     sort: 'deadline',
+    dir: 'asc',
   };
 }
 
@@ -29,6 +33,9 @@ export function activeFilterCount(state) {
   if (state.subjectAreas.size) n++;
   if (state.countries.size) n++;
   if (state.languages.size) n++;
+  if (state.degreeTypes.size) n++;
+  if (state.cities.size) n++;
+  if (state.deadlineWindow !== 'any') n++;
   if (state.maxTuition !== null) n++;
   if (state.myIbPoints !== null) n++;
   if (state.hlMaths) n++;
@@ -50,6 +57,15 @@ export function applyFilters(rows, state, shortlist) {
 
     if (state.languages.size &&
         !row.languages.some((l) => state.languages.has(l))) return false;
+
+    if (state.degreeTypes.size && row.degreeType && row.degreeType !== '?' &&
+        !state.degreeTypes.has(row.degreeType)) return false;
+    if (state.cities.size && !row.cityUnknown && row.city && row.city !== '?' &&
+        !state.cities.has(row.city)) return false;
+    if (state.deadlineWindow !== 'any' && row.daysUntilDeadline !== null) {
+      const days = row.daysUntilDeadline;
+      if (days < 0 || (state.deadlineWindow !== 'open' && days > Number(state.deadlineWindow))) return false;
+    }
 
     // An unknown value is never a reason to hide a programme. We show it and
     // mark it on the card, so nobody loses an option to a blank spreadsheet cell.
@@ -162,7 +178,8 @@ export function pointsSummaryParts(rows, state) {
 // matched "Physics" (S01). Now every word must appear, in any order. A word of
 // three letters or fewer must start a word in the blob ("cs", "uva", "law"),
 // a longer one may appear anywhere. A hyphen or other punctuation starts a new
-// word, so "eco" finds "Socio-economic".
+// word, so "eco" finds "Socio-economic". The exact query token "cs" expands
+// to both full words before matching, without changing any row's search blob.
 export function matchesSearch(blob, query) {
   return tokensMatch(blob, searchTokens(query));
 }
@@ -175,7 +192,8 @@ function searchTokens(query) {
     // Leading and trailing punctuation goes ("law," is "law"). A token that is
     // only punctuation, like "&", is dropped rather than failing every row.
     .map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap((token) => token === 'cs' ? ['computer', 'science'] : [token]);
 }
 
 function tokensMatch(blob, tokens) {
@@ -230,6 +248,10 @@ export function stateToParams(state) {
   for (const v of state.subjectAreas) params.append('subject', v);
   for (const v of state.countries) params.append('country', v);
   for (const v of state.languages) params.append('lang', v);
+  for (const v of state.degreeTypes) params.append('degree', v);
+  for (const v of state.cities) params.append('city', v);
+  if (state.deadlineWindow !== 'any') params.set('deadline', state.deadlineWindow);
+  if (state.dir === 'desc') params.set('dir', 'desc');
   if (state.sort !== DEFAULT_SORT) params.set('sort', state.sort);
   return params.toString();
 }
@@ -242,7 +264,7 @@ export function paramsToState(query, facets = null) {
   const params = new URLSearchParams(query);
   const points = parsePoints(params.get('points'));
   const fee = parseFee(params.get('fee'));
-  const known = (name, values) => new Set(facets ? params.getAll(name).filter((v) => values.includes(v)) : []);
+  const known = (name, values) => new Set(facets ? params.getAll(name).filter((v) => (values || []).includes(v)) : []);
   const sort = params.get('sort');
   return {
     search: params.get('q') || '',
@@ -253,6 +275,10 @@ export function paramsToState(query, facets = null) {
     subjectAreas: known('subject', facets && facets.subjectAreas),
     countries: known('country', facets && facets.countries),
     languages: known('lang', facets && facets.languages),
+    degreeTypes: known('degree', facets && facets.degreeTypes),
+    cities: known('city', facets && facets.cities),
+    deadlineWindow: Object.hasOwn(DEADLINE_WINDOWS, params.get('deadline')) ? params.get('deadline') : 'any',
+    dir: params.get('dir') === 'desc' ? 'desc' : 'asc',
     sort: Object.hasOwn(SORTS, sort) ? sort : DEFAULT_SORT,
   };
 }
@@ -266,37 +292,46 @@ export const SORTS = {
   name: 'University — A to Z',
 };
 
-export function sortRows(rows, key) {
+export const REVERSE_SORTS = {
+  deadline: 'Deadline — latest first',
+  tuition: 'Tuition — highest first',
+  points: 'IB points — highest first',
+  name: 'University — Z to A',
+};
+
+export const DEADLINE_WINDOWS = {
+  any: 'Any', open: 'Still open', '30': 'Next 30 days', '60': 'Next 60 days',
+};
+
+export function sortRows(rows, key, dir = 'asc') {
+  const direction = dir === 'desc' ? -1 : 1;
   const compare = COMPARATORS[key] || COMPARATORS.deadline;
   // Copy first: sort mutates, and the caller owns the full dataset.
-  return [...rows].sort((a, b) => compare(a, b) || byName(a, b));
+  return [...rows].sort((a, b) => compare(a, b, direction) || byName(a, b));
 }
 
 const COMPARATORS = {
-  // A date you can still act on is worth more than one you cannot, so passed
-  // deadlines sink below every live one instead of dominating the top.
-  deadline(a, b) {
+  // Keep actionable, passed and unknown buckets in that order in both directions.
+  deadline(a, b, direction) {
     const rank = (r) => (r.deadline === null ? 2 : r.deadlinePassed ? 1 : 0);
     const difference = rank(a) - rank(b);
     if (difference !== 0) return difference;
-    if (a.deadline && b.deadline) return a.deadline - b.deadline;
-    return 0;
+    return a.deadline && b.deadline ? (a.deadline - b.deadline) * direction : 0;
   },
   tuition: numericNullsLast('tuitionEu'),
   points: numericNullsLast('ibPointsMin'),
-  name: () => 0,
+  name: (a, b, direction) => byName(a, b) * direction,
 };
 
-// "Not published" sorts last rather than as zero — otherwise every unknown fee
-// would masquerade as the cheapest option in the list.
+// Unknowns stay last even when the known values are reversed.
 function numericNullsLast(key) {
-  return (a, b) => {
+  return (a, b, direction) => {
     const left = a[key];
     const right = b[key];
     if (left === null && right === null) return 0;
     if (left === null) return 1;
     if (right === null) return -1;
-    return left - right;
+    return (left - right) * direction;
   };
 }
 
@@ -313,11 +348,15 @@ export function buildFacets(rows) {
   const subjectAreas = new Set();
   const countries = new Set();
   const languages = new Set();
+  const degreeTypes = new Set();
+  const cities = new Set();
 
   for (const row of rows) {
     row.subjectAreas.forEach((a) => subjectAreas.add(a));
     row.languages.forEach((l) => languages.add(l));
     if (row.country) countries.add(row.country);
+    if (row.degreeType && row.degreeType !== '?') degreeTypes.add(row.degreeType);
+    if (!row.cityUnknown && row.city && row.city !== '?') cities.add(row.city);
   }
 
   const sorted = (set) => [...set].sort((a, b) => a.localeCompare(b));
@@ -325,5 +364,7 @@ export function buildFacets(rows) {
     subjectAreas: sorted(subjectAreas),
     countries: sorted(countries),
     languages: sorted(languages),
+    degreeTypes: sorted(degreeTypes),
+    cities: sorted(cities),
   };
 }

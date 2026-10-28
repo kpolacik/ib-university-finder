@@ -4,8 +4,9 @@
 // spreadsheet that any student can edit, and a pasted <script> tag should show
 // up as text rather than run.
 
+import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
-import { pointsBucket, pointsNote, roundTwoOnly } from './filters.js';
+import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -81,15 +82,13 @@ export function renderDetail(row, state, { slot = false } = {}) {
     // Czech-taught programmes have Czech titles; without lang a screen reader
     // reads "Architektura a urbanismus" with English pronunciation (A05).
     if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
-    if (row.degreeType) {
-      // Hidden ", " so it is not read as "Architektura a urbanismusBc." (A05).
-      // The degree keeps the page's language even inside a Czech title.
-      const degree = el('span', 'deg', row.degreeType);
-      if (title.lang) degree.lang = 'en';
-      title.append(el('span', 'visually-hidden', ', '), degree);
-    }
+    // Keep unknown degrees visible without inventing an award.
+    const degree = el('span', row.degreeType && row.degreeType !== '?' ? 'deg' : 'unk-t',
+      row.degreeType && row.degreeType !== '?' ? row.degreeType : 'Degree type unknown');
+    if (title.lang) degree.lang = 'en';
+    title.append(el('span', 'visually-hidden', ', '), degree);
     // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
-    const city = row.cityUnknown ? 'City not published' : row.city;
+    const city = row.cityUnknown ? 'City not published' : (!row.city || row.city === '?' ? 'City unknown' : row.city);
     const place = [city, row.country].filter(Boolean).join(', ');
     // The title comes first so heading navigation reads it first; CSS draws the
     // place line above it, as the design has it.
@@ -182,14 +181,13 @@ function renderRow(row, state, wide) {
   if (wide) title.setAttribute('aria-controls', 'pane');
   else title.setAttribute('aria-expanded', 'false');
   if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
-  if (row.degreeType) {
-    const degree = el('span', 'deg', row.degreeType);
-    if (title.lang) degree.lang = 'en';
-    title.append(el('span', 'visually-hidden', ', '), degree);
-  }
+  const degree = el('span', row.degreeType && row.degreeType !== '?' ? 'deg' : 'unk-t',
+    row.degreeType && row.degreeType !== '?' ? row.degreeType : 'Degree type unknown');
+  if (title.lang) degree.lang = 'en';
+  title.append(el('span', 'visually-hidden', ', '), degree);
   heading.append(title);
   const sub = el('p', 'sub');
-  const city = row.cityUnknown ? 'City not published' : row.city;
+  const city = row.cityUnknown ? 'City not published' : (!row.city || row.city === '?' ? 'City unknown' : row.city);
   sub.append(el('span', 'uc', [row.university, city].filter(Boolean).join(' · ')));
   if (row.country) {
     const code = countryCodes[row.country];
@@ -551,7 +549,7 @@ function countdown(days) {
 // flags maps a value to a sprite symbol (the Country list only). The flag is
 // aria-hidden, so the option is still named by the country alone.
 export function renderChips(container, values, selected, onToggle, { flags } = {}) {
-  container.replaceChildren(...values.map((value) => {
+  const options = values.map((value) => {
     const label = el('label', 'option');
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -562,17 +560,63 @@ export function renderChips(container, values, selected, onToggle, { flags } = {
     if (flags?.[value]) label.append(icon(flags[value], 'flag'));
     label.append(el('span', '', value));
     return label;
-  }));
+  });
+  container.replaceChildren();
+  if (values.length > 12) {
+    const searchLabel = el('label', 'help', `Search ${container.parentElement.getAttribute('aria-label')} options`);
+    const search = el('input', 'inp');
+    search.type = 'search';
+    const clear = el('button', 'btn btn-q', 'Clear option search');
+    clear.type = 'button';
+    clear.hidden = true;
+    const empty = el('p', 'help', 'No options match. Try another spelling or clear option search.');
+    empty.hidden = true;
+    searchLabel.append(search);
+    const filter = () => {
+      const query = foldAccents(search.value.trim()).toLowerCase();
+      options.forEach((option, i) => { option.hidden = !foldAccents(values[i]).toLowerCase().includes(query); });
+      empty.hidden = options.some((option) => !option.hidden);
+      clear.hidden = !query;
+    };
+    search.addEventListener('input', filter);
+    clear.addEventListener('click', () => { search.value = ''; filter(); search.focus(); });
+    container.append(searchLabel, clear, empty);
+  }
+  container.append(...options);
 }
 
-export function renderSortOptions(select, sorts, current) {
-  select.replaceChildren(...Object.entries(sorts).map(([value, label]) => {
+export function renderAppliedChips(container, chips, onRemove) {
+  // Preserve surviving buttons (and their focus) during live filter updates.
+  const existing = new Map([...container.children].map((node) => [node.getAttribute('data-chip'), node]));
+  const nodes = chips.map(({ key, label }) => {
+    let button = existing.get(key);
+    if (!button) {
+      button = el('button', 'button button-quiet');
+      button.type = 'button';
+      button.setAttribute('data-chip', key);
+      button.addEventListener('click', () => onRemove(key));
+    }
+    const text = `Remove ${label}`;
+    if (button.textContent !== text) button.textContent = text;
+    return button;
+  });
+  for (const node of [...container.children]) if (!nodes.includes(node)) node.remove();
+  nodes.forEach((node, i) => {
+    if (container.children[i] !== node) container.insertBefore(node, container.children[i] || null);
+  });
+  container.hidden = chips.length === 0;
+}
+
+export function renderSortOptions(select, sorts, current, direction = 'asc') {
+  select.replaceChildren(...Object.entries(sorts).flatMap(([key, natural]) => ['asc', 'desc'].map((dir) => {
+    const value = `${key}:${dir}`;
+    const label = dir === 'desc' ? REVERSE_SORTS[key] : natural;
     const option = document.createElement('option');
     option.value = value;
     option.textContent = label;
-    option.selected = value === current;
+    option.selected = key === current && dir === direction;
     return option;
-  }));
+  })));
 }
 
 // ---------------------------------------------------------------- banners

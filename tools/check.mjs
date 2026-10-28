@@ -36,7 +36,7 @@ class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
     this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
-    this.listeners = {};
+    this.listeners = {}; this.value = ''; this.validity = { badInput: false };
   }
   set textContent(text) { this.replaceChildren(String(text)); }
   get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
@@ -159,7 +159,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions } = await import(new URL('../js/render.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -2089,7 +2089,7 @@ check('row sub line: known, unknown, blank city and unknown country are honest',
   const r = fxRow('fx-plain');
   return byClass(rowOf(r), 'uc')[0].textContent === 'Fixture University · Town'
     && byClass(rowOf({ ...r, cityUnknown: true }), 'uc')[0].textContent.endsWith('City not published')
-    && byClass(rowOf({ ...r, city: '' }), 'uc')[0].textContent === 'Fixture University'
+    && byClass(rowOf({ ...r, city: '' }), 'uc')[0].textContent === 'Fixture University · City unknown'
     && byClass(rowOf({ ...r, country: 'Elsewhere' }), 'cc')[0].textContent === 'Elsewhere';
 })());
 for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
@@ -2133,7 +2133,7 @@ check('sort header has all four SORTS keys, hidden direction text and one defaul
     && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
-    && /state.sort = dom.sort.value;\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
+    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
 check('row toggle retains slots while arrows select only wide without roving tabindex',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(item.dataset.id)')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
@@ -2367,7 +2367,7 @@ function parseHtml(source) {
 // start() runs for real up to its never-ending data load, so every handler and
 // the initial filter placement are the app's own. 600 and 1024 are separate
 // media objects (R4); media/flip still drive only 1024, as in Stage 4.
-function paneAppHarness(test) {
+function paneAppHarness(test, { boot = false } = {}) {
   const originalGlobal = globalThis.document;
   globalThis.document = stubDocument;
   const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners',
@@ -2382,6 +2382,7 @@ function paneAppHarness(test) {
       ?? (extra.has(id) ? extra.get(id) : extra.set(id, Object.assign(new ChromeNode('div'), { id })).get(id));
     const html = tree.querySelector('html'), docBody = tree.querySelector('body');
     html.clientHeight = 844;
+    get('f-deadline').value = 'any';
     const pane = get('pane'), body = tree.querySelector('.pane-body'), resultsSection = tree.querySelector('section[aria-labelledby="results-h"]');
     // Virtual clock for debounces, the Copy link reset and queued dialog events.
     let now = 0, nextId = 1; const timers = new Map();
@@ -2438,16 +2439,17 @@ function paneAppHarness(test) {
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout,
       IntersectionObserver, navigator: { clipboard },
+      toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
-      ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise(() => {}),
-      renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderSortOptions() {}, renderSourceLine() {},
+      ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
+      renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(code, context);
     const run = (code) => runInNewContext(code, context);
     context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
     context.media = media;
-    run('allRows = fixture; loaded = true; update();');
+    if (!boot) run('allRows = fixture; facets = buildFacets(allRows); drawChips(); renderSortOptions(dom.sort, SORTS, state.sort, state.dir); syncSort(); loaded = true; update();');
     const item = (id) => get('results').children.find((n) => n.dataset.id === id);
     const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
     const flip = (wide) => { media.matches = wide; run('crossWide();'); };
@@ -2471,8 +2473,8 @@ function appCheck(name, fn) {
     check(name, result === true);
   } catch (err) { check(name, false, err.message); }
 }
-async function asyncAppCheck(name, fn) {
-  try { check(name, (await paneAppHarness(fn)) === true); } catch (err) { check(name, false, err.message); }
+async function asyncAppCheck(name, fn, options) {
+  try { check(name, (await paneAppHarness(fn, options)) === true); } catch (err) { check(name, false, err.message); }
 }
 appCheck('actual handlers: narrow open A/B, close B selects A, widen clears slots, round trip reopens A', ({ run, click, flip, get, ids: [a, b] }) => {
   click(a); click(b);
@@ -2674,7 +2676,7 @@ appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as si
   const wideOk = () => more.parent === form && kids(form).at(-1) === more && kids(more).at(-1) === clear && kids(status).at(-1) === copy;
   if (!narrowOk()) return false;
   const box = get('dd-countries'), tick = get('f-countries').querySelector('input');
-  box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition';
+  box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
   stubDocument.moved = (n) => { moves++; hook(n); };
   flip600(true);
@@ -2686,8 +2688,9 @@ appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as si
   get('f-tuition').focus(); run('appliedBar = null; placeFilters();');
   if (moves !== 3 || stubDocument.activeElement !== get('f-tuition')) return false;
   for (let i = 0; i < 10; i++) { flip600(i % 2 === 0 ? false : true); if (!(i % 2 === 0 ? narrowOk() : wideOk())) return false; }
-  return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition'
-    && get('f-countries').querySelector('input') === tick && tree.querySelectorAll('.more-filters').length === 1;
+  return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition:desc'
+    && get('f-countries').querySelector('input') === tick && tree.querySelectorAll('.more-filters').filter((n) => n.parent === form || n.parent === sheetB).length === 1
+    && ['f-deadline','f-degrees','f-cities'].every((id) => tree.querySelectorAll(`#${id}`).length === 1);
 });
 appCheck('actual 600 focus: a moved control keeps focus, sheet focus and the vanishing Filters go to the fee, narrowing goes to Filters, others stay', ({ get, flip600, fire, item, ids: [a] }) => {
   const fee = get('f-tuition'), more = get('f-more'), sheet = get('filter-sheet'), focus = (n) => { n.focus(); fire(n, 'focusin'); };
@@ -3150,6 +3153,163 @@ const guardAt = merge.indexOf("process.argv.includes('--rerun-one-off')");
 const exitAt = merge.indexOf('process.exit(', guardAt);
 check('merge-italy-denmark.mjs refuses to run without --rerun-one-off',
   guardAt > 0 && exitAt > guardAt && exitAt < firstIo);
+
+// ---------------------------------------------------------------- revision behaviour
+section('Revision behaviour: direction, exact search and the three new filters');
+const revisionBase = { ...sfRow('f-cs'), degreeType: 'BSc', city: 'Delft', cityUnknown: false, tuitionEu: 1000, ibPointsMin: 30 };
+const revisionRows = [
+  { ...revisionBase, id: 'a', university: 'Alpha', programme: 'B', deadline: new Date('2027-01-01'), deadlinePassed: false },
+  { ...revisionBase, id: 'b', university: 'Alpha', programme: 'A', tuitionEu: 2000, ibPointsMin: 35, deadline: new Date('2027-02-01'), deadlinePassed: false },
+  { ...revisionBase, id: 'c', university: 'Beta', tuitionEu: 2000, ibPointsMin: 35, deadline: new Date('2026-01-01'), deadlinePassed: true },
+  { ...revisionBase, id: 'd', university: 'Delta', tuitionEu: 0, ibPointsMin: 24, deadline: new Date('2026-02-01'), deadlinePassed: true },
+  { ...revisionBase, id: 'e', university: 'Echo', tuitionEu: null, ibPointsMin: null, deadline: null, deadlinePassed: false },
+];
+const orderedIds = (key, dir) => sortRows(revisionRows, key, dir).map((r) => r.id).join('');
+for (const [key, asc, desc] of [['deadline', 'abcde', 'badce'], ['tuition', 'dabce', 'bcade'], ['points', 'dabce', 'bcade'], ['name', 'b acde'.replace(' ', ''), 'edcab']]) {
+  equal(`${key}: both directions, buckets/nulls and alphabetical ties`, [orderedIds(key, 'asc'), orderedIds(key, 'desc')], [asc, desc]);
+}
+equal('two-argument and invalid-key sorts retain the natural deadline default', [orderedIds('deadline'), orderedIds('bad')], ['abcde', 'abcde']);
+equal('every sort leaves source rows and their order untouched', revisionRows.map((r) => r.id).join(''), 'abcde');
+for (const [query, expected] of [['', ['deadline', 'asc']], ['sort=tuition', ['tuition', 'asc']], ['sort=name&dir=desc', ['name', 'desc']], ['dir=desc', ['deadline', 'desc']], ['sort=bad&dir=desc', ['deadline', 'desc']], ['sort=points&dir=asc', ['points', 'asc']], ['dir=bad', ['deadline', 'asc']]]) {
+  const st = paramsToState(query);
+  equal(`sort URL ${query || '(old/plain)'}`, [st.sort, st.dir], expected);
+}
+check('only descending direction is serialized, including the default sort', stateToParams({ ...noFilters(), dir: 'desc' }) === 'dir=desc' && !stateToParams({ ...noFilters(), dir: 'asc' }).includes('dir='));
+check('cs expands as an exact folded token anywhere, including punctuation/case', ['cs', 'CS, netherlands', '(cs) netherlands', 'netherlands cs', 'science cs computer'].every((q) => finds(q, 'f-cs')));
+check('cs requires both words; css/csr remain ordinary short tokens', !matchesSearch('physics economics', 'cs') && !matchesSearch('computer engineering', 'cs') && !matchesSearch('computer science', 'css') && !matchesSearch('computer science', 'csr') && matchesSearch('css design', 'css') && matchesSearch('csr policy', 'csr'));
+equal('real Netherlands CS alias has the same complete ID set', live.filter((r) => matchesSearch(r.searchBlob, 'CS Netherlands')).map((r) => r.id), live.filter((r) => matchesSearch(r.searchBlob, 'computer science netherlands')).map((r) => r.id));
+check('university aliases and accent folding survive; an exact typo stays empty', live.some((r) => matchesSearch(r.searchBlob, 'uva')) && finds('Kosice', 'f-law') && !live.some((r) => matchesSearch(r.searchBlob, 'compuuter scieence')));
+const dateEdges = [-1, 0, 1, 30, 31, 60, 61, null].map((days) => ({ ...revisionBase, id: String(days), daysUntilDeadline: days }));
+const newFilteredIds = (rows, edits) => filtersMod.applyFilters(rows, { ...noFilters(), ...edits }, new Set()).map((r) => r.id);
+for (const [mode, expected] of [['any', ['-1','0','1','30','31','60','61','null']], ['open', ['0','1','30','31','60','61','null']], ['30', ['0','1','30','null']], ['60', ['0','1','30','31','60','null']]]) {
+  equal(`deadline ${mode}: inclusive endpoints, passed exclusion and unknown inclusion`, newFilteredIds(dateEdges, { deadlineWindow: mode }), expected);
+}
+check('deadline windows use applyToday across local midnight, year/month and DST boundaries', [
+  [2026, 11, 31, '2027-01-01'], [2026, 0, 31, '2026-02-01'], [2026, 2, 28, '2026-03-29'], [2026, 9, 24, '2026-10-25'],
+].every(([y,m,d,iso]) => {
+  const rows = [{ ...revisionBase, deadline: new Date(`${iso}T00:00:00Z`) }];
+  applyToday(rows, new Date(y,m,d,23,59)); const before = rows[0].daysUntilDeadline;
+  applyToday(rows, new Date(y,m,d+1,0,1)); const today = rows[0].daysUntilDeadline;
+  applyToday(rows, new Date(y,m,d+2,0,1));
+  return before === 1 && today === 0 && rows[0].daysUntilDeadline === -1 && !newFilteredIds(rows, { deadlineWindow: 'open' }).length;
+}));
+const groupRows = [
+  { ...revisionBase, id: 'match', degreeType: 'BA / BSc', city: 'Brno / Praha', daysUntilDeadline: 30 },
+  { ...revisionBase, id: 'other-degree', degreeType: 'BA', city: 'Brno / Praha', daysUntilDeadline: 30 },
+  { ...revisionBase, id: 'unknown-degree', degreeType: '?', city: 'Brno / Praha', daysUntilDeadline: 30 },
+  { ...revisionBase, id: 'unknown-city', degreeType: '', city: '', cityUnknown: true, daysUntilDeadline: null },
+  { ...revisionBase, id: 'absent-city', degreeType: 'BSc', city: '', daysUntilDeadline: 0 },
+  { ...revisionBase, id: 'wrong-city', degreeType: '', city: 'Delft', daysUntilDeadline: 30 },
+  { ...revisionBase, id: 'wrong-country', degreeType: '', city: '', country: 'Ireland', daysUntilDeadline: 30 },
+  { ...revisionBase, id: 'passed', degreeType: '', city: '', daysUntilDeadline: -1 },
+];
+const groupState = { degreeTypes: new Set(['BA / BSc', 'BSc']), cities: new Set(['Brno / Praha', 'Praha']), countries: new Set(['Netherlands']), deadlineWindow: '30' };
+equal('exact composite labels, OR within groups and AND across groups; unknowns bypass only their own group', newFilteredIds(groupRows, groupState), ['match','unknown-degree','unknown-city','absent-city']);
+equal('unknown fields cannot rescue a known fee or points failure', newFilteredIds(groupRows.map((r) => ({ ...r, tuitionEu: 2001 })), { ...groupState, maxTuition: 2000 }), []);
+equal('unknown fields still respect points and languages', newFilteredIds(groupRows, { ...groupState, myIbPoints: 29, languages: new Set(['Czech']) }), []);
+const revisionFacets = filtersMod.buildFacets(groupRows);
+equal('full facets preserve exact composites and exclude unknown markers', [revisionFacets.degreeTypes, revisionFacets.cities], [['BA','BA / BSc','BSc'], ['Brno / Praha','Delft']]);
+equal('empty/fallback-shaped rows provide empty new facets', [filtersMod.buildFacets([]).degreeTypes, filtersMod.buildFacets([{ ...revisionBase, city: '?', degreeType: '?' }]).cities], [[], []]);
+const specialFacets = { ...revisionFacets, cities: ['Brně / Praha & Town'], degreeTypes: ['BA / BSc', 'BSc (Hons)'] };
+const specialState = { ...noFilters(), dir: 'desc', deadlineWindow: '60', degreeTypes: new Set(specialFacets.degreeTypes), cities: new Set(specialFacets.cities) };
+const specialUrl = stateToParams(specialState);
+const specialBack = paramsToState(`${specialUrl}&degree=bad&degree=BA+%2F+BSc&city=bad`, specialFacets);
+equal('repeated special-character URL values validate individually and deduplicate', [[...specialBack.degreeTypes], [...specialBack.cities], specialBack.deadlineWindow, specialBack.dir], [specialFacets.degreeTypes, specialFacets.cities, '60', 'desc']);
+check('old/invalid/new URLs default safely and defer lists until facets', ['','deadline=bad','deadline=','deadline=any'].every((q) => paramsToState(q).deadlineWindow === 'any') && paramsToState(specialUrl).degreeTypes.size === 0 && paramsToState(specialUrl).cities.size === 0);
+equal('counts add one per new group, regardless of selected values, and ignore sort', filtersMod.activeFilterCount(specialState), 3);
+check('city inheritance and override are consumed unchanged by the new city filter', newFilteredIds([row('p-inherit'),row('p-override'),row('p-unknown-city')], { cities: new Set(['Faraway']) }).join() === 'p-override,p-unknown-city');
+check('unknown degree and all three city states have visible summary/detail labels', withStubDocument(() => ['', '?'].every((degreeType) => {
+  const r = { ...revisionBase, degreeType, city: '' };
+  return rowOf(r).textContent.includes('Degree type unknown') && rowOf(r).textContent.includes('City unknown') && detailOf(r).textContent.includes('Degree type unknown') && detailOf(r).textContent.includes('City unknown') && detailOf({ ...r, cityUnknown: true }).textContent.includes('City not published');
+})));
+check('sort select renders eight explicit synchronized choices', withStubDocument(() => {
+  const select = new ChromeNode('select'); renderSortOptions(select, filtersMod.SORTS, 'tuition', 'desc');
+  return select.children.length === 8 && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 8;
+}));
+check('option search starts above 12, folds accents, clears/no-matches and preserves hidden selection nodes', withStubDocument(() => {
+  const panel = new ChromeNode('div'); panel.setAttribute('aria-label','Fixture');
+  const box = new ChromeNode('div'); panel.append(box);
+  const values = ['Brně', ...Array.from({length: 12}, (_, i) => `Town ${i}`)];
+  renderChips(box, values.slice(0,12), new Set(), () => {});
+  if (byTag(box,'input').some((n) => n.type === 'search')) return false;
+  const selected = new Set(['Brně']); renderChips(box, values, selected, (v,on) => on ? selected.add(v) : selected.delete(v));
+  const search = byTag(box,'input').find((n) => n.type === 'search'), labels = byClass(box,'option'), chosen = labels[0], tick = byTag(chosen,'input')[0];
+  search.value = 'brne'; dispatchStub(search, {type:'input'});
+  if (chosen.hidden || labels.filter((n) => !n.hidden).length !== 1) return false;
+  search.value = 'zzzz'; dispatchStub(search, {type:'input'});
+  if (!chosen.hidden || !tick.checked || selected.size !== 1 || byTag(box,'p')[0].hidden) return false;
+  dispatchStub(byTag(box,'button')[0], {type:'click'});
+  return byClass(box,'option')[0] === chosen && !chosen.hidden && tick.checked && search.value === '' && byTag(box,'p')[0].hidden && stubDocument.activeElement === search;
+}));
+appCheck('sort headings toggle both ways, a new key starts naturally, select/filter/reset stay synchronized', ({ run,get,fire,flip600,context }) => {
+  flip600(true);
+  const button = context.document.querySelector('.cols [data-sort="deadline"]');
+  fire(button,'click');
+  if (run('state.dir') !== 'desc' || get('f-sort').value !== 'deadline:desc' || !button.querySelector('.visually-hidden').textContent.includes('latest first')) return false;
+  fire(button,'click'); if (run('state.dir') !== 'asc') return false;
+  fire(context.document.querySelector('.cols [data-sort="points"]'),'click');
+  if (get('f-sort').value !== 'points:asc') return false;
+  get('f-sort').value = 'name:desc'; fire(get('f-sort'),'change');
+  if (context.document.querySelector('.sort-label').textContent !== 'University Z–A') return false;
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
+  if (context.document.querySelector('.sort-label').textContent !== 'University A–Z') return false;
+  get('f-deadline').value = 'open'; fire(get('f-deadline'),'change'); fire(get('f-clear'),'click');
+  return run('state.sort + state.dir') === 'tuitiondesc' && get('f-sort').value === 'tuition:desc' && get('f-deadline').value === 'any';
+});
+appCheck('early deadline edits win load and URL lists restore only full-dataset values', ({run,get,context}) => {
+  context.location.search = '?deadline=60&dir=desc&degree=BSc&degree=bad&city=bad';
+  run('applyUrlFields();'); if (get('f-deadline').value !== '60') return false;
+  get('f-deadline').value = '30'; run('applyUrlLists(); readFields();');
+  return run('state.deadlineWindow') === '30' && run('state.dir') === 'desc' && run('state.cities.size') === 0;
+});
+appCheck('chips count values, sheet counts groups, removal preserves controls/URL/sort and focuses next/previous/Search', ({run,get,fire,flip600,context}) => {
+  flip600(true);
+  run("state.degreeTypes = new Set(['BSc','BA']); state.cities = new Set(['Delft','Brno']); state.deadlineWindow = 'open'; dom.deadline.value = 'open'; state.sort = 'name'; state.dir = 'desc'; update();");
+  const box = get('applied-filters');
+  if (box.children.length !== 5 || get('f-more').querySelector('span').textContent !== 'Filters (3)' || get('f-clear').textContent !== 'Clear all (3)') return false;
+  const surviving = box.children[1]; fire(box.children[0],'click');
+  if (stubDocument.activeElement !== surviving || run('state.deadlineWindow') !== 'any' || !run('stateToParams(state)').includes('dir=desc')) return false;
+  fire(box.children.at(-1),'click'); if (stubDocument.activeElement !== box.children.at(-1)) return false;
+  while (box.children.length) fire(box.children[0],'click');
+  return stubDocument.activeElement === get('f-search') && run('activeFilterCount(state)') === 0 && run('state.sort + state.dir') === 'namedesc';
+});
+appCheck('all new controls keep identity across 599/600 focus moves; sheet chip removal falls back to heading', ({run,get,fire,flip600}) => {
+  const deadline = get('f-deadline'), degrees = get('f-degrees'), cities = get('f-cities');
+  fire(get('f-more'),'click'); deadline.focus(); fire(deadline,'focusin'); flip600(true);
+  if (get('f-deadline') !== deadline || get('f-degrees') !== degrees || get('f-cities') !== cities || stubDocument.activeElement !== deadline) return false;
+  flip600(false); if (stubDocument.activeElement !== get('f-more')) return false;
+  fire(get('f-more'),'click'); deadline.value = '30'; fire(deadline,'change');
+  const box = get('applied-filters'); fire(box.children[0],'click');
+  return stubDocument.activeElement === get('sheet-h') && get('filter-sheet').open;
+});
+check('new controls retain the existing Language end-menu alignment within two wrapping groups',
+  /<div class="more-filters" role="group" aria-label="Deadline, degree type and city">/.test(indexHtml));
+appCheck('dormant shortlist export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
+  run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
+  const expected = context.fixture.slice().sort((a,b) => b.university.localeCompare(a.university) || b.programme.localeCompare(a.programme)).map((r) => r.id).join(',');
+  fire(get('export-csv'),'click');
+  return context.exportedCsv === expected && run('shortlist.size') === 3;
+});
+await asyncAppCheck('real start continuation validates new URL lists while current scalar edits win its deferred load', async ({run,get,fire,context,settle}) => {
+  context.location.search = '?deadline=60&degree=BSc&degree=bad&city=Odense&city=bad&dir=desc';
+  run('applyUrlFields();');
+  get('f-deadline').value = '30'; fire(get('f-deadline'),'change');
+  context.resolveData({programmes:context.fixture, meta:{issues:[]}}); await settle();
+  return run('loaded') === true && run('state.deadlineWindow') === '30' && run('state.dir') === 'desc'
+    && run('[...state.degreeTypes].join()') === 'BSc' && run('[...state.cities].join()') === 'Odense'
+    && get('f-deadline').value === '30' && get('f-sort').value === 'deadline:desc';
+}, {boot:true});
+appCheck('country and local option-search changes retain full new facet vocabulary, hidden selections and live count nodes', ({run,get,fire}) => {
+  const degrees = get('f-degrees').querySelectorAll('input').map((n) => n.value).join();
+  const cities = get('f-cities').querySelectorAll('input').map((n) => n.value).join();
+  run("state.degreeTypes.add('BSc'); state.cities.add('Odense'); state.countries.add('Ireland'); update();");
+  const countNodes = [...get('result-count').children]; run('renderCounts(currentlyShown);');
+  return get('f-degrees').querySelectorAll('input').map((n) => n.value).join() === degrees
+    && get('f-cities').querySelectorAll('input').map((n) => n.value).join() === cities
+    && run("state.degreeTypes.has('BSc') && state.cities.has('Odense')")
+    && countNodes.every((n,i) => get('result-count').children[i] === n);
+});
+check('both list and dormant shortlist export pass direction', /sortRows\(applyFilters\(allRows, state, shortlist\), state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

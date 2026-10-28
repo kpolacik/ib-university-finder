@@ -127,8 +127,9 @@
       <label for="f-search">Search</label>
       <span class="affix">
         <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
-        <input class="inp" type="search" id="f-search" name="search" placeholder="UvA, TCD, law, Dublin">
+        <input class="inp" type="search" id="f-search" name="search" aria-describedby="f-search-help" placeholder="UvA, TCD, law, Dublin">
       </span>
+      <p class="help" id="f-search-help">Search programme, university or place; use full subject names or cs for computer science.</p>
     </div>
 
     <button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span>Filters</span></button>
@@ -183,11 +184,37 @@
         </div>
       </details>
 
+      <div class="more-filters" role="group" aria-label="Deadline, degree type and city">
+        <div class="fld">
+          <label for="f-deadline">Deadline</label>
+          <select class="inp" id="f-deadline">
+            <option value="any">Any</option>
+            <option value="open">Still open</option>
+            <option value="30">Next 30 days</option>
+            <option value="60">Next 60 days</option>
+          </select>
+        </div>
+        <details class="dropdown" id="dd-degrees">
+          <summary class="inp"><span>Degree type</span><span class="dropdown-count" id="dd-degrees-count" hidden><span aria-hidden="true">· </span><span id="dd-degrees-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="Degree type">
+            <div class="options" id="f-degrees"></div>
+          </div>
+        </details>
+        <details class="dropdown" id="dd-cities">
+          <summary class="inp"><span>City</span><span class="dropdown-count" id="dd-cities-count" hidden><span aria-hidden="true">· </span><span id="dd-cities-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="City">
+            <div class="options" id="f-cities"></div>
+          </div>
+        </details>
+      </div>
+
       <!-- Phone only: from 600 px the column header sorts. -->
       <div class="fld f-sort">
         <label for="f-sort">Sort by</label>
         <select class="inp" id="f-sort"></select>
       </div>
+
+      <div id="applied-filters" role="group" aria-label="Applied filters" hidden></div>
 
       <button type="button" id="f-clear" class="btn btn-q clear">Clear all</button>
     </div>
@@ -236,7 +263,7 @@
       <h2 class="visually-hidden" id="results-h">Programmes</h2>
       <div class="listp">
         <div class="cols" role="group" aria-label="Sort programmes">
-          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false">University A–Z<span class="visually-hidden">, sort by university, A to Z</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button></span>
+          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label">University A–Z</span><span class="visually-hidden">, sort by university, A to Z</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button></span>
           <button type="button" data-sort="points" aria-pressed="false">Points<span class="visually-hidden">, sort lowest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
           <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted soonest first</span><svg class="ic" aria-hidden="true" hidden><use href="#i-sort"/></svg><span class="dir" aria-hidden="true"></span></button>
           <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort cheapest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
@@ -257,7 +284,7 @@
         <h2 id="empty-title"></h2>
         <p id="empty-hint"></p>
         <ul id="empty-tips">
-          <li>Search matches words in any order, so “Dublin computer” works.</li>
+          <li>Check spelling or try fewer words. Search is exact; typos are not corrected. Search matches words in any order, so “Dublin computer” works.</li>
           <li>Short words match the start of a word: “uva”, “tcd”, “law”.</li>
         </ul>
         <button type="button" id="empty-clear" class="btn btn-p" hidden>Clear all</button>
