@@ -2574,6 +2574,11 @@ check('the sprite has the Phosphor funnel and five flags filled only from the ca
     const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
     return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
   }));
+// Stage 5 slipped the funnel and flags in between the globe's licence line and
+// the globe, so the MIT credit sat on the wrong icon.
+check('the globe and funnel licence lines sit directly on their own symbols',
+  /<!-- Phosphor Regular globe,[^>]*-->\s*<symbol id="i-globe"/.test(indexHtml)
+    && /<!-- Phosphor Regular funnel,[^>]*-->\s*<symbol id="i-filter"/.test(indexHtml));
 check('app and CSS share the 600 px query', appSrc.includes("matchMedia('(min-width: 600px)')") && paneCss.some((r) => atMedia(r, '(min-width: 600px)')));
 check('the closed sheet never renders: no screen display on bare .sheet, flex only when open, print may hide it; the page behind does not scroll',
   paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes('.sheet') && /display\s*:/.test(r.body)).every((r) => atMedia(r, 'print') && /display:none/.test(r.body))
