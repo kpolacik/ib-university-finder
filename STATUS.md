@@ -768,6 +768,13 @@ one round trip sooner on a cold load. What is left is building and inserting
 and its own plan. The harness rewrites app.js in flight to time it, so nothing
 is added to the site: `plans/finish-review/l09.mjs`.
 
+The October 28 visual revisions keep L09 open. A new paired run on the same
+1240 rows in headless Chrome 156 at 4× CPU (20 samples per revision) compared
+45907a1, before the filter changes, with the integrated revisions: synchronous
+medians 517 → 383 ms; second-frame medians 816 → 622 ms. Every sample missed
+150 ms. These are measurements, not a performance fix or final design approval;
+raw timings and environment are in `plans/design-round2/phase3-l09.json`.
+
 To watch the motion, open the site with `serve.mjs` and turn on "Reduce
 motion" in the operating system: every effect must then happen at once. To
 check print, use the browser's print preview with a few rows open.

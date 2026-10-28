@@ -846,6 +846,7 @@ check('the h1 is plain IB University Finder with no generated full stop',
 check('dropdown panels stay inside the viewport: every panel clamped, the last right-aligned, sheet panels static and full width (A02)',
   /max-width:calc\(100vw - 2 \* var\(--gut\)\)/.test(ruleAt(cssText, '.dropdown-panel'))
     && /left:auto;right:0/.test(ruleAt(cssText, '.dropdown:last-of-type .dropdown-panel'))
+    && /left:auto;right:0/.test(ruleAt(cssText, '#dd-countries .dropdown-panel'))
     && /position:static;width:auto;max-width:none;max-height:none;overflow:visible/.test(ruleAt(cssText, '.sheet-b .dropdown-panel')));
 check('the source line wraps normally and phone hides stat and advice',
   /\.src\{[^}]*white-space:normal/.test(css) && /\.stat,\.src-more\{display:none\}/.test(css)
@@ -2085,6 +2086,40 @@ check('row provenance keeps the detail signature/date/sample chain',
   !byClass(rowOf(fxRow('fx-plain')), 'ok').length && !byClass(rowOf(noDateRows.find((p) => p.id === 'n-signed')), 'ok').length
     && byClass(rowOf(fxRow('fx-checked')), 'ok')[0]?.textContent === 'Checked by JK'
     && byClass(rowOf(fxRow('fx-stale')), 'tag')[0]?.textContent === 'may be out of date');
+// Redesign revisions: the country is a word on a tint keyed by data-country.
+// A country with no mapped pair renders the neutral badge without any code
+// change, and every mapped pair (and the neutral one) is contrast-checked.
+{
+  const { PAIRS } = await import('./check-contrast.mjs');
+  const mapped = [...cssRules.matchAll(/\.cc\[data-country=(\w+)\]\{background:var\((--[\w-]+)\);color:var\((--[\w-]+)\)\}/g)];
+  const paired = (fg, bg) => PAIRS.some(([f, b, , min]) => f === fg && b === bg && min >= 4.5);
+  const r = fxRow('fx-plain');
+  const badge = (country) => byClass(rowOf({ ...r, country }), 'cc')[0];
+  check('country badges: the five data countries are mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
+    mapped.map(([, c]) => c).sort().join() === 'Czechia,Denmark,Ireland,Italy,Netherlands'
+      && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
+      && /background:var\(--cty-fill\);color:var\(--cty-ink\)/.test(ruleBody('.cc'))
+      && badge('Portugal')?.textContent === 'Portugal' && badge('Portugal').getAttribute('data-country') === 'Portugal'
+      && !mapped.some(([, c]) => c === 'Portugal') && badge('Denmark')?.getAttribute('data-country') === 'Denmark'
+      && new Set(live.map((row) => row.country)).size === 5 && [...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
+}
+check('requirements run across the row: the line is a direct child of .row after the three cells, never inside the title block',
+  [...live.slice(0, 40), fxRow('fx-checked')].every((row) => {
+    const li = rowOf(row), body = li.children[0], line = byClass(li, 'line')[0];
+    if (!line) return true;
+    const kids = body.children, at = kids.indexOf(line);
+    return line.parent === body && at > kids.findIndex((n) => n.classList.contains('c-fee')) && !byClass(byClass(li, 'r-main')[0], 'line').length;
+  }));
+check('applied chips are named "Remove <label>", show the label and an aria-hidden cross, and keep their node when relabelled', withStubDocument(() => {
+  const box = new ChromeNode('div');
+  renderAppliedChips(box, [{ key: 'countries:Ireland', label: 'Country: Ireland' }], () => {});
+  const first = box.children[0];
+  renderAppliedChips(box, [{ key: 'countries:Ireland', label: 'Country: Ireland' }], () => {});
+  const kept = box.children[0] === first;
+  return kept && first.classList.contains('achip') && first.type === 'button'
+    && first.textContent === 'Remove Country: Ireland×' && first.children[2].getAttribute('aria-hidden') === 'true'
+    && first.children[0].classList.contains('visually-hidden');
+}));
 check('row sub line: known, unknown, blank city and unknown country are honest', (() => {
   const r = fxRow('fx-plain');
   return byClass(rowOf(r), 'uc')[0].textContent === 'Fixture University · Town'
@@ -2097,7 +2132,8 @@ for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
   const list = withStubDocument(() => { const n = new ChromeNode('ul'); renderRows(n, shown, { state }); return n; });
   const rowProblems = list.children.filter((li, i) => li.tagName !== 'li' || !li.classList.contains('item') || li.getAttribute('data-id') !== shown[i].id
     || byClass(li, 'cell').length !== 3 || byClass(li, 'lab').length !== 3 || byTag(li, 'article').length
-    || !byClass(li, 'cc')[0]?.getAttribute('aria-hidden') || byClass(li, 'open')[0].getAttribute('aria-expanded') !== 'false');
+    || byClass(li, 'cc')[0]?.textContent !== shown[i].country || byClass(li, 'cc')[0]?.getAttribute('data-country') !== shown[i].country
+    || byClass(li, 'cc')[0]?.getAttribute('aria-hidden') !== null || byClass(li, 'open')[0].getAttribute('aria-expanded') !== 'false');
   check(`all live rows are light, labelled and country coded at ${label}`, list.childElementCount === shown.length && !rowProblems.length);
   const problems = shown.flatMap((row) => detailProblems(row, state, true).out);
   check(`all live slot details preserve every fact and note at ${label}`, !problems.length, problems.slice(0, 6).join(', '));
@@ -2174,8 +2210,14 @@ for (let i = 0; i < cssRules.length; i++) {
 }
 // Stage 5 owns the filter, sheet and count classes, so they are allowed now;
 // the gallery-only rules and the mockup's scrim node stay out.
-check('CSS contains no copied mockup gallery, container or scrim rules',
-  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])|\.scrim(?![\w-])|@container/.test(cssRules));
+// Redesign revisions: the one deliberate @container is the list's 900 px
+// query (on .listp); any other container query or container is still a copy.
+const containerQueriesOk = (source) => (source.match(/@container[^{]*/g) ?? []).every((q) => q.trim() === '@container (min-width: 900px)')
+  && (source.match(/container(?:-type)?\s*:/g) ?? []).length === 1 && /\.listp\{[^}]*container-type:inline-size/.test(source);
+check('CSS contains no copied mockup gallery, container or scrim rules; the only container query is the list at 900 px',
+  !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])|\.scrim(?![\w-])/.test(cssRules)
+    && containerQueriesOk(cssRules) && !containerQueriesOk(cssRules + '@container (min-width: 1024px){.row{gap:0}}')
+    && !containerQueriesOk(cssRules + '.app{container-type:inline-size}'));
 check('chrome has exactly one base definition each, and stickiness follows A07',
   ['.status', '.mast', '.src', '.lang', '.bn', '.foot', '.fbar', '.sheet', '.cols'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
     && stickyChromeOk(css));
@@ -2209,7 +2251,8 @@ function cssTree(source, media = []) {
     }
     const selector = source.slice(start, brace).trim(), body = source.slice(brace + 1, end - 1);
     // @starting-style nests rules like @media; keep it as ancestry too (Stage 6).
-    if (selector.startsWith('@media') || selector.startsWith('@starting-style')) rules.push(...cssTree(body, [...media, selector]));
+    // @container too (redesign revisions): the 900 px list query is ancestry.
+    if (selector.startsWith('@media') || selector.startsWith('@starting-style') || selector.startsWith('@container')) rules.push(...cssTree(body, [...media, selector]));
     else rules.push({ selector, body, media });
     start = end;
   }
@@ -2235,35 +2278,65 @@ const paneCss = cssTree(cssRules);
 const atMedia = (r, query) => r.media.length === 1 && r.media[0] === `@media ${query}`;
 const paneRule = (selector, query) => paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes(selector)
   && (query ? atMedia(r, query) : r.media.length === 0)).map((r) => r.body).join(';');
-const desktopQuery = '(min-width: 1024px)', largeQuery = '(min-width: 1280px)';
+// Redesign revisions (2026-10-28): one pane query at 1200 (was 1024/1280);
+// where a row's facts sit is a 900 px container query on the list.
+const desktopQuery = '(min-width: 1200px)', listQuery = '@container (min-width: 900px)';
 function confinedPaneRules(source) {
   return cssTree(source).every((r) => {
     const sels = r.selector.split(',').map((s) => s.trim());
-    if (sels.includes('.split') && !atMedia(r, desktopQuery) && !atMedia(r, largeQuery) && !atMedia(r, 'print')) return false;
+    if (sels.includes('.split') && !atMedia(r, desktopQuery) && !atMedia(r, 'print')) return false;
     return !(sels.includes('.pane') && /position\s*:\s*sticky/.test(r.body) && !atMedia(r, desktopQuery));
   });
 }
-check('app and CSS share the desktop query and shadow belongs only to its pane rule',
-  appSrc.includes("matchMedia('(min-width: 1024px)')")
-    && paneCss.some((r) => atMedia(r, desktopQuery)) && paneCss.some((r) => atMedia(r, largeQuery))
+check('app and CSS share the 1200 pane query; no 1280 block or pane rule at 1024; shadow belongs only to its pane rule',
+  appSrc.includes("matchMedia('(min-width: 1200px)')") && !appSrc.includes("matchMedia('(min-width: 1024px)')")
+    && paneCss.some((r) => atMedia(r, desktopQuery)) && !/min-width:\s*1280px/.test(cssRules)
+    && !paneCss.some((r) => r.media.some((m) => /1024px/.test(m)) && /\.(?:split|pane|row|cols|chev|is-sel|goto)(?![\w-])/.test(r.selector))
     && paneCss.filter((r) => /var\(--shadow\)/.test(r.body)).every((r) => r.selector === '.pane' && atMedia(r, desktopQuery)));
 check('desktop split and sticky pane stay in their media blocks; negative base fixtures fail',
   confinedPaneRules(cssRules) && !confinedPaneRules(cssRules + '.split{display:grid}')
     && !confinedPaneRules(cssRules + '.pane{position:sticky}')
-    && !confinedPaneRules(cssRules + '@media (min-width: 1024px) and (min-height: 600px){.pane{position:sticky}}'));
-check('desktop pane and row columns follow the 1024/1280 templates',
-  /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', largeQuery))
-    && /grid-template-columns:minmax\(0,1fr\) 18rem/.test(paneRule('.split', desktopQuery))
-    && /10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"/.test(paneRule('.row', desktopQuery))
-    && /12.75rem 6.75rem 6.75rem;column-gap:12px/.test(paneRule('.row', largeQuery))
-    && /display:none/.test(paneRule('.chev', desktopQuery)));
+    && !confinedPaneRules(cssRules + '@media (min-width: 1200px) and (min-height: 600px){.pane{position:sticky}}'));
+// The arrow fix (Phase 3 diagnosis): headings and rows share ONE template, gap
+// and inset in every context where the headings show, written as a single
+// ".cols,.row" rule, and nothing else sets their columns, gap or inset there.
+const trackRules = (media) => paneCss.filter((r) => r.media.join('|') === media.join('|'));
+function sharedTracks(rules, media, template) {
+  const here = rules.filter((r) => r.media.join('|') === media.join('|'));
+  const shared = here.filter((r) => r.selector.replace(/\s/g, '') === '.cols,.row');
+  const stray = here.filter((r) => r.selector.replace(/\s/g, '') !== '.cols,.row'
+    && r.selector.split(',').some((x) => ['.cols', '.row'].includes(x.trim()))
+    && /grid-template-columns|column-gap|padding-inline|padding-left|padding-right|(?:^|;)\s*padding\s*:|(?:^|;)\s*gap\s*:/.test(r.body));
+  return shared.length === 1 && shared[0].body.includes(`grid-template-columns:${template}`) && !stray.length;
+}
+const tracksOk = (rules) => sharedTracks(rules, [listQuery], 'minmax(320px,1fr) 206px 146px 124px 16px')
+  && /column-gap:12px;padding-inline:16px/.test(trackRules([listQuery]).find((r) => r.selector === '.cols,.row')?.body ?? '')
+  && sharedTracks(rules, [`@media ${desktopQuery}`, listQuery], 'minmax(320px,1fr) 206px 146px 124px');
+check('headings and rows share one track template, gap and inset at the 900 px list query, with and without the chevron track; split rows fail',
+  tracksOk(paneCss)
+    && !tracksOk(cssTree(cssRules + '@container (min-width: 900px){.cols{column-gap:8px}}'))
+    && !tracksOk(cssTree(cssRules + '@container (min-width: 900px){.row{padding-inline:12px}}'))
+    && /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', desktopQuery))
+    && /--pane-w:380px/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
+    && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
+    && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
+    && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
+check('sort marks: one fixed 14x14 SVG box, the active heading changes colour not weight, right columns put the mark first; facet and row chevrons are 16 px SVG boxes that turn whole',
+  /width:14px;height:14px;margin-top:1px;flex:none/.test(paneRule('.cols .sm', '(min-width: 600px)'))
+    && !/font-weight/.test(paneRule('.cols [aria-pressed=true]', '(min-width: 600px)'))
+    && /flex-direction:row-reverse/.test(paneRule('.cols .r', '(min-width: 600px)'))
+    && /align-items:flex-start/.test(paneRule('.cols button', '(min-width: 600px)'))
+    && /width:16px;height:16px/.test(paneRule('.dd-chev')) && /transform:rotate\(180deg\)/.test(paneRule('.dropdown[open]>summary .dd-chev'))
+    && /width:16px;height:16px/.test(paneRule('.chev')) && /transform:rotate\(180deg\)/.test(paneRule('.is-open .chev'))
+    && !/::after\{content:""/.test(paneRule('.dropdown>summary::after')) && !/\.dir(?![\w-])/.test(cssRules)
+    && !indexHtml.includes('class="dir"') && (indexHtml.match(/<svg class="sm" aria-hidden="true" focusable="false"><use href="#i-(?:sort|chevron-up)"\/><\/svg>/g) ?? []).length === 4
+    && (indexHtml.match(/<span class="dd-chev" aria-hidden="true">/g) ?? []).length === 5);
 check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
   /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
     && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
     && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.pane .d-cells', desktopQuery))
     && /grid-template-areas:"pts pts" "ddl fee"/.test(paneRule('.pane .d-cells', desktopQuery))
-    && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery))
-    && /grid-template-columns:minmax\(0,1fr\)/.test(paneRule('.pane .two', desktopQuery)));
+    && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery)));
 check('selected tint/ring follow hover, focus inset and goto colours are explicit',
   /background:var\(--accent-tint\);box-shadow:inset 0 0 0 2px var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
     && cssRules.lastIndexOf('.is-sel>.row') > cssRules.indexOf('.row:hover')
@@ -2403,7 +2476,7 @@ function paneAppHarness(test, { boot = false } = {}) {
     // layout stubs; an unknown query is an error rather than a silent 1024.
     const motionMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
-    const queries = { '(min-width: 1024px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia };
+    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia };
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
     let nextFrame = 1; const frames = new Map();
@@ -2412,8 +2485,10 @@ function paneAppHarness(test, { boot = false } = {}) {
     const fireWindow = (type) => { for (const fn of windowListeners[type] ?? []) fn({ type }); };
     const styleReads = [];
     // What the stylesheet hides at each width; a hidden node cannot take focus.
+    // The list's Sort select follows a container query this stub cannot see; it
+    // never moves, so it is treated as visible at every width.
     const cssHidden = (n) => media600.matches
-      ? n.id === 'f-more' || n.classList.contains('f-sort')
+      ? n.id === 'f-more'
       : (n.classList.contains('more-filters') && n.parent?.id === 'filter-form') || (n.id === 'f-copy' && n.parent?.classList.contains('status'));
     const observers = [];
     class IntersectionObserver {
@@ -2582,8 +2657,12 @@ const stageIds = ['filter-form', 'f-search', 'f-points', 'f-points-error', 'f-ma
   'f-more', 'f-copy', 'filter-sheet', 'sheet-h', 'sheet-done', 'sheet-show'];
 check('one copy of each control: every filter, sheet and copy id appears exactly once',
   stageIds.every((id) => (indexHtml.match(new RegExp(`id="${id}"`, 'g')) ?? []).length === 1));
-check('.more-filters holds the fee, the three dropdowns, Sort and Clear all, inside the filter form in the header',
-  moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-sort"', 'id="f-clear"'].every((s) => moreSrc.includes(s))
+// Redesign revisions: Sort left the sheet for the list itself, where the 900 px
+// container query swaps it with the headings (one visible sort control).
+const listpSrc = elementSource(indexHtml, /<div class="listp">/);
+check('.more-filters holds the fee, the five dropdowns, Deadline and Clear all, inside the filter form in the header; Sort sits in the list before the headings',
+  moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-deadline"', 'id="dd-degrees"', 'id="dd-cities"', 'id="f-clear"'].every((s) => moreSrc.includes(s))
+    && !formSrc.includes('id="f-sort"') && /<div class="fld f-sort">\s*<label for="f-sort">Sort by<\/label>\s*<select class="inp" id="f-sort"><\/select>\s*<\/div>\s*<div class="cols"/.test(listpSrc)
     && formSrc.includes(moreSrc) && elementSource(indexHtml, /<header class="top">/).includes(formSrc)
     && ['id="f-search"', 'id="f-points"', 'id="f-maths"', 'id="f-more"'].every((s) => formSrc.includes(s) && !moreSrc.includes(s)));
 check('.status holds the live count, its aria-hidden twin and Copy link after a 1 px sentinel; Sort has left it; the footer holds Show N',
@@ -2900,6 +2979,7 @@ const motionAllowed = {
   '.item:not(.is-sel)>.row:hover': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.expand': 'transition:grid-template-rows var(--t-slow) var(--ease-out),opacity var(--t-slow) var(--ease-out)',
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
+  '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   '.sheet': 'transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
   '.sheet::backdrop': 'transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
@@ -2909,7 +2989,7 @@ const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/
   const sel = r.selector.split(',').map((x) => x.trim()).join(',');
   if (legacyMotion.includes(r.selector.trim())) return false;
   const want = motionAllowed[sel];
-  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1024)px/.test(m));
+  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px/.test(m));
 }).map((r) => r.selector);
 check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
   transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)
@@ -2920,12 +3000,12 @@ check('§8: no keyframes, stagger, reorder or count/filter animation; no smooth 
   !/@keyframes|transition-delay|animation-delay|scroll-behavior\s*:\s*smooth|view-transition/.test(cssRules)
     && allCss.every((r) => !/(?:^|;)\s*animation\s*:/.test(r.body) || /animation:\s*none\s*!important/.test(r.body))
     && ['.count', '.cshort', '.results', '.fig', '.status', '.item'].every((sel) => !/transition|animation/.test(bodyOf(sel))));
-check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron turns between its two rotations',
+check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron box turns whole, with no shift between states',
   /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
-    && /min-height:0;overflow:hidden/.test(bodyOf('.expand-inner')) && /transform:rotate\(45deg\)/.test(bodyOf('.chev'))
-    && /transform:translateY\(3px\) rotate\(-135deg\)/.test(bodyOf('.is-open .chev')));
+    && /min-height:0;overflow:hidden/.test(bodyOf('.expand-inner')) && !/(?:^|;)\s*transform\s*:/.test(bodyOf('.chev'))
+    && /^transform:rotate\(180deg\)$/.test(bodyOf('.is-open .chev')));
 check('wide: the selection fill never fades in or out; only an unselected row fades its hover',
-  /transition:none/.test(bodyOf('.row', ['@media (min-width: 1024px)'])) && !/transition/.test(bodyOf('.is-sel>.row', ['@media (min-width: 1024px)'])));
+  /transition:none/.test(bodyOf('.row', ['@media (min-width: 1200px)'])) && !/transition/.test(bodyOf('.is-sel>.row', ['@media (min-width: 1200px)'])));
 check('sheet: slides from translateY(100%) with @starting-style and discrete display/overlay; the scrim fades; from 600 neither transitions',
   /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
     && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
@@ -3136,6 +3216,7 @@ check('A08 print hides controls, count, sort header, pane, chevrons, skip/goto, 
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
+    && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
     && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody('.open:focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
   /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
@@ -3255,6 +3336,25 @@ appCheck('sort headings toggle both ways, a new key starts naturally, select/fil
   if (context.document.querySelector('.sort-label').textContent !== 'University A–Z') return false;
   get('f-deadline').value = 'open'; fire(get('f-deadline'),'change'); fire(get('f-clear'),'click');
   return run('state.sort + state.dir') === 'tuitiondesc' && get('f-sort').value === 'tuition:desc' && get('f-deadline').value === 'any';
+});
+// Phase 3 diagnosis: the active mark was a CSS triangle that pointed down in
+// both directions and a different box from the inactive one. Now every heading
+// keeps exactly one .sm box whose symbol says the state and direction.
+appCheck('sort marks: one box per heading, i-sort when inactive, chevron-up for the natural order and chevron down reversed, through clicks and the select', ({ run, get, fire, flip600, context }) => {
+  flip600(true);
+  const buttons = () => [...context.document.querySelectorAll('.cols [data-sort]')];
+  const marks = () => Object.fromEntries(buttons().map((b) => {
+    const boxes = b.querySelectorAll('.sm');
+    return [b.dataset.sort, boxes.length === 1 && boxes[0].getAttribute('aria-hidden') === 'true' ? boxes[0].querySelector('use').getAttribute('href') : 'bad'];
+  }));
+  const want = (key, dir) => Object.fromEntries(['name', 'points', 'deadline', 'tuition'].map((k) => [k, k === key ? (dir === 'desc' ? '#i-chevron' : '#i-chevron-up') : '#i-sort']));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (!same(marks(), want('deadline', 'asc'))) return false;
+  const deadline = buttons().find((b) => b.dataset.sort === 'deadline');
+  fire(deadline, 'click'); if (!same(marks(), want('deadline', 'desc')) || deadline.getAttribute('data-direction') !== 'desc') return false;
+  fire(buttons().find((b) => b.dataset.sort === 'tuition'), 'click'); if (!same(marks(), want('tuition', 'asc'))) return false;
+  get('f-sort').value = 'name:desc'; fire(get('f-sort'), 'change');
+  return same(marks(), want('name', 'desc')) && run('state.sort + state.dir') === 'namedesc';
 });
 appCheck('early deadline edits win load and URL lists restore only full-dataset values', ({run,get,context}) => {
   context.location.search = '?deadline=60&dir=desc&degree=BSc&degree=bad&city=bad';

@@ -166,19 +166,19 @@
            selected" to a screen reader: the dot is aria-hidden and " selected"
            is hidden text (A06). -->
       <details class="dropdown" id="dd-subjects">
-        <summary class="inp"><span>Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <summary class="inp"><span>Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
         <div class="dropdown-panel" role="group" aria-label="Subject area">
           <div class="options" id="f-subjects"></div>
         </div>
       </details>
       <details class="dropdown" id="dd-countries">
-        <summary class="inp"><span>Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <summary class="inp"><span>Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
         <div class="dropdown-panel" role="group" aria-label="Country">
           <div class="options" id="f-countries"></div>
         </div>
       </details>
       <details class="dropdown" id="dd-languages">
-        <summary class="inp"><span>Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+        <summary class="inp"><span>Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
         <div class="dropdown-panel" role="group" aria-label="Language">
           <div class="options" id="f-languages"></div>
         </div>
@@ -195,23 +195,17 @@
           </select>
         </div>
         <details class="dropdown" id="dd-degrees">
-          <summary class="inp"><span>Degree type</span><span class="dropdown-count" id="dd-degrees-count" hidden><span aria-hidden="true">· </span><span id="dd-degrees-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+          <summary class="inp"><span>Degree type</span><span class="dropdown-count" id="dd-degrees-count" hidden><span aria-hidden="true">· </span><span id="dd-degrees-count-number"></span><span class="visually-hidden"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="Degree type">
             <div class="options" id="f-degrees"></div>
           </div>
         </details>
         <details class="dropdown" id="dd-cities">
-          <summary class="inp"><span>City</span><span class="dropdown-count" id="dd-cities-count" hidden><span aria-hidden="true">· </span><span id="dd-cities-count-number"></span><span class="visually-hidden"> selected</span></span></summary>
+          <summary class="inp"><span>City</span><span class="dropdown-count" id="dd-cities-count" hidden><span aria-hidden="true">· </span><span id="dd-cities-count-number"></span><span class="visually-hidden"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="City">
             <div class="options" id="f-cities"></div>
           </div>
         </details>
-      </div>
-
-      <!-- Phone only: from 600 px the column header sorts. -->
-      <div class="fld f-sort">
-        <label for="f-sort">Sort by</label>
-        <select class="inp" id="f-sort"></select>
       </div>
 
       <div id="applied-filters" role="group" aria-label="Applied filters" hidden></div>
@@ -262,11 +256,18 @@
     <section aria-labelledby="results-h" tabindex="-1">
       <h2 class="visually-hidden" id="results-h">Programmes</h2>
       <div class="listp">
+        <!-- The Sort select shows while the list is narrower than 900 px; the
+             column headings below replace it from there (CSS container query),
+             so exactly one sort control is visible at any width. -->
+        <div class="fld f-sort">
+          <label for="f-sort">Sort by</label>
+          <select class="inp" id="f-sort"></select>
+        </div>
         <div class="cols" role="group" aria-label="Sort programmes">
-          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label">University A–Z</span><span class="visually-hidden">, sort by university, A to Z</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button></span>
-          <button type="button" data-sort="points" aria-pressed="false">Points<span class="visually-hidden">, sort lowest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
-          <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted soonest first</span><svg class="ic" aria-hidden="true" hidden><use href="#i-sort"/></svg><span class="dir" aria-hidden="true"></span></button>
-          <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort cheapest first</span><svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg><span class="dir" aria-hidden="true" hidden></span></button>
+          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label">University A–Z</span><span class="visually-hidden">, sort by university, A to Z</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>
+          <button type="button" data-sort="points" aria-pressed="false">Points<span class="visually-hidden">, sort lowest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
+          <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted soonest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
+          <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort cheapest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
           <span class="chv" aria-hidden="true"></span>
         </div>
         <div class="skeletons" id="loading" aria-hidden="true">

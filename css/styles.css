@@ -6,7 +6,10 @@
    Rules a non-coder can keep:
    - Never put a hex value outside this block.
    - A new state joins an existing group and uses that group's fill/ink/mark.
-     Never add a sixth hue.
+     Never add another status hue.
+   - Identity colour is not status (redesign revisions, 2026-10-28): the
+     lavender masthead and the country badges are the only non-status tints,
+     and a badge always carries the country's name in words.
    - Add every new text/background pair to PAIRS in tools/check-contrast.mjs.
    Contrast below is WCAG 2 (relative luminance), recomputed by script
    2026-10-26 after the polish pass (no hex changed; every pair still passes). Text needs 4.5:1, marks, borders and focus rings need 3:1. */
@@ -62,6 +65,18 @@
   --scrim:rgb(22 32 44 / .45);   /* behind the phone filter sheet only. */
   --shadow:0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22); /* the detail pane only: the page's one shadow. */
 
+  /* ---------- Identity (lavender): the masthead and country badges only. Never a status. ---------- */
+  --brand-fill:#ebe4f3;  /* masthead band. */
+  --brand-ink:#47345d;   /* masthead title, tagline and language buttons. 8.83 on brand-fill; panel on it 10.95. */
+  /* Country badges: one fill/ink pair per mapped country, and a neutral pair for any country not
+     mapped yet (it needs no code change). Every pair is in tools/check-contrast.mjs (all above 7:1). */
+  --cty-fill:#edf0f4; --cty-ink:#46515f;
+  --cty-dk-fill:#eee6f5; --cty-dk-ink:#523b72;
+  --cty-ie-fill:#f0e5ef; --cty-ie-ink:#5a4058;
+  --cty-it-fill:#f0e7f5; --cty-it-ink:#563d66;
+  --cty-nl-fill:#eae7f5; --cty-nl-ink:#4b426c;
+  --cty-cz-fill:#eee9ee; --cty-cz-ink:#4e4352;
+
   /* ---------- Flags: ONLY inside the Country filter options. Never on rows, cells or headings. ---------- */
   --flag-white:#ffffff;
   --flag-nl-red:#ae1c28; --flag-nl-blue:#21468b;
@@ -83,8 +98,7 @@
   --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
   --r-panel:6px;    /* panels, tiles, sheet, banners */
   --r-cell:4px;     /* cells, controls, buttons, tags */
-  --pane-w:25rem;   /* desktop detail pane from 1280 px; .page sets 18rem from 1024 to 1279 px so the title
-                       column keeps at least 240 px */
+  --pane-w:380px;   /* desktop detail pane from 1200 px (redesign revisions; was 25rem from 1280) */
   /* --gut (16 phone / 24 from 600), --ctl (control height 44 / 36) and --tap (small-button and link hit
      height 44 / 28) are set on .page per breakpoint */
 
@@ -245,17 +259,17 @@ svg:not(.sprite) {
 /* Stage 1 page chrome; the old results layout stays until its stage. */
 .page{--gut:16px;--ctl:44px;--fs-ctl:16px;--tap:44px}
 .top{background:var(--panel);border-bottom:1px solid var(--hairline)}
-.mast{padding:10px var(--gut) 8px}
+.mast{padding:14px var(--gut) 12px;background:var(--brand-fill);color:var(--brand-ink)}
 .mast-top{display:flex;align-items:flex-start;gap:12px}
 .mast-id{flex:1;min-width:0}
-.mast h1{margin:0;font-size:var(--fs-16);font-weight:700;line-height:20px}
-.tagline{margin:0;display:none;font-size:var(--fs-13);color:var(--ink-2);line-height:18px}
+.mast h1{margin:0;font-size:23px;font-weight:700;line-height:27px;letter-spacing:-.4px}
+.tagline{margin:0;display:none;font-size:15px;line-height:20px}
 .src{margin:4px 0 0;white-space:normal;font-size:12.5px;line-height:17px;color:var(--ink-2);max-width:100ch}
 .src b{color:var(--ink);font-weight:600}.stat,.src-more{display:none}
-.lang{display:flex;align-items:center;gap:2px;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+.lang{display:flex;align-items:center;gap:2px;font-size:var(--fs-12);font-weight:600;color:var(--brand-ink)}
 .lang .ic{margin-right:4px}
-.lang button{min-width:32px;height:28px;padding:0 6px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);cursor:pointer}
-.lang [aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.lang button{min-width:32px;height:28px;padding:0 6px;border:1px solid var(--brand-ink);border-radius:var(--r-cell);background:transparent;cursor:pointer}
+.lang [aria-pressed=true]{background:var(--brand-ink);border-color:var(--brand-ink);color:var(--panel)}
 .lang [aria-disabled=true]{color:var(--ink-3);cursor:not-allowed}
 .bn{display:flex;gap:10px;align-items:flex-start;margin:12px var(--gut) 0;padding:10px 12px;border-radius:var(--r-panel);font-size:13.5px;line-height:19px}
 .bn-saved{background:var(--panel);border:1px solid var(--hairline);border-left:4px solid var(--ink-2)}
@@ -266,7 +280,7 @@ svg:not(.sprite) {
 .foot{padding:16px var(--gut) 24px;font-size:var(--fs-12);color:var(--ink-2)}
 
 .bn p,.foot p{margin:0}
-.lang button{font:inherit}
+.lang button{font:inherit;color:inherit}
 .lang .ic{width:16px;height:16px;fill:currentColor}
 .stat{font-variant-numeric:tabular-nums}
 .bn-saved{color:var(--ink-2)}
@@ -277,6 +291,7 @@ svg:not(.sprite) {
 .bn-fail .btn-p:hover{background:var(--accent-press);color:var(--on-accent)}
 @media (min-width: 600px) {
   .page{--gut:24px;--ctl:36px;--fs-ctl:14px;--tap:28px}
+  .mast h1{font-size:27px;line-height:32px;letter-spacing:-.6px}
   .tagline,.stat,.src-more{display:inline}
   .mast-id{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px}
 }
@@ -323,14 +338,14 @@ svg:not(.sprite) {
 /* ------------------------------------------------------------- filters */
 
 /* One form under the masthead (spec §6.3). Below 600 px the bar is two rows,
-   Search + Filters and My points + HL Maths; the fee, the three pick-lists,
-   Sort and Clear all live in .more-filters, which app.js moves into the sheet.
+   Search + Filters and My points + HL Maths; the fee, the pick-lists
+   and Clear all live in .more-filters, which app.js moves into the sheet.
    The band never sticks (A07). Classes follow the mockup (full/mockup.html);
    .dropdown/.dropdown-panel/.options/.option are its .dd/.dd-panel/.opt. */
 .fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "pts hl hl";align-items:end}
 /* Controls do not inherit the page font on their own. Zero specificity, so
    every class rule below still wins. */
-:where(.fbar,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
+:where(.fbar,.listp,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
 .fld{display:grid;gap:4px;min-width:0;position:relative}
 .fld>label,.help{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px}
 .help{margin:0;font-weight:400}
@@ -372,21 +387,33 @@ svg:not(.sprite) {
 
 /* A pick-list: a native <details>, so it opens from the keyboard with no
    script. app.js adds one-open-at-a-time and, for the floating panels in the
-   bar, closing on an outside click, on Tab out or on Escape. The chevron is
-   drawn in CSS; there is no icon in the summary. */
+   bar, closing on an outside click, on Tab out or on Escape.
+   The chevron is the sprite's i-chevron in a fixed 16 px box that turns as a
+   whole. It was a rotated CSS border shifted by translate percentages, which
+   sat about 2 px high and moved between open and closed (Phase 3 diagnosis). */
 .dropdown{position:relative}
-.dropdown>summary{list-style:none;position:relative;display:flex;align-items:center;gap:6px;padding-right:30px;cursor:pointer;white-space:nowrap;user-select:none}
+.dropdown>summary{list-style:none;position:relative;display:flex;align-items:center;gap:6px;padding-right:8px;cursor:pointer;white-space:nowrap;user-select:none}
 .dropdown>summary::-webkit-details-marker{display:none}
-.dropdown>summary::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:translateY(-70%) rotate(45deg)}
-.dropdown[open]>summary::after{transform:translateY(-20%) rotate(-135deg)}
+.dd-chev{display:flex;flex:none;width:16px;height:16px;margin-left:auto;color:var(--ink-2);transition:transform var(--t-med) var(--ease-in-out)}
+.fbar .dd-chev .ic,.sheet .dd-chev .ic{width:16px;height:16px;fill:none}
+.dropdown[open]>summary{border-color:var(--accent)}
+.dropdown[open]>summary .dd-chev{transform:rotate(180deg)}
 /* A02: a 16rem panel never wider than the screen, and the last one opens
    leftward, so none pushes the page sideways. */
-.dropdown-panel{position:absolute;top:100%;left:0;z-index:20;margin-top:4px;width:16rem;max-width:calc(100vw - 2 * var(--gut));max-height:15.5rem;overflow:auto;overscroll-behavior:contain;padding:0 12px;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r-panel)}
-.dropdown:last-of-type .dropdown-panel{left:auto;right:0}
-.options{display:grid}
-.option{display:flex;align-items:center;gap:10px;min-height:var(--tap);border-top:1px solid var(--hairline);font-size:var(--fs-14);cursor:pointer;user-select:none}
-.option:first-child{border-top:0}
-.option:has(input:checked){font-weight:600}
+.dropdown-panel{position:absolute;top:100%;left:0;z-index:20;margin-top:6px;width:19rem;max-width:calc(100vw - 2 * var(--gut));max-height:18rem;overflow:auto;overscroll-behavior:contain;padding:6px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
+.dropdown:last-of-type .dropdown-panel,#dd-countries .dropdown-panel{left:auto;right:0}
+/* Options: 36 px on a fine pointer, 44 px on touch and in the phone sheet
+   (--tap is 44 below 600). A picked option is filled, not only ticked. */
+.options{display:grid;gap:2px}
+.option{display:flex;align-items:center;gap:10px;min-height:max(36px,var(--tap));padding:4px 8px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:18px;white-space:normal;cursor:pointer;user-select:none}
+.option:hover{background:var(--hover)}
+.option:has(input:checked){font-weight:600;background:var(--accent-tint);color:var(--accent)}
+/* Option search, only in a list of more than 12 (renderChips). It narrows the
+   options, never the programmes. */
+.opt-q{display:grid;gap:4px;padding:2px 2px 6px}
+.opt-q .inp{height:max(36px,var(--tap))}
+.opt-clear{justify-self:start;height:auto;min-height:max(28px,var(--tap))}
+.opt-none{margin:0;padding:6px 8px}
 /* Flags only here. Out-ranks the global 1em icon size (svg:not(.sprite)). */
 .dropdown svg.flag{width:21px;height:14px;border-radius:2px;outline:1px solid var(--hairline);vertical-align:middle}
 
@@ -413,6 +440,14 @@ html:has(.sheet[open]){overflow:hidden}
 .sheet-b .copy{display:inline-flex;justify-self:start}
 .sheet-f{flex:none;display:flex;gap:8px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--hairline)}
 .sheet-f .btn-p{flex:1}
+
+/* Applied filters: one removable chip per value, on their own line under the
+   controls. They wrap rather than squeeze (a long subject name measured 345 px
+   in a 288 px phone sheet). 36 px targets, 44 px on touch and in the sheet. */
+#applied-filters{display:flex;flex-wrap:wrap;gap:8px;flex-basis:100%;min-width:0}
+.achip{display:inline-flex;align-items:center;gap:8px;min-height:max(36px,var(--tap));max-width:100%;padding:4px 12px;border:1px solid var(--accent);border-radius:999px;background:var(--accent-tint);color:var(--accent);font-size:var(--fs-13);font-weight:600;line-height:18px;text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.achip:hover{background:var(--panel)}
+.achip>[aria-hidden]{flex:none;font-size:var(--fs-16);line-height:1}
 
 /* The dormant shortlist bar's "Only my shortlist" tick (shortlist.js, hidden). */
 .chip {
@@ -487,27 +522,49 @@ html:has(.sheet[open]){overflow:hidden}
 
 /* ------------------------------------------------------------ detail */
 
-/* Summary rows own containment; detail is rendered only when requested. */
+/* Summary rows own containment; detail is rendered only when requested.
+   Redesign revisions (2026-10-28): identity first, then a labelled band of
+   points / deadline / fee, then the requirements across the full row width,
+   never clamped. The list panel is a size container: the facts move to the
+   right of the title, under sort headings, only once the LIST is at least
+   900 px wide, whether or not the pane is open. Below that the facts stack and
+   the Sort select replaces the headings, so exactly one sort control shows. */
 .results{list-style:none;margin:0;padding:0}
 .row :where(h3,p){margin:0}
-.listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel)}
+.listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);container-type:inline-size}
 .cols{display:none}
-.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 154px}
+.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
+.listp>.f-sort>label{white-space:nowrap}
+.listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
+.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
 .item+.item{border-top:1px solid var(--hairline)}
-.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"main main" "pts pts" "ddl fee";gap:4px 8px;padding:8px 12px}
+.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main" "pts pts" "ddl fee" "req req";gap:8px;padding:12px}
 .row:hover{background:var(--hover)}
 .is-open>.row{background:var(--hover)}
-.r-main{grid-area:main;min-width:0;padding-right:24px;margin-bottom:2px}
-.r-t{font-size:var(--fs-16);font-weight:600;line-height:20px}
+.r-main{grid-area:main;min-width:0;padding-right:28px}
+.r-t{font-size:var(--fs-16);font-weight:600;line-height:22px}
 .open{all:unset;cursor:pointer}
 .open::after{content:"";position:absolute;inset:0}
 .open:focus-visible::after{outline:2.5px solid var(--accent);outline-offset:-3px;border-radius:var(--r-cell)}
-.sub,.line{font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
-.line b{color:var(--ink);font-weight:600}
+.sub{margin-top:2px;font-size:var(--fs-14);line-height:20px;color:var(--ink-2)}
+.line{grid-area:req;font-size:var(--fs-14);line-height:20px;color:var(--ink)}
+.line b{color:var(--ink-2);font-weight:600}
 .line .ok{margin-left:8px}
-.cc{margin-left:4px;font-size:var(--fs-12);font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
-.chev{position:absolute;top:18px;right:14px;width:8px;height:8px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none}
-.is-open .chev{transform:translateY(3px) rotate(-135deg)}
+/* The country, in words, on a small tint (the tint only helps; it may repeat
+   once there are more countries than pairs). An unmapped country gets the
+   neutral pair with no code change. MAINTENANCE.md says how to add one. */
+.cc{display:inline-block;margin-left:6px;padding:0 6px;border-radius:var(--r-cell);background:var(--cty-fill);color:var(--cty-ink);font-size:var(--fs-12);font-weight:600;line-height:18px;white-space:nowrap}
+.cc[data-country=Denmark]{background:var(--cty-dk-fill);color:var(--cty-dk-ink)}
+.cc[data-country=Ireland]{background:var(--cty-ie-fill);color:var(--cty-ie-ink)}
+.cc[data-country=Italy]{background:var(--cty-it-fill);color:var(--cty-it-ink)}
+.cc[data-country=Netherlands]{background:var(--cty-nl-fill);color:var(--cty-nl-ink)}
+.cc[data-country=Czechia]{background:var(--cty-cz-fill);color:var(--cty-cz-ink)}
+/* The row disclosure: i-chevron in a fixed 16 px box, centred on the title's
+   first 22 px line, turned whole when open. It was a rotated CSS border that
+   dropped 3 px when open (Phase 3 diagnosis). */
+.chev{position:absolute;top:15px;right:12px;display:flex;width:16px;height:16px;color:var(--ink-2);pointer-events:none}
+.row .chev .ic{width:16px;height:16px;fill:none}
+.is-open .chev{transform:rotate(180deg)}
 .deg{margin-left:6px;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
 /* The hidden ", " between a title and its degree (A05). Clipped and absolute,
    Chrome read it as a block of its own and named the row "Title , Degree".
@@ -516,20 +573,16 @@ html:has(.sheet[open]){overflow:hidden}
    taller (measured 2026-10-28; title, degree and row heights now as before). */
 .open>.visually-hidden,.d-title>.visually-hidden{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;font-size:0;line-height:0}
 .row .ic{width:14px;height:14px;fill:currentColor;flex:none}
-.row .cell{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:0 8px;padding:4px 8px;font-size:var(--fs-13);line-height:18px}
+.row .cell{gap:2px;padding:4px 8px;font-size:var(--fs-14);line-height:20px}
 .c-pts{grid-area:pts}.c-ddl{grid-area:ddl}.c-fee{grid-area:fee}
-.row .c-fee{justify-content:flex-end;text-align:right}
-.row :is(.c-pts,.c-ddl){justify-self:start;max-width:100%}
-.row .c-pts .lab,.row .v-time .lab,.row .v-past .lab,.row .c-fee:not(.v-unk) .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.row .c-pts.v-none .lab{position:static;width:auto;height:auto;clip-path:none}
-.row .fig{font-size:var(--fs-14);line-height:18px}
+.row .fig{font-size:var(--fs-14);line-height:20px}
 .row .verd{margin:0}
-.row .c-pts .verd{order:-1}
 .row .v-unk{padding:2.5px 6.5px}
 .pt{white-space:nowrap}
 .q{font-size:12.5px;color:var(--ink-2)}
-.r2{order:3;flex-basis:100%;padding-left:17px;font-size:var(--fs-12);font-weight:600}
+.r2{padding-left:17px;font-size:var(--fs-12);font-weight:600}
 .v-fit .r2{color:var(--fit-ink)}.v-cond .r2{color:var(--cond-ink)}
+.zf{display:block}.zf .dot{display:none}
 /* Motion (spec §8): rows and controls fade their background on hover/focus;
    a slot grows its one grid row from 0fr to 1fr and fades in; the chevron
    turns. app.js inserts a slot closed and opens it on the next frame, and only
@@ -552,7 +605,7 @@ html:has(.sheet[open]){overflow:hidden}
    unbroken run; without min-width and anywhere they widen the page.
    Passed-deadline entries are not dimmed: 0.65 opacity took the old cards'
    text below readable contrast (A01). The deadline cell says it in words. */
-.detail{display:grid;gap:16px;padding:12px 12px 16px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);min-width:0;overflow-wrap:anywhere}
+.detail{display:grid;gap:16px;padding:12px 12px 16px;font-size:15px;line-height:22px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);min-width:0;overflow-wrap:anywhere}
 .d-head{display:grid;gap:2px}
 /* The title is first in the DOM, so heading navigation reads it first; the
    place line is drawn above it. Nothing in the head is focusable. */
@@ -596,12 +649,15 @@ html:has(.sheet[open]){overflow:hidden}
 
 /* Requirements | Applying. */
 .two{display:grid;gap:16px}
-.d-sec>h3{margin-bottom:2px;font-size:var(--fs-13);font-weight:700}
-.kv{display:grid;grid-template-columns:7.5rem minmax(0,1fr);font-size:var(--fs-14);line-height:20px}
-.kv dt{color:var(--ink-2)}
-.kv dt,.kv dd{margin:0;padding:6px 0;border-top:1px solid var(--hairline)}
+.d-sec>h3{margin-bottom:2px;font-size:var(--fs-14);font-weight:700}
+/* Labels above their text, one reading column (redesign revisions): long
+   admissions paragraphs no longer squeeze into a value column beside a label. */
+.kv{display:block;font-size:15px;line-height:22px}
+.kv dt{margin:0;padding:10px 0 2px;border-top:1px solid var(--hairline);font-size:var(--fs-13);font-weight:600;line-height:18px;color:var(--ink-2)}
+.kv dt:first-child{border-top:0;padding-top:4px}
+.kv dd{margin:0;padding:0 0 6px}
 .kv dd p+p{margin-top:4px}
-.kv-none{font-size:var(--fs-14)}
+.kv-none{font-size:15px;line-height:22px}
 /* "Not published" / "Not checked yet": unknown is not "none" and must not
    read like it. */
 .unk-t{display:inline-block;padding:0 6px;border:1.5px dashed var(--ink-3);border-radius:var(--r-cell);font-size:var(--fs-13);font-weight:600;line-height:20px;color:var(--ink-2)}
@@ -636,7 +692,7 @@ html:has(.sheet[open]){overflow:hidden}
   .f-q{flex:1 1 16rem}.f-pts{flex:none;width:5.5rem}.f-hl{flex:none;width:11.5rem}
   .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
   .f-fee{flex:none;width:8rem}
-  .fbar .more,.f-sort{display:none}
+  .fbar .more{display:none}
   .sheet,.sheet::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every
      stuck declaration is put back, in case .is-stuck is still on the bar. */
@@ -645,44 +701,55 @@ html:has(.sheet[open]){overflow:hidden}
   .is-stuck .cfull{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
   .is-stuck .cshort{display:none}
   .status .copy{display:inline-flex}
-  .item{contain-intrinsic-size:auto 92px}
-  .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.75rem 6.75rem 12px;grid-template-areas:"main pts ddl fee chev";column-gap:8px}
-  .cols{display:grid;position:sticky;top:0;z-index:3;padding:4px 12px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
-  .c1{display:flex;align-items:center;gap:6px}
-  .cols button{all:unset;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);cursor:pointer}
-  .c1 button{padding:4px 6px}
+  .item{contain-intrinsic-size:auto 200px}
+  /* Stacked facts on a tablet-width list: one band of three. */
+  .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee" "req req req";padding:14px 16px}
+  .chev{top:17px;right:16px}
+  /* The headings stick while the list scrolls. They show only from a 900 px
+     list (the @container rule below), so this is inert until then. */
+  .cols{position:sticky;top:0;z-index:3;padding:4px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+  .c1{display:flex;align-items:flex-start;gap:6px;padding-top:4px}
+  /* One sort mark per heading: a 14 x 14 SVG box, the same box active or not,
+     either direction (app.js swaps the symbol). It is centred on the first 16 px label
+     line, so it stays on the first line if a label
+     wraps. The active heading changes colour, never weight, so no label moves
+     when it becomes active (Phase 3 diagnosis: it jumped 14 px). */
+  .cols button{all:unset;display:inline-flex;align-items:flex-start;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);line-height:16px;cursor:pointer}
+  .c1 button{padding:0 6px;margin-top:-4px;padding-block:4px}
   .cols button{transition:background-color var(--t-fast) var(--ease-out)}
   .cols button:hover{background:var(--hover)}
   .cols button:focus-visible{outline:2.5px solid var(--accent);outline-offset:0}
-  .cols .ic{width:14px;height:14px}
-  .cols [aria-pressed=true]{color:var(--ink);font-weight:700}
-  .dir{width:0;height:0;border:5px solid transparent;border-top:6px solid var(--accent);border-bottom:0}
-  .cols .r{justify-self:end}
-  .row{padding:8px 12px;align-items:start}
-  .row :is(.c-pts,.c-ddl){justify-self:stretch}
-  .r-main{margin:0;padding:0}
-  .sub{display:flex;align-items:baseline;min-width:0}
-  .uc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .sub>:not(.uc){flex:none}
-  .chev{position:static;grid-area:chev;margin-top:6px}
-  .row .cell{flex-direction:column;align-items:flex-start;flex-wrap:nowrap;padding:4px 8px}
-  .row .v-unk{padding:2.5px 6.5px}
-  .row :is(.c-ddl,.c-fee){align-items:flex-end;text-align:right}
-  .row .lab,.row .c-pts.v-none .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-  .row .c-pts .verd{order:0}
-  .row .v-time .verd{order:1}
+  .cols .sm{width:14px;height:14px;margin-top:1px;flex:none;fill:currentColor}
+  .cols [aria-pressed=true]{color:var(--ink)}
+  .cols [aria-pressed=true] .sm{color:var(--accent)}
+  /* Right-aligned columns put the mark before the label, so the label's last
+     letter lines up with the end of the dates and fees under it. */
+  .cols .r{justify-self:end;flex-direction:row-reverse}
   .detail{padding:16px 24px 20px}
   .d-cells{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
   .d-cells .c-pts{grid-column:auto}
-  .zf{display:block}.zf .dot{display:none}
-  .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 24px}
+}
+
+/* Facts to the right only when the list itself is at least 900 px wide: the
+   title track keeps at least 320 px. Headings and rows share one template,
+   one gap and one inset, so a heading sits over its column at every width. A
+   16 px track holds the row chevron below 1200 px, where rows open in place. */
+@container (min-width: 900px) {
+  .listp>.f-sort{display:none}
+  .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px 16px;column-gap:12px;padding-inline:16px}
+  .cols{display:grid}
+  .row{grid-template-areas:"main pts ddl fee chev" "req req req req req";row-gap:6px;padding-block:12px;align-items:start}
+  .item{contain-intrinsic-size:auto 120px}
+  .r-main{padding-right:0}
+  .chev{position:static;grid-area:chev;margin-top:3px}
+  .row .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .row :is(.c-ddl,.c-fee){align-items:flex-end;text-align:right}
 }
 
 /* Uncapped title track: 494px / 51.5ch at 1440, 974px / 101.5ch at 1920
    (Plex Sans 16px/600). Cap per spec §5 once it exceeds about 70ch. */
 .page{max-width:1440px;margin-inline:auto}
-/* The detail pane is the only surface with depth. The 18rem track is literal:
-   the canonical root token is immutable and supplies 25rem from 1280. */
+/* The detail pane is the only surface with depth; it is --pane-w wide. */
 .pane,.goto{display:none}
 .pane-empty{padding:24px 20px;color:var(--ink-2)}
 /* A different pick fades its new content in (spec §8). The class is only on
@@ -693,8 +760,11 @@ html:has(.sheet[open]){overflow:hidden}
 
 @media (min-width: 1024px) {
   .f-q{flex-basis:13rem}.f-hl{width:auto}.f-hl .help{white-space:nowrap}
-  .split{display:grid;grid-template-columns:minmax(0,1fr) 18rem;gap:16px;align-items:start}
-  .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"}
+}
+/* The pane from 1200 (redesign revisions; it was 1024): 380 px, so the list
+   keeps a readable title track. app.js uses the same query. */
+@media (min-width: 1200px) {
+  .split{display:grid;grid-template-columns:minmax(0,1fr) var(--pane-w);gap:16px;align-items:start}
   .chev,.cols .chv{display:none}
   /* The selection fill never fades, in or out; only hovering an unselected
      row does. */
@@ -706,17 +776,15 @@ html:has(.sheet[open]){overflow:hidden}
   .goto:hover{color:var(--accent-press)}
   .goto:focus{left:auto;right:12px;bottom:8px;z-index:2;padding:4px 8px;background:var(--panel)}
   .pane{display:block;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);box-shadow:var(--shadow)}
-  .pane .detail{padding:16px;border:0;border-radius:0}
+  .pane .detail{padding:16px 20px 20px;border:0;border-radius:0}
   .pane .d-cells{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"pts pts" "ddl fee"}
   .pane .d-cells .c-pts{grid-column:1/-1}
-  .pane .two{grid-template-columns:minmax(0,1fr)}
-  .pane .kv{grid-template-columns:6.5rem minmax(0,1fr)}
-}
-@media (min-width: 1280px) {
-  .split{grid-template-columns:minmax(0,1fr) var(--pane-w)}
-  .cols,.row{grid-template-columns:minmax(0,1fr) 12.75rem 6.75rem 6.75rem;column-gap:12px}
-  .pane .detail{padding:16px 20px 20px}
-  .pane .kv{grid-template-columns:8.5rem minmax(0,1fr)}
+  .r-main{padding-right:0}
+  /* No chevron track once rows no longer open in place. */
+  @container (min-width: 900px) {
+    .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px}
+    .row{grid-template-areas:"main pts ddl fee" "req req req req"}
+  }
 }
 
 /* The save control. An outline bookmark that fills when set — a state change
@@ -790,6 +858,7 @@ html:has(.sheet[open]){overflow:hidden}
 /* On a touch screen the controls grow to a 44px target. Hover styling is
    dropped too — on touch it sticks after a tap and reads as selected. */
 @media (pointer: coarse) {
+  .option,.achip,.opt-q .inp{min-height:44px}
   .star { width: 2.75rem; height: 2.75rem; }
   .chip { padding: 0.5rem 0.85rem; }
   .button { padding: 0.65rem 0.95rem; }
@@ -811,15 +880,15 @@ html:has(.sheet[open]){overflow:hidden}
 /* ------------------------------------------------------------- printing */
 
 /* A08: the list on screen, in its order, with every open slot in full; nothing
-   else is opened. Paper is A4-narrow (about 720-800 CSS px), so the 600 px row
-   layout is what prints. Ink on white: no fills, tints, rings or shadows, but
+   else is opened. Paper is A4-narrow (about 720-800 CSS px), under the 900 px
+   list query, so the stacked, labelled row is what prints. Ink on white: no fills, tints, rings or shadows, but
    every verdict word, dashed unknown box, mark and struck date stays. */
 @media print {
   *, *::before, *::after { transition: none !important; animation: none !important; }
   body { background: none; color: var(--ink); padding: 0; font-size: 11pt; }
 
   .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
-  .issues, .skip-link, .star, .skeletons, .cols, .chev, .pane, .goto,
+  .issues, .skip-link, .star, .skeletons, .cols, .f-sort, .chev, .pane, .goto,
   .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
@@ -832,6 +901,8 @@ html:has(.sheet[open]){overflow:hidden}
   .src-more { display: inline; }
 
   .results { display: block; }
+  /* The country stays in words; its tint goes, like every other fill. */
+  .cc[data-country] { background: none; color: var(--ink); padding: 0; }
   .listp, .row, .is-open>.row, .is-sel>.row, .cell, .detail { background: none; box-shadow: none; }
   /* .cell out-ranks the screen's .v-fit .verd and friends, which come earlier. */
   .open, .d-title, .cell .verd, .cell .r2, .cell .ic { color: var(--ink); }

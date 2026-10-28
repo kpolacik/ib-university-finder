@@ -56,7 +56,7 @@ const CANONICAL_PAIRS = [
   ["--accent", "--panel", ".bn-saved a, links/focus, .skip-link, dormant .star selected; .lnk (stage 2)", 4.5],
   ["--accent", "--ground", "Ground links / global focus", 4.5],
   ["--accent", "--hover", "Hovered row links / sort focus", 4.5],
-  ["--accent", "--accent-tint", "Selected-row link/focus; focus ring on .is-set .inp, .dropdown.is-set>summary and .btn.is-on (Filters)", 4.5],
+  ["--accent", "--accent-tint", "Selected-row link/focus; focus ring on .is-set .inp, .dropdown.is-set>summary and .btn.is-on (Filters); picked .option and .achip chip text/border", 4.5],
   ["--accent", "--fit-fill", ".v-fit focus-ring context: detail cells (stage 2); row cells", 3.0],
   ["--accent", "--cond-fill", ".v-cond focus-ring context: detail cells (stage 2); row cells", 3.0],
   ["--accent", "--time-fill", ".v-time focus-ring context: detail cells (stage 2); row cells", 3.0],
@@ -84,10 +84,24 @@ const CANONICAL_PAIRS = [
   ["--alarm", "--panel", ".bn-fail border", 3.0],
   ["--alarm-ink", "--panel", ".bn-fail p", 4.5],
   ["--hairline", "--panel", ".top divider, .bn-saved decorative outline", null],
-  ["--panel", "--ink", ".lang [aria-pressed=true]", 4.5],
+  ["--panel", "--ink", "Former .lang [aria-pressed=true] (kept: ink on panel is the inverse pair)", 4.5],
+  // Redesign revisions (2026-10-28): the lavender masthead and country badges.
+  ["--brand-ink", "--brand-fill", ".mast h1, .tagline, .lang group and button text/borders on the masthead", 4.5],
+  ["--panel", "--brand-ink", ".lang [aria-pressed=true] (EN)", 4.5],
+  ["--ink-2", "--brand-fill", ".src source line on the masthead", 4.5],
+  ["--ink", "--brand-fill", ".src b on the masthead", 4.5],
+  ["--ink-3", "--brand-fill", ".lang [aria-disabled=true] (SK) on the masthead", 4.5],
+  ["--accent", "--brand-fill", "Focus ring on masthead controls", 3.0],
+  ["--cty-ink", "--cty-fill", ".cc country badge, neutral pair for any unmapped country", 4.5],
+  ["--cty-dk-ink", "--cty-dk-fill", ".cc[data-country=Denmark]", 4.5],
+  ["--cty-ie-ink", "--cty-ie-fill", ".cc[data-country=Ireland]", 4.5],
+  ["--cty-it-ink", "--cty-it-fill", ".cc[data-country=Italy]", 4.5],
+  ["--cty-nl-ink", "--cty-nl-fill", ".cc[data-country=Netherlands]", 4.5],
+  ["--cty-cz-ink", "--cty-cz-fill", ".cc[data-country=Czechia]", 4.5],
+  ["--edge", "--brand-fill", "Masthead-adjacent control edge context", 3.0],
 ];
 
-const PAIRS = CANONICAL_PAIRS;
+export const PAIRS = CANONICAL_PAIRS;
 
 // ----------------------------------------------------------------- the tokens
 
@@ -110,7 +124,8 @@ function rootBlock(text, from = 0) {
   return text.slice(open + 1, close);
 }
 
-// Approved Stage 1 root; keep this independent of ignored design files.
+// Approved Stage 1 root plus the redesign-revisions identity tokens and the
+// 380px pane (2026-10-28); keep this independent of ignored design files.
 const CANONICAL = {
   "--ground": "#e8edf3",
   "--panel": "#ffffff",
@@ -137,6 +152,20 @@ const CANONICAL = {
   "--alarm-ink": "#86171d",
   "--scrim": "rgb(22 32 44 / .45)",
   "--shadow": "0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22)",
+  "--brand-fill": "#ebe4f3",
+  "--brand-ink": "#47345d",
+  "--cty-fill": "#edf0f4",
+  "--cty-ink": "#46515f",
+  "--cty-dk-fill": "#eee6f5",
+  "--cty-dk-ink": "#523b72",
+  "--cty-ie-fill": "#f0e5ef",
+  "--cty-ie-ink": "#5a4058",
+  "--cty-it-fill": "#f0e7f5",
+  "--cty-it-ink": "#563d66",
+  "--cty-nl-fill": "#eae7f5",
+  "--cty-nl-ink": "#4b426c",
+  "--cty-cz-fill": "#eee9ee",
+  "--cty-cz-ink": "#4e4352",
   "--flag-white": "#ffffff",
   "--flag-nl-red": "#ae1c28",
   "--flag-nl-blue": "#21468b",
@@ -161,7 +190,7 @@ const CANONICAL = {
   "--s-6": "32px",
   "--r-panel": "6px",
   "--r-cell": "4px",
-  "--pane-w": "25rem",
+  "--pane-w": "380px",
   "--t-fast": "120ms",
   "--t-med": "160ms",
   "--t-slow": "200ms",

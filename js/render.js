@@ -19,7 +19,6 @@ const longDate = new Intl.DateTimeFormat('en-GB', {
 const shortDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
 });
-const countryCodes = { Netherlands: 'NL', Ireland: 'IE', Czechia: 'CZ', Italy: 'IT', Denmark: 'DK' };
 
 // shortlist and onToggleStar are still passed by app.js and kept here on
 // purpose, unused: the save button was removed on 2026-10-24 at Jakub's
@@ -190,19 +189,23 @@ function renderRow(row, state, wide) {
   const city = row.cityUnknown ? 'City not published' : (!row.city || row.city === '?' ? 'City unknown' : row.city);
   sub.append(el('span', 'uc', [row.university, city].filter(Boolean).join(' · ')));
   if (row.country) {
-    const code = countryCodes[row.country];
-    const country = el('span', 'cc', code || row.country);
-    if (code) country.setAttribute('aria-hidden', 'true');
-    sub.append(country);
-    if (code) sub.append(el('span', 'visually-hidden', `, ${row.country}`));
+    // The country in words on a tinted badge; styles.css maps the tint from
+    // data-country, and an unmapped country gets the neutral one. A real
+    // space before it, so it reads "Town Denmark", not "TownDenmark".
+    const country = el('span', 'cc', row.country);
+    country.setAttribute('data-country', row.country);
+    sub.append(document.createTextNode(' '), country);
   }
   if (row.isSample) sub.append(el('span', 'tag tag-strong', 'Invented sample row · not real data'));
   main.append(heading, sub);
-  const line = rowRequirements(row);
-  if (line) main.append(line);
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
-  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true }), chevron);
+  chevron.append(icon('i-chevron', 'ic'));
+  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true }));
+  // The requirements run under the facts across the whole row, never clipped.
+  const line = rowRequirements(row);
+  if (line) body.append(line);
+  body.append(chevron);
   item.append(body);
   return item;
 }
@@ -563,13 +566,13 @@ export function renderChips(container, values, selected, onToggle, { flags } = {
   });
   container.replaceChildren();
   if (values.length > 12) {
-    const searchLabel = el('label', 'help', `Search ${container.parentElement.getAttribute('aria-label')} options`);
+    const searchLabel = el('label', 'help opt-q', `Search ${container.parentElement.getAttribute('aria-label')} options`);
     const search = el('input', 'inp');
     search.type = 'search';
-    const clear = el('button', 'btn btn-q', 'Clear option search');
+    const clear = el('button', 'btn btn-q opt-clear', 'Clear option search');
     clear.type = 'button';
     clear.hidden = true;
-    const empty = el('p', 'help', 'No options match. Try another spelling or clear option search.');
+    const empty = el('p', 'help opt-none', 'No options match. Try another spelling or clear option search.');
     empty.hidden = true;
     searchLabel.append(search);
     const filter = () => {
@@ -591,13 +594,18 @@ export function renderAppliedChips(container, chips, onRemove) {
   const nodes = chips.map(({ key, label }) => {
     let button = existing.get(key);
     if (!button) {
-      button = el('button', 'button button-quiet');
+      button = el('button', 'achip');
       button.type = 'button';
       button.setAttribute('data-chip', key);
       button.addEventListener('click', () => onRemove(key));
     }
-    const text = `Remove ${label}`;
-    if (button.textContent !== text) button.textContent = text;
+    // Named "Remove Country: Ireland"; on screen the label and a cross.
+    if (button.getAttribute('data-label') !== label) {
+      const cross = el('span', '', '×');
+      cross.setAttribute('aria-hidden', 'true');
+      button.replaceChildren(el('span', 'visually-hidden', 'Remove '), el('span', '', label), cross);
+      button.setAttribute('data-label', label);
+    }
     return button;
   });
   for (const node of [...container.children]) if (!nodes.includes(node)) node.remove();

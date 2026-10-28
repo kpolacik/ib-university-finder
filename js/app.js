@@ -94,9 +94,12 @@ let currentlyShown = 0;
 // screen, worked out in update() so a count-only refresh can reuse it.
 let currentSummary = [];
 const openIds = new Set();
-const wideQuery = matchMedia('(min-width: 1024px)');
+// The pane shows from 1200 px (redesign revisions; it was 1024). Same query as
+// the CSS. Where the facts sit inside a row is a CSS container query on the
+// list, never measured here.
+const wideQuery = matchMedia('(min-width: 1200px)');
 // From 600 px every filter sits in the bar; below it the fee, the pick-lists,
-// Sort, Clear all and Copy link live in the Filters sheet. Same query as the CSS.
+// Clear all and Copy link live in the Filters sheet. Sort sits on the list. Same query as the CSS.
 const barQuery = matchMedia('(min-width: 600px)');
 // Its own record, never one of the layout queries: turning it on settles every
 // effect at once, turning it off only affects later actions.
@@ -442,7 +445,7 @@ function update() {
   // Rebuilt rows while printing would take the paper's layout. Run it after.
   if (printing) { updateAfterPrint = true; return; }
   settleSlots();
-  // A debounced filter can land after the viewport crosses 1024 but before the
+  // A debounced filter can land after the viewport crosses 1200 but before the
   // change event. Finish the crossing first, or the pick stays in the hidden pane.
   if (appliedWide !== null && appliedWide !== wideQuery.matches) crossWide();
 
@@ -489,7 +492,7 @@ function update() {
   keepAddress();
 }
 
-// animate is only for a direct narrow toggle. Rebuilds and 1024 crossings put
+// animate is only for a direct narrow toggle. Rebuilds and 1200 crossings put
 // the slot back fully open with no motion (spec §7, §8).
 function openRow(item, row, { animate = false } = {}) {
   const move = animate && !motionQuery.matches;
@@ -570,7 +573,7 @@ function removeSlot(slot) {
 }
 
 // Finish every slot effect now: opening slots open, closing slots go. Before a
-// rebuild or a 1024 move, for print, on failure and when reduced motion is
+// rebuild or a 1200 move, for print, on failure and when reduced motion is
 // turned on.
 function settleSlots() {
   for (const slot of [...slotWork.keys()]) {
@@ -908,9 +911,12 @@ function syncSort() {
     if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? 'University Z–A' : 'University A–Z';
     button.querySelector('.visually-hidden').textContent = active
       ? `, sorted ${current}. Activate to sort ${next}.` : `, sort ${next}.`;
-    button.querySelector('.dir').hidden = !active;
-    button.querySelector('.dir').setAttribute('data-direction', state.dir);
-    button.querySelector('svg').hidden = active;
+    // One mark box per heading, always present; only its symbol changes, so no
+    // label moves. Up is the natural order (soonest, cheapest, lowest, A–Z).
+    const mark = active ? (state.dir === 'desc' ? '#i-chevron' : '#i-chevron-up') : '#i-sort';
+    const use = button.querySelector('.sm use');
+    if (use.getAttribute('href') !== mark) use.setAttribute('href', mark);
+    button.setAttribute('data-direction', active ? state.dir : '');
   }
 }
 
