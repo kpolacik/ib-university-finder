@@ -788,7 +788,7 @@ section('The empty state names the filters in use (S05)');
 check('the empty state no longer mentions the Google Sheet or a fixed tuition/country hint',
   !appSrc.includes('Google Sheet') && !appSrc.includes('raising the tuition limit, or removing a country'));
 check('the empty state has a working Clear all button',
-  indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', clearAll)"));
+  indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear))"));
 
 // S03: a reload threw every filter away, and a filtered view could not be
 // shared. The state now lives in the address.
@@ -2149,7 +2149,7 @@ check('row wraps whole point parts without clipping requirements; containment on
   /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
     && !/line-clamp|max-height|overflow\s*:\s*hidden/.test(ruleBody('.line'))
     && !/content-visibility/.test(ruleBody('.detail') + ruleBody('.expand') + ruleBody('.results>.detail'))
-    && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand>.detail')));
+    && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
     new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap'].includes(t))
@@ -2208,7 +2208,8 @@ function cssTree(source, media = []) {
       if (source[end] === '}') depth--;
     }
     const selector = source.slice(start, brace).trim(), body = source.slice(brace + 1, end - 1);
-    if (selector.startsWith('@media')) rules.push(...cssTree(body, [...media, selector]));
+    // @starting-style nests rules like @media; keep it as ancestry too (Stage 6).
+    if (selector.startsWith('@media') || selector.startsWith('@starting-style')) rules.push(...cssTree(body, [...media, selector]));
     else rules.push({ selector, body, media });
     start = end;
   }
@@ -2275,10 +2276,20 @@ check('selected tint/ring follow hover, focus inset and goto colours are explici
 check('no interim height-gated chrome: no (min-height: 600px) media and no 236 px offset; the pane is top 12 px at every height',
   !/@media[^{]*min-height:\s*600px/.test(cssRules) && !/236px/.test(cssRules) && !css.includes('interim until Stage 5')
     && /position:sticky;top:12px;max-height:calc\(100vh - 24px\)/.test(paneRule('.pane', desktopQuery)));
-check('print hides pane/goto and restores a block split without new motion',
+// Stage 6 retarget: the only motion near the pane is the new content's
+// opacity and an unselected row's hover; the pane box, Go to details and the
+// selection fill never move.
+const paneMotionOk = (rules) => rules.every((r) => {
+  if (!/\.pane|\.goto|\.is-sel/.test(r.selector) || !/transition|animation/.test(r.body)) return true;
+  if (r.selector === '.pane-body>.fade-in') return /^transition:opacity var\(--t-fast\) var\(--ease-out\)$/.test(r.body);
+  if (r.selector === '.item:not(.is-sel)>.row:hover') return /^transition:background-color var\(--t-fast\) var\(--ease-out\)$/.test(r.body);
+  return false;
+});
+check('print hides pane/goto and restores a block split; the pane box, goto and selection fill never animate',
   /display:none/.test(paneRule('.pane', 'print')) && /display:none/.test(paneRule('.goto', 'print'))
-    && /display:block/.test(paneRule('.split', 'print'))
-    && !paneCss.some((r) => /\.pane|\.goto|\.is-sel/.test(r.selector) && /transition|animation/.test(r.body)));
+    && /display:block/.test(paneRule('.split', 'print')) && paneMotionOk(paneCss)
+    && !paneMotionOk(cssTree(cssRules + '.pane{transition:opacity .1s}')) && !paneMotionOk(cssTree(cssRules + '.is-sel>.row{transition:background-color .1s}'))
+    && !paneMotionOk(cssTree(cssRules + '.pane-body>.fade-in{transition:transform .1s}')));
 
 // Stage 4: the stable pane changes its content and accessible name together.
 section('Desktop detail pane: renderer and responsive row controls');
@@ -2387,6 +2398,18 @@ function paneAppHarness(test) {
     };
     const media = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     const media600 = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    // Stage 6: reduced motion and print are their own queries, never the
+    // layout stubs; an unknown query is an error rather than a silent 1024.
+    const motionMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    const queries = { '(min-width: 1024px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia };
+    // Animation frames run only when a test flushes one; a frame queued while
+    // flushing waits for the next.
+    let nextFrame = 1; const frames = new Map();
+    const flushFrame = () => { const due = [...frames]; frames.clear(); for (const [, fn] of due) fn(now); };
+    const windowListeners = {};
+    const fireWindow = (type) => { for (const fn of windowListeners[type] ?? []) fn({ type }); };
+    const styleReads = [];
     // What the stylesheet hides at each width; a hidden node cannot take focus.
     const cssHidden = (n) => media600.matches
       ? n.id === 'f-more' || n.classList.contains('f-sort')
@@ -2409,10 +2432,13 @@ function paneAppHarness(test) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { document: stubDocument, matchMedia: (q) => (q === '(min-width: 600px)' ? media600 : media),
+    const context = { document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+      requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
+      window: { addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout,
-      IntersectionObserver, navigator: { clipboard }, getComputedStyle: (n) => n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' },
+      IntersectionObserver, navigator: { clipboard },
+      getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise(() => {}),
       renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderSortOptions() {}, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
@@ -2430,7 +2456,8 @@ function paneAppHarness(test) {
     const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
     const settle = () => new Promise((resolve) => setImmediate(resolve));
     result = test({ run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
-      docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id) });
+      docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id),
+      motionMedia, printMedia, frames, flushFrame, fireWindow, styleReads });
   } catch (err) { finish(); throw err; }
   if (result && typeof result.then === 'function') return result.finally(finish);
   finish();
@@ -2853,6 +2880,265 @@ appCheck('simultaneous 600 and 1024 crossings stay independent in either order: 
   for (const fn of media600.listeners) fn({ matches: true });
   return stubDocument.activeElement === fee && body.querySelector('h2')?.id === `p-${a}` && !get('filter-sheet').open;
 });
+
+// ---------------------------------------------------------------- stage 6
+section('Motion, print and the final pass (redesign stage 6)');
+// Spec §8 motion, as CSS. Property-specific and media-aware: what may move,
+// for how long, and that reduced motion and print stop all of it.
+const allCss = cssTree(cssRules);
+const rulesFor = (sel, test = () => true) => allCss.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel) && test(r));
+const bodyOf = (sel, media = []) => rulesFor(sel, (r) => r.media.join('|') === media.join('|')).map((r) => r.body).join(';');
+const transitions = allCss.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body));
+// The dormant shortlist/legacy rules keep their old transitions (not §8
+// surfaces, never shown); every other transition must be one listed here.
+const motionAllowed = {
+  '.row,.btn,.inp,.option,.dropdown>summary': 'transition:background-color var(--t-fast) var(--ease-out)',
+  '.cols button': 'transition:background-color var(--t-fast) var(--ease-out)',
+  '.item:not(.is-sel)>.row:hover': 'transition:background-color var(--t-fast) var(--ease-out)',
+  '.expand': 'transition:grid-template-rows var(--t-slow) var(--ease-out),opacity var(--t-slow) var(--ease-out)',
+  '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
+  '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
+  '.sheet': 'transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
+  '.sheet::backdrop': 'transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
+};
+const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
+const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
+  const sel = r.selector.split(',').map((x) => x.trim()).join(',');
+  if (legacyMotion.includes(r.selector.trim())) return false;
+  const want = motionAllowed[sel];
+  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1024)px/.test(m));
+}).map((r) => r.selector);
+check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
+  transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)
+    && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
+    && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
+  motionProblems(allCss).join(', '));
+check('§8: no keyframes, stagger, reorder or count/filter animation; no smooth scrolling; no animation property anywhere but print/reduced-motion resets',
+  !/@keyframes|transition-delay|animation-delay|scroll-behavior\s*:\s*smooth|view-transition/.test(cssRules)
+    && allCss.every((r) => !/(?:^|;)\s*animation\s*:/.test(r.body) || /animation:\s*none\s*!important/.test(r.body))
+    && ['.count', '.cshort', '.results', '.fig', '.status', '.item'].every((sel) => !/transition|animation/.test(bodyOf(sel))));
+check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron turns between its two rotations',
+  /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
+    && /min-height:0;overflow:hidden/.test(bodyOf('.expand-inner')) && /transform:rotate\(45deg\)/.test(bodyOf('.chev'))
+    && /transform:translateY\(3px\) rotate\(-135deg\)/.test(bodyOf('.is-open .chev')));
+check('wide: the selection fill never fades in or out; only an unselected row fades its hover',
+  /transition:none/.test(bodyOf('.row', ['@media (min-width: 1024px)'])) && !/transition/.test(bodyOf('.is-sel>.row', ['@media (min-width: 1024px)'])));
+check('sheet: slides from translateY(100%) with @starting-style and discrete display/overlay; the scrim fades; from 600 neither transitions',
+  /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
+    && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
+    && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet::backdrop')) && /opacity:1/.test(bodyOf('.sheet[open]::backdrop'))
+    && /transition:none/.test(bodyOf('.sheet', ['@media (min-width: 600px)'])) && /transition:none/.test(bodyOf('.sheet::backdrop', ['@media (min-width: 600px)']))
+    && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
+// The old rule shortened every effect to 0.01ms: still a transition, still
+// firing its events late. Reduced motion is now none, backdrop included.
+const reducedBody = allCss.filter((r) => r.media.join() === '@media (prefers-reduced-motion: reduce)').map((r) => `${r.selector}{${r.body}}`).join('');
+check('reduced motion is instant: transition and animation none !important on every element, pseudo-element and ::backdrop; no 0.01ms',
+  /\*, \*::before, \*::after, ::backdrop\s*\{[^}]*transition: none !important;[^}]*animation: none !important;[^}]*scroll-behavior: auto !important/.test(reducedBody)
+    && !/0\.01ms/.test(cssRules));
+// A05: Chrome named a row "World Bachelor in Business , BSc" (and the pane
+// "Antropologie , Bc.") because the clipped, absolute ", " counted as its own
+// block. The title's separator is inline at zero size; the global utility is
+// untouched.
+check('A05: the title/degree separator is inline and zero-sized only inside a row button and the detail title; .visually-hidden itself is unchanged',
+  /position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;font-size:0;line-height:0/.test(bodyOf('.open>.visually-hidden'))
+    && bodyOf('.open>.visually-hidden') === bodyOf('.d-title>.visually-hidden')
+    && /position: absolute;/.test(css.match(/\.visually-hidden \{[^}]*\}/)?.[0] ?? '')
+    && (renderSrc.match(/el\('span', 'visually-hidden', ', '\)/g) ?? []).length === 2);
+check('renderSlot wraps the reduced detail in one .expand-inner; ids and names unchanged', live.slice(0, 40).every((row) => {
+  const slot = withStubDocument(() => renderSlot(row, noFilters()));
+  return slot.children.length === 1 && slot.children[0].className === 'expand-inner' && slot.children[0].children.length === 1
+    && slot.children[0].children[0].classList.contains('detail') && slot.id === `x-${row.id}` && slot.getAttribute('aria-label') === `${row.programme}, details`;
+}));
+
+// Slot lifecycle on the actual handlers. Frames and timers run only when a
+// test advances them, so every stale callback is flushed before asserting.
+const slotsOf = (get) => get('results').querySelectorAll('.expand');
+const idsUnique = (tree) => { const all = [...nodesOf(tree)].map((n) => n.id).filter((x) => x && /^[xp]-/.test(x)); return new Set(all).size === all.length; };
+const ariaResolves = (tree, get) => get('results').querySelectorAll('button.open').every((b) => {
+  const c = b.getAttribute('aria-controls'); return c === null || c === 'pane' || [...nodesOf(tree)].some((n) => n.id === c);
+});
+appCheck('slot opens on the next frame from a computed closed style; its state and ARIA change at once', ({ get, item, click, flushFrame, styleReads, run, ids: [a] }) => {
+  click(a);
+  const slot = item(a).querySelector('.expand'), b = item(a).querySelector('button.open');
+  if (!slot || slot.getAttribute('data-state') !== 'closed' || b.getAttribute('aria-expanded') !== 'true' || b.getAttribute('aria-controls') !== slot.id
+    || run('selectedId') !== a || !item(a).classList.contains('is-open')) return false;
+  if (!styleReads.some((r) => r.node === slot && r.state === 'closed')) return false;
+  flushFrame();
+  return slot.getAttribute('data-state') === 'open' && item(a).querySelector('.expand') === slot && slotsOf(get).length === 1;
+});
+appCheck('slot closes on its own grid-template-rows transitionend, ignoring child and opacity ends; ARIA changes first, controls go with the node', ({ get, item, click, flushFrame, fire, advance, ids: [a] }) => {
+  click(a); flushFrame(); click(a);
+  const slot = item(a).querySelector('.expand'), b = item(a).querySelector('button.open');
+  if (!slot || slot.getAttribute('data-state') !== 'closed' || slot.inert !== true || b.getAttribute('aria-expanded') !== 'false' || item(a).classList.contains('is-open')) return false;
+  fire(slot.querySelector('.detail'), 'transitionend', { propertyName: 'grid-template-rows' });
+  fire(slot, 'transitionend', { propertyName: 'opacity' });
+  if (!item(a).querySelector('.expand')) return false;
+  fire(slot, 'transitionend', { propertyName: 'grid-template-rows' });
+  if (item(a).querySelector('.expand') || b.getAttribute('aria-controls') !== null) return false;
+  advance(400); flushFrame();
+  return slotsOf(get).length === 0 && b.getAttribute('aria-expanded') === 'false';
+});
+appCheck('slot without a transitionend is removed by the 250 ms fallback, not before', ({ item, click, flushFrame, advance, ids: [a] }) => {
+  click(a); flushFrame(); click(a);
+  advance(249); if (!item(a).querySelector('.expand')) return false;
+  advance(1);
+  return !item(a).querySelector('.expand') && item(a).querySelector('button.open').getAttribute('aria-controls') === null;
+});
+appCheck('a close before the first frame removes the slot at once and the cancelled frame does nothing', ({ get, item, click, flushFrame, advance, frames, ids: [a] }) => {
+  click(a); click(a);
+  if (item(a).querySelector('.expand') || frames.size !== 0) return false;
+  flushFrame(); advance(300);
+  return slotsOf(get).length === 0 && item(a).querySelector('button.open').getAttribute('aria-expanded') === 'false';
+});
+appCheck('reopening a closing slot reuses it; the old end event, timer and frame never remove it; other open rows stay independent', ({ get, tree, item, click, flushFrame, fire, advance, run, ids: [a, b, c] }) => {
+  click(b); click(c); flushFrame();
+  click(a); flushFrame(); click(a);
+  const slot = item(a).querySelector('.expand');
+  advance(100); click(a);
+  if (item(a).querySelector('.expand') !== slot || slot.inert !== false || slot.getAttribute('data-state') !== 'open') return false;
+  fire(slot, 'transitionend', { propertyName: 'grid-template-rows' }); advance(500); flushFrame();
+  if (item(a).querySelector('.expand') !== slot || item(a).querySelector('button.open').getAttribute('aria-controls') !== slot.id) return false;
+  // Open, close and open again before any frame: one region, open.
+  click(a); click(a); flushFrame(); advance(500); flushFrame();
+  return item(a).querySelectorAll('.expand').length === 1 && item(a).querySelector('.expand').getAttribute('data-state') === 'open'
+    && run('[...openIds].sort().join()') === [a, b, c].sort().join() && slotsOf(get).length === 3 && idsUnique(tree) && ariaResolves(tree, get);
+});
+appCheck('a rebuild while slots open and close settles them: open ones instant, closing ones gone, no stale callback touches the new rows', ({ get, tree, item, click, flushFrame, fire, advance, run, ids: [a, b] }) => {
+  click(a); flushFrame(); click(a); const old = item(a).querySelector('.expand');
+  click(b); // pending first frame
+  run('update();');
+  const fresh = item(b).querySelector('.expand');
+  if (item(a).querySelector('.expand') || !fresh || fresh.getAttribute('data-state') !== 'open' || run('slotWork.size') !== 0) return false;
+  fire(old, 'transitionend', { propertyName: 'grid-template-rows' }); advance(500); flushFrame();
+  return item(b).querySelector('.expand') === fresh && fresh.getAttribute('data-state') === 'open' && slotsOf(get).length === 1
+    && item(b).querySelector('button.open').getAttribute('aria-controls') === fresh.id && idsUnique(tree) && ariaResolves(tree, get);
+});
+appCheck('closing a slot that holds focus moves it to the row button first; widening and narrowing mid-close leave no stale removal', ({ get, item, click, flushFrame, advance, flip, body, run, ids: [a, b] }) => {
+  click(a); flushFrame(); const link = item(a).querySelector('.expand a'); link.focus(); click(a);
+  if (stubDocument.activeElement !== item(a).querySelector('button.open') || stubDocument.focusOptions?.preventScroll !== true) return false;
+  click(a); flushFrame(); click(b); flushFrame(); click(b); flip(true);
+  if (slotsOf(get).length || run('slotWork.size') !== 0 || body.querySelector('h2')?.id !== `p-${a}`) return false;
+  flip(false); advance(500); flushFrame();
+  return item(a).querySelectorAll('.expand').length === 1 && item(a).querySelector('.expand').getAttribute('data-state') === 'open' && !item(b).querySelector('.expand');
+});
+appCheck('reduced motion at start: slots open and close synchronously with no frame or timer', ({ get, item, click, motionMedia, frames, run, ids: [a] }) => {
+  motionMedia.matches = true;
+  click(a);
+  if (item(a).querySelector('.expand')?.getAttribute('data-state') !== 'open' || frames.size !== 0) return false;
+  click(a);
+  return !item(a).querySelector('.expand') && run('slotWork.size') === 0 && slotsOf(get).length === 0;
+});
+appCheck('turning reduced motion on mid-effect settles at once: a closing slot goes, an opening slot opens; turning it off only affects later toggles', ({ item, click, flushFrame, motionMedia, frames, run, ids: [a, b] }) => {
+  click(a); flushFrame(); click(a); click(b);
+  motionMedia.matches = true; for (const fn of motionMedia.listeners) fn({ matches: true });
+  if (item(a).querySelector('.expand') || item(b).querySelector('.expand')?.getAttribute('data-state') !== 'open' || frames.size !== 0 || run('slotWork.size') !== 0) return false;
+  motionMedia.matches = false; for (const fn of motionMedia.listeners) fn({ matches: false });
+  if (item(b).querySelector('.expand')?.getAttribute('data-state') !== 'open') return false;
+  click(a);
+  return item(a).querySelector('.expand')?.getAttribute('data-state') === 'closed' && frames.size === 1;
+});
+appCheck('pane: a different pick fades only its new content; same-pick refreshes, filtering and crossings do not; rapid picks end on the last one', ({ run, flip, click, body, context, get, ids: [a, b, c] }) => {
+  flip(true);
+  if (body.querySelector('.fade-in')) return false;
+  click(a); const first = body.children[0];
+  if (!first.classList.contains('fade-in') || body.querySelector('h2')?.id !== `p-${a}`) return false;
+  run('update();'); if (body.querySelector('.fade-in') || body.querySelector('h2')?.id !== `p-${a}`) return false;
+  click(a); if (body.querySelector('.fade-in')) return false;
+  click(b); click(c); click(b);
+  if (body.querySelector('h2')?.id !== `p-${b}` || !body.children[0].classList.contains('fade-in') || body.children.length !== 1) return false;
+  flip(false); flip(true);
+  return !body.querySelector('.fade-in') && body.querySelector('h2')?.id === `p-${b}` && run('selectedId') === b;
+});
+appCheck('Clear all from the bar or the empty state puts focus on Search (never a disabled or hidden button); from the sheet on its heading; a programmatic clear moves nothing', ({ run, get, fire, advance, flip600, context }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const search = get('f-search'), clear = get('f-clear'), empty = get('empty-clear');
+  const type = (id, value) => { get(id).value = value; fire(get(id), 'input'); advance(150); };
+  flip600(true);
+  type('f-tuition', '3000'); clear.focus(); fire(clear, 'click', { detail: 0 });
+  if (stubDocument.activeElement !== search || stubDocument.focusOptions?.preventScroll !== true || !clear.disabled) return false;
+  type('f-search', 'zzzz-no-such-programme');
+  if (empty.hidden || !get('results').parent.hidden) return false;
+  empty.focus(); fire(empty, 'click');
+  if (stubDocument.activeElement !== search || !get('empty-state').hidden || get('results').parent.hidden) return false;
+  flip600(false); type('f-search', 'zzzz-no-such-programme'); empty.focus(); fire(empty, 'click');
+  if (stubDocument.activeElement !== search) return false;
+  fire(get('f-more'), 'click'); type('f-tuition', '3000'); clear.focus(); fire(clear, 'click');
+  if (stubDocument.activeElement !== get('sheet-h')) return false;
+  const other = get('f-points'); other.focus(); type('f-tuition', '3000'); run('clearAll();');
+  return stubDocument.activeElement === other && run('activeFilterCount(state)') === 0 && context.fixture.length === get('results').children.length;
+});
+// L09 (Stage 6 profile): drawPane read the pane's scroll size right after the
+// rows were rebuilt, forcing a layout of all 1240 (about 120 ms at 4x). The
+// scroll is now read before the rebuild, and an unscrolled pane is not touched.
+appCheck('pane scroll: a refresh keeps and clamps it, a new pick resets it, and update() reads it only before rebuilding the rows', ({ run, flip, click, pane, get, ids: [a, b] }) => {
+  flip(true); click(a);
+  pane.scrollTop = 500; pane.scrollHeight = 1000; pane.clientHeight = 300; run('update();');
+  if (pane.scrollTop !== 500) return false;
+  pane.scrollHeight = 600; run('update();'); if (pane.scrollTop !== 300) return false;
+  click(b); if (pane.scrollTop !== 0) return false;
+  let top = 0, heightReads = 0, readAt = [];
+  Object.defineProperty(pane, 'scrollTop', { configurable: true, get() { readAt.push(get('results').children[0]); return top; }, set(v) { top = v; } });
+  Object.defineProperty(pane, 'scrollHeight', { configurable: true, get() { heightReads++; return 600; } });
+  const old = get('results').children[0];
+  run('update();');
+  return heightReads === 0 && readAt.length === 1 && readAt[0] === old && get('results').children[0] !== old && top === 0;
+});
+// L09 (Stage 6): points.js had no modulepreload, so the browser found it only
+// after render.js and filters.js arrived, and the CSVs waited one more round
+// trip (about 150 ms at 150 ms latency, plans/finish-review/waterfall*.json).
+check('every module in app.js\'s import graph is modulepreloaded', (() => {
+  const seen = new Set(), queue = ['app.js'];
+  while (queue.length) {
+    const file = queue.shift();
+    for (const [, dep] of read(`js/${file}`).matchAll(/^import[\s\S]*?from '\.\/([\w-]+\.js)';/gm)) if (!seen.has(dep)) { seen.add(dep); queue.push(dep); }
+  }
+  return seen.size >= 7 && seen.has('points.js') && [...seen].every((dep) => indexHtml.includes(`<link rel="modulepreload" href="js/${dep}">`));
+})());
+check('the sheet footer starts disabled as "Loading programmes…", with no number until the first count',
+  /<button type="button" id="sheet-show" class="btn btn-p" disabled>Loading programmes…<\/button>/.test(indexHtml) && !/>Show programmes</.test(indexHtml));
+appCheck('the first count enables Show N with its exact number; total failure closes the sheet and Reload takes its focus', ({ run, get, fire, context }) => {
+  const show = get('sheet-show');
+  if (show.disabled || show.textContent !== `Show ${context.fixture.length} programmes`) return false;
+  fire(get('f-more'), 'click'); show.focus();
+  run("showTotalFailure(new Error('controlled failure'));");
+  return !get('filter-sheet').open && stubDocument.activeElement === get('source-banner').querySelector('button');
+});
+appCheck('while printing a 1024 or 600 change moves nothing and changes no open id, pick or focus; afterprint runs what is still due', ({ run, get, item, click, flushFrame, fire, advance, media, media600, fireWindow, printMedia, body, tree, ids: [a, b] }) => {
+  click(a); flushFrame(); click(b); flushFrame(); click(b); // b closing
+  const button = item(a).querySelector('button.open'); button.focus();
+  fireWindow('beforeprint');
+  if (item(b).querySelector('.expand') || run('slotWork.size') !== 0) return false;
+  const before = { open: run('[...openIds].join()'), sel: run('selectedId'), slots: slotsOf(get).length, more: tree.querySelector('.more-filters').parent };
+  let moves = 0; const hook = stubDocument.moved; stubDocument.moved = (n) => { moves++; hook(n); };
+  printMedia.matches = true; media.matches = true; for (const fn of media.listeners) fn({ matches: true });
+  media600.matches = true; for (const fn of media600.listeners) fn({ matches: true });
+  const term = run('fixture[0].programme'); get('f-search').value = term; fire(get('f-search'), 'input'); advance(150);
+  if (moves || run('[...openIds].join()') !== before.open || run('selectedId') !== before.sel || slotsOf(get).length !== before.slots
+    || stubDocument.activeElement !== button || body.querySelector('article') || tree.querySelector('.more-filters').parent !== before.more) return false;
+  // The paper's widths go; the screen is still narrow.
+  printMedia.matches = false; media.matches = false; media600.matches = false; fireWindow('afterprint');
+  if (moves || run('[...openIds].join()') !== before.open || run('state.search') !== term || item(a).querySelector('.expand')?.getAttribute('data-state') !== 'open') return false;
+  // A real crossing that happened during print runs from the restored screen.
+  fireWindow('beforeprint'); media.matches = true; for (const fn of media.listeners) fn({ matches: true });
+  fireWindow('afterprint');
+  return body.querySelector('h2')?.id === `p-${a}` && slotsOf(get).length === 0 && run('appliedWide') === true;
+});
+// A08 print, as CSS: the list on screen, ink on white, open slots whole.
+const printRules = allCss.filter((r) => r.media.join() === '@media print');
+const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
+check('A08 print hides controls, count, sort header, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, but never the sample warning',
+  ['.fbar', '.status', '.lang', '.cols', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail']
+    .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
+    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn') + printBody('.src-more')));
+check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
+  ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
+    && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
+    && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody('.open:focus-visible::after')));
+check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
+  /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
+    && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
+    && /break-inside: avoid/.test(printBody('.row')) && !/break-inside: avoid/.test(printBody('.item'))
+    && /transition: none !important; animation: none !important/.test(printBody('*')));
 
 // D12: the Italy/Denmark merge would undo the Bocconi fee and WBB fixes. It
 // must refuse to run without --rerun-one-off before it reads or writes

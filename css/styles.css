@@ -394,10 +394,15 @@ svg:not(.sprite) {
    padding, border and size limits are reset, and it is shown only while open:
    a display rule on .sheet itself would render the closed dialog (the same
    trap as [hidden], STATUS.md). The header and footer keep their height; the
-   body scrolls. ::backdrop is the only scrim. */
-.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:90dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0}
-.sheet[open]{display:flex;flex-direction:column}
-.sheet::backdrop{background:var(--scrim)}
+   body scrolls. ::backdrop is the only scrim.
+   It slides up and the scrim fades (spec §8). display and overlay switch at
+   the end, so a closing sheet keeps its place on top until it is gone. A
+   browser without @starting-style or allow-discrete just opens and closes. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:90dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
+.sheet[open]{display:flex;flex-direction:column;transform:none}
+.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
+.sheet[open]::backdrop{opacity:1}
+@starting-style{.sheet[open]{transform:translateY(100%)}.sheet[open]::backdrop{opacity:0}}
 html:has(.sheet[open]){overflow:hidden}
 .sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
 .sheet-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
@@ -504,6 +509,12 @@ html:has(.sheet[open]){overflow:hidden}
 .chev{position:absolute;top:18px;right:14px;width:8px;height:8px;border:solid var(--ink-2);border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none}
 .is-open .chev{transform:translateY(3px) rotate(-135deg)}
 .deg{margin-left:6px;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+/* The hidden ", " between a title and its degree (A05). Clipped and absolute,
+   Chrome read it as a block of its own and named the row "Title , Degree".
+   Inline at zero size it reads "Title, Degree" and draws nothing. line-height
+   0 too: at font-size 0 the inherited 20 px leading made every title line 5 px
+   taller (measured 2026-10-28; title, degree and row heights now as before). */
+.open>.visually-hidden,.d-title>.visually-hidden{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;font-size:0;line-height:0}
 .row .ic{width:14px;height:14px;fill:currentColor;flex:none}
 .row .cell{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:0 8px;padding:4px 8px;font-size:var(--fs-13);line-height:18px}
 .c-pts{grid-area:pts}.c-ddl{grid-area:ddl}.c-fee{grid-area:fee}
@@ -519,8 +530,16 @@ html:has(.sheet[open]){overflow:hidden}
 .q{font-size:12.5px;color:var(--ink-2)}
 .r2{order:3;flex-basis:100%;padding-left:17px;font-size:var(--fs-12);font-weight:600}
 .v-fit .r2{color:var(--fit-ink)}.v-cond .r2{color:var(--cond-ink)}
-.expand{border-top:1px solid var(--hairline)}
-.expand>.detail{border:0;border-radius:0}
+/* Motion (spec §8): rows and controls fade their background on hover/focus;
+   a slot grows its one grid row from 0fr to 1fr and fades in; the chevron
+   turns. app.js inserts a slot closed and opens it on the next frame, and only
+   for a direct toggle, so rebuilds and breakpoint moves stay instant. */
+.row,.btn,.inp,.option,.dropdown>summary{transition:background-color var(--t-fast) var(--ease-out)}
+.expand{display:grid;grid-template-rows:1fr;border-top:1px solid var(--hairline);transition:grid-template-rows var(--t-slow) var(--ease-out),opacity var(--t-slow) var(--ease-out)}
+.expand[data-state=closed]{grid-template-rows:0fr;opacity:0}
+.expand-inner{min-height:0;overflow:hidden}
+.expand-inner>.detail{border:0;border-radius:0}
+.chev{transition:transform var(--t-med) var(--ease-in-out)}
 .d-pts{display:grid;gap:2px}
 
 /* The mockup leans on a global margin/list reset this stylesheet does not
@@ -618,6 +637,7 @@ html:has(.sheet[open]){overflow:hidden}
   .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
   .f-fee{flex:none;width:8rem}
   .fbar .more,.f-sort{display:none}
+  .sheet,.sheet::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every
      stuck declaration is put back, in case .is-stuck is still on the bar. */
   .status{position:static;padding:12px var(--gut) 8px}
@@ -631,6 +651,7 @@ html:has(.sheet[open]){overflow:hidden}
   .c1{display:flex;align-items:center;gap:6px}
   .cols button{all:unset;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);cursor:pointer}
   .c1 button{padding:4px 6px}
+  .cols button{transition:background-color var(--t-fast) var(--ease-out)}
   .cols button:hover{background:var(--hover)}
   .cols button:focus-visible{outline:2.5px solid var(--accent);outline-offset:0}
   .cols .ic{width:14px;height:14px}
@@ -664,6 +685,10 @@ html:has(.sheet[open]){overflow:hidden}
    the canonical root token is immutable and supplies 25rem from 1280. */
 .pane,.goto{display:none}
 .pane-empty{padding:24px 20px;color:var(--ink-2)}
+/* A different pick fades its new content in (spec §8). The class is only on
+   freshly inserted content, so nothing is left to clean up. */
+.pane-body>.fade-in{transition:opacity var(--t-fast) var(--ease-out)}
+@starting-style{.pane-body>.fade-in{opacity:0}}
 .pane-empty b{display:block;color:var(--ink);margin-bottom:4px}
 
 @media (min-width: 1024px) {
@@ -671,6 +696,10 @@ html:has(.sheet[open]){overflow:hidden}
   .split{display:grid;grid-template-columns:minmax(0,1fr) 18rem;gap:16px;align-items:start}
   .cols,.row{grid-template-columns:minmax(0,1fr) 10.5rem 6.25rem 6.25rem;grid-template-areas:"main pts ddl fee"}
   .chev,.cols .chv{display:none}
+  /* The selection fill never fades, in or out; only hovering an unselected
+     row does. */
+  .row{transition:none}
+  .item:not(.is-sel)>.row:hover{transition:background-color var(--t-fast) var(--ease-out)}
   .is-sel>.row{background:var(--accent-tint);box-shadow:inset 0 0 0 2px var(--accent)}
   .is-sel .open:focus-visible::after{outline-offset:-6px}
   .goto{display:block;position:absolute;left:-9999px;color:var(--accent);text-decoration:underline}
@@ -769,37 +798,58 @@ html:has(.sheet[open]){overflow:hidden}
 
 /* ------------------------------------------------- motion preferences */
 
+/* Instant, not 0.01ms: a near-zero transition still fires its events late and
+   still runs. The slot's exit is removed by app.js at once in this case. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  *, *::before, *::after, ::backdrop {
+    transition: none !important;
+    animation: none !important;
     scroll-behavior: auto !important;
   }
 }
 
 /* ------------------------------------------------------------- printing */
 
+/* A08: the list on screen, in its order, with every open slot in full; nothing
+   else is opened. Paper is A4-narrow (about 720-800 CSS px), so the 600 px row
+   layout is what prints. Ink on white: no fills, tints, rings or shadows, but
+   every verdict word, dashed unknown box, mark and struck date stays. */
 @media print {
-  body { background: var(--panel); color: var(--ink); padding: 0; font-size: 11pt; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  body { background: none; color: var(--ink); padding: 0; font-size: 11pt; }
 
   .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
   .issues, .skip-link, .star, .skeletons, .cols, .chev, .pane, .goto,
-  .sheet, .cshort, .status .copy, .sheet .copy { display:none; }
+  .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
   .split{display:block}
 
-  /* The "nobody has checked this" warning must survive onto paper — a printed
-     sheet has lost every other bit of context. */
+  /* The sample warning must survive onto paper, in full: a printed sheet has
+     lost every other bit of context. The saved-copy and failure banners go. */
   .bn { border: 1px solid var(--ink); color: var(--ink); background: none; box-shadow: none; }
+  .bn-sample { border-width: 2px; }
   .src-more { display: inline; }
 
   .results { display: block; }
+  .listp, .row, .is-open>.row, .is-sel>.row, .cell, .detail { background: none; box-shadow: none; }
+  /* .cell out-ranks the screen's .v-fit .verd and friends, which come earlier. */
+  .open, .d-title, .cell .verd, .cell .r2, .cell .ic { color: var(--ink); }
+  /* The marks are the shape of the verdict; keep them when backgrounds are off. */
+  .m::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  /* Focus is a screen state; a focused row printed its blue ring. */
+  :focus-visible, .open:focus-visible::after { outline: none; }
 
-  /* Minimal until the print redesign (stage 6). Undo the on-screen skipping,
-     or off-screen entries print blank. */
-  .item { content-visibility: visible; break-inside: avoid; page-break-inside: avoid; }
+  /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
+     whole; a long open detail may run on to the next page. */
+  .item { content-visibility: visible; contain-intrinsic-size: none; }
+  .row { break-inside: avoid; page-break-inside: avoid; }
+  /* An open slot prints open, mid-animation or not; one that is closing goes. */
+  .expand { grid-template-rows: 1fr; opacity: 1; }
+  .expand-inner { overflow: visible; }
+  .expand[inert] { display: none; }
+  .kv dt, .kv dd, .note { break-inside: avoid; }
+
   /* A printed link is useless without its address, and the address must wrap. */
   .d-foot .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
   .d-foot .btn-p::after {

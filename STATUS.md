@@ -374,8 +374,10 @@ a per-country system.
   registry A01).** A card whose deadline had gone was drawn at 65% opacity,
   which took its text to 2.7–3.6:1 contrast, below what anyone can read
   comfortably. The first one (Bocconi's World Bachelor, 1 November) would have
-  dimmed on 2 November. The dimming is gone; the red date and the "passed" badge
-  already say it. `check.mjs` fails if `.card.is-past` gets an opacity again.
+  dimmed on 2 November. The dimming is gone. Since the redesign the deadline
+  cell says "Passed, check next cycle" over the struck-through date, in neutral
+  ink, never red. `check.mjs` fails if a passed or selected row gets an opacity
+  again.
 
 - **Cards left out what nobody knew (fixed 2026-10-26, registry R01, R03, R04,
   T04).** A card with no language requirement had no Language row, so 608 cards
@@ -424,8 +426,8 @@ a per-country system.
 
 - **Keyboard, screen reader and phone problems (fixed 2026-10-26, registry
   A02–A07).** On a 320 px phone the open filter lists and the masthead count
-  made the page wider than the screen; the lists now span the row of filter
-  buttons and the count wraps. The text boxes and Sort had their focus outline
+  made the page wider than the screen; a list is now never wider than the
+  screen (the last one opens to the left) and the count wraps. The text boxes and Sort had their focus outline
   replaced by a ring nobody could see; they now show the same blue outline as
   everything else. A filter list stayed open after tabbing out of it, and
   Escape in Search moved the cursor to a filter button; both fixed. A screen
@@ -435,7 +437,40 @@ a per-country system.
   without its decorative full stop, and each "Official admissions page" link
   with the programme's name and a note that it opens a new tab. The filter bar
   no longer sticks to the top on a phone held sideways (it took half the
-  screen), and "Skip to results" lands below it. `check.mjs` guards each.
+  screen). Since the redesign nothing in the header sticks: only the count line
+  below 600 px and the column header from 600 px, and "Skip to results", Tab
+  and the arrow keys land below whichever one it is. `check.mjs` guards each.
+
+- **Motion, print and the last screen-reader comma (fixed 2026-10-28, redesign
+  stage 6, registry A05, A08, L09).** Traps worth knowing before touching them:
+  - A slot added already "open" never animates: the browser's first look at it
+    is the open style. app.js adds it closed, reads its style once, then opens
+    it on the next frame. A close removes it when its own `grid-template-rows`
+    transition ends, or after 250 ms if that never comes. A close or reopen,
+    a rebuild, a 1024 crossing, print or reduced motion first cancels whatever
+    the old slot had pending, so a late callback cannot remove the new one.
+  - Reduced motion used to shorten every effect to 0.01ms. That is still a
+    transition, with late events. It is now `none`, the scrim included, and a
+    closing slot is removed at once.
+  - Paper is narrower than the screen, so the 1024 and 600 px queries can fire
+    while printing. Between `beforeprint` and `afterprint` nothing moves; a
+    crossing or filter change still due runs afterwards.
+  - A row named "World Bachelor in Business , BSc" in Chrome: the hidden ", "
+    before the degree is clipped and absolute, so it counted as a block of its
+    own. Inside a row button and the detail title it is now inline at font
+    size 0. Size 0 alone kept the 20 px line height and made every row 5 px
+    taller; `line-height: 0` puts the rows back to the exact pixel.
+  - Clear all left focus on itself (now disabled) in the bar, and on the empty
+    state's button after it hid. Focus now goes to Search, or to the sheet's
+    heading inside the sheet.
+  - The sheet's footer said "Show programmes", with no number, while the list
+    loaded. It is now a disabled "Loading programmes…" until the first count.
+  - Print was colour on paper, cut open details at page breaks and could print
+    a half-closed slot. It now prints the rows on screen, in their order, ink
+    on white, every open slot in full, the sample warning kept and the saved-copy
+    and failure banners dropped.
+  `check.mjs` guards each, and `plans/finish-review/` (not in git) has the browser
+  evidence.
 
 ## Decisions already made, so they are not relitigated
 
@@ -718,6 +753,24 @@ Trinity states a subject requirement per course and hides some of them on
 parent pages.
 
 Never open the CSVs in Excel — see MAINTENANCE.md.
+
+**Speed (L09, still open).** The target is under 150 ms from a filter change to
+the new rows on screen, on a laptop slowed four times. Measured 2026-10-28 on
+an M1 MacBook Air, headless Chrome 156, 1280 × 900, the real 1240 rows: untick
+Ireland so every row is redrawn, five warm-ups then 20 timed changes, before
+and after in alternating blocks. `update()` alone took a median 748 ms before
+and 600 ms after (every sample over 150 ms; the second animation frame after
+it, a ceiling on the first paint, 972 and 954 ms). Two fixes went in: the pane
+no longer forces a layout of all 1240 new rows by reading its scroll position
+after they are drawn, and `points.js` is preloaded, so the CSVs are requested
+one round trip sooner on a cold load. What is left is building and inserting
+1240 rows, which needs a different approach (drawing only the rows on screen)
+and its own plan. The harness rewrites app.js in flight to time it, so nothing
+is added to the site: `plans/finish-review/l09.mjs`.
+
+To watch the motion, open the site with `serve.mjs` and turn on "Reduce
+motion" in the operating system: every effect must then happen at once. To
+check print, use the browser's print preview with a few rows open.
 
 ## The GLM re-check (2026-08-20), verified 2026-08-21
 

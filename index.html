@@ -20,6 +20,9 @@
 <link rel="modulepreload" href="js/csv.js">
 <link rel="modulepreload" href="js/data.js">
 <link rel="modulepreload" href="js/filters.js">
+<!-- points.js was missing: found only after render.js and filters.js loaded, it
+     held the CSV requests back by one round trip (measured 2026-10-28). -->
+<link rel="modulepreload" href="js/points.js">
 <link rel="modulepreload" href="js/render.js">
 <link rel="modulepreload" href="js/shortlist.js">
 </head>
@@ -288,7 +291,8 @@
   </div>
   <div class="sheet-b"></div>
   <div class="sheet-f">
-    <button type="button" id="sheet-show" class="btn btn-p">Show programmes</button>
+    <!-- Disabled until the first count: "Show N programmes" needs the N. -->
+    <button type="button" id="sheet-show" class="btn btn-p" disabled>Loading programmes…</button>
   </div>
 </dialog>
 

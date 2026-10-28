@@ -90,6 +90,18 @@ const wideQuery = matchMedia('(min-width: 1024px)');
 // From 600 px every filter sits in the bar; below it the fee, the pick-lists,
 // Sort, Clear all and Copy link live in the Filters sheet. Same query as the CSS.
 const barQuery = matchMedia('(min-width: 600px)');
+// Its own record, never one of the layout queries: turning it on settles every
+// effect at once, turning it off only affects later actions.
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+// Paper is narrower than the screen, so both layout queries can fire while
+// printing. Between beforeprint and afterprint nothing moves (A08).
+const printQuery = matchMedia('print');
+let printing = false;
+let updateAfterPrint = false;
+// Slot motion owned by each slot: its pending frame, transitionend listener and
+// 250 ms fallback. Kept per node so a late callback only ever touches its own
+// slot, and cancelled before anything rebuilds or moves the rows.
+const slotWork = new Map();
 let appliedBar = null;
 // The last focused filter control, kept only across a pending 600 crossing:
 // CSS can clear focus (hide the control) before the change callback runs.
@@ -128,6 +140,9 @@ async function start() {
   wideQuery.addEventListener('change', crossWide);
   document.addEventListener('focusin', rememberFocus);
   document.addEventListener('focusout', forgetFocus);
+  motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
+  window.addEventListener('beforeprint', () => { printing = true; settleSlots(); });
+  window.addEventListener('afterprint', afterPrint);
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
@@ -199,6 +214,7 @@ function showTotalFailure(err) {
   // An open sheet would hold its controls over an empty page. Its focus goes
   // to Reload below, never back to the Filters button that is about to hide.
   const sheetHadFocus = dom.sheet.open && dom.sheet.contains(document.activeElement);
+  settleSlots();
   closeSheet(false);
   dom.pane.hidden = true;
   const alert = document.createElement('div');
@@ -306,12 +322,8 @@ function wireInputs() {
     });
   }
 
-  dom.clear.addEventListener('click', () => {
-    clearAll();
-    // Clear all disables itself, so in the sheet focus would fall out of it.
-    if (dom.sheet.open && dom.sheet.contains(dom.clear)) dom.sheetHeading.focus();
-  });
-  dom.emptyClear.addEventListener('click', clearAll);
+  dom.clear.addEventListener('click', () => clearAllFrom(dom.clear));
+  dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear));
   dom.copy.addEventListener('click', copyLink);
 
   // A tab left open overnight: work the deadlines out again when it comes
@@ -390,8 +402,22 @@ function clearAll() {
   update();
 }
 
+// Clear all disables itself, and the empty state's copy hides once rows come
+// back, so focus left on either fell to the page. Where it was is read before
+// clearing changes anything. In the sheet it goes to the heading; from the bar
+// or the empty state to Search, the first filter.
+function clearAllFrom(button) {
+  const inSheet = dom.sheet.open && dom.sheet.contains(button);
+  clearAll();
+  if (inSheet) dom.sheetHeading.focus();
+  else dom.search.focus({ preventScroll: true });
+}
+
 function update() {
   if (!loaded) return;
+  // Rebuilt rows while printing would take the paper's layout. Run it after.
+  if (printing) { updateAfterPrint = true; return; }
+  settleSlots();
   // A debounced filter can land after the viewport crosses 1024 but before the
   // change event. Finish the crossing first, or the pick stays in the hidden pane.
   if (appliedWide !== null && appliedWide !== wideQuery.matches) crossWide();
@@ -414,6 +440,9 @@ function update() {
   }
 
   const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort);
+  // Read before the rows are rebuilt: afterwards it forces a layout of the
+  // whole new list (about 120 ms at 4x CPU throttling, L09).
+  const paneScroll = appliedWide ? dom.pane.scrollTop : 0;
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
@@ -423,7 +452,7 @@ function update() {
   if (appliedWide) {
     openIds.clear();
     decorateSelection();
-    drawPane();
+    drawPane({ scroll: paneScroll });
   } else {
     for (const id of openIds) if (!shownRows.has(id)) openIds.delete(id);
     for (const item of dom.results.children) {
@@ -436,13 +465,95 @@ function update() {
   keepAddress();
 }
 
-function openRow(item, row) {
-  const slot = renderSlot(row, state);
-  item.append(slot);
+// animate is only for a direct narrow toggle. Rebuilds and 1024 crossings put
+// the slot back fully open with no motion (spec §7, §8).
+function openRow(item, row, { animate = false } = {}) {
+  const move = animate && !motionQuery.matches;
+  // A slot still closing is reused and turned back; its old cleanup is cancelled
+  // so it cannot remove the reopened slot.
+  let slot = item.querySelector('.expand');
+  if (slot) {
+    cancelSlotWork(slot);
+    slot.inert = false;
+    slot.setAttribute('data-state', 'open');
+  } else {
+    slot = renderSlot(row, state);
+    if (move) slot.setAttribute('data-state', 'closed');
+    item.append(slot);
+    if (move) {
+      // Without this read the first frame resolves straight to the open style
+      // and nothing animates.
+      getComputedStyle(slot).gridTemplateRows;
+      const frame = requestAnimationFrame(() => {
+        slotWork.delete(slot);
+        slot.setAttribute('data-state', 'open');
+      });
+      slotWork.set(slot, { kind: 'open', frame });
+    } else slot.setAttribute('data-state', 'open');
+  }
   item.classList.add('is-open');
   const button = item.querySelector('button.open');
   button.setAttribute('aria-expanded', 'true');
   button.setAttribute('aria-controls', slot.id);
+}
+
+// The row's state changes at once; only the slot's exit waits for its
+// transition (or 250 ms if transitionend never comes, spec §8).
+function closeRow(item) {
+  const id = item.dataset.id;
+  const button = item.querySelector('button.open');
+  item.classList.remove('is-open');
+  button.setAttribute('aria-expanded', 'false');
+  openIds.delete(id);
+  if (selectedId === id) selectedId = [...openIds].at(-1) ?? null;
+  const slot = item.querySelector('.expand');
+  if (!slot) return;
+  const pending = cancelSlotWork(slot);
+  // Focus would otherwise be left inside an inert, vanishing region.
+  if (slot.contains(document.activeElement)) button.focus({ preventScroll: true });
+  // Closed before its first frame: it never grew, so no transition will end.
+  if (motionQuery.matches || pending?.kind === 'open') {
+    removeSlot(slot);
+    return;
+  }
+  slot.setAttribute('data-state', 'closed');
+  slot.inert = true;
+  const done = () => { cancelSlotWork(slot); removeSlot(slot); };
+  // Only the slot's own row track; a child's or the opacity transition ending
+  // says nothing about the height.
+  const end = (event) => { if (event.target === slot && event.propertyName === 'grid-template-rows') done(); };
+  slot.addEventListener('transitionend', end);
+  slotWork.set(slot, { kind: 'close', end, timer: setTimeout(done, 250) });
+}
+
+function cancelSlotWork(slot) {
+  const work = slotWork.get(slot);
+  if (!work) return null;
+  slotWork.delete(slot);
+  if (work.frame !== undefined) cancelAnimationFrame(work.frame);
+  if (work.timer !== undefined) clearTimeout(work.timer);
+  if (work.end) slot.removeEventListener('transitionend', work.end);
+  return work;
+}
+
+function removeSlot(slot) {
+  const item = slot.parentElement;
+  // A rebuilt list has already dropped it; never touch a detached row.
+  if (!item || !dom.results.contains(item)) return;
+  slot.remove();
+  const button = item.querySelector('button.open');
+  if (button.getAttribute('aria-controls') === slot.id) button.removeAttribute('aria-controls');
+}
+
+// Finish every slot effect now: opening slots open, closing slots go. Before a
+// rebuild or a 1024 move, for print, on failure and when reduced motion is
+// turned on.
+function settleSlots() {
+  for (const slot of [...slotWork.keys()]) {
+    const work = cancelSlotWork(slot);
+    if (work.kind === 'open') slot.setAttribute('data-state', 'open');
+    else removeSlot(slot);
+  }
 }
 
 function toggleRow(event) {
@@ -461,14 +572,9 @@ function toggleRow(event) {
   if (wideQuery.matches) {
     selectRow(id);
   } else if (openIds.has(id)) {
-    button.removeAttribute('aria-controls');
-    item.querySelector('.expand').remove();
-    item.classList.remove('is-open');
-    button.setAttribute('aria-expanded', 'false');
-    openIds.delete(id);
-    if (selectedId === id) selectedId = [...openIds].at(-1) ?? null;
+    closeRow(item);
   } else {
-    openRow(item, shownRows.get(id));
+    openRow(item, shownRows.get(id), { animate: true });
     openIds.add(id);
     selectedId = id;
   }
@@ -499,19 +605,27 @@ function decorateSelection() {
   item.append(goto);
 }
 
-function drawPane() {
-  const scroll = paneId === selectedId ? dom.pane.scrollTop : 0;
+// fade: a user picked a different programme. Only the new content fades in,
+// by CSS on fresh nodes (.fade-in), so no callback can reach a later pick.
+// Refreshes, filtering and breakpoint moves stay instant (spec §8).
+// scroll: the pane's scrollTop as update() read it before rebuilding the rows.
+function drawPane({ fade = false, scroll } = {}) {
+  const changed = paneId !== selectedId;
+  const current = scroll ?? dom.pane.scrollTop;
   const row = allRows.find((row) => row.id === selectedId) ?? null;
-  renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state);
+  const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state);
+  if (fade && changed && mode === 'content') dom.paneBody.children[0].classList.add('fade-in');
   paneId = selectedId;
-  dom.pane.scrollTop = Math.max(0, Math.min(scroll, dom.pane.scrollHeight - dom.pane.clientHeight));
+  // Same pick keeps its place, clamped to the new content; a new pick starts
+  // at the top. An unscrolled pane needs neither, and is left alone (L09).
+  if (current > 0) dom.pane.scrollTop = changed ? 0 : Math.max(0, Math.min(current, dom.pane.scrollHeight - dom.pane.clientHeight));
 }
 
 function selectRow(id) {
   const focus = snapshotFocus();
   selectedId = id;
   decorateSelection();
-  drawPane();
+  drawPane({ fade: true });
   restoreFocus(focus);
 }
 
@@ -597,8 +711,11 @@ function isFilterControl(node) {
 
 function crossWide() {
   const wide = wideQuery.matches;
-  if (!loaded || appliedWide === wide) return;
+  // While printing the query follows the paper; afterPrint() runs any crossing
+  // still due from the restored screen.
+  if (!loaded || appliedWide === wide || isPrinting()) return;
   const focus = snapshotFocus() ?? (document.activeElement === document.body ? crossingFocus : null);
+  settleSlots();
   clearSelection();
   if (wide) {
     for (const item of dom.results.children) {
@@ -665,11 +782,26 @@ function placeFilters() {
 }
 
 function crossBar() {
+  if (isPrinting()) return;
   placeFilters();
   // Narrowing while scrolled: the observer may not call back again, so read
   // where the mark is now.
   if (!barQuery.matches) sentinelAbove = dom.stuckMark.getBoundingClientRect().bottom <= 0;
   syncStuck();
+}
+
+function isPrinting() {
+  return printing || printQuery.matches;
+}
+
+function afterPrint() {
+  printing = false;
+  crossBar();
+  crossWide();
+  if (updateAfterPrint) {
+    updateAfterPrint = false;
+    update();
+  }
 }
 
 // The phone sheet: a native modal dialog, so the focus trap, Escape, the inert
@@ -777,7 +909,10 @@ function renderCounts(shown) {
     .filter(Boolean).length;
   dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
   dom.more.classList.toggle('is-on', inSheet > 0);
+  // index.html starts it disabled as "Loading programmes…": until the first
+  // count there is no number to show.
   dom.sheetShow.textContent = `Show ${shown} ${plural(shown)}`;
+  dom.sheetShow.disabled = false;
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
   markSet(dom.tuition, state.maxTuition !== null);

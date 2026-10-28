@@ -274,7 +274,11 @@ export function renderSlot(row, state) {
   slot.id = `x-${row.id}`;
   slot.setAttribute('role', 'region');
   slot.setAttribute('aria-label', `${row.programme}, details`);
-  slot.append(renderDetail(row, state, { slot: true }));
+  // The slot opens by animating its one grid row from 0fr to 1fr (spec §8).
+  // That needs a single child that may shrink below its content and clips it.
+  const inner = el('div', 'expand-inner');
+  inner.append(renderDetail(row, state, { slot: true }));
+  slot.append(inner);
   return slot;
 }
 
