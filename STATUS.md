@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-2229 programmes · 115 universities · 10 countries · all checks passing.
+2430 programmes · 150 universities · 11 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -20,6 +20,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
 | United Kingdom | 19 | 670 | Russell Group and other leading universities, researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29 |
 | Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
+| Germany | 35 | 201 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU Munich and Heidelberg (140), added 2026-10-29 |
 | Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
 | Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
 
@@ -76,6 +77,22 @@ September (the statutory end of the admission period); programmes with an
 entrance procedure register in spring, and their 2027 dates aren't out, so
 those rows show 2026's dates in the note and no deadline. German-taught
 programmes need C1 German.
+
+**Germany** (`tools/add-germany-2026-10-29.mjs`). English-taught: every
+bachelor at a university in the DAAD's International Programmes database (TUM's
+Singapore degrees aside); each official_url matches DAAD's "Course website"
+link. German-taught (best universities only, as asked): TUM 31, LMU 58,
+Heidelberg 51, from each university's own course finder. The IB counts under
+the KMK agreement (15.06.2023): with Maths SL the entry is subject-restricted
+and excludes STEM unless the school is in the KMK annex, so STEM rows ask for
+Maths HL. Deadlines are mostly 15 July (TUM's foreign-certificate VPD via
+uni-assist, LMU's International Office, Heidelberg's restricted subjects);
+Heidelberg's unrestricted subjects run to 31 October. German-taught rows need
+C1 German (DSH-2 or equivalent). Exam "?" where the aptitude procedure isn't
+described (LMU Anglistik and the two art degrees; Heidelberg's
+Aufnahmeprüfungsverfahren in Chemistry, English, Computer Science, Physics).
+Living costs fall back to the German student-visa figure (€992) where a
+university gives none.
 
 **Norway** (`tools/add-norway-2026-10-27.mjs`). The list is Study in Norway's
 "full degree programmes taught in English", bachelor level (31), kept to
