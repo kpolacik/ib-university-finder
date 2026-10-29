@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-1467 programmes · 89 universities · 8 countries · all checks passing.
+2229 programmes · 115 universities · 10 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -18,6 +18,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
+| United Kingdom | 19 | 670 | Russell Group and other leading universities, researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29 |
+| Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
 | Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
 | Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
 
@@ -51,6 +53,29 @@ Jyväskylä (one by SAT/ACT), Uniarts Global Music. Gaps: Vaasa's 2027 round
 isn't on Studyinfo yet; UEF Lifelong Learning's threshold wasn't found; LUT's
 IB table is still headed "2026"; English requirements are filled only for
 Aalto, LUT and UEF.
+
+**United Kingdom** (`tools/merge-uk-2026-10-29.mjs`, then
+`tools/fix-uk-2026-10-29.mjs`). Merged from Jakub's research. Three things
+were corrected on 2026-10-29: tuition_eu held the Home fee, but EU students
+have paid the international fee since August 2021 (GOV.UK eligibility rules;
+Irish citizens and settled status excepted, as each card says); pounds were
+stored as euros (now converted at the ECB rate of 29 October 2026, the pound
+figure kept in the note); living costs mixed monthly, weekly-rent and annual
+figures (now monthly, with the GOV.UK student-visa amount where only rent is
+published). Subject areas were mapped onto the site's list and
+other_requirements onto " · ". The quoted evidence (CAS/verification/uk/
+sources) is on Jakub's machine, not in the repo. Oxbridge, medicine,
+dentistry and vet deadlines (15 October 2026) have already passed.
+
+**Austria** (`tools/add-austria-2026-10-29.mjs`). English-taught: JKU 6,
+Klagenfurt 5, Leoben 3, WU's BBE, Vienna's Data Science and English and
+American Studies, CEU 3. German-taught (best universities only, as asked):
+all 57 other University of Vienna bachelors, 15 at TU Wien, WU's WiSo. The
+national database (studienwahl.at) refuses this machine. Deadlines: 5
+September (the statutory end of the admission period); programmes with an
+entrance procedure register in spring, and their 2027 dates aren't out, so
+those rows show 2026's dates in the note and no deadline. German-taught
+programmes need C1 German.
 
 **Norway** (`tools/add-norway-2026-10-27.mjs`). The list is Study in Norway's
 "full degree programmes taught in English", bachelor level (31), kept to
