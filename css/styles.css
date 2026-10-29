@@ -887,8 +887,11 @@ html:has(.sheet[open]){overflow:hidden}
   *, *::before, *::after { transition: none !important; animation: none !important; }
   body { background: none; color: var(--ink); padding: 0; font-size: 11pt; }
 
+  /* .listp>.f-sort, not .f-sort: the screen rule that shows the list's Sort
+     select under 900 px has that weight, and paper is under 900 px, so a
+     plain .f-sort lost and the select printed. */
   .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
-  .issues, .skip-link, .star, .skeletons, .cols, .f-sort, .chev, .pane, .goto,
+  .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
   .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
