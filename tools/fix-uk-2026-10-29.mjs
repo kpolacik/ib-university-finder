@@ -94,6 +94,8 @@ const LIVING = {
   kcl: VISA(true),
   warwick: VISA(false), bath: VISA(false), glasgow: VISA(false), exeter: VISA(false), sheffield: VISA(false),
   southampton: VISA(false), durham: VISA(false), 'st-andrews': VISA(false),
+  // added by tools/add-uk-russell-2026-10-29.mjs
+  liverpool: VISA(false), newcastle: VISA(false), nottingham: VISA(false), qmul: VISA(true), york: VISA(false), qub: VISA(false),
 };
 for (const u of unis.rows) {
   if (!ukIds.has(u.university_id)) continue;

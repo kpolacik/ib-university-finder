@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-2430 programmes · 150 universities · 11 countries · all checks passing.
+2643 programmes · 156 universities · 11 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -18,7 +18,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
-| United Kingdom | 19 | 670 | Russell Group and other leading universities, researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29 |
+| United Kingdom | 25 | 883 | Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
 | Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
 | Germany | 35 | 201 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU Munich and Heidelberg (140), added 2026-10-29 |
 | Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
@@ -67,6 +67,15 @@ published). Subject areas were mapped onto the site's list and
 other_requirements onto " · ". The quoted evidence (CAS/verification/uk/
 sources) is on Jakub's machine, not in the repo. Oxbridge, medicine,
 dentistry and vet deadlines (15 October 2026) have already passed.
+
+`tools/add-uk-russell-2026-10-29.mjs` adds the other Russell Group members:
+Liverpool 33, Newcastle 39, Nottingham 38, QMUL 33, York 34, Queen's Belfast
+36 core programmes, each from its 2027 course page (IB offer, international
+fee, IELTS). Cardiff refuses this machine (403), so it is still missing.
+Newcastle's and QMUL's IELTS lines load from another service and are blank;
+Liverpool Medicine and three QUB pages print no IB offer. Queen's charges EU
+students its "EU Other" fee (= international); the £4,985 NI fee applies to
+Irish citizens living in Ireland.
 
 **Austria** (`tools/add-austria-2026-10-29.mjs`). English-taught: JKU 6,
 Klagenfurt 5, Leoben 3, WU's BBE, Vienna's Data Science and English and
