@@ -94,14 +94,15 @@ const LIVING = {
   kcl: VISA(true),
   warwick: VISA(false), bath: VISA(false), glasgow: VISA(false), exeter: VISA(false), sheffield: VISA(false),
   southampton: VISA(false), durham: VISA(false), 'st-andrews': VISA(false),
-  // added by tools/add-uk-russell-2026-10-29.mjs
-  liverpool: VISA(false), newcastle: VISA(false), nottingham: VISA(false), qmul: VISA(true), york: VISA(false), qub: VISA(false),
 };
 for (const u of unis.rows) {
   if (!ukIds.has(u.university_id)) continue;
-  const l = LIVING[u.university_id];
-  if (!l) throw new Error(`no living-cost rule for ${u.university_id}`);
   const alreadyRun = u.living_cost_source.includes('£');
+  const l = LIVING[u.university_id];
+  if (!l) {
+    if (alreadyRun) continue; // added later in final form (e.g. tools/add-uk-russell-2026-10-29.mjs)
+    throw new Error(`no living-cost rule for ${u.university_id}`);
+  }
   u.living_cost_min = eur(l.min);
   u.living_cost_max = l.max === '' ? '' : eur(l.max);
   const range = [l.min, l.max].filter((x) => x !== '').map(gbp).join('–');
