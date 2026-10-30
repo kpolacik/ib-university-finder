@@ -102,6 +102,13 @@ const JUL15 = { application_deadline: '2027-07-15', deadline_notes: 'Winter seme
 const NC = 'Restricted places (numerus clausus): ranked on your converted IB grade';
 const daad = (id) => `https://www2.daad.de/deutschland/studienangebote/international-programmes/en/detail/${id}/`;
 
+// Exam values checked 2026-10-30. Regensburg: applicants "who fall within a
+// middle range in the first stage … must additionally complete either a
+// written aptitude test or a selection interview" (waivable). WHU: the
+// admission round "consists of three parts: An analytical test … An assessment
+// … One-on-one interviews" (yes). Saarland: "choose one of three application
+// tracks" (olympiad, aptitude test, or interview), so the test can be avoided
+// (waivable).
 // [programme_id, university_id, programme, subject_area, degree, url, stem?, fields]
 const EN_ROWS = [
   ['goettingen-intercultural-theology', 'goettingen', 'Intercultural Theology', 'Philosophy', 'BA', 'https://www.uni-goettingen.de/de/695602.html', 0, { ...JUL15, english_requirement: 'English B2' }],
@@ -119,7 +126,7 @@ const EN_ROWS = [
   ['tum-management-data-science', 'tum', 'Management & Data Science', 'Business & Management; Computer Science', 'BSc', 'https://www.mgt.tum.de/programs/undergraduate-programs/bachelor-management-data-science/', 1, { city: 'Heilbronn', application_deadline: '2027-07-15', deadline_notes: 'Apply 15 May to 15 July.', admission: 'Assessment procedure on your application', other_requirements: 'Letter of motivation' }],
   ['tum-sustainable-management-technology', 'tum', 'Sustainable Management & Technology', 'Business & Management; Environmental Sciences', 'BSc', 'https://www.mgt.tum.de/programs/bachelor-in-sustainable-management-technology', 1, { city: 'Straubing', application_deadline: '2027-07-15', deadline_notes: 'Apply 15 May to 15 July.', admission: 'Aptitude assessment procedure' }],
   ['tum-information-engineering', 'tum', 'Information Engineering', 'Engineering; Computer Science', 'BSc', 'https://www.cit.tum.de/en/cit/studies/degree-programs/bachelor-information-engineering/', 1, { city: 'Heilbronn', application_deadline: '2027-07-15', deadline_notes: 'Apply 15 May to 15 July.', other_requirements: 'Letter of motivation', english_requirement: 'English B2 · German A2' }],
-  ['regensburg-liberal-arts', 'regensburg', 'Liberal Arts: Culture, History, Society', 'Liberal Arts; History', 'BA', 'https://www.uni-regensburg.de/en/philosophie-kunst-geschichte-gesellschaft/institut-fuer-geschichte/lehrstuhl-fuer-europaeische-geschichte-19-und-20-jahrhundert/ba-liberal-arts-culture-history-society', 0, { ...JUL15, admission: 'Special aptitude assessment', entrance_exam: '?' }],
+  ['regensburg-liberal-arts', 'regensburg', 'Liberal Arts: Culture, History, Society', 'Liberal Arts; History', 'BA', 'https://www.uni-regensburg.de/en/philosophie-kunst-geschichte-gesellschaft/institut-fuer-geschichte/lehrstuhl-fuer-europaeische-geschichte-19-und-20-jahrhundert/ba-liberal-arts-culture-history-society', 0, { ...JUL15, admission: 'Aptitude assessment: grades; a middle range takes a written test or an interview', entrance_exam: 'waivable' }],
   ['potsdam-anglophone-postcolonial', 'potsdam', 'Anglophone Postcolonial Studies', 'Languages & Literature', 'BA', 'https://www.uni-potsdam.de/de/studium/studienangebot/bachelor/ein-fach-bachelor/anglophone-postcolonial-studies', 0, { application_deadline: '2027-09-15', deadline_notes: 'Apply 15 August to 15 September.', entrance_exam: 'waivable', other_requirements: "English: the institute's aptitude test, or a certificate instead" }],
   ['btu-environmental-resource-management', 'btu', 'Environmental and Resource Management', 'Environmental Sciences', 'BSc', 'https://www.b-tu.de/en/environment-bs', 1, { application_deadline: '2027-07-15', deadline_notes: 'Apply 1 March to 15 July.', english_requirement: 'English B2' }],
   ['btu-life-science-health', 'btu', 'Life Science and International Health', 'Biology & Life Sciences; Medicine & Health', 'BSc', 'https://www.b-tu.de/en/life-science-international-health-bs/page', 1, { city: 'Senftenberg', application_deadline: '2027-07-15', deadline_notes: 'Apply 1 March to 15 July.', english_requirement: 'English B2' }],
@@ -135,7 +142,7 @@ const EN_ROWS = [
   ['kit-mechanical-engineering', 'kit', 'Mechanical Engineering (International)', 'Engineering', 'BSc', 'https://www.carlbenzschool.kit.edu/', 1, { tuition_eu: '15402', application_deadline: '2027-04-30', deadline_notes: 'Apply by 30 April. Fee: €7,701 a semester for EU students (€9,201 non-EU).', admission: 'Selected on maths and physics grades (top 80% of your class)', english_requirement: 'English B2 · IELTS 6.5' }],
   ['ebs-business-studies', 'ebs', 'Business Studies', 'Business & Management', 'BSc', 'https://www.ebs.edu/en/ebs-business-school/bachelor-in-business-studies', 0, { tuition_eu: '19460', application_deadline: '2027-06-30', deadline_notes: 'No fixed deadline; EBS recommends applying by 30 June. Fee: €9,730 a semester.', entrance_exam: 'yes', other_requirements: 'Knowledge test (maths and logic) and personality test · CV', english_requirement: 'English B2' }],
   ['ebs-law-politics-economics', 'ebs', 'Law, Politics and Economics', 'Law; Politics & International Relations; Economics', 'BA', 'https://www.ebs.edu/en/ebs-law-school/bachelor-in-law-politics-and-economics', 0, { tuition_eu: '18160', application_deadline: '2027-06-30', deadline_notes: 'No fixed deadline; EBS recommends applying by 30 June. Fee: €9,080 a semester.', entrance_exam: 'yes', other_requirements: 'Knowledge test (maths and logic) and personality test · CV', english_requirement: 'English B2' }],
-  ['whu-iba', 'whu', 'International Business Administration', 'Business & Management', 'BSc', 'https://www.whu.edu/en/programs/bachelor-program/bachelor-in-international-business-administration/', 0, { tuition_eu: '18200', application_deadline: '2027-05-15', deadline_notes: 'Rounds close 31 January, 31 March and 15 May 2027. Fee: €9,100 a semester.', entrance_exam: '?', other_requirements: 'Motivation letter and CV · WHU admission round · Six-week internship before the start', english_requirement: 'English C1 · IELTS 6.5' }],
+  ['whu-iba', 'whu', 'International Business Administration', 'Business & Management', 'BSc', 'https://www.whu.edu/en/programs/bachelor-program/bachelor-in-international-business-administration/', 0, { tuition_eu: '18200', application_deadline: '2027-05-15', deadline_notes: 'Rounds close 31 January, 31 March and 15 May 2027. Fee: €9,100 a semester.', entrance_exam: 'yes', other_requirements: 'Motivation letter and CV · Online admission round: analytical test, assessment and interviews · Six-week internship before the start', english_requirement: 'English C1 · IELTS 6.5' }],
   ['freiburg-liberal-arts', 'freiburg', 'Liberal Arts and Sciences (University College Freiburg)', 'Liberal Arts', 'BA/BSc', 'https://uni-freiburg.de/ucf/las/', 0, { application_deadline: '2027-07-15', deadline_notes: 'Apply 1 June to 15 July.', admission: 'Selective: about 80 students, on grades, motivation and fit', english_requirement: 'English B2' }],
   ['muenster-human-movement', 'muenster', 'Human Movement in Sports and Exercise', 'Medicine & Health', 'BSc', 'https://www.uni-muenster.de/Sportwissenschaft/studium/studiengaenge/Bachelor_of_Science.html', 0, { application_deadline: '2027-07-15', deadline_notes: 'EU applicants: 1 May to 15 July.' }],
   ['leuphana-digital-media', 'leuphana', 'Digital Media', 'Media & Communication', 'BA', 'https://www.leuphana.de/en/college/bachelor/ba-digital-media.html', 0, { ...JUL15, english_requirement: 'English B2 · IELTS 6.5' }],
@@ -154,8 +161,8 @@ const EN_ROWS = [
   ['fau-artificial-intelligence', 'fau', 'Artificial Intelligence', 'Computer Science', 'BSc', 'https://www.ai.study.fau.eu/', 1, { application_deadline: '', deadline_notes: 'Opens 15 April; the deadline depends on your applicant group.', other_requirements: 'TestAS certificate for some international applicants', english_requirement: 'English B2' }],
   ['hhu-quantitative-biology', 'hhu', 'Quantitative Biology', 'Biology & Life Sciences', 'BSc', 'https://www.qbio.hhu.de/en', 1, { application_deadline: '2027-07-15', deadline_notes: 'Apply 1 May to 15 July: register on Hochschulstart, then apply on HHU\'s portal.', english_requirement: 'English B2' }],
   ['cologne-mess', 'cologne', 'Management, Economics and Social Sciences', 'Business & Management; Economics; Sociology & Anthropology', 'BSc', 'https://wiso.uni-koeln.de/en/studies/bachelor/management-economics-social-sciences', 0, { application_deadline: '2027-07-15', deadline_notes: 'Apply 15 April to 15 July.', admission: 'Ranked on the grades of your school-leaving certificate', english_requirement: 'English B2 · German C1 (DSH-2) as well' }],
-  ['saarland-cybersecurity', 'saarland', 'Cybersecurity', 'Computer Science', 'BSc', 'https://cysec.uni-saarland.de/bachelor/cybersecurity', 1, { application_deadline: '2027-07-15', deadline_notes: 'Regular deadline 15 July (interview track 15 June); early admission by 15 January.', admission: 'Competitive admission', entrance_exam: '?', english_requirement: 'English C1' }],
-  ['saarland-computer-science', 'saarland', 'Computer Science', 'Computer Science', 'BSc', 'https://saarland-informatics-campus.de/en/computerscience-course/', 1, { ...JUL15, admission: 'Competitive: choose one of three application tracks', entrance_exam: '?', english_requirement: 'English B2' }],
+  ['saarland-cybersecurity', 'saarland', 'Cybersecurity', 'Computer Science', 'BSc', 'https://cysec.uni-saarland.de/bachelor/cybersecurity', 1, { application_deadline: '2027-07-15', deadline_notes: 'Regular deadline 15 July (interview track 15 June); early admission by 15 January.', admission: 'Competitive: choose one of three application tracks', entrance_exam: 'waivable', other_requirements: 'Olympiad track, aptitude-test track or interview track', english_requirement: 'English C1' }],
+  ['saarland-computer-science', 'saarland', 'Computer Science', 'Computer Science', 'BSc', 'https://saarland-informatics-campus.de/en/computerscience-course/', 1, { ...JUL15, admission: 'Competitive: choose one of three application tracks', entrance_exam: 'waivable', other_requirements: 'Olympiad track, aptitude-test track or interview track', english_requirement: 'English B2' }],
   ['tuebingen-computational-linguistics', 'tuebingen', 'Computational Linguistics', 'Languages & Literature; Computer Science', 'BA', 'https://uni-tuebingen.de/en/134560', 0, { application_deadline: '2027-09-15', deadline_notes: 'EU applicants: by 15 September.', english_requirement: 'English B2 · IELTS 6.5' }],
   ['tuebingen-english-american', 'tuebingen', 'English and American Studies', 'Languages & Literature', 'BA', 'https://uni-tuebingen.de/de/86240', 0, { application_deadline: '2027-09-30', deadline_notes: 'EU applicants enrol online by 30 September (major, winter semester only).', english_requirement: 'English B2' }],
   ['geisenheim-wine-business', 'geisenheim', 'International Wine Business', 'Business & Management', 'BSc', 'https://www.hs-geisenheim.de/en/studies/prospective-students/bachelors-programs/international-wine-business-bsc-english-program', 0, { application_deadline: '2027-09-01', deadline_notes: 'Apply by 1 September.', other_requirements: '12-week pre-study internship' }],
@@ -264,7 +271,10 @@ const LMU_ROWS = [
   ['aegyptologie-und-koptologie-bachelor-hauptfach-2830', 'egyptology', 'Ägyptologie und Koptologie (Egyptology and Coptic Studies)', 'History', 'BA', 0, 0],
   ['allgemeine-und-vergleichende-literaturwissenschaft-bachelor-hauptfach-2836', 'comparative-literature', 'Allgemeine und Vergleichende Literaturwissenschaft (Comparative Literature)', 'Languages & Literature', 'BA', 0, 0],
   ['alter-orient-bachelor-hauptfach-2838', 'ancient-near-east', 'Alter Orient (Ancient Near East)', 'History', 'BA', 0, 0],
-  ['anglistik-bachelor-hauptfach-2839', 'english-studies', 'Anglistik (English Studies)', 'Languages & Literature', 'BA', 0, 0, '?'],
+  // Institute's EFV page (checked 2026-10-30): "Das Eignungsfeststellungsverfahren
+  // berücksichtigt die Durchschnittsnote im Abitur und das Ergebnis eines
+  // schriftlichen Sprachtests" (yes).
+  ['anglistik-bachelor-hauptfach-2839', 'english-studies', 'Anglistik (English Studies)', 'Languages & Literature', 'BA', 0, 0, 'yes'],
   ['archaeologie-europa-und-vorderer-orient-180-ects-bachelor-hauptfach-2842', 'archaeology', 'Archäologie: Europa und Vorderer Orient (Archaeology)', 'History', 'BA', 0, 0],
   ['betriebswirtschaftslehre-bachelor-hauptfach-2848', 'business-administration', 'Betriebswirtschaftslehre (Business Administration)', 'Business & Management', 'BSc', 0, 1],
   ['bioinformatik-bachelor-hauptfach-2855', 'bioinformatics', 'Bioinformatik (Bioinformatics, with TUM)', 'Computer Science; Biology & Life Sciences', 'BSc', 1, 1],
@@ -326,6 +336,7 @@ for (const [slug, id, programme, subject_area, degree_type, stem, nc, exam] of L
     language: 'German', entrance_exam: exam ?? 'no', english_requirement: LMU_DE, ...(stem ? STEM : ANY),
     ...(nc ? { admission: NC, ...LMU_NC_DL } : LMU_DL),
     ...(aptitude ? { admission: 'Aptitude procedure (Eignungsverfahren) run by the department' } : {}),
+    ...(id === 'english-studies' ? { admission: 'Aptitude procedure: Abitur grade and a written language test (apply to the institute by 15 July)' } : {}),
     ...(id === 'psychology' ? { other_requirements: 'Optional BaPsy-DGPs aptitude test can improve your ranking' } : {}),
     ...(id === 'education' ? { other_requirements: 'Compulsory study-orientation procedure with the department by 15 July' } : {}) });
 }
@@ -362,10 +373,10 @@ const HD_ROWS = [
   ['biologie/biologie-bachelor-50', 'biology', 'Biologie (Biology)', 'Biology & Life Sciences', 'BSc', 1, 'sel', 50],
   ['biowissenschaften/biowissenschaften-bachelor-100', 'biosciences', 'Biowissenschaften (Biosciences)', 'Biology & Life Sciences', 'BSc', 1, 'nc', 100],
   ['byzantinische-archaeologie-und-kunstgeschichte/byzantinische-archaeologie-und-kunstgeschichte-bachelor-50', 'byzantine-archaeology', 'Byzantinische Archäologie und Kunstgeschichte (Byzantine Archaeology and Art History)', 'History; Art & Design', 'BA', 0, 'open', 50],
-  ['chemie/chemie-bachelor-100', 'chemistry', 'Chemie (Chemistry)', 'Chemistry', 'BSc', 1, 'exam', 100],
+  ['chemie/chemie-bachelor-100', 'chemistry', 'Chemie (Chemistry)', 'Chemistry', 'BSc', 1, 'interview', 100],
   ['christentum-und-kultur/christentum-und-kultur-bachelor-50', 'christianity-culture', 'Christentum und Kultur (Christianity and Culture)', 'Philosophy', 'BA', 0, 'open', 50],
   ['computerlinguistik/computerlinguistik-bachelor-100', 'computational-linguistics', 'Computerlinguistik (Computational Linguistics)', 'Computer Science; Languages & Literature', 'BA', 1, 'open', 100],
-  ['english-studiesanglistik/english-studiesanglistik-bachelor-75', 'english-studies', 'English Studies / Anglistik', 'Languages & Literature', 'BA', 0, 'exam', 75],
+  ['english-studiesanglistik/english-studiesanglistik-bachelor-75', 'english-studies', 'English Studies / Anglistik', 'Languages & Literature', 'BA', 0, 'test', 75],
   ['ethnologie/ethnologie-bachelor-75', 'anthropology', 'Ethnologie (Anthropology)', 'Sociology & Anthropology', 'BA', 0, 'open', 75],
   ['europaeische-kunstgeschichte/europaeische-kunstgeschichte-bachelor-75', 'art-history', 'Europäische Kunstgeschichte (European Art History)', 'Art & Design; History', 'BA', 0, 'open', 75],
   ['evangelische-theologie/evangelische-theologie-bachelor-50', 'protestant-theology', 'Evangelische Theologie (Protestant Theology)', 'Philosophy', 'BA', 0, 'open', 50],
@@ -375,7 +386,7 @@ const HD_ROWS = [
   ['germanistik-im-kulturvergleich/germanistik-im-kulturvergleich-bachelor-75', 'german-intercultural', 'Germanistik im Kulturvergleich (German Studies in Cultural Comparison)', 'Languages & Literature', 'BA', 0, 'open', 75],
   ['germanistikdeutsch/germanistik-bachelor-50', 'german-studies', 'Germanistik / Deutsch (German Studies)', 'Languages & Literature', 'BA', 0, 'open', 50],
   ['geschichte/geschichte-bachelor-75', 'history', 'Geschichte (History)', 'History', 'BA', 0, 'open', 75],
-  ['informatik/informatik-bachelor-100', 'computer-science', 'Informatik (Computer Science)', 'Computer Science', 'BSc', 1, 'exam', 100],
+  ['informatik/informatik-bachelor-100', 'computer-science', 'Informatik (Computer Science)', 'Computer Science', 'BSc', 1, 'interview', 100],
   ['islamwissenschaft/islamwissenschaft-bachelor-75', 'islamic-studies', 'Islamwissenschaft (Islamic Studies)', 'Languages & Literature; History', 'BA', 0, 'open', 75],
   ['italienisch-romanistik/italienischromanistik-bachelor-50', 'italian', 'Italienisch / Romanistik (Italian Studies)', 'Languages & Literature', 'BA', 0, 'open', 50],
   ['juedische-studien/juedische-studien-bachelor-75', 'jewish-studies', 'Jüdische Studien (Jewish Studies)', 'History; Philosophy', 'BA', 0, 'open', 75],
@@ -389,7 +400,7 @@ const HD_ROWS = [
   ['ostasienwissenschaften/ostasienwissenschaften-bachelor-75', 'east-asian-studies', 'Ostasienwissenschaften (East Asian Studies)', 'Languages & Literature', 'BA', 0, 'open', 75],
   ['osteuropa-und-ostmitteleuropastudien/osteuropa-und-ostmitteleuropastudien-bachelor-100', 'east-european-studies', 'Osteuropa- und Ostmitteleuropastudien (East European Studies)', 'Politics & International Relations; History', 'BA', 0, 'open', 100],
   ['philosophie/philosophie-bachelor-75', 'philosophy', 'Philosophie (Philosophy)', 'Philosophy', 'BA', 0, 'open', 75],
-  ['physik/physik-bachelor-100', 'physics', 'Physik (Physics)', 'Physics', 'BSc', 1, 'exam', 100],
+  ['physik/physik-bachelor-100', 'physics', 'Physik (Physics)', 'Physics', 'BSc', 1, 'interview', 100],
   ['politikwissenschaft/politikwissenschaft-bachelor-75', 'political-science', 'Politikwissenschaft (Political Science)', 'Politics & International Relations', 'BA', 0, 'sel', 75],
   ['psychologie/psychologie-bachelor-100', 'psychology', 'Psychologie (Psychology)', 'Psychology', 'BSc', 0, 'nc', 100],
   ['religionswissenschaft/religionswissenschaft-bachelor-75', 'religious-studies', 'Religionswissenschaft (Religious Studies)', 'Philosophy', 'BA', 0, 'open', 75],
@@ -409,7 +420,14 @@ const HD_KIND = {
   open: { ...HD_OPEN, entrance_exam: 'no' },
   nc: { ...HD_SEL, admission: 'Restricted places: apply through hochschulstart.de (DoSV)', entrance_exam: 'no' },
   sel: { ...HD_SEL, admission: "Restricted places: the university's own selection procedure", entrance_exam: 'no' },
-  exam: { ...HD_SEL, admission: 'Admission procedure (Aufnahmeprüfungsverfahren)', entrance_exam: '?' },
+  // Each subject's Aufnahmeprüfung statute (Zulassungsordnung, linked from its
+  // page; checked 2026-10-30). Physik: pre-selection on grades, then an
+  // "Auswahlgespräch"; Chemie: "einer Vorauswahl und einem
+  // Bewerbungsgespräch"; Angewandte Informatik: pre-selection and a
+  // "Bewerbungsgespräch" — interviews, so no. English Studies: school English
+  // grades plus a "fachspezifischen Studierfähigkeitstest" in written form (yes).
+  interview: { ...HD_SEL, admission: 'Admission procedure: grades, then an interview', entrance_exam: 'no' },
+  test: { ...HD_SEL, admission: 'Admission procedure: English grades and a written aptitude test', entrance_exam: 'yes' },
   sport: { ...HD_OPEN, entrance_exam: 'yes', other_requirements: 'Sports entrance test (Sporteingangsprüfung)' },
 };
 for (const [path, id, programme, subject_area, degree_type, stem, kind, share] of HD_ROWS) {

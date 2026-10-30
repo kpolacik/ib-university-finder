@@ -72,8 +72,8 @@ dentistry and vet deadlines (15 October 2026) have already passed.
 Liverpool 33, Newcastle 39, Nottingham 38, QMUL 33, York 34, Queen's Belfast
 36 core programmes, each from its 2027 course page (IB offer, international
 fee, IELTS). Cardiff refuses this machine (403), so it is still missing.
-Newcastle's and QMUL's IELTS lines load from another service and are blank;
-Liverpool Medicine and three QUB pages print no IB offer. Queen's charges EU
+Newcastle's IELTS comes from its course-data service and QMUL's from its
+per-school English bands (filled 2026-10-30). Liverpool Medicine and three QUB pages print no IB offer. Queen's charges EU
 students its "EU Other" fee (= international); the £4,985 NI fee applies to
 Irish citizens living in Ireland.
 
@@ -97,9 +97,12 @@ and excludes STEM unless the school is in the KMK annex, so STEM rows ask for
 Maths HL. Deadlines are mostly 15 July (TUM's foreign-certificate VPD via
 uni-assist, LMU's International Office, Heidelberg's restricted subjects);
 Heidelberg's unrestricted subjects run to 31 October. German-taught rows need
-C1 German (DSH-2 or equivalent). Exam "?" where the aptitude procedure isn't
-described (LMU Anglistik and the two art degrees; Heidelberg's
-Aufnahmeprüfungsverfahren in Chemistry, English, Computer Science, Physics).
+C1 German (DSH-2 or equivalent). Exam values were settled on 2026-10-30 from
+the admission statutes: Heidelberg Chemistry, Physics and Computer Science
+are grades plus an interview (no), English Studies has a written test (yes);
+LMU Anglistik has a written language test (yes). Only LMU's two art degrees
+stay "?" (a three-stage Eignungsprüfung that starts with a portfolio; the
+later stages aren't described).
 Living costs fall back to the German student-visa figure (€992) where a
 university gives none.
 
@@ -345,13 +348,16 @@ initials and it reads "Checked <date> by <initials>".
    the 2027 table is not out yet.
 7. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
    *Living costs* under Decisions). Re-check them each autumn with the rest.
-8. **The 13 entrance-exam unknowns** outside Sweden (`entrance_exam` = `?`):
-   five VŠE English bachelors and Masaryk's Informatika ve vzdělávání (their
-   2027 rules are not out), "See the faculty's English admission rules" at one
-   Czech faculty, Radboud Psychology (its four-part Matching Assignment may or
+8. **The 13 entrance-exam unknowns** outside Sweden (`entrance_exam` = `?`),
+   rechecked 2026-10-30 (16 others were settled that day: VUT FEEC, Ca'
+   Foscari IMS, TU Wien Architecture and Spatial Planning, JKU and Klagenfurt
+   IB, Regensburg, WHU, Saarland ×2, LMU Anglistik, Heidelberg ×4, York
+   Music): five VŠE English bachelors (its admissions page points to a 2024
+   leaflet) and Masaryk's Informatika ve vzdělávání (no admission conditions
+   published), Radboud Psychology (its four-part Matching Assignment may or
    may not include a test), UL Music and Dance, Maynooth MH002, UCD Veterinary
-   Nursing, and two Italian open-access programmes (Bologna 6653, Ca' Foscari
-   IMS) whose pages name no entry check.
+   Nursing, Bologna 6653 (open access, names no entry check), LMU Kunst und
+   Multimedia and Kunstpädagogik (portfolio first, later stages not described).
 9. ~~Finland and Norway~~ — added 2026-10-27. Norway has few English-taught
    bachelors (14 here); its Norwegian maths codes (R1, S1+S2) have no IB
    equivalent on the programme pages, so two rows show maths as unknown.

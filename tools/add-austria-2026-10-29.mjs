@@ -201,7 +201,9 @@ const TU_INF = { admission: 'Two-stage admission procedure with a ranking test',
   deadline_notes: NOTE_2026('pre-registration 1 April to 4 May 2026, ranking test 13 July 2026'),
   other_requirements: '670 places shared by Informatics, Business Informatics and Computer Engineering · Online self-assessment' };
 PROGS.push(
-  tu('architecture', 'Architecture', 'Architecture', 'architecture', { admission: 'Two-stage selection procedure', entrance_exam: '?', application_deadline: '',
+  // Admission-procedure page (checked 2026-10-30): "a three-stage selection
+  // procedure" with a "Ranking test".
+  tu('architecture', 'Architecture', 'Architecture', 'architecture', { admission: 'Three-stage selection procedure with a ranking test', entrance_exam: 'yes', application_deadline: '',
     deadline_notes: '2027 dates not published yet.', other_requirements: '625 places' }),
   tu('civil-engineering', 'Civil Engineering', 'Engineering', 'civil-engineering'),
   tu('electrical-engineering', 'Electrical Engineering', 'Engineering', 'electrical-engineering'),
@@ -209,7 +211,9 @@ PROGS.push(
   tu('mechanical-engineering', 'Mechanical Engineering', 'Engineering', 'mechanical-engineering'),
   tu('mechanical-engineering-management', 'Mechanical Engineering – Management', 'Engineering; Business & Management', 'mechanical-engineering-management'),
   tu('spatial-planning', 'Urban and Regional Planning', 'Architecture; Environmental Sciences', 'urban-and-regional-planning',
-    { admission: 'Admission procedure', entrance_exam: '?', application_deadline: '', deadline_notes: '2027 dates not published yet.' }),
+    // Programme page (checked 2026-10-30): "submit a motivation letter and then
+    // participate in a ranking test".
+    { admission: 'Admission procedure: motivation letter and a ranking test', entrance_exam: 'yes', application_deadline: '', deadline_notes: '2027 dates not published yet.' }),
   tu('technical-chemistry', 'Technical Chemistry', 'Chemistry', 'technical-chemistry'),
   tu('technical-mathematics', 'Technical Mathematics', 'Mathematics', 'technical-mathematics'),
   tu('technical-physics', 'Technical Physics', 'Physics', 'technical-physics'),
@@ -243,7 +247,9 @@ PROGS.push(
   P('jku-chemistry-technology', 'jku', 'Chemistry and Chemical Technology', 'Chemistry; Engineering', { ...EN, degree_type: 'BSc', official_url: `${JKU}ba-chemistry-and-chemical-technology/` }),
   P('jku-quantum', 'jku', 'Quantum Science and Technology', 'Physics', { ...EN, degree_type: 'BSc', official_url: `${JKU}ba-quantum-science-and-technology/` }),
   P('jku-international-business', 'jku', 'International Business Administration', 'Business & Management', { ...EN, degree_type: 'BSc',
-    admission: 'Admission procedure (80 places)', entrance_exam: '?', english_requirement: 'English C1', application_deadline: '',
+    // Admission page (checked 2026-10-30): an application video, then "an
+    // interview" online. Interviews are not exams: no.
+    admission: 'Admission procedure (80 places): application video and an online interview', entrance_exam: 'no', english_requirement: 'English C1', application_deadline: '',
     deadline_notes: NOTE_2026('admitted students applied by 10 August 2026'), other_requirements: 'Semester or year abroad is compulsory',
     official_url: `${JKU}ba-international-business-administration/` }),
   P('jku-transformation-studies', 'jku', 'Transformation Studies. Art x Science', 'Art & Design; Environmental Sciences', { ...EN, degree_type: 'BA',
@@ -253,7 +259,10 @@ const AAU = 'https://www.aau.at/en/studien/';
 PROGS.push(
   P('klagenfurt-worlds-of-english', 'klagenfurt', 'Worlds of English', 'Languages & Literature', { ...EN, degree_type: 'BA', official_url: `${AAU}bachelor-worlds-of-english/` }),
   P('klagenfurt-international-business', 'klagenfurt', 'International Business and Economics', 'Business & Management; Economics', { ...EN, degree_type: 'BSc',
-    admission: 'Special admission procedure', entrance_exam: '?', official_url: `${AAU}bachelor-international-business-and-economics/` }),
+    // Programme page (checked 2026-10-30): "register, upload a letter of
+    // motivation and then you can take the exam"; "The online examination is
+    // held in English".
+    admission: 'Special admission procedure: motivation letter and an online exam', entrance_exam: 'yes', official_url: `${AAU}bachelor-international-business-and-economics/` }),
   P('klagenfurt-social-sciences', 'klagenfurt', 'Social Sciences', 'Sociology & Anthropology; Politics & International Relations', { ...EN, degree_type: 'BA',
     other_requirements: 'Combination programme: 120 ECTS major plus 60 ECTS minor(s)', official_url: `${AAU}bachelor-social-sciences/` }),
   P('klagenfurt-ice', 'klagenfurt', 'Information and Communications Engineering', 'Engineering; Computer Science', { ...EN, degree_type: 'BSc', official_url: `${AAU}bachelor-information-and-communications-engineering/` }),

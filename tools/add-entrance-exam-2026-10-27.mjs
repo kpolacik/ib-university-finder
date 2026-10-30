@@ -137,8 +137,16 @@ const OVERRIDE = {
   'ucd-veterinary-nursing': UNKNOWN,
   // Czechia
   'vse-en-economics-of-markets-and-organization': NO,
+  // FEEC "Entrance exam" page (checked 2026-10-30): "After completing the
+  // requirements, the applicants will be invited to participate in the
+  // entrance examination"; "usually in the second half of May".
+  'vut-electrical-engineering': YES,
   // Italy
   'unicatt-med': YES,
+  // Ca' Foscari admission page for Italian and Mediterranean Studies (checked
+  // 2026-10-30): open access; the only condition is English B2, and missing it
+  // gives an "Additional Learning Requirement (OFA)" after enrolment. No test.
+  'unive-ims': NO,
 };
 
 const has = (re, s) => re.test(s);
