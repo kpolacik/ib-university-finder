@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-2643 programmes · 156 universities · 11 countries · all checks passing.
+2916 programmes · 159 universities · 11 countries · all checks passing.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
@@ -20,7 +20,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
 | United Kingdom | 25 | 883 | Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
 | Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
-| Germany | 35 | 201 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU Munich and Heidelberg (140), added 2026-10-29 |
+| Germany | 38 | 474 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU, Heidelberg (140, 2026-10-29) and KIT, RWTH, TU Berlin, FU Berlin, Freiburg, Tübingen (273, 2026-10-30). HU Berlin missing (bot check blocks this machine) |
 | Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
 | Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
 
@@ -105,6 +105,21 @@ stay "?" (a three-stage Eignungsprüfung that starts with a portfolio; the
 later stages aren't described).
 Living costs fall back to the German student-visa figure (€992) where a
 university gives none.
+
+Part 3 (2026-10-30) adds every current German-taught bachelor at KIT 33,
+RWTH 35, TU Berlin 40, FU Berlin 56, Freiburg 46, Tübingen 63, each from the
+university's own course finder (three are taught in English per their pages: FU
+Englische Philologie and Nordamerikastudien, Tübingen Interdisciplinary American
+Studies); HU Berlin's site sits behind a bot check this
+machine can't pass. Deadlines follow each university's international-applicant
+rules (KIT: EU 15 July or 15 September per programme; RWTH: open 20 October,
+NC 15 July; TU and FU: 2026's windows, the FU decides NC status each summer;
+Freiburg: each programme's window; Tübingen: NC 15 July, open 30 September).
+Exam "?" for KIT Architektur (a "Praxisbezogene Aufgabe"), KIT Sport, RWTH and
+Freiburg Psychology (test not said to be optional / statute not checked);
+Tübingen Sport needs the Sporteingangsprüfung (yes), Freiburg Sport can be
+met with school Sport grades (waivable). Ten Tübingen pages don't state BA or
+BSc, so their degree is blank.
 
 **Norway** (`tools/add-norway-2026-10-27.mjs`). The list is Study in Norway's
 "full degree programmes taught in English", bachelor level (31), kept to
