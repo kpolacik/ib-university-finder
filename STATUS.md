@@ -775,27 +775,57 @@ medians 517 → 383 ms; second-frame medians 816 → 622 ms. Every sample missed
 150 ms. These are measurements, not a performance fix or final design approval;
 raw timings and environment are in `plans/design-round2/phase3-l09.json`.
 
-The October 31 fix is in, but L09 stays open because it narrowly misses the
-strict target. A filter change now draws only the first screenful of rows
-(at least 40) at once, and adds the rest 20 at a time just after, so every row
-still ends up on the page. Opening a row, the wide-screen pick, keyboard focus,
-switching between narrow and wide, and printing all work as before. Printing
-first adds any rows still waiting. Measured the same way (4× CPU, 20 timed
-changes, before and after in alternating blocks, each block run only when the
-machine was quiet). At 1280 px the new rows reach the screen in a median 124 ms
-(worst 150 ms), against 593 ms before. A trace of the frames shows the first
-new screen at about 110 ms against 560 ms. At 390 px it is a median 123 ms.
-At 1920 px the median is 151 ms, just over the target. Two parts of the strict
-target are still missed:
-- Chrome's own built-in AI page reader does a full-page pass of over a second
-  about a second after every change. With that feature switched off, 1920 px
-  comes in at 139 ms.
-- Even then, one sample in 20 had a 53 ms pause (the target is 50 ms) while
-  the remaining rows were being added, caused by the browser's memory clean-up.
-Two smaller changes: when you change a filter while at the bottom of the list,
-the page now stays nearer where it was. And reloading the page halfway down
-the list can come back much higher up, because the lower rows are not drawn
-yet. Raw timings, traces and scripts are in `plans/l09-impl/`.
+The October 31 fix is in, but L09 stays open because it still misses parts of
+the strict target. A filter change draws only the first screenful of rows (at
+least 40) at once and adds the rest just after, so every row still ends up on
+the page. Opening a row, the wide-screen pick, keyboard focus, switching between
+narrow and wide, and printing all work as before. Printing first adds any rows
+still waiting.
+
+A follow-up on November 1 made two changes. Each batch of rows added after
+the first screen now stops after 8 ms, however slow the machine, instead of
+always adding 20 rows. And the first draw after a reload or Back draws every
+row again, as before, so a reload halfway down the list comes back to the same
+place (it had been landing near the top).
+
+Measured on November 1 on an M1 MacBook Air with headless Chrome 156. Settings:
+four times slower CPU, 20 timed changes per width, before and after in
+alternating blocks, each block run only when the machine was quiet. The
+numbers are the time until the new rows reach the screen (median / 95th
+percentile):
+- 1280 px: 127 / 153 ms in normal Chrome (one sample of 388 ms; the rest
+  under 150), and 126 / 134 ms with Chrome's AI features turned off. Before:
+  580 ms. A trace of the frames shows the first new screen at about 100 ms.
+- 390 px: 129 / 133 ms, and 127 / 141 ms with AI off. Before: 573 ms.
+- 1920 px: **157 / 176 ms, and 154 / 160 ms with AI off. This misses the
+  target.** Before: 625 ms.
+
+What is still missing:
+- **1920 px is over 150 ms.** Almost all of the time goes on removing the old
+  rows from the page (about 85 ms at four times slower). Every way of removing
+  them costs the same. The ways that avoid it either push that cost into a
+  later pause of 94-272 ms, shift the page by 16-96 px when you are deep in
+  the list, or reuse old rows. Reusing rows risks showing an out-of-date points
+  verdict, and the plan rejected it. Fixing this needs a new plan.
+- **Ticking a filter that removes many rows is still well over 150 ms.** For
+  example, ticking Ireland takes 1,240 rows down to 548. It takes about
+  280-320 ms (before: 357-420 ms), because it removes 1,240 rows. The target was only ever
+  measured in the other direction.
+- **Short pauses while the rest of the rows go in.** About one change in ten
+  has a pause of 54-96 ms (at four times slower). This is the browser's memory
+  clean-up of the removed rows, which smaller batches cannot shorten. It still
+  counts against the site.
+  Rarely, the frame right after the last rows go in takes 60-130 ms.
+- **Chrome's own AI page reader** reads the whole page for 1.2-1.9 seconds
+  about a second after every change. Leon decided on October 31 that this
+  is Chrome's work and does not count against the site. It is still reported
+  here. It happens only when Chrome's AI features are on.
+
+Two small differences remain. When you change a filter at the very end of the
+list, the page settles at a slightly different spot than before (sometimes
+higher, sometimes lower). After pressing Down past the first screen, the list
+ends a little higher than before. Raw timings, traces and scripts are in
+`plans/l09-impl/` and `plans/l09-fix/`.
 
 To watch the motion, open the site with `serve.mjs` and turn on "Reduce
 motion" in the operating system: every effect must then happen at once. To

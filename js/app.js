@@ -124,10 +124,13 @@ let copyTimer;
 // almost all of them are off screen. update() now draws enough rows to fill the
 // window at once and appends the rest in slices just after the first paint.
 const FIRST_ROWS = 40;
-// Small enough that a slice plus one of Chrome's major garbage collections
-// (30-37 ms at 4x CPU) stays under 50 ms. Slices of 50 rows took about 25 ms
-// and, with a collection, up to 119 ms.
-const MORE_ROWS = 20;
+// Each task after the first paint appends rows a few at a time and stops once
+// SLICE_MS has passed, so a task plus one of Chrome's major garbage collections
+// (30-37 ms at 4x CPU) stays under 50 ms on a slow machine too. Fixed slices
+// were too big there: 50 rows took about 25 ms and, with a collection, up to
+// 119 ms; even 20 rows plus a collection once took 53 ms.
+const SLICE_MS = 8;
+const CHUNK_ROWS = 5;
 // The smallest height a drawn row can take, used to work out how many rows fill
 // the window. A laid-out row is never under 76 px (measured at 320-2560 px), and
 // a row Chrome has not laid out yet takes its contain-intrinsic-size
@@ -138,6 +141,12 @@ const MIN_ROW_PX = 60;
 // The rows still to append: { rows, next, frame, timer }. Only one at a time;
 // every rebuild cancels it first.
 let pendingRows = null;
+// After a reload or Back/Forward the browser puts the page back where it was,
+// but only once the page is tall enough, and it gives up soon after loading.
+// With only the first screen drawn, a reload halfway down landed near the top
+// (49,901 px came back as 7,553). So the first draw after such a visit draws
+// every row, as before L09. A fresh visit starts at the top and needs no more.
+let firstDraw = true;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = { Czechia: 'f-cz', Denmark: 'f-dk', Ireland: 'f-ie', Italy: 'f-it', Netherlands: 'f-nl' };
 let selectedId = null;
@@ -500,7 +509,10 @@ function update() {
   // the focused row so focus can go back to it.
   const viewBottom = window.scrollY + document.documentElement.clientHeight;
   const focusIndex = focus && focus.kind !== 'pane' ? rows.findIndex((row) => row.id === focus.id) : -1;
-  const first = Math.min(rows.length, Math.max(FIRST_ROWS, Math.ceil(viewBottom / MIN_ROW_PX), focusIndex + 1));
+  const restoring = firstDraw && ['reload', 'back_forward'].includes(performance.getEntriesByType?.('navigation')[0]?.type);
+  firstDraw = false;
+  const first = restoring ? rows.length
+    : Math.min(rows.length, Math.max(FIRST_ROWS, Math.ceil(viewBottom / MIN_ROW_PX), focusIndex + 1));
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
@@ -533,12 +545,15 @@ function scheduleRows(rows, next) {
   });
 }
 
-// Appends one slice and schedules the next. Also called straight away by
-// ArrowDown on the last drawn row. A slice from a cancelled list does nothing.
+// Appends one slice (chunks until SLICE_MS has passed) and schedules the next.
+// Also called straight away by ArrowDown on the last drawn row. A slice from a
+// cancelled list does nothing.
 function moreRows(pending) {
   if (pendingRows !== pending) return;
   stopRows(pending);
-  appendSlice(pending, MORE_ROWS);
+  const start = performance.now();
+  do appendSlice(pending, CHUNK_ROWS);
+  while (pending.next < pending.rows.length && performance.now() - start < SLICE_MS);
   if (pending.next < pending.rows.length) pending.timer = setTimeout(() => moreRows(pending), 0);
   else pendingRows = null;
 }

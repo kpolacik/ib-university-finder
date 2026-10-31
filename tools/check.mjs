@@ -2485,6 +2485,12 @@ function paneAppHarness(test, { boot = false } = {}) {
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
     let nextFrame = 1; const frames = new Map();
+    // A deterministic performance.now() for the time-budgeted fill (L09). Each
+    // call moves it on by `tick` ms; a test can set tick to 0 and charge time
+    // itself, as a row costs on a slow machine.
+    // navType is the page's navigation type ('navigate', 'reload', 'back_forward').
+    const perf = { t: 0, tick: 1, now() { this.t += this.tick; return this.t; },
+      navType: 'navigate', getEntriesByType(type) { return type === 'navigation' ? [{ type: this.navType }] : []; } };
     const flushFrame = () => { const due = [...frames]; frames.clear(); for (const [, fn] of due) fn(now); };
     const windowListeners = {};
     const fireWindow = (type) => { for (const fn of windowListeners[type] ?? []) fn({ type }); };
@@ -2517,7 +2523,7 @@ function paneAppHarness(test, { boot = false } = {}) {
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollY: 0, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
-      history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout,
+      history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
@@ -2548,7 +2554,7 @@ function paneAppHarness(test, { boot = false } = {}) {
         flushFrame(); advance(0);
       }
     };
-    result = test({ drain, timers, run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
+    result = test({ perf, drain, timers, run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
       docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id),
       motionMedia, printMedia, frames, flushFrame, fireWindow, styleReads });
   } catch (err) { finish(); throw err; }
@@ -3277,6 +3283,54 @@ appCheck('L09 i: a late row gets its open slot (narrow, no motion) or its select
   const marked = get('results').children.filter((li) => li.classList.contains('is-sel') || li.querySelector('a.goto') || li.querySelector('[aria-current]'));
   return marked.length === 1 && marked[0] === item(late) && item(late).classList.contains('is-sel')
     && item(late).querySelector('button.open').getAttribute('aria-current') === 'true' && item(late).querySelector('a.goto')?.textContent === 'Go to details';
+});
+// A fixed 20-row slice plus one of Chrome's major garbage collections once ran
+// 53 ms at 4x CPU. Each fill task now stops once SLICE_MS has passed, so a
+// slow machine gets smaller slices instead of long tasks.
+appCheck('L09 k: each fill task appends rows only until its time budget is spent, and every row still arrives in order', ({ run, get, perf, timers, flushFrame, context }) => {
+  const want = l09(run);
+  const realAppend = context.appendRows;
+  let cost = 1.5;
+  context.appendRows = (container, rows, opts) => { perf.t += rows.length * cost; return realAppend(container, rows, opts); };
+  perf.tick = 0;
+  // One fill task at a time, the way the browser runs them.
+  const task = () => {
+    const id = run('pendingRows?.timer');
+    if (id === undefined) return null;
+    const before = get('results').children.length;
+    const t = timers.get(id); timers.delete(id); t.fn();
+    return get('results').children.length - before;
+  };
+  flushFrame();
+  const cheap = [];
+  for (let i = 0; i < 3; i++) cheap.push(task());
+  // 1.5 ms a row: a 5-row chunk is 7.5 ms, under the 8 ms budget, so a task
+  // takes a second chunk and then stops (10 rows).
+  if (!cheap.every((n) => n === 10)) return false;
+  // 10 ms a row: one chunk is already over the budget, and a task still makes
+  // progress (one chunk, never zero rows).
+  cost = 10;
+  const dear = [];
+  for (let i = 0; i < 3; i++) dear.push(task());
+  if (!dear.every((n) => n === 5)) return false;
+  cost = 0.5;
+  for (let i = 0; i < 1000 && run('pendingRows') !== null; i++) { const n = task(); if (n === null || n < 1 || n > 20) return false; }
+  context.appendRows = realAppend;
+  return sameList(get, want) && run('pendingRows') === null;
+});
+// A reload halfway down the list came back near the top: the browser puts the
+// scroll back only once the page is tall enough, and only the first screen was
+// drawn. The first draw after a reload or Back/Forward now draws every row.
+appCheck('L09 l: the first draw after a reload or Back draws every row at once; a fresh visit and later changes draw the first screen', ({ run, get, perf }) => {
+  const drawn = (nav) => { perf.navType = nav; run('firstDraw = true;'); const want = l09(run); return [get('results').children.length, want.length, run('pendingRows')]; };
+  for (const nav of ['reload', 'back_forward']) {
+    const [n, total, pending] = drawn(nav);
+    if (n !== total || total !== live.length || pending !== null) return false;
+    run('update();');
+    if (get('results').children.length !== 40) return false;
+  }
+  const [n, total] = drawn('navigate');
+  return n === 40 && total === live.length;
 });
 appCheck('L09 j: total failure while rows are pending appends nothing afterwards', ({ run, get, drain }) => {
   l09(run); const drawn = get('results').children.length;
