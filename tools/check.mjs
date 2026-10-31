@@ -159,7 +159,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions } = await import(new URL('../js/render.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -1945,7 +1945,12 @@ check('render.js calls pointsNote once, in renderDetail, and the cell builder do
 check('renderRows keeps its call contract and the inert shortlist options',
   /export function renderRows\(container, rows, \{ state, shortlist, onToggleStar, wide = false \}\)/.test(renderSrc)
     && /rows\.map\(\(row\) => renderRow\(row, state, wide\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows, \{ state, shortlist, onToggleStar, wide: wideQuery.matches \}\)/.test(appSrc));
+    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, onToggleStar, wide: wideQuery.matches \}\)/.test(appSrc));
+// L09: the rows after the first screen are built by the same renderRow, in the
+// list's applied mode.
+check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
+  /export function appendRows\(container, rows, \{ state, wide = false \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
+    && /arrive\(appendRows\(dom.results, rows, \{ state, wide: appliedWide \}\)\)/.test(appSrc));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -2171,7 +2176,7 @@ check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
     && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
 check('row toggle retains slots while arrows select only wide without roving tabindex',
-  appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(item.dataset.id)')
+  appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
     && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
@@ -2510,20 +2515,23 @@ function paneAppHarness(test, { boot = false } = {}) {
     } };
     const context = { document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
-      window: { addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
+      window: { scrollY: 0, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout,
       IntersectionObserver, navigator: { clipboard },
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(code, context);
     const run = (code) => runInNewContext(code, context);
     context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
     context.media = media;
+    // All 1,240 real rows, for the L09 checks that need a list longer than the
+    // first screen.
+    context.live = live;
     if (!boot) run('allRows = fixture; facets = buildFacets(allRows); drawChips(); renderSortOptions(dom.sort, SORTS, state.sort, state.dir); syncSort(); loaded = true; update();');
     const item = (id) => get('results').children.find((n) => n.dataset.id === id);
     const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
@@ -2532,7 +2540,15 @@ function paneAppHarness(test, { boot = false } = {}) {
     const flip600 = (bar) => { media600.matches = bar; for (const fn of media600.listeners) fn({ matches: bar }); };
     const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
     const settle = () => new Promise((resolve) => setImmediate(resolve));
-    result = test({ run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
+    // Runs every frame and zero-delay task until none is left, so the rows
+    // update() appends after the first paint are all in (L09).
+    const drain = () => {
+      for (let i = 0; frames.size || [...timers.values()].some((t) => t.at <= now); i++) {
+        if (i > 10000) throw new Error('drain: work never ran out');
+        flushFrame(); advance(0);
+      }
+    };
+    result = test({ drain, timers, run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
       docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id),
       motionMedia, printMedia, frames, flushFrame, fireWindow, styleReads });
   } catch (err) { finish(); throw err; }
@@ -3166,6 +3182,108 @@ appCheck('pane scroll: a refresh keeps and clamps it, a new pick resets it, and 
   run('update();');
   return heightReads === 0 && readAt.length === 1 && readAt[0] === old && get('results').children[0] !== old && top === 0;
 });
+// L09: update() draws the first screen of rows at once and appends the rest in
+// slices after the first paint. Each check below runs on the 1,240 real rows
+// unless it says otherwise, and each was seen to fail with the line it guards
+// broken.
+const l09 = (run) => {
+  run('allRows = live; facets = buildFacets(allRows); update();');
+  return run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+};
+const listIds = (get) => get('results').children.map((n) => n.dataset.id);
+const sameList = (get, want) => { const got = listIds(get); return got.length === want.length && new Set(got).size === got.length && got.every((id, i) => id === want[i]); };
+appCheck('L09 a: a short list schedules no frame and no timer', ({ run, frames, timers }) => {
+  const before = timers.size; run('update();');
+  return frames.size === 0 && timers.size === before && run('pendingRows') === null;
+});
+appCheck('L09 b: the first update draws 40 rows at the top, the count is whole at once, and the rest arrive in order with no duplicates', ({ run, get, drain }) => {
+  const want = l09(run);
+  if (want.length !== live.length || get('results').children.length !== 40 || run('currentlyShown') !== live.length
+    || !get('result-count').textContent.includes(String(live.length))) return false;
+  drain();
+  return sameList(get, want) && run('pendingRows') === null;
+});
+appCheck('L09 c: scrolled 6000 px down (narrow), update() draws enough rows to reach the window bottom at 60 px a row', ({ run, get, context }) => {
+  context.window.scrollY = 6000; l09(run);
+  return get('results').children.length === Math.ceil((6000 + 844) / 60);
+});
+// advance(0) would run every nested zero timer, so the old list is left
+// pending at its timer (short case) or at its frame (long case).
+appCheck('L09 d: a second update before the slices finish leaves exactly the second result, short or long', ({ run, get, drain, flushFrame }) => {
+  l09(run); flushFrame();
+  if (run('pendingRows')?.timer === undefined) return false;
+  const term = run('live[500].programme');
+  run(`state.search = ${JSON.stringify(term)}; update();`);
+  const short = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+  drain(); if (short.length >= 40 || !sameList(get, short)) return false;
+  run("state.search = ''; update();");
+  if (run('pendingRows')?.frame === undefined) return false;
+  run("state.countries.add('Ireland'); update();");
+  const long = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+  drain();
+  return long.length > 40 && sameList(get, long);
+});
+appCheck('L09 e: beforeprint while rows are pending puts every row in, in order, with a late open slot open', ({ run, get, item, click, drain, fireWindow }) => {
+  const want = l09(run); drain(); const late = want[300];
+  click(late); drain(); run('update();');
+  if (get('results').children.length >= want.length || item(late)) return false;
+  fireWindow('beforeprint');
+  return sameList(get, want) && run('printing') === true && run('pendingRows') === null
+    && item(late).querySelector('.expand')?.getAttribute('data-state') === 'open'
+    && item(late).querySelector('button.open').getAttribute('aria-expanded') === 'true';
+});
+appCheck('L09 f: a 1200 crossing while rows are pending gives every row the new mode, both ways, and narrowing opens a late pick', ({ run, get, item, click, flip, drain }) => {
+  const want = l09(run);
+  flip(true);
+  if (!sameList(get, want) || !get('results').children.every((li) => {
+    const b = li.querySelector('button.open'); return b.getAttribute('aria-controls') === 'pane' && b.getAttribute('aria-expanded') === null;
+  })) return false;
+  const late = want[300]; click(late); run('update();');
+  if (item(late)) return false;
+  flip(false);
+  return sameList(get, want) && get('results').children.every((li) => {
+    const b = li.querySelector('button.open');
+    return li.dataset.id === late
+      ? b.getAttribute('aria-expanded') === 'true' && li.querySelector('.expand')?.getAttribute('data-state') === 'open'
+      : b.getAttribute('aria-expanded') === 'false' && b.getAttribute('aria-controls') === null && !li.querySelector('.expand');
+  });
+});
+appCheck('L09 g: wide, ArrowDown on the last drawn row while rows are pending moves focus and the pick to the next row', ({ run, get, flip, drain, context }) => {
+  flip(true); const want = l09(run);
+  const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
+  const e = { target: last, key: 'ArrowDown', preventDefault() { this.defaultPrevented = true; } };
+  context.keyEvent = e; run('rowKeydown(keyEvent);');
+  const next = get('results').children[40];
+  return e.defaultPrevented && next?.dataset.id === want[40] && stubDocument.activeElement === next.querySelector('button.open')
+    && run('selectedId') === want[40] && next.classList.contains('is-sel');
+});
+appCheck('L09 h: a focused row deep in the list is drawn at once and keeps focus', ({ run, get, item, drain }) => {
+  const want = l09(run); drain();
+  item(want[300]).querySelector('button.open').focus();
+  run('update();');
+  return get('results').children.length >= 301 && stubDocument.activeElement === item(want[300])?.querySelector('button.open');
+});
+appCheck('L09 i: a late row gets its open slot (narrow, no motion) or its selection marks (wide) when it arrives', ({ run, get, item, click, flip, drain, frames }) => {
+  const want = l09(run); drain(); const late = want[300];
+  click(late); drain(); run('update();');
+  if (item(late)) return false;
+  drain();
+  const slot = item(late).querySelector('.expand');
+  if (slot?.getAttribute('data-state') !== 'open' || item(late).querySelector('button.open').getAttribute('aria-expanded') !== 'true'
+    || run('slotWork.size') !== 0) return false;
+  flip(true); click(late); run('update();');
+  if (item(late)) return false;
+  drain();
+  const marked = get('results').children.filter((li) => li.classList.contains('is-sel') || li.querySelector('a.goto') || li.querySelector('[aria-current]'));
+  return marked.length === 1 && marked[0] === item(late) && item(late).classList.contains('is-sel')
+    && item(late).querySelector('button.open').getAttribute('aria-current') === 'true' && item(late).querySelector('a.goto')?.textContent === 'Go to details';
+});
+appCheck('L09 j: total failure while rows are pending appends nothing afterwards', ({ run, get, drain }) => {
+  l09(run); const drawn = get('results').children.length;
+  run("showTotalFailure(new Error('controlled failure'));"); drain();
+  return drawn === 40 && get('results').children.length === drawn && run('pendingRows') === null;
+});
+
 // L09 (Stage 6): points.js had no modulepreload, so the browser found it only
 // after render.js and filters.js arrived, and the CSVs waited one more round
 // trip (about 150 ms at 150 ms latency, plans/finish-review/waterfall*.json).
@@ -3209,6 +3327,17 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
 // A08 print, as CSS: the list on screen, ink on white, open slots whole.
 const printRules = allCss.filter((r) => r.media.join() === '@media print');
 const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
+// L09: update() assumes no row is shorter than MIN_ROW_PX on screen. A row
+// Chrome has not laid out yet takes its placeholder height, so every screen
+// placeholder must be at least that, or the list could end above the scroll.
+{
+  const minRow = Number(appSrc.match(/const MIN_ROW_PX = (\d+);/)?.[1]);
+  const sizes = allCss.filter((r) => !r.media.join().includes('print') && r.selector.split(',').some((x) => x.trim() === '.item'))
+    .flatMap((r) => [...r.body.matchAll(/contain-intrinsic-size:\s*([^;]+)/g)].map((m) => m[1]));
+  const px = sizes.map((v) => Number(v.match(/(\d+(?:\.\d+)?)px/)?.[1]));
+  check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
+    `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
+}
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, but never the sample warning',
   ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))

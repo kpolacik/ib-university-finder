@@ -28,6 +28,15 @@ export function renderRows(container, rows, { state, shortlist, onToggleStar, wi
   container.replaceChildren(...rows.map((row) => renderRow(row, state, wide)));
 }
 
+// The rest of a long list, a slice at a time after the first screen is drawn
+// (L09). The same rows renderRows builds; the items are returned so app.js can
+// open a slot or mark the selection on a row that arrives late.
+export function appendRows(container, rows, { state, wide = false }) {
+  const items = rows.map((row) => renderRow(row, state, wide));
+  container.append(...items);
+  return items;
+}
+
 // Keep the aside and its fallback heading connected while its detail is rebuilt.
 export function renderPane({ pane, heading, body }, row, shown, state) {
   let content;

@@ -775,6 +775,28 @@ medians 517 → 383 ms; second-frame medians 816 → 622 ms. Every sample missed
 150 ms. These are measurements, not a performance fix or final design approval;
 raw timings and environment are in `plans/design-round2/phase3-l09.json`.
 
+The October 31 fix is in, but L09 stays open because it narrowly misses the
+strict target. A filter change now draws only the first screenful of rows
+(at least 40) at once, and adds the rest 20 at a time just after, so every row
+still ends up on the page. Opening a row, the wide-screen pick, keyboard focus,
+switching between narrow and wide, and printing all work as before. Printing
+first adds any rows still waiting. Measured the same way (4× CPU, 20 timed
+changes, before and after in alternating blocks, each block run only when the
+machine was quiet). At 1280 px the new rows reach the screen in a median 124 ms
+(worst 150 ms), against 593 ms before. A trace of the frames shows the first
+new screen at about 110 ms against 560 ms. At 390 px it is a median 123 ms.
+At 1920 px the median is 151 ms, just over the target. Two parts of the strict
+target are still missed:
+- Chrome's own built-in AI page reader does a full-page pass of over a second
+  about a second after every change. With that feature switched off, 1920 px
+  comes in at 139 ms.
+- Even then, one sample in 20 had a 53 ms pause (the target is 50 ms) while
+  the remaining rows were being added, caused by the browser's memory clean-up.
+Two smaller changes: when you change a filter while at the bottom of the list,
+the page now stays nearer where it was. And reloading the page halfway down
+the list can come back much higher up, because the lower rows are not drawn
+yet. Raw timings, traces and scripts are in `plans/l09-impl/`.
+
 To watch the motion, open the site with `serve.mjs` and turn on "Reduce
 motion" in the operating system: every effect must then happen at once. To
 check print, use the browser's print preview with a few rows open.

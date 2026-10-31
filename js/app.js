@@ -7,7 +7,7 @@ import {
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
-  renderRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
 } from './render.js';
 
 const dom = {
@@ -120,6 +120,24 @@ let filterFocus = null;
 let returnFocusOnClose = true;
 let sentinelAbove = false;
 let copyTimer;
+// L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
+// almost all of them are off screen. update() now draws enough rows to fill the
+// window at once and appends the rest in slices just after the first paint.
+const FIRST_ROWS = 40;
+// Small enough that a slice plus one of Chrome's major garbage collections
+// (30-37 ms at 4x CPU) stays under 50 ms. Slices of 50 rows took about 25 ms
+// and, with a collection, up to 119 ms.
+const MORE_ROWS = 20;
+// The smallest height a drawn row can take, used to work out how many rows fill
+// the window. A laid-out row is never under 76 px (measured at 320-2560 px), and
+// a row Chrome has not laid out yet takes its contain-intrinsic-size
+// placeholder (120-260 px). If a CSS change makes rows or those placeholders
+// shorter than 60 px, lower this, or the page can end above the scroll position
+// and jump. tools/check.mjs checks the placeholders against it.
+const MIN_ROW_PX = 60;
+// The rows still to append: { rows, next, frame, timer }. Only one at a time;
+// every rebuild cancels it first.
+let pendingRows = null;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = { Czechia: 'f-cz', Denmark: 'f-dk', Ireland: 'f-ie', Italy: 'f-it', Netherlands: 'f-nl' };
 let selectedId = null;
@@ -152,7 +170,9 @@ async function start() {
   document.addEventListener('focusin', rememberFocus);
   document.addEventListener('focusout', forgetFocus);
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
-  window.addEventListener('beforeprint', () => { printing = true; settleSlots(); });
+  // Print needs every filtered row (A08). The print media query changes only
+  // after Chrome's print snapshot, so beforeprint is the one place to flush.
+  window.addEventListener('beforeprint', () => { flushRows(); printing = true; settleSlots(); });
   window.addEventListener('afterprint', afterPrint);
   dom.results.setAttribute('aria-busy', 'true');
 
@@ -230,6 +250,7 @@ function showTotalFailure(err) {
   // to Reload below, never back to the Filters button that is about to hide.
   const sheetHadFocus = dom.sheet.open && dom.sheet.contains(document.activeElement);
   settleSlots();
+  cancelRows();
   closeSheet(false);
   dom.pane.hidden = true;
   const alert = document.createElement('div');
@@ -448,6 +469,9 @@ function update() {
   // A debounced filter can land after the viewport crosses 1200 but before the
   // change event. Finish the crossing first, or the pick stays in the hidden pane.
   if (appliedWide !== null && appliedWide !== wideQuery.matches) crossWide();
+  // After the crossing, which needs the whole old list; every rebuild starts
+  // with nothing pending.
+  cancelRows();
 
   const focus = snapshotFocus();
 
@@ -470,26 +494,91 @@ function update() {
   // Read before the rows are rebuilt: afterwards it forces a layout of the
   // whole new list (about 120 ms at 4x CPU throttling, L09).
   const paneScroll = appliedWide ? dom.pane.scrollTop : 0;
+  // Read at the same point for the same reason. They pick no layout, only how
+  // many rows to build now (L09): enough to reach past the bottom of the
+  // window, so the page never gets shorter than where it is scrolled to, plus
+  // the focused row so focus can go back to it.
+  const viewBottom = window.scrollY + document.documentElement.clientHeight;
+  const focusIndex = focus && focus.kind !== 'pane' ? rows.findIndex((row) => row.id === focus.id) : -1;
+  const first = Math.min(rows.length, Math.max(FIRST_ROWS, Math.ceil(viewBottom / MIN_ROW_PX), focusIndex + 1));
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
-  renderRows(dom.results, rows, { state, shortlist, onToggleStar, wide: wideQuery.matches });
+  renderRows(dom.results, rows.slice(0, first), { state, shortlist, onToggleStar, wide: wideQuery.matches });
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
   if (appliedWide) {
     openIds.clear();
-    decorateSelection();
     drawPane({ scroll: paneScroll });
   } else {
     for (const id of openIds) if (!shownRows.has(id)) openIds.delete(id);
-    for (const item of dom.results.children) {
-      if (openIds.has(item.dataset.id)) openRow(item, shownRows.get(item.dataset.id));
-    }
   }
+  arrive([...dom.results.children]);
+  // A short list schedules nothing: no frame and no timer.
+  if (first < rows.length) scheduleRows(rows, first);
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
   keepAddress();
+}
+
+// The rest of the rows go in after the first paint: a frame, then a task, so
+// the first slice runs after that frame, then one slice per task.
+function scheduleRows(rows, next) {
+  const pending = { rows, next, frame: undefined, timer: undefined };
+  pendingRows = pending;
+  pending.frame = requestAnimationFrame(() => {
+    pending.frame = undefined;
+    pending.timer = setTimeout(() => moreRows(pending), 0);
+  });
+}
+
+// Appends one slice and schedules the next. Also called straight away by
+// ArrowDown on the last drawn row. A slice from a cancelled list does nothing.
+function moreRows(pending) {
+  if (pendingRows !== pending) return;
+  stopRows(pending);
+  appendSlice(pending, MORE_ROWS);
+  if (pending.next < pending.rows.length) pending.timer = setTimeout(() => moreRows(pending), 0);
+  else pendingRows = null;
+}
+
+function appendSlice(pending, count) {
+  const rows = pending.rows.slice(pending.next, pending.next + count);
+  pending.next += rows.length;
+  // The list's applied mode, not the query: a flipped query whose change event
+  // has not run yet is crossWide's job.
+  arrive(appendRows(dom.results, rows, { state, wide: appliedWide }));
+}
+
+function stopRows(pending) {
+  if (pending.frame !== undefined) cancelAnimationFrame(pending.frame);
+  if (pending.timer !== undefined) clearTimeout(pending.timer);
+  pending.frame = pending.timer = undefined;
+}
+
+function cancelRows() {
+  if (!pendingRows) return;
+  stopRows(pendingRows);
+  pendingRows = null;
+}
+
+// Everything left, now: for print and the 1200 crossing, which need every row.
+function flushRows() {
+  const pending = pendingRows;
+  if (!pending) return;
+  cancelRows();
+  appendSlice(pending, Infinity);
+}
+
+// A row that arrives gets the state it had before the rebuild: its slot open
+// (narrow, no motion) or the selection marks (wide).
+function arrive(items) {
+  for (const item of items) {
+    const id = item.dataset.id;
+    if (!appliedWide && openIds.has(id)) openRow(item, shownRows.get(id));
+    else if (appliedWide && id === selectedId) markSelected(item);
+  }
 }
 
 // animate is only for a direct narrow toggle. Rebuilds and 1200 crossings put
@@ -622,7 +711,10 @@ function selectedItem(id = selectedId) {
 function decorateSelection() {
   clearSelection();
   const item = selectedItem();
-  if (!item) return;
+  if (item) markSelected(item);
+}
+
+function markSelected(item) {
   item.classList.add('is-sel');
   item.querySelector('button.open').setAttribute('aria-current', 'true');
   const goto = document.createElement('a');
@@ -662,6 +754,8 @@ function rowKeydown(event) {
     || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
   event.preventDefault();
   const item = event.target.closest('li.item');
+  // The last drawn row while the rest are still coming: draw the next slice now.
+  if (event.key === 'ArrowDown' && pendingRows && !item.nextElementSibling) moreRows(pendingRows);
   const next = event.key === 'ArrowUp' ? item.previousElementSibling : item.nextElementSibling;
   if (!next) return;
   next.querySelector('button.open').focus({ preventScroll: true });
@@ -741,6 +835,8 @@ function crossWide() {
   // While printing the query follows the paper; afterPrint() runs any crossing
   // still due from the restored screen.
   if (!loaded || appliedWide === wide || isPrinting()) return;
+  // Every row changes its ARIA here, so every row must be in.
+  flushRows();
   const focus = snapshotFocus() ?? (document.activeElement === document.body ? crossingFocus : null);
   settleSlots();
   clearSelection();
