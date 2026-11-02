@@ -2046,14 +2046,14 @@ check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip
     && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
     && /<label for="f-tuition">Max EU fee<\/label>/.test(indexHtml) && /<span class="unit">&euro;\/year<\/span>/.test(indexHtml)
     && !/id="f-tuition"[^>]*title=/.test(indexHtml));
-check('points help says what hides and what stays, spans the bar, and has no tooltip (S08)',
+check('points help is one short visible line that spans the bar, with no tooltip (S08, shortened 2026-11-02)',
   /<label for="f-points">My IB points<\/label>/.test(indexHtml)
-    && /<p class="help filter-help" id="f-points-help">Hides programmes whose published minimum or last year’s cutoff is above your total. Programmes we can’t compare stay visible.<\/p>/.test(indexHtml)
+    && /<p class="help filter-help" id="f-points-help">Hides programmes above your total.<\/p>/.test(indexHtml)
     && !/id="f-points"[^>]*title=/.test(indexHtml)
     && /\.filter-help\{grid-column:1\/-1;flex-basis:100%\}/.test(cssText)
     && cssText.includes('.is-set:not(.f-pts)>label::after{content:" · active";'));
-check('shared uncertainty help travels inside the extra filters; fee and deadline name it (S08)',
-  elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Programmes with an unknown figure, fee or deadline always stay visible.</p>')
+check('shared uncertainty help (points, fees, deadlines) travels inside the extra filters; fee and deadline name it (S08)',
+  elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Unknown points, fees or deadlines never hide a programme.</p>')
     && /id="f-deadline" aria-describedby="f-unknown-help"/.test(indexHtml));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
 // digit per line, because .req-points did not wrap (A02). Redesign stage 2:
@@ -4222,18 +4222,22 @@ section('Reviewed English wording (S08/S09)');
 for (const text of [
   'Find European bachelor programmes by IB requirements, deadlines and EU fees.',
   'Find European bachelor programmes by IB requirements.',
-  'Search programmes, universities or places. Use subject names, or “cs” for computer science.',
   'Try fewer words or check your spelling. Words can appear in any order: “Dublin computer” works. Typos are not corrected.',
   'Some problems hide a row; others leave a value unknown. Each message explains what happened.',
   'Check requirements, EU fees and deadlines on the official admissions page before applying.',
   'Students maintain this site, and details may change.',
   '>Export CSV', '>Clear shortlist', '>Data problems',
 ]) check(`static wording: ${text}`, indexHtml.includes(text));
-check('search help spans its own row so the search input aligns with its neighbouring controls',
-  /<p class="help filter-help search-help" id="f-search-help">/.test(indexHtml)
-    && !elementSource(indexHtml, /<div class="fld f-q"/).includes('<p class="help')
-    && css.includes('.search-help{grid-area:search-help}')
-    && css.includes('"q q more" "search-help search-help search-help" "pts hl hl"'));
+// Leon, 2026-11-02: the filter hints were too long. The search hint is gone
+// (the placeholder already shows examples) and the other two are one short
+// line each. Keep them short: no hint over 60 characters, and no search hint.
+check('search has no help line and no empty grid row for one',
+  !indexHtml.includes('f-search-help') && !css.includes('search-help')
+    && css.includes('grid-template-areas:"q q more" "pts hl hl"'));
+{
+  const hints = [...indexHtml.matchAll(/<p class="help filter-help"[^>]*>([^<]*)<\/p>/g)].map((m) => m[1]);
+  check('filter hints stay short (two, each 60 characters or fewer)', hints.length === 2 && hints.every((h) => h.length <= 60));
+}
 equal('deadline labels keep their canonical values and agree with the static options', filtersMod.DEADLINE_WINDOWS,
   { any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days' });
 for (const [value, label] of Object.entries(filtersMod.DEADLINE_WINDOWS)) {

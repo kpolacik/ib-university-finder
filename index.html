@@ -128,7 +128,7 @@
       <label for="f-search">Search</label>
       <span class="affix">
         <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
-        <input class="inp" type="search" id="f-search" name="search" aria-describedby="f-search-help" placeholder="UvA, TCD, law, Dublin">
+        <input class="inp" type="search" id="f-search" name="search" placeholder="UvA, TCD, law, Dublin">
       </span>
     </div>
 
@@ -149,8 +149,7 @@
       <label class="tick"><input type="checkbox" id="f-maths" name="maths" aria-describedby="f-maths-help"> HL Maths 4+</label>
     </div>
 
-    <p class="help filter-help search-help" id="f-search-help">Search programmes, universities or places. Use subject names, or “cs” for computer science.</p>
-    <p class="help filter-help" id="f-points-help">Hides programmes whose published minimum or last year’s cutoff is above your total. Programmes we can’t compare stay visible.</p>
+    <p class="help filter-help" id="f-points-help">Hides programmes above your total.</p>
 
     <div class="more-filters">
       <div class="fld f-fee">
@@ -214,7 +213,7 @@
       <div id="applied-filters" role="group" aria-label="Applied filters" hidden></div>
 
       <button type="button" id="f-clear" class="btn btn-q clear">Clear all</button>
-      <p class="help filter-help" id="f-unknown-help">Programmes with an unknown figure, fee or deadline always stay visible.</p>
+      <p class="help filter-help" id="f-unknown-help">Unknown points, fees or deadlines never hide a programme.</p>
     </div>
   </form>
 </header>

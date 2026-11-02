@@ -342,7 +342,7 @@ svg:not(.sprite) {
    and Clear all live in .more-filters, which app.js moves into the sheet.
    The band never sticks (A07). Classes follow the mockup (full/mockup.html);
    .dropdown/.dropdown-panel/.options/.option are its .dd/.dd-panel/.opt. */
-.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "search-help search-help search-help" "pts hl hl";align-items:end}
+.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "pts hl hl";align-items:end}
 /* Controls do not inherit the page font on their own. Zero specificity, so
    every class rule below still wins. */
 :where(.fbar,.listp,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
@@ -350,7 +350,6 @@ svg:not(.sprite) {
 .fld>label,.help{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px}
 .help{margin:0;font-weight:400}
 .filter-help{grid-column:1/-1;flex-basis:100%}
-.search-help{grid-area:search-help}
 .f-q>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .inp{width:100%;height:var(--ctl);margin:0;padding:0 10px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-ctl);color:var(--ink);font-variant-numeric:tabular-nums}
 .inp::placeholder{color:var(--ink-3)}
