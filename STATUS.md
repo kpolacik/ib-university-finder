@@ -103,12 +103,14 @@ plans/backlog/wording.md for the translation queue.
 
 ## The next obvious jobs, in order
 
-1. **The redesign, then the wording and Slovak pass** (decided 2026-10-26).
-   The visual direction is reopened: design interviews first, with Jakub, then
-   the redesign in Claude Design (plans/backlog/redesign.md). It inherits the
-   points work: minimum vs cutoff lines, one line per CAO round, the HL Maths
-   4+ tick and the split count. After it, one pass over every label and help
-   text, then Slovak (plans/backlog/wording.md, which lists the new strings).
+1. **Merge Jakub's upstream, then the Slovak pass.** The redesign (STATUS "The
+   look of it") and the English wording pass (2026-11-02) are done on the local
+   `redesign` branch. Next, with Leon at his PC: merge upstream with Jakub's
+   newer `data/programmes.csv` winning, re-apply only the fork's data fixes that
+   still matter (`plans/audit-issues.md` lists them), and run
+   `node tools/lint-data.mjs --against ORIG_HEAD` to see which ids moved. Then
+   the Supabase question (Q17), then the Slovak translation behind the
+   reserved EN/SK toggle (`plans/backlog/wording.md`).
 2. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
    initials. Do not attempt all 757.
