@@ -622,6 +622,20 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Irish cutoffs above 625 include a test score** (HPAT or audition), so they
   are never turned into an IB figure or used to hide a course. HPAT Medicine
   shows the CAO's 480-point minimum (35 IB) instead (decided 2026-10-25).
+- **A lower "#" cutoff is converted only when the test is a separate step**
+  (registry D27, decided 2026-11-02). The CAO's `#` says a course also has a
+  test, interview, portfolio or audition, not that its marks are in the
+  cutoff. Where the course's own page says the marks are added (UCC Theatre
+  CK112, Galway Business International GY261, DCU Jazz DC014: `TEST_IN_CUTOFF`
+  in `js/points.js`), the card shows no figure and says "Cutoff includes a
+  test score". Where no page confirms it (UCC Youth Work CK114 and seven UL
+  music, dance, design and architecture courses: `TEST_UNVERIFIED`), it says
+  "Assessment required; IB equivalent unverified". The other `#` courses
+  (TCD Drama and Nursing, UCC Music, UL Paramedic, UCD Veterinary) have a
+  separate pass/fail step and keep their figure. The browser reads the code,
+  so these cards are right even where the CSV still holds an older figure;
+  the next `update-cao-points.mjs` run blanks those figures and writes the
+  matching note. Evidence: `plans/archive/d27-test-marked-cutoffs.md`.
 - **Cutoffs come from the CAO, not from the universities' own pages.** Only the
   CAO says what a cutoff *meant*: `AQA` (everyone qualified got in, so there was
   no cutoff at all), `#` (a test, interview, portfolio or audition also
@@ -662,7 +676,9 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **The HPAT list goes stale each cycle.** `HPAT_CODES` in
   `tools/lib/ireland.mjs` holds the CAO codes of the courses ACER lists on
   hpat-ireland.acer.org (undergraduate Medicine only, checked 2026-10-25).
-  Re-check it every year before trusting an importer rerun.
+  Re-check it every year before trusting an importer rerun. The same goes for
+  `TEST_IN_CUTOFF` and `TEST_UNVERIFIED` in `js/points.js` (D27, checked
+  2026-11-02): UL's added-points rules for 2027 may settle the UL codes.
 - **UCD Medicine (DN400) and UL Undergraduate Entry Medicine (LM301) are
   hand-added rows** (2026-10-25). UCD's DN400 page has no IB requirements
   block, so `import-ucd.mjs` skips it and a rerun would drop `ucd-medicine`;

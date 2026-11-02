@@ -63,6 +63,8 @@ The column rules are in MAINTENANCE.md and the parsing is in `js/data.js`.
   - HPAT Medicine shows the CAO's 480-point minimum (35 IB), ranked with
     the HPAT (decision Q12).
   - A cutoff above 625 that includes a test stays blank and says so.
+  - A lower `#` cutoff stays blank when its CAO code is in `TEST_IN_CUTOFF`
+    or `TEST_UNVERIFIED` (`js/points.js`, D27); other `#` courses convert.
   Cutoffs come from the CAO, with its `AQA`/`#`/`*` markers
   (`tools/lib/cao-points.mjs`, STATUS.md decisions).
 - **Irish fee = Free Fees figure** (student contribution plus levy). Don't use

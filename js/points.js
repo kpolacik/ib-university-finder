@@ -32,6 +32,28 @@ export const caoPointsFor = (ib) => {
   return hit ? hit[1] : null;
 };
 
+// CAO codes marked "#" (test, interview, portfolio or audition) whose cutoff
+// is not a plain points total (registry D27, Leon chose option 2 on
+// 2026-11-02; sources in plans/d27-test-marked-cutoffs.md). The "#" only says
+// an assessment exists, not that its marks are in the cutoff, so a code is
+// listed only from the course's own page. Codes, not CSV notes, so the rule
+// survives an upstream CSV merge and a refresh writes the matching note.
+// Re-check each CAO cycle, like HPAT_CODES.
+//   TEST_IN_CUTOFF: the official page says the assessment's marks are added
+//     to the CAO points (UCC workshop, Galway interview, DCU audition).
+//   TEST_UNVERIFIED: an assessment counts somehow, but no page confirms how
+//     for the 2026 cutoff (UL's added-points rules are for 2027).
+// The other "#" courses (TCD Drama and Nursing, UCC Music, UL Paramedic, UCD
+// Veterinary) have a separate pass/fail step, so their cutoff stays a points
+// total and keeps its figure.
+export const TEST_IN_CUTOFF = new Set(['CK112', 'GY261', 'DC014']);
+export const TEST_UNVERIFIED = new Set(['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135']);
+
+/** 'included', 'unverified' or null for a CAO code, only when the course carries the "#" marker. */
+export const testScoring = (code, test) => (!test || !code ? null
+  : TEST_IN_CUTOFF.has(code) ? 'included'
+    : TEST_UNVERIFIED.has(code) ? 'unverified' : null);
+
 /**
  * The IB figure for one CAO cutoff: { ib, bonusOnly }.
  *
@@ -40,11 +62,13 @@ export const caoPointsFor = (ib) => {
  * (45 converts to 600), so it gets lowestIB(cutoff − 25) and bonusOnly (Leon,
  * Q13, 2026-10-25). With a test (the CAO "#" marker, or HPAT) the cutoff may
  * include test marks, so it is not a points total and gets no bonus figure.
+ * A "#" course whose `code` is in TEST_IN_CUTOFF or TEST_UNVERIFIED gets no
+ * figure at all, however low its cutoff (D27).
  * convertCutoff in tools/lib/ireland.mjs calls this, so the tools and the
  * browser can't disagree.
  */
-export function ibForCutoff(points, { test = false } = {}) {
-  if (points === null || points === undefined) return { ib: null, bonusOnly: false };
+export function ibForCutoff(points, { test = false, code = null } = {}) {
+  if (points === null || points === undefined || testScoring(code, test)) return { ib: null, bonusOnly: false };
   const ib = lowestIB(points);
   if (ib === null && points <= 600 + MATHS_BONUS_POINTS && !test) {
     const withBonus = lowestIB(points - MATHS_BONUS_POINTS);
@@ -124,8 +148,11 @@ export function pointsLines(row) {
     // "There is no points threshold" is news to an IB student who assumes
     // every university has one. An Irish cutoff above 625 that includes test
     // or audition marks is not a points total, so it gives no figure (Q12 C).
+    // Neither does a lower "#" cutoff whose page says the marks are added, or
+    // does not say (D27).
     return [{ number: null, unit: null,
-      qualifier: row.pointsPlusTest ? 'Cutoff includes a test score' : 'No minimum published' }];
+      qualifier: row.pointsPlusTest ? 'Cutoff includes a test score'
+        : row.pointsTestUnverified ? 'Assessment required; IB equivalent unverified' : 'No minimum published' }];
   }
   if (row.pointsKind === 'cutoff' && row.cao) return row.cao.rounds.map((r) => roundLine(r, row.cao));
   if (row.rankedWithHpat) {
@@ -162,6 +189,7 @@ export const pointsLineText = (line) => (line.number === null
 export function pointsShort(row) {
   if (row.ibPointsMin === null) {
     const reason = row.pointsPlusTest ? 'cutoff includes a test score'
+      : row.pointsTestUnverified ? 'assessment required, IB equivalent unverified'
       : row.admission.some((item) => /^Entrance exam\b/.test(item)) ? 'entrance exam' : null;
     return { parts: [], after: null, unknown: { verdict: reason ? 'No IB figure' : 'No minimum published', reason } };
   }

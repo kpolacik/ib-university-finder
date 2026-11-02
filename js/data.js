@@ -3,7 +3,7 @@
 // spreadsheet string.
 
 import { csvToObjects } from './csv.js';
-import { parseCaoSentence, ibForCutoff } from './points.js';
+import { parseCaoSentence, ibForCutoff, testScoring } from './points.js';
 import { subjectAreasOf, UNCLASSIFIED } from './subjects.js';
 import {
   SHEET_CSV_URLS, SAMPLE_CSV_URLS, SNAPSHOT_URL,
@@ -248,9 +248,15 @@ function build(universityRows, programmeRows, today) {
 
     const city = inheritText(row.city, uni.city);
     const subjects = text(row.ib_subjects);
-    const ibPointsMin = number(row.ib_points_min, issues, `${where}, ib_points_min`, IB_POINTS);
     const deadlineNotes = text(row.deadline_notes);
     const otherRequirements = list(row.other_requirements, BULLET);
+    // D27: a "#" course listed in TEST_IN_CUTOFF or TEST_UNVERIFIED (js/points.js)
+    // has no IB figure. A figure written before that rule (a CSV not yet
+    // refreshed by update-cao-points.mjs) is ignored, so the card and the
+    // filters never use it. UCD's figure is its own minimum, so UCD is exempt.
+    const testScore = uni.country === 'Ireland' && uni.id !== UCD_ID
+      ? testScoring(parseCaoSentence(deadlineNotes)?.code, otherRequirements.includes(CAO_TEST)) : null;
+    const ibPointsMin = testScore ? null : number(row.ib_points_min, issues, `${where}, ib_points_min`, IB_POINTS);
     const rankedWithHpat = ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE);
     const cao = cutoffSentence(uni, ibPointsMin, rankedWithHpat, deadlineNotes, otherRequirements);
     const subjectAreas = subjectAreasOf(row.subject_area, issues, where);
@@ -291,7 +297,10 @@ function build(universityRows, programmeRows, today) {
       // 480-point minimum and is then ranked with the HPAT; the other test
       // courses show no figure and say the cutoff includes a test score.
       rankedWithHpat,
-      pointsPlusTest: ibPointsMin === null && deadlineNotes.includes(PLUS_TEST),
+      pointsPlusTest: ibPointsMin === null && (deadlineNotes.includes(PLUS_TEST) || testScore === 'included'),
+      // D27: a "#" course where no page confirms whether the assessment's
+      // marks are in the cutoff, so no IB figure is shown.
+      pointsTestUnverified: testScore === 'unverified',
       // What kind of figure ib_points_min is, so the card can say it (P01, Q2
       // interim, 2026-10-26). "cutoff": an Irish course's IB equivalent of last
       // year's CAO cutoff, which moves with demand every year. "minimum": what

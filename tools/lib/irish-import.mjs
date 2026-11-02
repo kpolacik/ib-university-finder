@@ -95,7 +95,7 @@ export async function importUniversity(cfg) {
     // requirement", except on HPAT Medicine, which gets the CAO's minimum.
     const points = entry.latest.aqa ? null : entry.latest.points;
     const c = convertCutoff(points, {
-      test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+      test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), code,
     });
     ib = c.ib;
     notes.push(...c.notes);

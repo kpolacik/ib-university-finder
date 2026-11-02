@@ -174,6 +174,8 @@ export const OLD_CAO_SENTENCES = [
   /Above the 600 points a 45 converts to, and the cutoff may include test or portfolio marks, so no IB figure is given\./,
   /The CAO minimum for Medicine is \d+ points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure\./,
   /Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given\./,
+  /The cutoff includes marks from the test, interview or audition, so it is not a points total and no IB figure is given\./,
+  /Entry also needs a test, interview, portfolio or audition, and no official page confirms whether its marks are in the cutoff, so no IB figure is given\./,
 ];
 
 /**

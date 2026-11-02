@@ -10,7 +10,7 @@
 // CAO's official IB conversion (TABLE), lowestIB and ibForCutoff live in
 // js/points.js, so the browser's "HL Maths 4+" tick and these tools read the
 // same table. lowestIB is re-exported so the tools keep one import path.
-import { lowestIB, ibForCutoff } from '../../js/points.js';
+import { lowestIB, ibForCutoff, testScoring } from '../../js/points.js';
 export { lowestIB };
 
 const UA = {
@@ -107,6 +107,13 @@ export const HPAT_MIN_POINTS = 480;
 export const HPAT_NOTE = `The CAO minimum for Medicine is ${HPAT_MIN_POINTS} points; places then go on points plus the HPAT test, so last year's cutoff is not an IB figure.`;
 export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff includes test or audition marks, so no IB figure is given.';
 
+// D27 (Leon, option 2, 2026-11-02): the notes for a "#" course in
+// TEST_IN_CUTOFF or TEST_UNVERIFIED (js/points.js), whatever its cutoff. The
+// browser reads the code, not these sentences, so they are for people reading
+// the CSV.
+export const TEST_ADDED = 'The cutoff includes marks from the test, interview or audition, so it is not a points total and no IB figure is given.';
+export const TEST_UNCONFIRMED = 'Entry also needs a test, interview, portfolio or audition, and no official page confirms whether its marks are in the cutoff, so no IB figure is given.';
+
 /**
  * The ib_points_min figure and the note sentences for one CAO cutoff. All three
  * Irish writers (irish-import.mjs, import-tcd.mjs, update-cao-points.mjs) call
@@ -123,14 +130,18 @@ export const PLUS_TEST = 'Above what any IB total can reach, because the cutoff 
  *
  * The figure itself comes from ibForCutoff in js/points.js, the same function
  * the browser uses. `hpat` (the CAO code is in HPAT_CODES) gives the CAO's
- * Medicine minimum instead of any conversion.
+ * Medicine minimum instead of any conversion. `code` (the CAO code) picks out
+ * the "#" courses in TEST_IN_CUTOFF / TEST_UNVERIFIED, which get no figure
+ * and their own sentence (D27).
  */
-export function convertCutoff(points, { test = false, hpat = false } = {}) {
+export function convertCutoff(points, { test = false, hpat = false, code = null } = {}) {
   // An HPAT cutoff is never a points total, and the 480 minimum does not depend
   // on there having been a cutoff, so HPAT courses always get the CAO minimum,
   // even with no cutoff (AQA, none published, or no CAO entry: points null).
   if (hpat) return { ib: lowestIB(HPAT_MIN_POINTS), notes: [HPAT_NOTE] };
   if (points === null || points === undefined) return { ib: null, notes: [] };
+  const scoring = testScoring(code, test);
+  if (scoring) return { ib: null, notes: [scoring === 'included' ? TEST_ADDED : TEST_UNCONFIRMED] };
   const { ib, bonusOnly } = ibForCutoff(points, { test });
   const notes = [];
   if (bonusOnly) notes.push(BONUS_ONLY);

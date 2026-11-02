@@ -1597,9 +1597,10 @@ const hpatLive = live.filter((p) => p.rankedWithHpat);
 equal('rankedWithHpat is on exactly the HPAT Irish rows, all at 35',
   hpatLive.map((p) => [p.id, p.ibPointsMin]).sort(),
   irish.filter(isHpatRow).map((p) => [p.id, 35]).sort());
-equal('pointsPlusTest is on exactly the non-HPAT cutoffs above 625',
+equal('pointsPlusTest is on exactly the non-HPAT cutoffs above 625 and the TEST_IN_CUTOFF "#" courses (D27)',
   live.filter((p) => p.pointsPlusTest).map((p) => p.id).sort(),
-  irish.filter((p) => !isHpatRow(p) && cutoffOf(p) > 625).map((p) => p.id).sort());
+  irish.filter((p) => !isHpatRow(p) && (cutoffOf(p) > 625
+    || (pts.TEST_IN_CUTOFF.has(caoOf(p)?.code) && p.otherRequirements.includes(CAO_TEST)))).map((p) => p.id).sort());
 const allLines = (p) => pts.pointsLines(p).map(pts.pointsLineText).join('; ');
 check('the card says "then ranked with the HPAT" and "Cutoff includes a test score" under their flags',
   hpatLive.every((p) => allLines(p) === '35 IB points, then ranked with the HPAT')
@@ -1752,7 +1753,7 @@ check('every non-UCD Irish row with a CAO code has a CAO sentence that parses', 
 const figureWrong = nonUcdCao.filter((p) => caoOf(p)).filter((p) => {
   if (isHpatRow(p)) return p.ibPointsMin !== 35;
   const test = p.otherRequirements.join(' · ') === CAO_TEST;
-  return p.ibPointsMin !== pts.ibForCutoff(latestOf(p)?.points ?? null, { test }).ib;
+  return p.ibPointsMin !== pts.ibForCutoff(latestOf(p)?.points ?? null, { test, code: caoOf(p).code }).ib;
 });
 check('every non-UCD Irish ib_points_min is ibForCutoff of its latest round (HPAT rows 35)', figureWrong.length === 0,
   figureWrong.map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
@@ -1766,6 +1767,107 @@ const twoRound = live.filter((p) => caoOf(p)?.rounds.length === 2);
 check('the two-round sentence is on the real rows (Round 1 first)', twoRound.length > 100
   && twoRound.every((p) => caoOf(p).rounds.map((r) => r.round).join() === '1,2'), `${twoRound.length} rows`);
 console.log(`        ${nonUcdCao.length} non-UCD Irish rows with a CAO code, ${twoRound.length} rows quote two rounds`);
+
+// ---------------------------------------------------------------- D27
+section('"#" cutoffs whose test marks are added, or not confirmed (D27)');
+// The CAO "#" says a course also has a test, interview, portfolio or audition,
+// not that its marks are in the cutoff. The conversion used to treat every
+// "#" cutoff at or below 600 as a points total, so UCC Theatre (#363, the
+// workshop adds up to 100) showed about 26 IB points. Leon chose option 2 on
+// 2026-11-02: 3 confirmed-added codes say "Cutoff includes a test score", 8
+// unconfirmed say "Assessment required; IB equivalent unverified", and the
+// separate pass/fail ones keep their figure. plans/d27-test-marked-cutoffs.md.
+equal('D27 TEST_IN_CUTOFF holds the three confirmed codes',
+  [...(pts.TEST_IN_CUTOFF ?? [])].sort(), ['CK112', 'DC014', 'GY261']);
+equal('D27 TEST_UNVERIFIED holds CK114 and the seven UL codes',
+  [...(pts.TEST_UNVERIFIED ?? [])].sort(), ['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135']);
+check('D27 the separate-requirement codes and HPAT codes are in neither list',
+  ['TR025', 'TR093', 'DN300', 'CK104', 'LM103', ...ie.HPAT_CODES]
+    .every((c) => !pts.TEST_IN_CUTOFF?.has(c) && !pts.TEST_UNVERIFIED?.has(c)));
+equal('D27 testScoring needs the "#" marker and a listed code',
+  [['CK112', true], ['CK114', true], ['CK112', false], ['LM103', true], [null, true]]
+    .map(([c, t]) => (typeof pts.testScoring === 'function' ? pts.testScoring(c, t) : 'missing')),
+  ['included', 'unverified', null, null, null]);
+equal('D27 ibForCutoff gives no figure for a listed "#" code, and the old figure without the marker',
+  [pts.ibForCutoff(363, { test: true, code: 'CK112' }), pts.ibForCutoff(300, { test: true, code: 'CK114' }),
+    pts.ibForCutoff(389, { test: true, code: 'LM103' }), pts.ibForCutoff(363, { code: 'CK112' })],
+  [{ ib: null, bonusOnly: false }, { ib: null, bonusOnly: false },
+    pts.ibForCutoff(389, { test: true }), pts.ibForCutoff(363)]);
+equal('D27 convertCutoff writes the added / unconfirmed sentence for listed codes',
+  [cc(363, { test: true, code: 'CK112' }), cc(625, { test: true, code: 'LM099' }),
+    cc(389, { test: true, code: 'LM103' }), cc(null, { test: true, code: 'CK112' })],
+  [{ ib: null, notes: [ie.TEST_ADDED] }, { ib: null, notes: [ie.TEST_UNCONFIRMED] },
+    cc(389, { test: true }), { ib: null, notes: [] }]);
+const d27Disagree = [];
+for (const code of ['CK112', 'CK114', 'LM103', null]) {
+  for (let n = 300; n <= 760; n += 7) {
+    for (const test of [false, true]) {
+      if (ie.convertCutoff(n, { test, code }).ib !== pts.ibForCutoff(n, { test, code }).ib) d27Disagree.push(`${code}:${n}${test ? '#' : ''}`);
+    }
+  }
+}
+check('D27 convertCutoff and ibForCutoff agree with a code', d27Disagree.length === 0, d27Disagree.slice(0, 10).join(', '));
+check('D27 OLD_CAO_SENTENCES strips both new sentences, so a refresh never doubles them',
+  [ie.TEST_ADDED, ie.TEST_UNCONFIRMED].every((t) => typeof t === 'string' && oldPatterns.some((re) => re.test(t))));
+for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/update-cao-points.mjs']) {
+  check(`D27 ${f} passes the CAO code to convertCutoff`, /convertCutoff\([^]*?hpat: HPAT_CODES\.has\(code\), code,/.test(read(f)));
+}
+// The browser ignores a figure the CSV still has from before the rule, so
+// the cards are right before the CAO refresh rewrites the rows.
+const d27Uni = 'university_id,name,city,country,application_system,living_cost_monthly,tuition_eu_default,tuition_noneu_default,english_requirement_default,student_life_url,last_verified,verified_by\n'
+  + 'tcd,Trinity,Dublin,Ireland,CAO,,,,,,2026-08-14,TT\n'
+  + 'ucd,UCD,Dublin,Ireland,CAO,,,,,,2026-08-14,TT\n'
+  + 'nl,Dutch,Delft,Netherlands,Studielink,,,,,,2026-08-14,TT\n';
+const d27Row = (id, uniId, ib, notes, other = '') =>
+  `${id},${uniId},,${id},BSc,Engineering,English,${ib},,${q(other)},,,,2027-02-01,${q(notes)},https://example.org,2026-08-14,TT`;
+const d27Prog = [
+  head,
+  d27Row('ie-added', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
+  d27Row('ie-unver', 'tcd', 24, '2026 CAO cutoff: Round 1 300 points (code CK114).', dataMod.CAO_TEST),
+  d27Row('ie-sep', 'tcd', 28, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
+  d27Row('ie-nomark', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
+  d27Row('ucd-listed', 'ucd', 30, "UCD's stated minimum: 30 IB points. 2026 CAO cutoff: Round 1 363 points (code CK112).", dataMod.CAO_TEST),
+  d27Row('nl-listed', 'nl', 30, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
+].join('\n') + '\n';
+const { programmes: d27, meta: d27Meta } = await load(d27Uni, d27Prog);
+check('D27 fixture parses cleanly', d27Meta.issues.length === 0, JSON.stringify(d27Meta.issues));
+const d27Of = (id) => d27.find((p) => p.id === id);
+equal('D27 figure, flags and card line per row',
+  ['ie-added', 'ie-unver', 'ie-sep', 'ie-nomark', 'ucd-listed', 'nl-listed'].map((id) => {
+    const p = d27Of(id);
+    return p && [p.ibPointsMin, p.pointsPlusTest, p.pointsTestUnverified, pts.pointsLines(p).map(pts.pointsLineText).join('; ')];
+  }),
+  [[null, true, false, 'Cutoff includes a test score'],
+    [null, false, true, 'Assessment required; IB equivalent unverified'],
+    [28, false, false, '≈ 28 IB points, Round 1 cutoff, 2026'],
+    [26, false, false, '≈ 26 IB points, Round 1 cutoff, 2026'],
+    [30, false, false, '30 IB points, minimum'],
+    [30, false, false, '30 IB points, minimum']]);
+equal('D27 compact figure says why there is none',
+  ['ie-added', 'ie-unver'].map((id) => pts.pointsShort(d27Of(id)).unknown),
+  [{ verdict: 'No IB figure', reason: 'cutoff includes a test score' },
+    { verdict: 'No IB figure', reason: 'assessment required, IB equivalent unverified' }]);
+const d27Filters = await import(new URL('../js/filters.js', import.meta.url));
+equal('D27 My points never hides them (unknown bucket)',
+  ['ie-added', 'ie-unver'].map((id) => d27Filters.pointsBucket(d27Of(id), { myIbPoints: 24, hlMaths: false })), ['unknown', 'unknown']);
+const d27Live = live.filter((p) => p.pointsTestUnverified || (p.pointsPlusTest && !(cutoffOf(p) > 625)))
+  .map((p) => [p.id, p.pointsPlusTest ? 'added' : 'unverified']).sort();
+equal('D27 real data: exactly the 11 chosen rows lose their figure', d27Live, [
+  ['dcu-jazz-and-contemporary-music-performance', 'added'],
+  ['galway-bachelor-of-business-studies-internat', 'added'],
+  ['ucc-theatre-and-performative-practices', 'added'],
+  ['ucc-youth-and-community-work', 'unverified'],
+  ['ul-architecture-barch', 'unverified'],
+  ['ul-contemporary-dance-ba', 'unverified'],
+  ['ul-irish-dance-ba', 'unverified'],
+  ['ul-irish-music-ba', 'unverified'],
+  ['ul-music-ba', 'unverified'],
+  ['ul-product-design-and-technology-bsc', 'unverified'],
+  ['ul-voice-ba', 'unverified'],
+]);
+equal('D27 real data: the separate-requirement "#" rows keep their figure',
+  ['tcd-drama-and-theatre-studies', 'tcd-nursing---general-nursing-adel', 'ucd-veterinary-medicine', 'ucc-arts-music', 'ul-paramedic-studies-bsc']
+    .map((id) => typeof live.find((p) => p.id === id)?.ibPointsMin), ['number', 'number', 'number', 'number', 'number']);
 
 // ---------------------------------------------------------------- minimum or cutoff
 section('Cards say minimum or cutoff, with round and year (P01, Q4)');

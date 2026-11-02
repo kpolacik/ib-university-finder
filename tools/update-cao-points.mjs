@@ -67,7 +67,7 @@ for (const r of rows) {
   // with no cutoff (AQA: points null), so HPAT Medicine always gets the CAO's
   // minimum and HPAT_NOTE.
   const conv = convertCutoff(entry.latest.aqa ? null : entry.latest.points, {
-    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), code,
   });
   const ib = conv.ib;
   sentences.push(...conv.notes);

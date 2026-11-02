@@ -132,7 +132,7 @@ for (const c of links) {
   // null and the figure stays blank, except on HPAT Medicine, which gets the
   // CAO's minimum whatever the cutoff.
   const conv = convertCutoff(entry ? entry.latest.points : null, {
-    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code),
+    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), code,
   });
   ib = conv.ib;
   notes.push(...conv.notes);
