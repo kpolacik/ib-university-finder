@@ -726,7 +726,10 @@ Adding `?v=N` to the page URL does not help, because the stylesheet is a separat
 request with its own cache entry. `serve.mjs` sends `no-store` on everything, so
 a reload always shows what is on disk. It is a development server only — no-store
 on every response would be wrong in production, and GitHub Pages sets its own
-sensible headers.
+sensible headers. It listens on this computer only (127.0.0.1) and refuses
+hidden paths such as `.git/`: the first version listened on every network
+interface, so anyone on the same Wi-Fi could download the repository (X02). To
+try the site on a phone, use the live site or a deliberate tunnel, not this.
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette

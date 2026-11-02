@@ -3594,5 +3594,46 @@ appCheck('country and local option-search changes retain full new facet vocabula
 });
 check('both list and dormant shortlist export pass direction', /sortRows\(applyFilters\(allRows, state, shortlist\), state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
 
+// X02: the dev server used to listen on every interface and serve .git/, so
+// anyone on the same Wi-Fi could download the repository. Start the real
+// server on a free port and ask it for hidden paths.
+section('Dev server (tools/serve.mjs)');
+{
+  const { spawn } = await import('node:child_process');
+  const { createServer: netServer } = await import('node:net');
+  const { writeFileSync, rmSync } = await import('node:fs');
+  const probe = join(root, '.check-x02-probe');
+  const port = await new Promise((done) => {
+    const s = netServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => done(p)); });
+  });
+  const server = spawn(process.execPath, [join(root, 'tools/serve.mjs'), String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    await new Promise((done, fail) => {
+      const timer = setTimeout(() => fail(new Error('serve.mjs did not start in 5 s')), 5000);
+      server.stdout.on('data', (d) => { if (String(d).includes(`:${port}`)) { clearTimeout(timer); done(); } });
+      server.on('exit', (code) => { clearTimeout(timer); fail(new Error(`serve.mjs exited ${code}`)); });
+    });
+    // node:http, not fetch: the loader checks above replace globalThis.fetch.
+    const { get } = await import('node:http');
+    const status = (path) => new Promise((done, fail) =>
+      get({ host: '127.0.0.1', port, path }, (res) => { res.resume(); done(res.statusCode); }).on('error', fail));
+    equal('X02 serves the page', await status('/'), 200);
+    // A probe dot-file that certainly exists, so a 404 means "refused" and not
+    // "missing" (a git archive copy has no .git/ to ask for).
+    writeFileSync(probe, 'x02');
+    equal('X02 refuses .git/HEAD', await status('/.git/HEAD'), 404);
+    equal('X02 refuses a dot-file', await status('/.check-x02-probe'), 404);
+    equal('X02 refuses an encoded dot-path', await status('/%2echeck-x02-probe'), 404);
+    equal('X02 refuses a dot-path reached through ..', await status('/js/%2e%2e/.check-x02-probe'), 404);
+  } catch (err) {
+    check('X02 dev server answered', false, err.message);
+  } finally {
+    server.kill();
+    rmSync(probe, { force: true });
+  }
+  check('X02 listens on 127.0.0.1 only, not every interface',
+    /\.listen\(port, '127\.0\.0\.1'/.test(read('tools/serve.mjs')));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
