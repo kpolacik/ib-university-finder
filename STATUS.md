@@ -789,7 +789,7 @@ parent pages.
 
 Never open the CSVs in Excel — see MAINTENANCE.md.
 
-**Speed (L09, still open).** The target is under 150 ms from a filter change to
+**Speed (L09, closed 2026-11-02).** The target is under 150 ms from a filter change to
 the new rows on screen, on a laptop slowed four times. Measured 2026-10-28 on
 an M1 MacBook Air, headless Chrome 156, 1280 × 900, the real 1240 rows: untick
 Ireland so every row is redrawn, five warm-ups then 20 timed changes, before
@@ -846,15 +846,24 @@ rows went in (80 changes):
 - Ticking Ireland (1,240 rows down to 548): 110-123 ms in normal Chrome and
   109-133 ms with AI off. Before: 198-223 ms.
 The new version takes about a quarter of the old version's time on both days.
-Whether L09 passes therefore depends on how fast the laptop happens to be
-running, and nobody has yet decided which state counts.
+Whether L09 passed therefore depended on how fast the laptop happened to be
+running. On November 2 Leon picked the yardstick: plugged in, four times
+slower CPU, a quiet machine, one confirming run. That run (November 2,
+afternoon, the same scripts, every block run only when the machine was quiet,
+on AC power throughout) measured the current code (d3d12ec) and passed every
+case, with no pause of 50 ms or more while the rest of the rows went in:
+- 1280 px: 73 ms, and 74 ms with AI off. Before: 350-356 ms.
+- 1920 px: 95 ms, and 97 ms with AI off. Before: 370-378 ms.
+- 390 px: 72 ms. Before: 343 ms.
+- Ticking Ireland: 121-138 ms in normal Chrome and 122-140 ms with AI off.
+  Before: 224-241 ms.
+- A reload halfway down the list still comes back to the same place (within
+  about 1%).
+So L09 is closed. The slower-day results below are kept as known limits: they
+do not count against the yardstick, but they are where to look first if the
+list ever feels slow on a weak machine.
 
-What is still missing:
-- **A fixed yardstick.** The target says "a laptop slowed four times", but the
-  same laptop gave results 1.8 times apart. Before L09 can be closed, someone
-  has to decide what to measure against (for example, plugged in, or a
-  stronger slowdown that stands for a slow phone, or a limit relative to the
-  old version).
+Known limits (from the slower day):
 - **1920 px on the slower day was over 150 ms.** Almost all of the time goes on
   removing the old rows from the page (about 85 ms at four times slower that
   day). Every way of removing them costs the same. The ways that avoid it
