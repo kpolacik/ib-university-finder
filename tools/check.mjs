@@ -2053,7 +2053,7 @@ check('the detail fixture parses with only the blank official_url reported',
 const fxRow = (id) => fxs.find((p) => p.id === id);
 const fxDetail = (id, state) => detailOf(fxRow(id), state);
 for (const row of subjectRows) {
-  const note = 'Shown because its subject area is not classified.';
+  const note = 'Not filtered by subject area: its subject area is not classified.';
   equal(`${row.id}: subject filter note agrees with the unknown marker`,
     detailOf(row, engineeringFilter).textContent.includes(note), row.subjectAreas.includes(UNCLASSIFIED));
   check(`${row.id}: no subject note without an active subject filter`,
@@ -2074,7 +2074,9 @@ equal('EU fee: €2,500 / year, "€0 · No tuition fee", and "Not published" (d
 
 check('Irish detail fees explain contribution plus levy, with no extra label in compact rows or other countries',
   byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levy'
-    && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution'));
+    && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution')
+    // Never under "Not published": that would describe a fee we do not have.
+    && !byClass(detailOf({ ...fxRow('fx-fee-blank'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
 // Deadline: long date, urgent with the clock, passed (neutral, struck) and none.
 equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {

@@ -368,7 +368,12 @@ function feeCell(row, { compact = false } = {}) {
     fig.append(document.createTextNode(`${money.format(row.tuitionEu)} `), el('small', '', '/ year'));
   }
   cell.append(fig);
-  if (!compact && row.country === 'Ireland') cell.append(el('small', 'q', 'Student contribution + levy'));
+  // The Irish figure is the Free Fees student contribution plus levy, not the
+  // larger "EU fee" some course pages print. Only said beside a real figure:
+  // under "Not published" it would read as a fee we do not have.
+  if (!compact && row.country === 'Ireland' && row.tuitionEu !== null) {
+    cell.append(el('small', 'q', 'Student contribution + levy'));
+  }
   return cell;
 }
 
@@ -486,7 +491,7 @@ function unknownTag(text) {
 function notes(row, state, pointsSays) {
   const box = el('div', 'notes');
   if (state.subjectAreas.size && row.subjectAreas.includes(UNCLASSIFIED)) {
-    box.append(el('p', 'note', 'Shown because its subject area is not classified.'));
+    box.append(el('p', 'note', 'Not filtered by subject area: its subject area is not classified.'));
   }
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
