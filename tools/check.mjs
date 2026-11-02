@@ -339,11 +339,11 @@ const hcRow = (id) => hc.find((p) => p.id === id);
 check('blank english (no default) is empty and not flagged unknown',
   hcRow('h-blank').englishRequirement.length === 0 && hcRow('h-blank').englishUnknown === false);
 check('"?" english is flagged as unknown', hcRow('h-q').englishUnknown === true);
-// Redesign stage 2: the row is "English requirement" and the tag .unk-t, so
+// Redesign stage 2: the row is "Language requirement" and the tag .unk-t, so
 // this renders the two rows rather than matching the old source text.
-equal('the detail always has an English requirement row: "Not checked yet", or "Not published" for "?"',
+equal('the detail always has an Language requirement row: "Not checked yet", or "Not published" for "?"',
   ['h-blank', 'h-q'].map((id) => {
-    const dd = kvOf(detailOf(hcRow(id)))['English requirement'];
+    const dd = kvOf(detailOf(hcRow(id)))['Language requirement'];
     return dd && byClass(dd, 'unk-t').length === 1 ? dd.textContent : null;
   }), ['Not checked yet', 'Not published']);
 // R04: a "?" city showed only the country.
@@ -359,9 +359,9 @@ check('the baseline reaches every programme of its university',
 // The anchor must exist, or a missing one (index -1) would pass.
 const kvAnchor = renderSrc.indexOf("const list = el('dl', 'kv')");
 check('the card shows a General row outside nothingAtAll',
-  kvAnchor >= 0 && renderSrc.indexOf("reqRow(list, 'General'") > kvAnchor);
+  kvAnchor >= 0 && renderSrc.indexOf("reqRow(list, 'General requirement'") > kvAnchor);
 equal('the detail shows the baseline as General, first letter capitalised',
-  kvOf(detailOf(hcRow('h-blank'))).General?.textContent, 'A recognised school diploma');
+  kvOf(detailOf(hcRow('h-blank')))['General requirement']?.textContent, 'A recognised school diploma');
 // T04: a blank signer read as "Checked <date>" with no name. T01 (Q14 = A,
 // 2026-10-26): the programme's own signature is what counts, so a signed
 // programme under an unsigned university is checked.
@@ -496,7 +496,7 @@ for (const [name, text, why] of [
 ]) {
   const res = await tryLoad(uni, text);
   check(`${name} loads the saved copy and says why`,
-    usedSnapshot(res) && res.meta.issues.some((i) => /^Live data unavailable/.test(i) && why.test(i)),
+    usedSnapshot(res) && res.meta.issues.some((i) => /^Could not load the latest data/.test(i) && why.test(i)),
     JSON.stringify(res.error ? res.error.message : res.meta.issues));
 }
 const renamed = await tryLoad(uni, [head.replace('official_url', 'official_link'), goodRow].join('\n') + '\n');
@@ -567,7 +567,7 @@ check('the banner links to the problems list when there are any',
 check('following that link opens the problems list', appSrcEarly.includes('dom.issues.open = true'));
 check('a total failure is an alert with a plain sentence and a Reload button, not the raw error',
   appSrcEarly.includes("setAttribute('role', 'alert')")
-    && appSrcEarly.includes('Could not load the programme list. Check your connection and reload the page.')
+    && appSrcEarly.includes('Could not load the latest data. Check your connection and reload the page.')
     && appSrcEarly.includes("'Reload'") && !appSrcEarly.includes('${err.message}'));
 check('a total failure hides the filters and lists the reasons in the problems panel',
   appSrcEarly.includes('dom.form.hidden = true') && appSrcEarly.includes('dom.pane.hidden = true') && /renderIssues\([^)]*err\.reasons/.test(appSrcEarly));
@@ -617,7 +617,9 @@ check('language buttons expose the selected English and described unavailable Sl
   /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
     && /type="button" aria-pressed="true">EN/.test(foundationHtml)
     && /type="button" aria-pressed="false" aria-disabled="true" lang="sk" aria-describedby="sk-later">SK/.test(foundationHtml)
-    && /class="visually-hidden" id="sk-later">Slovak version coming later/.test(foundationHtml));
+    && /class="visually-hidden" id="sk-later">Slovak translation coming later/.test(foundationHtml)
+    && foundationHtml.includes('EN<span class="visually-hidden"> (English)</span>')
+    && foundationHtml.includes('SK<span class="visually-hidden"> (Slovak)</span>'));
 check('source line starts hidden without a live region and uses allRows once after load',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -640,7 +642,11 @@ try {
   check('source counts every loaded row, university and country with final punctuation',
     !source.hidden && source.children[0].textContent === '3 programmes · 2 universities · 2 countries.'
       && source.children[0].className === 'stat' && source.textContent.includes('not a source of truth.')
-      && source.children[2].className === 'src-more');
+      && source.children[2].className === 'src-more'
+      && source.children[2].textContent === 'Check requirements, EU fees and deadlines on the official admissions page before applying.');
+  renderSourceLine(source, rows.slice(0, 1), { ...base, draftCount: 1 });
+  equal('one unchecked programme keeps the research warning with singular source counts', source.textContent,
+    '1 programme · 1 university · 1 country. This site is a starting point for research, not a source of truth. Check requirements, EU fees and deadlines on the official admissions page before applying.');
   renderSourceLine(source, rows, base);
   check('checked data hides and clears the source line', source.hidden && source.children.length === 0);
   for (const meta of [base, { ...base, draftCount: 3 }]) {
@@ -653,7 +659,9 @@ try {
     check(`saved-copy neutral status ${date ? 'with date' : 'without date'}`,
       !banner.hidden && saved.className === 'bn bn-saved' && saved.attributes.role === 'status'
         && saved.children[0].attributes['aria-hidden'] === 'true' && saved.children[1].tagName === 'p'
-        && saved.textContent.includes(date ? '26 October 2026' : 'an unknown date'));
+        && saved.textContent.includes(date ? '26 October 2026' : 'an unknown date')
+        && saved.textContent.includes('Could not load the latest data. Showing a saved copy from ')
+        && saved.textContent.includes('Requirements, EU fees and deadlines may have changed.'));
   }
   for (const count of [1, 2]) {
     renderSourceBanner(banner, { ...base, issues: Array(count).fill('problem') });
@@ -661,24 +669,27 @@ try {
     const link = saved.children[1].children.at(-1);
     check(`issues-only neutral status with ${count} ${count === 1 ? 'problem' : 'problems'}`,
       saved.className === 'bn bn-saved' && saved.attributes.role === 'status'
-        && saved.textContent.includes(`${count} spreadsheet ${count === 1 ? 'problem:' : 'problems:'}`)
-        && saved.textContent.includes('some rows may be missing or incomplete.')
-        && link.href === '#issues' && link.textContent === 'See the list below the results.');
+        && saved.textContent.includes(`${count} data ${count === 1 ? 'problem.' : 'problems.'}`)
+        && saved.textContent.includes('Some entries may be missing or incomplete.')
+        && link.href === '#issues' && link.textContent === 'View data problems.');
   }
   for (const count of [1, 3]) {
     renderSourceBanner(banner, { ...base, sampleCount: count });
     const sample = banner.children[0];
     equal(`sample-only ${count === 3 ? 'all' : 'mixed'} bold lead`, sample.children[0].children[0].textContent,
-      count === 3 ? 'Every figure on this page is made up.' : '1 of 3 entries are made-up sample rows.');
+      `${count} of 3 programmes ${count === 1 ? 'is an invented sample row' : 'are invented sample rows'}.`);
     check('sample uses a separate red status with the original applications warning',
       sample.className === 'bn bn-sample' && sample.attributes.role === 'status'
-        && sample.textContent.includes(`Do not use ${count === 3 ? 'it' : 'them'} for real applications.`));
+        && sample.textContent.includes(`Do not use ${count === 1 ? 'it' : 'them'} for real applications.`));
   }
+  renderSourceBanner(banner, { ...base, total: 1, sampleCount: 1 });
+  equal('one sample programme has a singular warning and keeps the real-applications prohibition', banner.textContent,
+    '1 of 1 programme is an invented sample row. Do not use it for real applications.');
   for (const samples of [0, 1]) {
     renderSourceBanner(banner, { ...base, source: 'snapshot', draftCount: 3, sampleCount: samples, issues: ['problem'] });
     check(`snapshot plus issues${samples ? ' plus samples' : ''} keeps one neutral status and its link`,
       banner.children.length === (samples ? 2 : 1) && banner.children[0].className === 'bn bn-saved'
-        && banner.children[0].textContent.includes('saved copy') && banner.children[0].textContent.includes('See the list below')
+        && banner.children[0].textContent.includes('saved copy') && banner.children[0].textContent.includes('View data problems.')
         && !banner.textContent.includes('starting point for research'));
   }
   renderSourceBanner(banner, base);
@@ -817,8 +828,8 @@ const indexHtml = read('index.html');
 check('the fee field takes any whole euro amount (no step="500")',
   !indexHtml.includes('step="500"') && /id="f-tuition"[^>]*step="1"/.test(indexHtml));
 check('both number fields point at a message element',
-  /id="f-points"[^>]*aria-describedby="f-points-error"/.test(indexHtml) && indexHtml.includes('id="f-points-error"')
-    && /id="f-tuition"[^>]*aria-describedby="f-tuition-error"/.test(indexHtml) && indexHtml.includes('id="f-tuition-error"'));
+  /id="f-points"[^>]*aria-describedby="f-points-help f-points-error"/.test(indexHtml) && indexHtml.includes('id="f-points-error"')
+    && /id="f-tuition"[^>]*aria-describedby="f-unknown-help f-tuition-error"/.test(indexHtml) && indexHtml.includes('id="f-tuition-error"'));
 const appSrc = read('js/app.js');
 check('app.js shows the message on validity.badInput too', appSrc.includes('input.validity.badInput'));
 check('app.js reads My points and Max fee through parsePoints / parseFee, not a bare Number()',
@@ -956,7 +967,7 @@ const grid = parseCsv(toCsv(messy));
 check('every exported row has the same column count',
   grid.every((r) => r.length === grid[0].length), JSON.stringify(grid.map((r) => r.length)));
 check('commas inside a field survive the round trip',
-  messy.length > 0 && grid[1][grid[0].indexOf('Subject requirements')] === messy[0].ibSubjects);
+  messy.length > 0 && grid[1][grid[0].indexOf('IB subjects')] === messy[0].ibSubjects);
 // R05, X03: the export is switched off with the shortlist, but kept. It gave
 // a bare points figure where the card adds a condition, and a cell typed as
 // "=..." in the Sheet would run as a formula when the file is opened.
@@ -981,8 +992,18 @@ equal('the export carries the card\'s points qualifiers, cutoff or minimum',
   [0, 1, 2, 3].map((r) => cell(r, 'IB points')),
   ['≈ 43 IB points, Round 1 cutoff, 2026, with HL Maths 4+; ≈ 43 IB points, Round 2 cutoff, 2026',
     '32 IB points, then ranked with the HPAT', 'Cutoff includes a test score', '36 IB points, minimum']);
-equal('the export says "not published" for a "?" admission, city and language',
-  [cell(4, 'Admission'), cell(4, 'City'), cell(4, 'Language')], ['not published', 'not published', 'not published']);
+equal('the export says "Not published" for a "?" admission, city and language',
+  [cell(4, 'Admission'), cell(4, 'City'), cell(4, 'Language requirement')], ['Not published', 'Not published', 'Not published']);
+const exportUncertainty = csvToObjects(toCsv([hcRow('h-blank'), hcRow('h-q'),
+  { ...base, noSubjectsRequired: true, lastVerified: null }])).rows;
+equal('export proficiency distinguishes blank without inheritance from ?; none and missing dates stay explicit',
+  [exportUncertainty[0]['Language requirement'], exportUncertainty[1]['Language requirement'],
+    exportUncertainty[0]['IB subjects'], exportUncertainty[2]['IB subjects'], exportUncertainty[2]['Last updated']],
+  ['Not checked yet', 'Not published', 'Not checked yet', 'None required', 'Not recorded']);
+equal('export names the award, EU fee, official page, record date and signer without claiming human verification',
+  exported[0], ['University', 'Programme', 'Degree type', 'City', 'Country', 'Deadline', 'Deadline notes', 'Admission',
+    'IB points', 'IB subjects', 'Other requirements', 'Language requirement', 'EU fee (EUR/year)', 'Apply via',
+    'Official admissions page', 'Last updated', 'Signed by']);
 equal('a cell that starts with = + - or @ is exported as text, not a formula',
   [cell(5, 'Programme'), cell(5, 'Deadline notes'), cell(5, 'University')],
   ['\'=HYPERLINK("http://evil.example","x")', '\'+1 day', '\'@uni']);
@@ -1847,24 +1868,24 @@ check('a higher Round 2 does not raise the bar: the lower round (Round 1) decide
 const notes = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsNote(p, fstate(my, maths))]));
 equal('card notes at 36, unticked', notes(36, false), {
   'c-497': null, 'c-625': null,
-  'c-test-520': 'Within your points only with HL Maths 4+.',
-  'c-test-560': 'Shown despite your points: the cutoff includes a test, interview or audition.',
-  'c-r2': 'Within your points on the Round 2 cutoff, not Round 1.',
-  'c-r2-maths': 'Within your points only with HL Maths 4+. Within your points on the Round 2 cutoff, not Round 1.',
+  'c-test-520': 'Within your IB points only with HL Maths 4+.',
+  'c-test-560': 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.',
+  'c-r2': 'Within your IB points on the Round 2 cutoff, not Round 1.',
+  'c-r2-maths': 'Within your IB points only with HL Maths 4+. Within your IB points on the Round 2 cutoff, not Round 1.',
   'c-r2-higher': null, 'ucd-33': null, 'ie-hpat35': null, 'nl-37': null,
-  blank: 'Shown despite your points: points unknown.',
+  blank: 'Not compared with your IB points: no IB figure.',
 });
 equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (522 ≥ 520) but not of c-r2-maths (530)',
   [notes(36, true)['c-r2'], notes(36, true)['c-r2-maths'], notes(36, true)['c-test-520']],
-  [null, 'Within your points on the Round 2 cutoff, not Round 1.', null]);
+  [null, 'Within your IB points on the Round 2 cutoff, not Round 1.', null]);
 const visible = (my, maths) => applyFilters(bk, fstate(my, maths)).map((p) => p.id);
 equal('applyFilters drops only the hidden bucket', visible(36, false),
   bk.map((p) => p.id).filter((id) => !['c-625', 'nl-37'].includes(id)));
 equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, fstate(36)), filtersMod.pointsSummary(bk, fstate(36, true))],
-  ['5 within your points · 2 only with HL Maths 4+ · 2 points unknown', '7 within your points · 2 points unknown']);
+  ['5 within your IB points · 2 only with HL Maths 4+ · 2 can’t be compared', '7 within your IB points · 2 can’t be compared']);
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
   [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
-  ['1 within your points', '']);
+  ['1 within your IB points', '']);
 
 // The real data, for every total a student can type.
 const today = (p, my) => p.ibPointsMin === null || p.ibPointsMin <= my;
@@ -1902,13 +1923,22 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
     && appSrc.includes('pointsSummaryParts(rows, state)'));
 // S08: the help lived only in a tooltip and a hidden copy. Spec §6.3: a
 // visible p.help that the tick names with aria-describedby.
-check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip or hidden copy; the fee reads "Max fee (EU)" with "€/year" (S08)',
+check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip or hidden copy; the fee reads "Max EU fee" with "€/year" (S08)',
   /<p class="help" id="f-maths-help">Adds the 25 CAO bonus points on Irish courses<\/p>/.test(indexHtml)
     && /<input type="checkbox" id="f-maths"[^>]*aria-describedby="f-maths-help"/.test(indexHtml)
     && /<label class="tick">/.test(indexHtml) && !/<label class="tick"[^>]*title=/.test(indexHtml) && !indexHtml.includes('(adds the 25 CAO')
     && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
-    && /<label for="f-tuition">Max fee \(EU\)<\/label>/.test(indexHtml) && /<span class="unit">&euro;\/year<\/span>/.test(indexHtml)
+    && /<label for="f-tuition">Max EU fee<\/label>/.test(indexHtml) && /<span class="unit">&euro;\/year<\/span>/.test(indexHtml)
     && !/id="f-tuition"[^>]*title=/.test(indexHtml));
+check('points help says what hides and what stays, spans the bar, and has no tooltip (S08)',
+  /<label for="f-points">My IB points<\/label>/.test(indexHtml)
+    && /<p class="help filter-help" id="f-points-help">Hides programmes whose published minimum or last year’s cutoff is above your total. Programmes we can’t compare stay visible.<\/p>/.test(indexHtml)
+    && !/id="f-points"[^>]*title=/.test(indexHtml)
+    && /\.filter-help\{grid-column:1\/-1;flex-basis:100%\}/.test(cssText)
+    && cssText.includes('.is-set:not(.f-pts)>label::after{content:" · active";'));
+check('shared uncertainty help travels inside the extra filters; fee and deadline name it (S08)',
+  elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Programmes with an unknown figure, fee or deadline always stay visible.</p>')
+    && /id="f-deadline" aria-describedby="f-unknown-help"/.test(indexHtml));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
 // digit per line, because .req-points did not wrap (A02). Redesign stage 2:
 // the number is .plines b, the line .plines li, inside .detail.
@@ -1953,7 +1983,7 @@ function detailProblems(row, state, slot = false) {
   }
   const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
   if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
-  if (/Tuition \(EU\)|No tuition fee/.test(a.textContent)) say('old fee wording');
+  if (/Tuition \(EU\)|no tuition fee/.test(a.textContent)) say('old fee wording');
   return { out, id: title?.id };
 }
 const liveRuns = [['empty', noFilters()], ['36', fstate(36)], ['36 ticked', fstate(36, true)], ['37', fstate(37)]];
@@ -2036,12 +2066,15 @@ check('every fixture row renders cleanly with My points empty and at 36',
   [noFilters(), fstate(36)].flatMap((st) => fxs.flatMap((r) => detailProblems(r, st).out)).slice(0, 6).join('\n        '));
 
 // EU fee: blank is not zero.
-equal('EU fee: €2,500 / year, "€0 · no tuition fee", and "Not published" (dashed) for blank and "?"',
+equal('EU fee: €2,500 / year, "€0 · No tuition fee", and "Not published" (dashed) for blank and "?"',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => {
     const cell = cellOf(fxDetail(id), 'c-fee');
     return [cell.children[0].textContent, byClass(cell, 'fig')[0].textContent, fillOf(cell)];
-  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · no tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
+  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
 
+check('Irish detail fees explain contribution plus levy, with no extra label in compact rows or other countries',
+  byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levy'
+    && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution'));
 // Deadline: long date, urgent with the clock, passed (neutral, struck) and none.
 equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
@@ -2051,14 +2084,14 @@ equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published'
     return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length];
   }), [
     ['', null, '1 February 2027', false, 0],
-    ['v-time', 'in 34 days', '17 September 2026', true, 0],
-    ['v-time', 'tomorrow', '15 August 2026', true, 0],
-    ['v-time', 'today', '14 August 2026', true, 0],
+    ['v-time', 'In 34 days', '17 September 2026', true, 0],
+    ['v-time', 'Tomorrow', '15 August 2026', true, 0],
+    ['v-time', 'Today', '14 August 2026', true, 0],
     ['v-past', 'Passed, check next cycle', '31 March 2026', false, 1],
     ['v-unk', null, 'Not published', false, 0],
   ]);
-check('a passed row says "Check the official page for the next cycle." under Applying, before its deadline notes',
-  kvOf(fxDetail('fx-passed'))['Deadline notes']?.children[0]?.textContent === 'Check the official page for the next cycle.'
+check('a passed row says "Check the official admissions page for the next cycle." under Applying, before its deadline notes',
+  kvOf(fxDetail('fx-passed'))['Deadline notes']?.children[0]?.textContent === 'Check the official admissions page for the next cycle.'
     && !kvOf(fxDetail('fx-plain'))['Deadline notes']);
 check('Irish deadline notes keep the CAO sentence in Applying', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
@@ -2105,16 +2138,16 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   verdictOf(bkRow('c-497'), noFilters()),
   verdictOf(bkRow('blank'), noFilters()),
 ], [
-  ['v-fit', 'verd m m-fit: Within your points', null, 0],
-  ['v-fit', 'verd m m-fit: Within your points', 'Within your points on the Round 2 cutoff, not Round 1.', 0],
-  ['v-fit', 'verd m m-fit: Within your points, then HPAT', null, 0],
-  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your points only with HL Maths 4+.', 0],
-  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your points only with HL Maths 4+. Within your points on the Round 2 cutoff, not Round 1.', 0],
-  ['v-fit', 'verd m m-fit: Within your points', null, 0],
-  ['v-unk', 'verd m m-unk: Cutoff includes a test', 'Shown despite your points: the cutoff includes a test, interview or audition.', 0],
-  ['v-unk', 'verd m m-unk: No minimum published', 'Shown despite your points: points unknown.', 0],
-  ['v-unk', 'verd m m-unk: No IB figure', 'Shown despite your points: points unknown.', 0],
-  ['v-unk', 'verd m m-unk: No IB figure', 'Shown despite your points: points unknown.', 0],
+  ['v-fit', 'verd m m-fit: Within your IB points', null, 0],
+  ['v-fit', 'verd m m-fit: Within your IB points', 'Within your IB points on the Round 2 cutoff, not Round 1.', 0],
+  ['v-fit', 'verd m m-fit: Within your IB points, then HPAT', null, 0],
+  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your IB points only with HL Maths 4+.', 0],
+  ['v-cond', 'verd m m-cond: Only with HL Maths 4+', 'Within your IB points only with HL Maths 4+. Within your IB points on the Round 2 cutoff, not Round 1.', 0],
+  ['v-fit', 'verd m m-fit: Within your IB points', null, 0],
+  ['v-unk', 'verd m m-unk: Cutoff may include test marks', 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.', 0],
+  ['v-unk', 'verd m m-unk: No minimum published', 'Not compared with your IB points: no IB figure.', 0],
+  ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
+  ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
   ['', null, null, 0],
   ['v-unk', null, null, 0],
 ]);
@@ -2123,43 +2156,43 @@ check('TCD Computer Science reads its live band: HL Maths 4+ at 36, within on Ro
   const at36 = verdictOf(row, fstate(36));
   const at37 = verdictOf(row, fstate(37));
   console.log(`        tcd-computer-science: ${pts.pointsLines(row).map(pts.pointsLineText).join(' | ')}; degree ${JSON.stringify(row.degreeType)}`);
-  return at36[0] === 'v-cond' && at36[2] === 'Within your points only with HL Maths 4+.'
-    && at37[0] === 'v-fit' && at37[2] === 'Within your points on the Round 2 cutoff, not Round 1.'
+  return at36[0] === 'v-cond' && at36[2] === 'Within your IB points only with HL Maths 4+.'
+    && at37[0] === 'v-fit' && at37[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
     && byClass(detailOf(row), 'deg').length === (row.degreeType ? 1 : 0);
 })());
 
 // Data rules in the markup.
 equal('Subjects: "None required" for none, a dashed "Not checked yet" for blank',
   ['fx-subjects-none', 'fx-subjects-blank'].map((id) => {
-    const dd = kvOf(fxDetail(id)).Subjects;
+    const dd = kvOf(fxDetail(id))['IB subjects'];
     return [dd.textContent, byClass(dd, 'unk-t').length];
   }), [['None required', 0], ['Not checked yet', 1]]);
 equal('Admission and Other join their items with " · "; "?" admission is a dashed "Not published"',
-  [kvOf(fxDetail('fx-admission')).Admission.textContent, kvOf(fxDetail('fx-other')).Other.textContent,
+  [kvOf(fxDetail('fx-admission')).Admission.textContent, kvOf(fxDetail('fx-other'))['Other requirements'].textContent,
     byClass(kvOf(fxDetail('fx-admission-q')).Admission, 'unk-t')[0]?.textContent, Boolean(kvOf(fxDetail('fx-plain')).Admission)],
   ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
-equal('a "?" English requirement is a dashed "Not published"',
-  byClass(kvOf(fxDetail('fx-english-q'))['English requirement'], 'unk-t')[0]?.textContent, 'Not published');
+equal('a "?" Language requirement is a dashed "Not published"',
+  byClass(kvOf(fxDetail('fx-english-q'))['Language requirement'], 'unk-t')[0]?.textContent, 'Not published');
 check('"nothing at all" is a plain sentence and no list',
   (() => {
     const a = fxDetail('fx-nothing');
     const req = byClass(a, 'd-sec')[0];
     return byTag(req, 'dl').length === 0
-      && byClass(req, 'kv-none')[0]?.textContent === 'No requirements beyond a school diploma equivalent to Dutch VWO';
+      && byClass(req, 'kv-none')[0]?.textContent === 'No IB subject requirements. General requirement: A school diploma equivalent to Dutch VWO. Language requirement not checked yet.';
   })());
-check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general')).General
-  && kvOf(fxDetail('fx-plain')).General?.textContent === 'A school diploma equivalent to Dutch VWO');
+check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general'))['General requirement']
+  && kvOf(fxDetail('fx-plain'))['General requirement']?.textContent === 'A school diploma equivalent to Dutch VWO');
 check('an Applying section with nothing to say is left out, not drawn empty',
   (() => {
     const a = fxDetail('fx-no-applying');
     return byClass(a, 'd-sec').length === 1 && byClass(a, 'two')[0].children.length === 1;
   })());
 equal('Applying: living costs, taught in and apply via',
-  ['Living costs', 'Taught in', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
+  ['Living costs', 'Language', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
   ['€1,100 / month', 'English', 'Studielink']);
 
 // Notes, links and provenance.
-const tuitionNote = 'Shown despite the tuition filter — we do not have a fee for this one.';
+const tuitionNote = 'Not filtered by your fee limit: the EU fee is unknown.';
 const feeState = { ...noFilters(), maxTuition: 3000 };
 check('the tuition note appears for an unknown fee only while Max fee is set',
   byClass(fxDetail('fx-fee-blank', feeState), 'note').some((n) => n.textContent === tuitionNote)
@@ -2167,7 +2200,7 @@ check('the tuition note appears for an unknown fee only while Max fee is set',
 check('no official link: a strong note, no button, and the row is still rendered',
   (() => {
     const a = fxDetail('fx-nolink');
-    return byClass(a, 'note-strong')[0]?.textContent === 'No official link on file — do not rely on this entry.'
+    return byClass(a, 'note-strong')[0]?.textContent === 'No official admissions link. Do not rely on this entry.'
       && byClass(a, 'btn-p').length === 0;
   })());
 check('the official link names its programme, opens a new tab safely, and has the external icon (A04)',
@@ -2249,10 +2282,10 @@ const rowOf = (row, state = noFilters()) => withStubDocument(() => {
 const ptsShort = (row) => pts.pointsShort(row);
 const shortCases = {
   'ie-two': [['≈38', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
-  'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1 no IB figure'], ['≈44', 'R2']],
-  'ie-test-r1': [[null, 'R1 no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2 all qualified']],
+  'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']],
+  'ie-test-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2: all qualified got a place']],
   'ie-legacy': [['≈40', 'cutoff 2025']], 'ucd-x': [['33', 'minimum']],
-  'ie-hpat': [['35', 'then HPAT']], 'nl-min': [['36', 'minimum']], 'ie-blank': [],
+  'ie-hpat': [['35', 'minimum, then HPAT']], 'nl-min': [['36', 'minimum']], 'ie-blank': [],
 };
 equal('pointsShort: each minimum, HPAT, round, bonus, legacy, AQA and absent figure',
   Object.fromEntries(kinds.map((p) => [p.id, ptsShort(p).parts.map((x) => [x.figure, x.label])])), shortCases);
@@ -2284,7 +2317,7 @@ for (let my = 24; my <= 45; my++) for (const tick of [false, true]) {
   const state = fstate(my, tick);
   const shown = applyFilters(live, state);
   if (filtersMod.pointsSummaryParts(shown, state).map((p) => p.text).join(' · ') !== filtersMod.pointsSummary(shown, state)) helperAgreement = false;
-  for (const row of live) if (filtersMod.roundTwoOnly(row, state) !== !!filtersMod.pointsNote(row, state)?.includes('Within your points on the Round 2 cutoff, not Round 1.')) helperAgreement = false;
+  for (const row of live) if (filtersMod.roundTwoOnly(row, state) !== !!filtersMod.pointsNote(row, state)?.includes('Within your IB points on the Round 2 cutoff, not Round 1.')) helperAgreement = false;
 }
 check('all live totals 24–45, ticked and unticked: summary parts and Round-2-only match the original sentences', helperAgreement);
 equal('Round-2-only is false for empty, unknown and hidden buckets',
@@ -2302,36 +2335,38 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
   rowPoints(fxRow('fx-entrance'), noFilters()), rowPoints(bkRow('blank'), fstate(36)), rowPoints(kindOf('ie-bonus'), noFilters()),
   rowPoints(bkRow('c-625'), fstate(44)), rowPoints(bkRow('c-625'), fstate(44, true)),
 ], [
-  ['v-fit', 'Within your points', '≈36 R1', null, null],
-  ['v-fit', 'Within your points', '≈38 R1 · ≈36 R2', 'on the Round 2 cutoff only', null],
-  ['v-fit', 'Within your points, then HPAT', '35 minimum', null, null],
-  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'on the Round 2 cutoff only', null],
-  ['v-fit', 'Within your points', '≈38 R1', null, null],
-  ['v-unk', 'Cutoff includes a test', '≈41 R1', null, null],
+  ['v-fit', 'Within your IB points', '≈36 R1', null, null],
+  ['v-fit', 'Within your IB points', '≈38 R1 · ≈36 R2', 'Round 2 cutoff only', null],
+  ['v-fit', 'Within your IB points, then HPAT', '35 minimum', null, null],
+  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
+  ['v-fit', 'Within your IB points', '≈38 R1', null, null],
+  ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
   ['v-unk', 'No IB figure', 'entrance exam', null, null],
   ['v-unk', 'No minimum published', null, null, null],
   ['v-none', null, '≈44 R1', null, 'with HL Maths 4+'],
   ['v-cond', 'Only with HL Maths 4+', '≈44 R1', null, null],
-  ['v-fit', 'Within your points', '≈44 R1', null, null],
+  ['v-fit', 'Within your IB points', '≈44 R1', null, null],
 ]);
 check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
   return rowPoints(row, fstate(36))[0] === 'v-cond' && rowPoints(row, fstate(36, true))[0] === 'v-fit'
-    && rowPoints(row, fstate(37))[3] === 'on the Round 2 cutoff only'
+    && rowPoints(row, fstate(37))[3] === 'Round 2 cutoff only'
     && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(36))[2] === figure;
 })());
 equal('row deadline: short plain date, countdowns, neutral passed and dashed unknown',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
     const c = cellOf(rowOf(fxRow(id)), 'c-ddl');
     return [fillOf(c), byClass(c, 'verd')[0]?.textContent ?? null, byClass(c, 'fig')[0].textContent, byTag(c, 's').length];
-  }), [['', null, '1 Feb 2027', 0], ['v-time', 'in 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'tomorrow', '15 Aug 2026', 0],
-    ['v-time', 'today', '14 Aug 2026', 0], ['v-past', 'Passed, check next cycle', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+  }), [['', null, '1 Feb 2027', 0], ['v-time', 'In 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'Tomorrow', '15 Aug 2026', 0],
+    ['v-time', 'Today', '14 Aug 2026', 0], ['v-past', 'Passed, check next cycle', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+check('compact Irish fees keep the detail-only contribution note out of rows',
+  !byClass(rowOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
 equal('row date: November and December use short names', [11, 12].map((m) => byClass(rowOf({ ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) }), 'c-ddl')[0].textContent),
   ['Deadline1 Nov 2026', 'Deadline1 Dec 2026']);
 equal('row fee: known, zero, blank and ? keep distinct meanings',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => byClass(rowOf(fxRow(id)), 'c-fee')[0].textContent),
-  ['EU fee€2,500 / year', 'EU fee€0 · no tuition fee', 'EU feeNot published', 'EU feeNot published']);
+  ['EU fee€2,500 / year', 'EU fee€0 · No tuition fee', 'EU feeNot published', 'EU feeNot published']);
 const sentenceRow = { ...fxRow('fx-checked'), languages: ['Czech'], otherRequirements: ['Portfolio'], admission: ['Entrance exam: maths'], isStale: true };
 equal('row requirement groups are ordered and provenance follows them', byClass(rowOf(sentenceRow), 'line')[0].textContent,
   'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: maths Checked by JKmay be out of date');
@@ -2407,7 +2442,7 @@ check('all fixture slots render cleanly, including every short points form', [no
   [...fxs, ...kinds, ...bk].filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => !detailProblems(r, st, true).out.length)));
 check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
-  return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `${row.programme}, details`
+  return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `Details for ${row.programme}`
     && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-cells').length;
 }));
 check('row button name separates degree and keeps Czech pronunciation', (() => {
@@ -2444,7 +2479,7 @@ check('six static skeleton rows, hidden trap guarded, no compass, no empty live 
     && !/shimmer|@keyframes/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
     && !indexHtml.includes('i-compass') && !/<div[^>]*(?:role|aria-live)=[^>]*id="empty-state"|id="empty-state"[^>]*(?:role|aria-live)=/.test(indexHtml));
 check('empty h2, search tips and Clear all count are present',
-  indexHtml.includes('<h2 id="empty-title">') && indexHtml.includes('Search matches words in any order')
+  indexHtml.includes('<h2 id="empty-title">') && indexHtml.includes('Words can appear in any order')
     && indexHtml.includes('Short words match the start of a word') && appSrc.includes('`Clear all (${activeFilterCount(state)})`'));
 check('row wraps whole point parts without clipping requirements; containment only on items',
   /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
@@ -2646,9 +2681,9 @@ check('pane reuse removes old content, keeps stable nodes and resolves every nam
       if (!heading.hidden || title.length !== 1 || title[0].id !== `p-${row.id}` || pane.getAttribute('aria-labelledby') !== title[0].id
         || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-cells').length !== 1) return false;
     } else if (heading.hidden || title.length || pane.getAttribute('aria-labelledby') !== 'pane-h'
-      || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} is hidden by your filters`)
+      || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} does not match your filters`)
         || byTag(body, 'span')[0]?.lang !== 'cs'))
-      || (expected === 'empty' && body.textContent !== 'Pick a programmeIts full details appear here. Up and Down move through the list.')) return false;
+      || (expected === 'empty' && body.textContent !== 'Choose a programmeIts details appear here. Use the Up and Down arrow keys to move through the list.')) return false;
   }
   return true;
 }));
@@ -2846,7 +2881,7 @@ appCheck('actual handlers: filtered B remains the hidden pick when A is still op
   click(a); click(b); run('state.search = fixture[0].programme; update();');
   if (!item(a) || item(b) || run('openIds.size') !== 1) return false;
   flip(true);
-  if (run('selectedId') !== b || !body.textContent.includes('is hidden by your filters') || item(a).classList.contains('is-sel')) return false;
+  if (run('selectedId') !== b || !body.textContent.includes('does not match your filters') || item(a).classList.contains('is-sel')) return false;
   run("state.search = ''; update();");
   return item(b).classList.contains('is-sel') && body.querySelector('h2').id === `p-${b}`;
 });
@@ -3000,7 +3035,7 @@ check('compact count twin: lead plus each bucket number with its mark, lead only
   typeof renderCountShort === 'function' && withStubDocument(() => {
     const n = new ChromeNode('p');
     n.setAttribute('aria-hidden', 'true');
-    const parts = [{ kind: 'fit', text: '410 within your points' }, { kind: 'cond', text: '41 only with HL Maths 4+' }, { kind: 'unk', text: '679 points unknown' }];
+    const parts = [{ kind: 'fit', text: '410 within your IB points' }, { kind: 'cond', text: '41 only with HL Maths 4+' }, { kind: 'unk', text: '679 can’t be compared' }];
     const first = renderCountShort(n, '1130 of 1240 programmes', parts), kids = [...n.children];
     const same = renderCountShort(n, '1130 of 1240 programmes', parts);
     return first === true && same === false && kids.every((c, i) => c === n.children[i])
@@ -3312,7 +3347,7 @@ check('A05: the title/degree separator is inline and zero-sized only inside a ro
 check('renderSlot wraps the reduced detail in one .expand-inner; ids and names unchanged', live.slice(0, 40).every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.children.length === 1 && slot.children[0].className === 'expand-inner' && slot.children[0].children.length === 1
-    && slot.children[0].children[0].classList.contains('detail') && slot.id === `x-${row.id}` && slot.getAttribute('aria-label') === `${row.programme}, details`;
+    && slot.children[0].children[0].classList.contains('detail') && slot.id === `x-${row.id}` && slot.getAttribute('aria-label') === `Details for ${row.programme}`;
 }));
 
 // Slot lifecycle on the actual handlers. Frames and timers run only when a
@@ -3952,7 +3987,7 @@ for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r)
     check(`D14 ${row.id} official link carries identity`,
       byTag(detail, 'a').find((a) => a.href === row.officialUrl).textContent.includes(row.identity?.text || row.faculty.name));
     if (row.identity?.unresolved) check(`D14 ${row.id} honest fallback note in pane/slot`,
-      detail.textContent.includes(`This catalogue has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Apart from what is shown here, what distinguishes them is not recorded. Compare the official admissions pages.`));
+      detail.textContent.includes(`This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
   }
   if (row.identity?.text) {
     const identity = byClass(rowDOM, 'identity')[0];
@@ -4031,6 +4066,63 @@ const savedIdentity = await load('', '', undefined, { snapshot: {
 } });
 equal('D14 snapshot path computes the same identities',
   savedIdentity.programmes.map((r) => [r.id, r.faculty, r.identity]), identityFixture.map((r) => [r.id, r.faculty, r.identity]));
+
+// Wording contracts: keep labels, their explanations and their checks in step.
+section('Reviewed English wording (S08/S09)');
+for (const text of [
+  'Find European bachelor programmes by IB requirements, deadlines and EU fees.',
+  'Find European bachelor programmes by IB requirements.',
+  'Search programmes, universities or places. Use subject names, or “cs” for computer science.',
+  'Try fewer words or check your spelling. Words can appear in any order: “Dublin computer” works. Typos are not corrected.',
+  'Some problems hide a row; others leave a value unknown. Each message explains what happened.',
+  'Check requirements, EU fees and deadlines on the official admissions page before applying.',
+  'Students maintain this site, and details may change.',
+  '>Export CSV', '>Clear shortlist', '>Data problems',
+]) check(`static wording: ${text}`, indexHtml.includes(text));
+check('search help spans its own row so the search input aligns with its neighbouring controls',
+  /<p class="help filter-help search-help" id="f-search-help">/.test(indexHtml)
+    && !elementSource(indexHtml, /<div class="fld f-q"/).includes('<p class="help')
+    && css.includes('.search-help{grid-area:search-help}')
+    && css.includes('"q q more" "search-help search-help search-help" "pts hl hl"'));
+equal('deadline labels keep their canonical values and agree with the static options', filtersMod.DEADLINE_WINDOWS,
+  { any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days' });
+for (const [value, label] of Object.entries(filtersMod.DEADLINE_WINDOWS)) {
+  check(`static deadline ${value} says ${label}`, indexHtml.includes(`<option value="${value}">${label}</option>`));
+}
+equal('fee sorting uses EU fee in both directions',
+  [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
+for (const text of [
+  'Your browser could not save your shortlist. It may be lost when you leave this page.',
+  'No programmes are saved here.', 'No programmes are available.', 'No programmes match your filters.',
+  'Search: ${state.search.trim()}', 'My IB points: ${state.myIbPoints}', 'Max EU fee: €${state.maxTuition}/year',
+  "['subjectAreas', 'Subject area']", "used.push('your IB points')", "used.push('the EU fee limit')",
+]) check(`app wording: ${text}`, appSrc.includes(text));
+const dataWording = read('js/data.js');
+for (const text of [
+  'contains no programmes', "${missing.length === 1 ? 'column' : 'columns'}",
+  'returned HTTP ${res.status}',
+  'blank. No "Checked" line is shown. Add the date you checked the official page.',
+  'verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.',
+  'is not a usable link. Use an http:// or https:// URL without a username or password.',
+  'is blank. No official admissions link is shown. Add the programme’s official admissions page.',
+]) check(`data diagnostic wording: ${text}`, dataWording.includes(text));
+check('option search names its group naturally and shares the clear action with its no-match help', withStubDocument(() => {
+  const panel = new ChromeNode('div'); panel.setAttribute('aria-label', 'Subject area');
+  const box = new ChromeNode('div'); panel.append(box);
+  renderChips(box, Array.from({ length: 13 }, (_, i) => `Area ${i}`), new Set(), () => {});
+  return byClass(box, 'opt-q')[0].textContent === 'Search subject area options'
+    && byClass(box, 'opt-clear')[0].textContent === 'Clear the search'
+    && byClass(box, 'opt-none')[0].textContent === 'No matching options. Try another spelling or clear the search.';
+}));
+equal('IB points labels match in the row, pane and slot',
+  [byClass(rowOf(fxRow('fx-plain')), 'c-pts')[0].children[0].textContent,
+    byClass(fxDetail('fx-plain'), 'c-pts')[0].children[0].textContent,
+    withStubDocument(() => byClass(renderSlot(fxRow('fx-plain'), noFilters()), 'lab')[0].textContent)],
+  ['IB points', 'IB points', 'IB points']);
+const issuesDetail = new ChromeNode('details'), issuesSummary = new ChromeNode('summary'), issuesList = new ChromeNode('ul');
+const { renderIssues: wordingIssues } = await import('../js/render.js');
+withStubDocument(() => wordingIssues(issuesDetail, issuesSummary, issuesList, ['one', 'two']));
+equal('issues summary uses the same data-problems label as its banner', issuesSummary.textContent, '2 data problems');
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -342,13 +342,15 @@ svg:not(.sprite) {
    and Clear all live in .more-filters, which app.js moves into the sheet.
    The band never sticks (A07). Classes follow the mockup (full/mockup.html);
    .dropdown/.dropdown-panel/.options/.option are its .dd/.dd-panel/.opt. */
-.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "pts hl hl";align-items:end}
+.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "search-help search-help search-help" "pts hl hl";align-items:end}
 /* Controls do not inherit the page font on their own. Zero specificity, so
    every class rule below still wins. */
 :where(.fbar,.listp,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
 .fld{display:grid;gap:4px;min-width:0;position:relative}
 .fld>label,.help{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px}
 .help{margin:0;font-weight:400}
+.filter-help{grid-column:1/-1;flex-basis:100%}
+.search-help{grid-area:search-help}
 .f-q>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .inp{width:100%;height:var(--ctl);margin:0;padding:0 10px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-ctl);color:var(--ink);font-variant-numeric:tabular-nums}
 .inp::placeholder{color:var(--ink-3)}
@@ -363,11 +365,11 @@ svg:not(.sprite) {
 .f-fee .inp{padding-right:52px}
 .tick{display:flex;align-items:center;gap:8px;height:var(--ctl);font-size:var(--fs-14);font-weight:600;cursor:pointer;white-space:nowrap}
 .tick input,.option input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--accent)}
-/* Set: 2 px accent border and tint, label "· set". Padding drops by the extra
+/* Active: 2 px accent border and tint, label "· active". Padding drops by the extra
    border pixel so the text does not move. */
 .is-set .inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
 .f-q.is-set .inp{padding-left:33px}
-.is-set>label::after{content:" · set";color:var(--accent)}
+.is-set:not(.f-pts)>label::after{content:" · active";color:var(--accent)}
 /* Why My points or Max fee is not being applied (P05). Ink, never red. After
    the set rule, so an invalid field always shows the ink border. */
 .inp[aria-invalid=true]{border:2px solid var(--ink);padding-left:9px}
@@ -685,7 +687,7 @@ html:has(.sheet[open]){overflow:hidden}
 .detail .ok .ic{width:14px;height:14px}
 
 @media (min-width: 600px) {
-  /* The bar wraps to two lines at 768 and fits one at 1280. .more-filters
+  /* Help spans its own row so the controls above stay aligned. .more-filters
      stays a real box (no display:contents) and wraps inside itself. */
   .f-q>label{position:static;width:auto;height:auto;overflow:visible;clip-path:none}
   .fbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px}

@@ -83,14 +83,23 @@ the date and initials from that programme row alone. The university row's
 
 **Points (2026-10-26, plans/archive/points-honesty.md).** Each card says
 whether its figure is a published minimum or the IB equivalent of last year's
-CAO cutoff, with the round and year (Round 1 first). "My points" has an **HL
+CAO cutoff, with the round and year (Round 1 first). "My IB points" has an **HL
 Maths 4+** tick, and the count splits the shown programmes into within your
-points, only with HL Maths 4+, and points unknown. The tick changes labels and
-counts, never which programmes are shown. The kind of figure (`pointsKind`) is
+IB points, only with HL Maths 4+, and programmes that can’t be compared. The tick
+changes labels and counts, never which programmes are shown. The kind of figure (`pointsKind`) is
 worked out in the browser from the university and the CAO sentence in the
 note; a value-kind column written by the importers is to replace it
 (plans/backlog/points-value-kind.md). Every string this added is listed in
 plans/backlog/wording.md.
+
+**English wording (S08/S09, 2026-11-02).** Filters, counts and details now use
+IB points, EU fee, subject area, IB subjects and language requirement consistently.
+Points help is visible on phones; shared help in the extra filters explains
+that unknown figures, fees and deadlines stay visible. Irish detail fees say
+"Student contribution + levy". The masthead still says "This site is a starting
+point for research, not a source of truth." Data prose, saved snapshots and CAO
+marker sentences wait for the upstream merge; Slovak remains disabled. See
+plans/backlog/wording.md for the translation queue.
 
 ## The next obvious jobs, in order
 
@@ -139,7 +148,7 @@ plans/backlog/wording.md.
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no
   fee (`?`). 10 have no admission line. Every Czech-taught row shows
-  "Subjects: Not checked yet" — Czech faculties admit on their own exams, and
+  "IB subjects: Not checked yet" — Czech faculties admit on their own exams, and
   no page was found that states an IB subject list per programme, which is not
   the same as stating there is none.
 - **Three Czech deadlines fall before Christmas**: VUT Design and Volné umění
@@ -198,7 +207,7 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   and a count bar that sticks to the top. Phones are a real target, not an
   afterthought.
 - **Colour only for a verdict.** A cell is filled only when it tells the
-  student something they can act on: green "Within your points", amber "Only
+  student something they can act on: green "Within your IB points", amber "Only
   with HL Maths 4+", orange for a deadline within 60 days. A verdict is always
   a word, a mark and a fill, never colour alone. Plain facts are plain ink.
 - **Unknown is a dashed box,** never a blank and never a reason to hide a row.
@@ -368,7 +377,7 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   2026-10-26, registry D28).** 126 rows carried it because their name sounded
   mathematical, though the bonus applies to any course. The sentence is gone
   from the data and the tools (`OLD_CAO_SENTENCES` still strips it on a
-  refresh); the "HL Maths 4+" tick next to My points says it once instead.
+  refresh); the "HL Maths 4+" tick next to My IB points says it once instead.
 
 - **Passed-deadline cards were dimmed until unreadable (fixed 2026-10-26,
   registry A01).** A card whose deadline had gone was drawn at 65% opacity,
@@ -385,17 +394,17 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   "Not published" for `?`). The university's general requirement (the
   `baseline_requirement` column) only showed on a card with no other
   requirement at all, which no real row is, so it was never seen; every card now
-  ends with a "General" row when its university has one. A `?` city showed only
+  ends with a "General requirement" row when its university has one. A `?` city showed only
   the country; it now says "City not published". And a blank `verified_by`
   read as "Checked" with no name; it now counts as not checked and is listed
-  under the spreadsheet problems. `check.mjs` guards all four.
+  under Data problems. `check.mjs` guards all four.
 
 - **Search and the number filters misbehaved (fixed 2026-10-26, registry S01,
   S04, S05, S06, P05).** Search was one exact phrase, so "computer science
   netherlands" found nothing and "cs" matched "Physics". Now every word has to
   appear, in any order, words of three letters or fewer must start a word, and
   the subject areas are searched too. Anything typed while the list loaded was
-  ignored; it now counts. My points and Max fee applied 46, −3 or 36.5 without a
+  ignored; it now counts. My IB points and Max EU fee applied 46, −3 or 36.5 without a
   word, and the fee box rejected €2,771; a number that is not a whole number in
   range is now refused with a message under the box and not applied. The
   "nothing matches" hint named filters nobody had set; it now names the ones in
@@ -414,7 +423,7 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   ever. Now each of those falls back to the saved copy (`data/fallback.json`),
   after 10 seconds for a request that hangs, and the banner says so and links
   to the problems list, which names the file and the column. If even the saved
-  copy fails, the page says "Could not load the programme list" with a Reload
+  copy fails, the page says "Could not load the latest data" with a Reload
   button instead of a JavaScript error. A file that ends inside an open quote
   mark is reported (it used to swallow every row after it). Numbers are
   checked: IB points must be a whole number from 24 to 45, fees and living
@@ -488,10 +497,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   use the lower round, which is Round 2 wherever the CAO published one (it is
   `ib_points_min`): a student who met last year's Round 2 cutoff did get a
   place, so hiding that course would lose a real option. Where Round 2 is what
-  put a course within someone's points, the card says so ("Within your points
+  put a course within someone's points, the card says so ("Within your IB points
   on the Round 2 cutoff, not Round 1.").
 
-- **An "HL Maths 4+" tick next to My points** (Leon, 2026-10-26, registry Q5;
+- **An "HL Maths 4+" tick next to My IB points** (Leon, 2026-10-26, registry Q5;
   settles D28). The CAO's 25 bonus points apply to any Irish CAO course, so the
   tick applies them to every Irish cutoff, and the 126 notes that said "HL
   Maths 4+ adds 25 bonus points." by course title are gone. Read per student:
@@ -502,10 +511,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   HPAT Medicine (the CAO does not say whether the bonus counts toward its
   480-point minimum). Unknown and test-score rows never hide.
 
-- **The count is split while My points is set** (Leon, 2026-10-26, registry
-  Q3/P04): "N of 1240 programmes · 47 within your points · 7 only with HL
-  Maths 4+ · 62 points unknown". It says "points unknown", not "publish none",
-  because a blank figure often means nobody has checked.
+- **The count is split while My IB points is set** (Leon, 2026-10-26, registry
+  Q3/P04): "N of 1240 programmes · 47 within your IB points · 7 only with HL
+  Maths 4+ · 62 can’t be compared". This covers missing figures and cutoffs
+  that may include a test, interview, portfolio or audition.
 
 - **Points wording now, a value-kind field later** (Leon, 2026-10-26, registry
   Q2/P01). The browser tells a minimum from a converted cutoff by the

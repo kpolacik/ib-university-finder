@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IB University Finder — Europe</title>
 <meta name="color-scheme" content="light">
-<meta name="description" content="European bachelor programmes, filtered by IB entry requirements, deadlines and tuition.">
+<meta name="description" content="Find European bachelor programmes by IB requirements, deadlines and EU fees.">
 
 <link rel="preload" href="fonts/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font/woff2" crossorigin>
 
@@ -105,13 +105,13 @@
     <div class="mast-top">
       <div class="mast-id">
         <h1>IB University Finder</h1>
-        <p class="tagline">European bachelor programmes, filtered by IB entry requirements.</p>
+        <p class="tagline">Find European bachelor programmes by IB requirements.</p>
       </div>
       <div class="lang" role="group" aria-label="Site language">
         <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
-        <button type="button" aria-pressed="true">EN</button>
-        <button type="button" aria-pressed="false" aria-disabled="true" lang="sk" aria-describedby="sk-later">SK</button>
-        <span class="visually-hidden" id="sk-later">Slovak version coming later</span>
+        <button type="button" aria-pressed="true">EN<span class="visually-hidden"> (English)</span></button>
+        <button type="button" aria-pressed="false" aria-disabled="true" lang="sk" aria-describedby="sk-later">SK<span class="visually-hidden"> (Slovak)</span></button>
+        <span class="visually-hidden" id="sk-later">Slovak translation coming later</span>
       </div>
     </div>
     <p class="src" id="source-line" hidden></p>
@@ -130,17 +130,15 @@
         <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
         <input class="inp" type="search" id="f-search" name="search" aria-describedby="f-search-help" placeholder="UvA, TCD, law, Dublin">
       </span>
-      <p class="help" id="f-search-help">Search programme, university or place; use full subject names or cs for computer science.</p>
     </div>
 
     <button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span>Filters</span></button>
 
     <div class="fld f-pts">
-      <label for="f-points">My points</label>
+      <label for="f-points">My IB points</label>
       <input class="inp" type="number" id="f-points" name="points" min="24" max="45" step="1"
              inputmode="numeric" placeholder="e.g. 36"
-             aria-describedby="f-points-error"
-             title="Hides programmes whose minimum or last year’s cutoff your IB total does not reach">
+             aria-describedby="f-points-help f-points-error">
       <p class="err" id="f-points-error" aria-live="polite"></p>
     </div>
 
@@ -151,13 +149,16 @@
       <label class="tick"><input type="checkbox" id="f-maths" name="maths" aria-describedby="f-maths-help"> HL Maths 4+</label>
     </div>
 
+    <p class="help filter-help search-help" id="f-search-help">Search programmes, universities or places. Use subject names, or “cs” for computer science.</p>
+    <p class="help filter-help" id="f-points-help">Hides programmes whose published minimum or last year’s cutoff is above your total. Programmes we can’t compare stay visible.</p>
+
     <div class="more-filters">
       <div class="fld f-fee">
-        <label for="f-tuition">Max fee (EU)</label>
+        <label for="f-tuition">Max EU fee</label>
         <span class="affix">
           <input class="inp" type="number" id="f-tuition" name="tuition" min="0" step="1"
                  inputmode="numeric" placeholder="Any"
-                 aria-describedby="f-tuition-error">
+                 aria-describedby="f-unknown-help f-tuition-error">
           <span class="unit">&euro;/year</span>
         </span>
         <p class="err" id="f-tuition-error" aria-live="polite"></p>
@@ -188,11 +189,11 @@
       <div class="more-filters" role="group" aria-label="Deadline, degree type and city">
         <div class="fld">
           <label for="f-deadline">Deadline</label>
-          <select class="inp" id="f-deadline">
-            <option value="any">Any</option>
-            <option value="open">Still open</option>
-            <option value="30">Next 30 days</option>
-            <option value="60">Next 60 days</option>
+          <select class="inp" id="f-deadline" aria-describedby="f-unknown-help">
+            <option value="any">Any date</option>
+            <option value="open">Not passed yet</option>
+            <option value="30">Within 30 days</option>
+            <option value="60">Within 60 days</option>
           </select>
         </div>
         <details class="dropdown" id="dd-degrees">
@@ -212,6 +213,7 @@
       <div id="applied-filters" role="group" aria-label="Applied filters" hidden></div>
 
       <button type="button" id="f-clear" class="btn btn-q clear">Clear all</button>
+      <p class="help filter-help" id="f-unknown-help">Programmes with an unknown figure, fee or deadline always stay visible.</p>
     </div>
   </form>
 </header>
@@ -243,13 +245,13 @@
         <span>Only my shortlist</span>
       </label>
       <button type="button" id="export-csv" class="button">
-        <svg aria-hidden="true"><use href="#i-download"/></svg>CSV
+        <svg aria-hidden="true"><use href="#i-download"/></svg>Export CSV
       </button>
       <button type="button" id="print-shortlist" class="button">
         <svg aria-hidden="true"><use href="#i-print"/></svg>Print
       </button>
       <button type="button" id="clear-shortlist" class="button button-quiet">
-        <svg aria-hidden="true"><use href="#i-trash"/></svg>Clear
+        <svg aria-hidden="true"><use href="#i-trash"/></svg>Clear shortlist
       </button>
     </div>
 
@@ -265,10 +267,10 @@
           <select class="inp" id="f-sort"></select>
         </div>
         <div class="cols" role="group" aria-label="Sort programmes">
-          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label">University A–Z</span><span class="visually-hidden">, sort by university, A to Z</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>
-          <button type="button" data-sort="points" aria-pressed="false">Points<span class="visually-hidden">, sort lowest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
-          <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted soonest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
-          <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort cheapest first</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
+          <span class="c1">Programme <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label">University A–Z</span><span class="visually-hidden">, sort University — A to Z.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>
+          <button type="button" data-sort="points" aria-pressed="false">IB points<span class="visually-hidden">, sort IB points — lowest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
+          <button type="button" data-sort="deadline" class="r" aria-pressed="true">Deadline<span class="visually-hidden">, sorted Deadline — soonest first. Activate to sort Deadline — latest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
+          <button type="button" data-sort="tuition" class="r" aria-pressed="false">EU fee<span class="visually-hidden">, sort EU fee — lowest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
           <span class="chv" aria-hidden="true"></span>
         </div>
         <div class="skeletons" id="loading" aria-hidden="true">
@@ -286,22 +288,22 @@
         <h2 id="empty-title"></h2>
         <p id="empty-hint"></p>
         <ul id="empty-tips">
-          <li>Check spelling or try fewer words. Search is exact; typos are not corrected. Search matches words in any order, so “Dublin computer” works.</li>
+          <li>Try fewer words or check your spelling. Words can appear in any order: “Dublin computer” works. Typos are not corrected.</li>
           <li>Short words match the start of a word: “uva”, “tcd”, “law”.</li>
         </ul>
         <button type="button" id="empty-clear" class="btn btn-p" hidden>Clear all</button>
       </div>
 
       <details class="issues" id="issues" hidden>
-        <summary id="issues-summary">Spreadsheet problems</summary>
+        <summary id="issues-summary">Data problems</summary>
         <ul id="issues-list"></ul>
-        <p class="hint">These rows are in the spreadsheet but could not be read, so they are not shown above.</p>
+        <p class="hint">Some problems hide a row; others leave a value unknown. Each message explains what happened.</p>
       </details>
     </section>
     <aside class="pane" id="pane" tabindex="-1" aria-labelledby="pane-h">
       <h2 class="visually-hidden" id="pane-h">Programme details</h2>
       <div class="pane-body">
-        <div class="pane-empty"><b>Pick a programme</b>Its full details appear here. Up and Down move through the list.</div>
+        <div class="pane-empty"><b>Choose a programme</b>Its details appear here. Use the Up and Down arrow keys to move through the list.</div>
       </div>
     </aside>
     </div>
@@ -327,8 +329,8 @@
 
 <footer class="foot">
   <p>
-    Always check the official admissions page before you apply. Deadlines and
-    requirements change, and this site is maintained by students.
+    Check requirements, EU fees and deadlines on the official admissions page before applying.
+    Students maintain this site, and details may change.
   </p>
 </footer>
 

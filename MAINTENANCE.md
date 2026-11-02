@@ -200,8 +200,10 @@ is an exception and haven't checked the number, put `?` and the card will say
 real one. `?` works the same way in `tuition_noneu` and `english_requirement`.
 
 **`baseline_requirement` is per country, so it lives on the universities tab.**
-When a programme has no requirements at all, the card says "No requirements
-beyond ___" and fills the blank from this column. The Netherlands measures every
+When a programme is confirmed to have no IB subject requirements and no other
+requirements are recorded, the card says "No IB subject requirements. General
+requirement: ___. Language requirement not checked yet." It fills the blank
+from this column, capitalising the first letter. The Netherlands measures every
 foreign diploma against VWO; other countries do not, so adding a German or Czech
 university means writing its own baseline there. Leave it empty and the card
 falls back to "a qualifying secondary school diploma", which is true anywhere.

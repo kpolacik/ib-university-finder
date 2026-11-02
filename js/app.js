@@ -267,7 +267,7 @@ function showTotalFailure(err) {
   alert.className = 'bn bn-fail';
   alert.setAttribute('role', 'alert');
   const sentence = document.createElement('p');
-  sentence.textContent = 'Could not load the programme list. Check your connection and reload the page.';
+  sentence.textContent = 'Could not load the latest data. Check your connection and reload the page.';
   const reload = document.createElement('button');
   reload.type = 'button';
   reload.className = 'btn btn-p';
@@ -427,7 +427,7 @@ function onToggleStar(id) {
 
   if (!saveShortlist(shortlist)) {
     dom.shortlistCount.textContent =
-      'Your browser is blocking storage, so this list will disappear when you close the tab.';
+      'Your browser could not save your shortlist. It may be lost when you leave this page.';
     return starred;
   }
 
@@ -1036,12 +1036,12 @@ function syncSort() {
 function drawAppliedChips() {
   const chips = [];
   const scalar = (key, label, active) => { if (active) chips.push({ key, label }); };
-  scalar('search', `search: ${state.search.trim()}`, state.search.trim());
-  scalar('myIbPoints', `My points: ${state.myIbPoints}`, state.myIbPoints !== null);
+  scalar('search', `Search: ${state.search.trim()}`, state.search.trim());
+  scalar('myIbPoints', `My IB points: ${state.myIbPoints}`, state.myIbPoints !== null);
   scalar('hlMaths', 'HL Maths 4+', state.hlMaths);
-  scalar('maxTuition', `Max fee: €${state.maxTuition}`, state.maxTuition !== null);
+  scalar('maxTuition', `Max EU fee: €${state.maxTuition}/year`, state.maxTuition !== null);
   scalar('deadlineWindow', `Deadline: ${DEADLINE_WINDOWS[state.deadlineWindow]}`, state.deadlineWindow !== 'any');
-  for (const [key, label] of [['subjectAreas', 'Subject'], ['countries', 'Country'], ['languages', 'Language'], ['degreeTypes', 'Degree type'], ['cities', 'City']]) {
+  for (const [key, label] of [['subjectAreas', 'Subject area'], ['countries', 'Country'], ['languages', 'Language'], ['degreeTypes', 'Degree type'], ['cities', 'City']]) {
     for (const value of state[key]) chips.push({ key: `${key}:${value}`, label: `${label}: ${value}` });
   }
   renderAppliedChips(dom.applied, chips, removeChip);
@@ -1140,16 +1140,16 @@ function renderEmptyState(shown) {
 
   if (state.shortlistOnly && shortlist.size === 0) {
     dom.emptyTitle.textContent = 'Your shortlist is empty.';
-    dom.emptyHint.textContent = 'Use the bookmark button on any programme to save it here.';
+    dom.emptyHint.textContent = 'No programmes are saved here.';
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
-    dom.emptyTitle.textContent = 'No programmes to show.';
+    dom.emptyTitle.textContent = 'No programmes are available.';
     dom.emptyHint.textContent = 'The programme list could not be loaded. Try reloading the page.';
   } else {
     // Name only the filters actually in use; the old fixed hint suggested the
     // tuition limit and countries even when neither was set (S05).
-    dom.emptyTitle.textContent = 'No programmes match these filters.';
+    dom.emptyTitle.textContent = 'No programmes match your filters.';
     dom.emptyHint.textContent = `Try changing ${listOf(filtersInUse())}.`;
     dom.emptyClear.hidden = false;
     dom.emptyClear.textContent = `Clear all (${activeFilterCount(state)})`;
@@ -1160,9 +1160,9 @@ function renderEmptyState(shown) {
 function filtersInUse() {
   const used = [];
   if (state.search.trim()) used.push(`the search “${state.search.trim()}”`);
-  if (state.myIbPoints !== null) used.push('your points');
+  if (state.myIbPoints !== null) used.push('your IB points');
   if (state.hlMaths) used.push('HL Maths 4+');
-  if (state.maxTuition !== null) used.push('the fee limit');
+  if (state.maxTuition !== null) used.push('the EU fee limit');
   if (state.subjectAreas.size) used.push('the subject areas');
   if (state.countries.size) used.push('the countries');
   if (state.languages.size) used.push('the languages');

@@ -51,7 +51,7 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
   // Everything above failed. Fall back to the committed snapshot — but the
   // caller must tell the user, because a snapshot can be months out of date
   // and stale deadlines are the one thing this site must not present quietly.
-  const reasons = failures.map((f) => `Live data unavailable: ${f}`);
+  const reasons = failures.map((f) => `Could not load the latest data: ${f}`);
   let snapshot;
   let built;
   try {
@@ -65,7 +65,7 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
       }
     });
     if (!snapshot || !Array.isArray(snapshot.programmes) || snapshot.programmes.length === 0) {
-      throw new Error(`${SNAPSHOT_URL} has no programmes in it`);
+      throw new Error(`${SNAPSHOT_URL} contains no programmes`);
     }
     built = build(
       withRowNumbers(snapshot.universities),
@@ -121,7 +121,7 @@ function requireColumns(parsed, label, required) {
   if (missing.length === 0) return;
   if (parsed.header.length === 0) throw new Error(`the ${label} file is empty`);
   throw new Error(
-    `the ${label} file has no ${missing.map((c) => `"${c}"`).join(', ')} column ` +
+    `the ${label} file has no ${missing.map((c) => `"${c}"`).join(', ')} ${missing.length === 1 ? 'column' : 'columns'} ` +
     `(renamed, deleted, or not a CSV at all)`
   );
 }
@@ -142,7 +142,7 @@ async function fetchBody(url, timeoutMs, read, init = {}) {
   }
   try {
     const res = await fetch(url, { ...init, signal });
-    if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+    if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
     return await read(res);
   } catch (err) {
     if (signal.aborted) throw new Error(`${url} did not answer within ${timeoutMs / 1000} s`);
@@ -243,7 +243,7 @@ function build(universityRows, programmeRows, today) {
     // the university's date no longer fills in, a signed row without its own
     // date counted as checked but showed nothing, with no hint why.
     if (verifiedBy && !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE') && !lastVerified) {
-      issues.push(`${where}: signed "${verifiedBy}" but last_verified is blank — the card shows no "Checked" line. Put today's date in last_verified.`);
+      issues.push(`${where}: signed "${verifiedBy}" but last_verified is blank. No "Checked" line is shown. Add the date you checked the official page.`);
     }
 
     const city = inheritText(row.city, uni.city);
@@ -556,7 +556,7 @@ function cutoffSentence(uni, ibPointsMin, rankedWithHpat, notes, otherRequiremen
 // the official page, so an empty one is a gap someone should fill, not a pass.
 function signer(raw, issues, where) {
   const value = text(raw);
-  if (value === '') issues.push(`${where}: verified_by is blank — shown as not checked. Write AI-DRAFT or your initials.`);
+  if (value === '') issues.push(`${where}: verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.`);
   return value;
 }
 
@@ -629,17 +629,17 @@ function url(value, issues, label) {
   if (raw === '') return null;
   const clean = safeUrl(raw);
   if (!clean) {
-    issues.push(`${label}: "${raw}" is not a usable link — it must start with https://.`);
+    issues.push(`${label}: "${raw}" is not a usable link. Use an http:// or https:// URL without a username or password.`);
   }
   return clean;
 }
 
 // official_url is the one link the site promises on every card. A blank one
-// used to pass quietly; the card says "No official link on file", and now the
+// used to pass quietly; the card says "No official admissions link", and now the
 // problems list says which row needs it (T04).
 function officialUrl(value, issues, label) {
   if (text(value) === '') {
-    issues.push(`${label} is blank — the card says "No official link on file". Add the programme's official page.`);
+    issues.push(`${label} is blank. No official admissions link is shown. Add the programme’s official admissions page.`);
     return null;
   }
   return url(value, issues, label);

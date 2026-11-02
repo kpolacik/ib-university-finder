@@ -133,12 +133,12 @@ export function pointsNote(row, state) {
   if (bucket === null || bucket === 'hidden') return null;
   if (bucket === 'unknown') {
     return row.ibPointsMin === null
-      ? 'Shown despite your points: points unknown.'
-      : 'Shown despite your points: the cutoff includes a test, interview or audition.';
+      ? 'Not compared with your IB points: no IB figure.'
+      : 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.';
   }
   const parts = [];
-  if (bucket === 'maths') parts.push('Within your points only with HL Maths 4+.');
-  if (roundTwoOnly(row, state)) parts.push('Within your points on the Round 2 cutoff, not Round 1.');
+  if (bucket === 'maths') parts.push('Within your IB points only with HL Maths 4+.');
+  if (roundTwoOnly(row, state)) parts.push('Within your IB points on the Round 2 cutoff, not Round 1.');
   return parts.length ? parts.join(' ') : null;
 }
 
@@ -153,7 +153,7 @@ export function roundTwoOnly(row, state) {
 
 // The split after the count while My points is set (Q3, P04): how many of the
 // shown rows are within, only with HL Maths 4+, or unknown. A zero bucket other
-// than "within" is left out. "points unknown", not "publish none": a cutoff
+// than "within" is left out. "can’t be compared": a cutoff
 // with a test has a figure, just not one we can compare. Empty when My points
 // is empty.
 export function pointsSummary(rows, state) {
@@ -167,9 +167,9 @@ export function pointsSummaryParts(rows, state) {
     const bucket = pointsBucket(row, state);
     if (bucket in n) n[bucket]++;
   }
-  const parts = [{ kind: 'fit', text: `${n.within} within your points` }];
+  const parts = [{ kind: 'fit', text: `${n.within} within your IB points` }];
   if (n.maths) parts.push({ kind: 'cond', text: `${n.maths} only with HL Maths 4+` });
-  if (n.unknown) parts.push({ kind: 'unk', text: `${n.unknown} points unknown` });
+  if (n.unknown) parts.push({ kind: 'unk', text: `${n.unknown} can’t be compared` });
   return parts;
 }
 
@@ -289,20 +289,20 @@ export function paramsToState(query, facets = null) {
 
 export const SORTS = {
   deadline: 'Deadline — soonest first',
-  tuition: 'Tuition — cheapest first',
+  tuition: 'EU fee — lowest first',
   points: 'IB points — lowest first',
   name: 'University — A to Z',
 };
 
 export const REVERSE_SORTS = {
   deadline: 'Deadline — latest first',
-  tuition: 'Tuition — highest first',
+  tuition: 'EU fee — highest first',
   points: 'IB points — highest first',
   name: 'University — Z to A',
 };
 
 export const DEADLINE_WINDOWS = {
-  any: 'Any', open: 'Still open', '30': 'Next 30 days', '60': 'Next 60 days',
+  any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days',
 };
 
 export function sortRows(rows, key, dir = 'asc') {

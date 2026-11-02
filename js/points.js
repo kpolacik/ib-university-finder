@@ -170,11 +170,11 @@ export function pointsShort(row) {
     const allBonus = figured.length > 0 && figured.every((r) => r.bonusOnly);
     const parts = row.cao.rounds.map((r) => {
       const when = r.round === null ? `cutoff ${row.cao.year}` : `R${r.round}`;
-      if (r.aqa) return { figure: null, label: `${when} all qualified` };
-      if (r.ib === null) return { figure: null, label: `${when} no IB figure` };
+      if (r.aqa) return { figure: null, label: `${when}: all qualified got a place` };
+      if (r.ib === null) return { figure: null, label: `${when}: no IB figure` };
       return { figure: `≈${r.ib}`, label: when + (r.bonusOnly && !allBonus ? ' with HL Maths 4+' : '') };
     });
     return { parts, after: allBonus ? 'with HL Maths 4+' : null, unknown: null };
   }
-  return { parts: [{ figure: String(row.ibPointsMin), label: row.rankedWithHpat ? 'then HPAT' : 'minimum' }], after: null, unknown: null };
+  return { parts: [{ figure: String(row.ibPointsMin), label: row.rankedWithHpat ? 'minimum, then HPAT' : 'minimum' }], after: null, unknown: null };
 }

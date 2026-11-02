@@ -50,11 +50,11 @@ export function renderPane({ pane, heading, body }, row, shown, state) {
     if (row) {
       const title = el('span', '', row.programme);
       if (row.languages.length === 1 && row.languages[0] === 'Czech') title.lang = 'cs';
-      lead.append(title, document.createTextNode(' is hidden by your filters'));
-    } else lead.textContent = 'Pick a programme';
+      lead.append(title, document.createTextNode(' does not match your filters'));
+    } else lead.textContent = 'Choose a programme';
     content.append(lead, document.createTextNode(row
-      ? 'Change the filters to see it again, or pick another programme.'
-      : 'Its full details appear here. Up and Down move through the list.'));
+      ? 'Change your filters or choose another programme.'
+      : 'Its details appear here. Use the Up and Down arrow keys to move through the list.'));
   }
   heading.hidden = false;
   pane.setAttribute('aria-labelledby', 'pane-h');
@@ -76,7 +76,7 @@ export function renderDetail(row, state, { slot = false } = {}) {
 
   if (slot) {
     const points = el('div', 'd-pts');
-    points.append(el('p', 'lab', 'Points'), pointsList(row));
+    points.append(el('p', 'lab', 'IB points'), pointsList(row));
     article.append(points);
   } else {
     // --- head ----------------------------------------------------------------
@@ -136,7 +136,7 @@ export function renderDetail(row, state, { slot = false } = {}) {
 // from pointsBucket, the same test the filter uses, so they cannot disagree.
 function pointsCell(row, state) {
   const cell = el('div', 'cell c-pts');
-  cell.append(el('span', 'lab', 'Points'));
+  cell.append(el('span', 'lab', 'IB points'));
   cell.append(pointsList(row));
 
   const bucket = pointsBucket(row, state);
@@ -145,12 +145,12 @@ function pointsCell(row, state) {
   let verdict = '';
   if (bucket === 'within') {
     [fill, mark] = ['v-fit', 'm-fit'];
-    verdict = row.rankedWithHpat ? 'Within your points, then HPAT' : 'Within your points';
+    verdict = row.rankedWithHpat ? 'Within your IB points, then HPAT' : 'Within your IB points';
   } else if (bucket === 'maths') {
     [fill, mark, verdict] = ['v-cond', 'm-cond', 'Only with HL Maths 4+'];
   } else if (bucket === 'unknown') {
     [fill, mark] = ['v-unk', 'm-unk'];
-    if (row.ibPointsMin !== null) verdict = 'Cutoff includes a test';
+    if (row.ibPointsMin !== null) verdict = 'Cutoff may include test marks';
     else verdict = pointsShort(row).unknown.verdict;
   } else if (bucket === null && row.ibPointsMin === null) {
     // My points empty: the dashed box and the line already say it is unknown.
@@ -254,15 +254,15 @@ function rowRequirements(row) {
 
 function rowPointsCell(row, state) {
   const cell = el('p', 'cell c-pts');
-  cell.append(el('span', 'lab', 'Points'));
+  cell.append(el('span', 'lab', 'IB points'));
   const short = pointsShort(row);
   const bucket = pointsBucket(row, state);
   let fill = 'v-none';
   let verdict = '';
   if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.verdict];
-  else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? 'Within your points, then HPAT' : 'Within your points'];
+  else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? 'Within your IB points, then HPAT' : 'Within your IB points'];
   else if (bucket === 'maths') [fill, verdict] = ['v-cond', 'Only with HL Maths 4+'];
-  else if (bucket === 'unknown') [fill, verdict] = ['v-unk', 'Cutoff includes a test'];
+  else if (bucket === 'unknown') [fill, verdict] = ['v-unk', 'Cutoff may include test marks'];
   cell.classList.add(fill);
   if (verdict) cell.append(el('span', `verd m m-${fill.slice(2)}`, verdict));
   if (short.parts.length) {
@@ -282,7 +282,7 @@ function rowPointsCell(row, state) {
     cell.append(fig);
   }
   if (short.after && !verdict) cell.append(el('span', 'q', short.after));
-  if (roundTwoOnly(row, state)) cell.append(el('span', 'r2', 'on the Round 2 cutoff only'));
+  if (roundTwoOnly(row, state)) cell.append(el('span', 'r2', 'Round 2 cutoff only'));
   return cell;
 }
 
@@ -290,7 +290,7 @@ export function renderSlot(row, state) {
   const slot = el('div', 'expand');
   slot.id = `x-${row.id}`;
   slot.setAttribute('role', 'region');
-  slot.setAttribute('aria-label', `${row.programme}, details`);
+  slot.setAttribute('aria-label', `Details for ${row.programme}`);
   // The slot opens by animating its one grid row from 0fr to 1fr (spec §8).
   // That needs a single child that may shrink below its content and clips it.
   const inner = el('div', 'expand-inner');
@@ -360,14 +360,15 @@ function feeCell(row, { compact = false } = {}) {
     cell.classList.add('v-unk');
     fig.textContent = 'Not published';
   } else if (row.tuitionEu === 0) {
-    // From 600 px the dot hides and "no tuition fee" drops under "€0".
+    // From 600 px the dot hides and "No tuition fee" drops under "€0".
     const zero = el('small', 'zf');
-    zero.append(el('span', 'dot', '· '), document.createTextNode('no tuition fee'));
+    zero.append(el('span', 'dot', '· '), document.createTextNode('No tuition fee'));
     fig.append(document.createTextNode(`${money.format(0)} `), zero);
   } else {
     fig.append(document.createTextNode(`${money.format(row.tuitionEu)} `), el('small', '', '/ year'));
   }
   cell.append(fig);
+  if (!compact && row.country === 'Ireland') cell.append(el('small', 'q', 'Student contribution + levy'));
   return cell;
 }
 
@@ -390,7 +391,7 @@ function requirementsSection(row) {
     // Falling back to a country-neutral sentence keeps this honest the day a
     // non-Dutch university is added.
     const baseline = row.baselineRequirement || 'a qualifying secondary school diploma';
-    section.append(el('p', 'kv-none', `No requirements beyond ${baseline}`));
+    section.append(el('p', 'kv-none', `No IB subject requirements. General requirement: ${baseline[0].toUpperCase() + baseline.slice(1)}. Language requirement not checked yet.`));
     return section;
   }
 
@@ -410,15 +411,15 @@ function requirementsSection(row) {
   // --- subjects ----------------------------------------------------------
   // "none" is the university saying there are none; blank is nobody checked.
   if (row.noSubjectsRequired) {
-    reqRow(list, 'Subjects', ['None required']);
+    reqRow(list, 'IB subjects', ['None required']);
   } else if (row.ibSubjects) {
-    reqRow(list, 'Subjects', [row.ibSubjects]);
+    reqRow(list, 'IB subjects', [row.ibSubjects]);
   } else {
-    reqRow(list, 'Subjects', [unknownTag('Not checked yet')]);
+    reqRow(list, 'IB subjects', [unknownTag('Not checked yet')]);
   }
 
   if (row.otherRequirements.length) {
-    reqRow(list, 'Other', [row.otherRequirements.join(' · ')]);
+    reqRow(list, 'Other requirements', [row.otherRequirements.join(' · ')]);
   }
 
   // --- English -----------------------------------------------------------
@@ -426,22 +427,22 @@ function requirementsSection(row) {
   // language requirement, when nobody had looked (R01). "?" means it differs
   // from the university's and is unpublished, as on the Admission row.
   if (row.englishRequirement.length) {
-    reqRow(list, 'English requirement', [row.englishRequirement.join(' · ')]);
+    reqRow(list, 'Language requirement', [row.englishRequirement.join(' · ')]);
   } else if (row.englishUnknown) {
-    reqRow(list, 'English requirement', [unknownTag('Not published')]);
+    reqRow(list, 'Language requirement', [unknownTag('Not published')]);
   } else {
-    reqRow(list, 'English requirement', [unknownTag('Not checked yet')]);
+    reqRow(list, 'Language requirement', [unknownTag('Not checked yet')]);
   }
 
   // --- general -----------------------------------------------------------
   // What every applicant's diploma must clear, from the universities tab. It
   // used to appear only inside nothingAtAll, which no real row reaches, so 29
   // universities' baselines were never shown (R03). The stored text starts
-  // lowercase because it also completes "No requirements beyond …". A blank
+  // lowercase; the UI capitalises it in either general requirement. A blank
   // baseline shows nothing: six Irish ones are blank on purpose (STATUS).
   if (row.baselineRequirement) {
     const general = row.baselineRequirement;
-    reqRow(list, 'General', [general[0].toUpperCase() + general.slice(1)]);
+    reqRow(list, 'General requirement', [general[0].toUpperCase() + general.slice(1)]);
   }
 
   section.append(list);
@@ -452,14 +453,14 @@ function applyingSection(row) {
   const list = el('dl', 'kv');
   if (row.faculty) reqRow(list, 'Faculty', [row.faculty.name]);
   const deadlineNotes = [];
-  if (row.deadlinePassed) deadlineNotes.push('Check the official page for the next cycle.');
+  if (row.deadlinePassed) deadlineNotes.push('Check the official admissions page for the next cycle.');
   // On Irish rows this is the CAO sentence the points lines were read from.
   if (row.deadlineNotes) deadlineNotes.push(row.deadlineNotes);
   if (deadlineNotes.length) reqRow(list, 'Deadline notes', deadlineNotes.map((t) => el('p', '', t)));
   if (row.livingCostMonthly !== null) {
     reqRow(list, 'Living costs', [`${money.format(row.livingCostMonthly)} / month`]);
   }
-  if (row.languages.length) reqRow(list, 'Taught in', [row.languages.join(', ')]);
+  if (row.languages.length) reqRow(list, 'Language', [row.languages.join(', ')]);
   if (row.applicationSystem) reqRow(list, 'Apply via', [row.applicationSystem]);
   if (list.childElementCount === 0) return null;
 
@@ -488,14 +489,14 @@ function notes(row, state, pointsSays) {
     box.append(el('p', 'note', 'Shown because its subject area is not classified.'));
   }
   if (state.maxTuition !== null && row.tuitionEu === null) {
-    box.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
+    box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
   }
   if (row.identity?.unresolved) {
-    box.append(el('p', 'note', `This catalogue has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Apart from what is shown here, what distinguishes them is not recorded. Compare the official admissions pages.`));
+    box.append(el('p', 'note', `This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
   }
   if (pointsSays) box.append(el('p', 'note pnote', pointsSays));
   if (!row.officialUrl) {
-    box.append(el('p', 'note note-strong', 'No official link on file — do not rely on this entry.'));
+    box.append(el('p', 'note note-strong', 'No official admissions link. Do not rely on this entry.'));
   }
   return box.childElementCount ? box : null;
 }
@@ -564,9 +565,9 @@ function icon(id, className) {
 }
 
 function countdown(days) {
-  if (days === 0) return 'today';
-  if (days === 1) return 'tomorrow';
-  return `in ${days} days`;
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
 }
 
 // ------------------------------------------------------------ filter chips
@@ -590,13 +591,13 @@ export function renderChips(container, values, selected, onToggle, { flags } = {
   });
   container.replaceChildren();
   if (values.length > 12) {
-    const searchLabel = el('label', 'help opt-q', `Search ${container.parentElement.getAttribute('aria-label')} options`);
+    const searchLabel = el('label', 'help opt-q', `Search ${container.parentElement.getAttribute('aria-label').toLowerCase()} options`);
     const search = el('input', 'inp');
     search.type = 'search';
-    const clear = el('button', 'btn btn-q opt-clear', 'Clear option search');
+    const clear = el('button', 'btn btn-q opt-clear', 'Clear the search');
     clear.type = 'button';
     clear.hidden = true;
-    const empty = el('p', 'help opt-none', 'No options match. Try another spelling or clear option search.');
+    const empty = el('p', 'help opt-none', 'No matching options. Try another spelling or clear the search.');
     empty.hidden = true;
     searchLabel.append(search);
     const filter = () => {
@@ -660,9 +661,9 @@ export function renderSourceLine(node, rows, meta) {
   const universities = new Set(rows.map((r) => r.university)).size;
   const countries = new Set(rows.map((r) => r.country).filter(Boolean)).size;
   node.append(
-    el('b', 'stat', `${rows.length} programmes · ${universities} universities · ${countries} countries.`),
+    el('b', 'stat', `${rows.length} ${rows.length === 1 ? 'programme' : 'programmes'} · ${universities} ${universities === 1 ? 'university' : 'universities'} · ${countries} ${countries === 1 ? 'country' : 'countries'}.`),
     ' This site is a starting point for research, not a source of truth. ',
-    el('span', 'src-more', 'Always check requirements, fees and deadlines on the university’s official page before you apply.'),
+    el('span', 'src-more', 'Check requirements, EU fees and deadlines on the official admissions page before applying.'),
   );
 }
 
@@ -671,7 +672,7 @@ export function renderSourceBanner(node, meta) {
   const parts = [];
   if (meta.source === 'snapshot') {
     const when = meta.snapshotDate ? longDate.format(meta.snapshotDate) : 'an unknown date';
-    parts.push(`Live data is unavailable, so this is a saved copy from ${when}. Deadlines may have moved since.`);
+    parts.push(`Could not load the latest data. Showing a saved copy from ${when}. Requirements, EU fees and deadlines may have changed.`);
   }
   // Keep the issues link near the top even when a separate sample warning shows.
   const problems = meta.issues ? meta.issues.length : 0;
@@ -682,11 +683,11 @@ export function renderSourceBanner(node, meta) {
     mark.setAttribute('aria-hidden', 'true');
     const text = el('p', '', parts.join(' '));
     if (problems > 0) {
-      const link = el('a', '', 'See the list below the results.');
+      const link = el('a', '', 'View data problems.');
       link.href = '#issues';
       text.append(
-        `${parts.length ? ' ' : ''}${problems} spreadsheet ${problems === 1 ? 'problem' : 'problems'}: `,
-        'some rows may be missing or incomplete. ', link,
+        `${parts.length ? ' ' : ''}${problems} data ${problems === 1 ? 'problem' : 'problems'}. `,
+        'Some entries may be missing or incomplete. ', link,
       );
     }
     saved.append(mark, text);
@@ -695,11 +696,10 @@ export function renderSourceBanner(node, meta) {
   if (meta.sampleCount > 0) {
     const sample = el('div', 'bn bn-sample');
     sample.setAttribute('role', 'status');
-    const all = meta.sampleCount === meta.total;
     const text = el('p');
     text.append(
-      el('b', '', all ? 'Every figure on this page is made up.' : `${meta.sampleCount} of ${meta.total} entries are made-up sample rows.`),
-      ` Do not use ${all ? 'it' : 'them'} for real applications.`,
+      el('b', '', `${meta.sampleCount} of ${meta.total} ${meta.total === 1 ? 'programme' : 'programmes'} ${meta.sampleCount === 1 ? 'is an invented sample row' : 'are invented sample rows'}.`),
+      ` Do not use ${meta.sampleCount === 1 ? 'it' : 'them'} for real applications.`,
     );
     sample.append(text);
     node.append(sample);
@@ -712,7 +712,7 @@ export function renderIssues(details, summary, list, issues) {
     details.hidden = true;
     return;
   }
-  summary.textContent = `${issues.length} spreadsheet ${issues.length === 1 ? 'problem' : 'problems'}`;
+  summary.textContent = `${issues.length} data ${issues.length === 1 ? 'problem' : 'problems'}`;
   list.replaceChildren(...issues.map((text) => el('li', '', text)));
   details.hidden = false;
 }

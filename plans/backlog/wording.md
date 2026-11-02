@@ -3,17 +3,47 @@
 Registry: S08, S09. One pass over every label and help text, then a Slovak
 pass (the cohort is Slovak; the site is English only today).
 
-## Known issues
+## English pass completed locally (2026-11-02)
 
-- **S08:** filter help is only in `title` tooltips, which phones never show;
-  "Max fee" does not say it is the EU fee.
-- **S09:** one idea, several labels (fee / tuition, points / IB points /
-  score, language / taught in, subjects / IB subjects).
+- **S08:** search, HL Maths and IB points help is visible, including on phones.
+  Shared help moves into the phone sheet with the extra filters: "Programmes
+  with an unknown figure, fee or deadline always stay visible." Inputs retain
+  both their help and error descriptions. The fee label is "Max EU fee".
+- **S09:** the English UI uses IB points, EU fee, subject area, IB subjects,
+  language and language requirement consistently. Compact rows retain "Taught
+  in". Irish detail fees explain "Student contribution + levy". The masthead
+  sentence "This site is a starting point for research, not a source of truth."
+  stays; a site-wide unchecked count remains a question for Leon.
+- Counts, errors, detail notes, saved-copy/sample warnings and the dormant
+  shortlist export use the reviewed wording. The shortlist remains off and SK
+  stays disabled. No admissions values or filtering rules changed.
+- D14's duplicate note now says "This list has … Differences beyond the facts
+  shown here are not recorded." Its stable "Same-name entry n of N · compare
+  official pages" label stays: it describes the recorded ambiguity accurately.
+
+## After the upstream merge / Slovak pass
+
+- Review every CSV prose field, fallback.json and sample CSV wording together:
+  programme/university names, subject and other requirements, admission and its
+  default, language requirements and defaults, baseline, application system,
+  deadline notes. They are frozen in this English UI pass.
+- Keep the generated CAO sentence and exact marker sentences frozen until their
+  parser, writer, stored notes and checks can change together.
+- Translation inventory: plurals in app.js (programme counts), render.js
+  (source counts, data problems and sample warnings); fragment-built sentences
+  in points.js (round qualifiers), render.js (empty pane, points lines, place,
+  provenance, sample warnings), app.js (count leads and filter lists).
+- Replace English list joining in app.js with locale-aware lists in that pass.
+  Review render.js's en-IE/en-GB formatters and renderCountShort's leading-number
+  regex, CSS-generated "· active", and facet display labels separately from
+  canonical URL/data values. The CAO parser and data.js markers treat prose as
+  data. No translation framework was added.
 
 ## Strings added or changed by the points-honesty batch (2026-10-26)
 
-The full list (final, 2026-10-26; commits fe8c1aa, 2bdad70, 6f3374c). Exact
-wording is provisional: the wording pass may change any of it. The CAO sentence
+The full list (final, 2026-10-26; commits fe8c1aa, 2bdad70, 6f3374c). Historical
+wording below records that batch; the completed English pass above supersedes
+UI labels and messages. The CAO sentence
 must keep round-tripping through `parseCaoSentence` (js/points.js), so change
 it there, in `caoNote` (tools/lib/cao-points.mjs) and in check.mjs together.
 
