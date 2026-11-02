@@ -1206,6 +1206,10 @@ for (const f of ['tools/lib/irish-import.mjs', 'tools/import-tcd.mjs', 'tools/up
   check(`${f} converts a cutoff with convertCutoff() and has no inline bonus maths`,
     src.includes('convertCutoff(') && !/points\s*[-−]\s*25/.test(src));
 }
+// T03: the CAO refresh stamped today's date on every Irish row it touched, as
+// if the whole row had been re-checked. Only a person checking the row may.
+check('T03 update-cao-points.mjs never writes last_verified or verified_by',
+  !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/update-cao-points.mjs')));
 check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Maths|625',
   !read('tools/update-cao-points.mjs').includes('Maths|625'));
 const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);

@@ -16,6 +16,9 @@
 //   * a missing test requirement tag, if either round carries "#", keeping
 //     every existing requirement.
 //
+// It never touches last_verified or verified_by: those belong to a person who
+// checked the whole row.
+//
 // ib_points_min is converted from the latest round (Round 2 where the CAO
 // published one), though the card's headline is Round 1. The latest round is
 // the lower one on every current row, and a student who met last year's
@@ -95,7 +98,10 @@ for (const r of rows) {
     if (next !== r[col.ib_points_min]) tally.ibChanged++;
     r[col.ib_points_min] = next;
   }
-  r[col.last_verified] = new Date().toISOString().slice(0, 10);
+  // last_verified is left alone. It says when someone last checked the whole
+  // row against the official page; this script checks only the CAO table, so
+  // stamping today's date on 500+ rows claimed checks nobody made (audit T03).
+  // The CAO sentence already carries its own year ("2026 CAO cutoff: …").
   tally.updated++;
 }
 

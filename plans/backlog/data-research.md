@@ -10,8 +10,10 @@ audits in `plans/scan/`.
   evidence, so some cards say "Checked … by …" honestly. Leon decided on
   2026-10-26 to do this later, once the class says which programmes it is
   targeting. Every row is `AI-DRAFT` today.
-- **T03:** the CAO-only refresh (`tools/update-cao-points.mjs`) moves the
-  whole row's `last_verified` to today, though it only checked the points.
+- **T03:** fixed 2026-11-02: the CAO-only refresh
+  (`tools/update-cao-points.mjs`) no longer moves `last_verified`. The dates
+  it stamped on the Irish rows on 2026-10-25 are still in the CSV; reset them
+  only after the upstream merge, if Jakub's CSV still has them.
 
 ## Rows and columns
 
