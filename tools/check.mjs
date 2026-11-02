@@ -2040,7 +2040,7 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
 // S08: the help lived only in a tooltip and a hidden copy. Spec §6.3: a
 // visible p.help that the tick names with aria-describedby.
 check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip or hidden copy; the fee reads "Max EU fee" with "€/year" (S08)',
-  /<p class="help" id="f-maths-help">Adds the 25 CAO bonus points on Irish courses<\/p>/.test(indexHtml)
+  /<p class="help" id="f-maths-help">\+25 points on Irish courses<\/p>/.test(indexHtml)
     && /<input type="checkbox" id="f-maths"[^>]*aria-describedby="f-maths-help"/.test(indexHtml)
     && /<label class="tick">/.test(indexHtml) && !/<label class="tick"[^>]*title=/.test(indexHtml) && !indexHtml.includes('(adds the 25 CAO')
     && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
