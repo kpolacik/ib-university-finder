@@ -7,6 +7,7 @@
 import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
 import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
+import { UNCLASSIFIED } from './subjects.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -483,6 +484,9 @@ function unknownTag(text) {
 // one warning that matters more than any fact on the entry.
 function notes(row, state, pointsSays) {
   const box = el('div', 'notes');
+  if (state.subjectAreas.size && row.subjectAreas.includes(UNCLASSIFIED)) {
+    box.append(el('p', 'note', 'Shown because its subject area is not classified.'));
+  }
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
   }

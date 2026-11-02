@@ -153,13 +153,18 @@ Pick from this list so the filters stay tidy. Use `;` between several.
 `Psychology` · `Economics` · `Business & Management` · `Law` ·
 `Politics & International Relations` · `Sociology & Anthropology` · `History` ·
 `Philosophy` · `Languages & Literature` · `Media & Communication` ·
-`Art & Design` · `Architecture` · `Education` · `Liberal Arts`
+`Art & Design` · `Architecture` · `Education` · `Liberal Arts` · `Sports Science`
 
 `Liberal Arts` is for university-college programmes where you build your own
-curriculum, so no single subject describes them.
+curriculum, so no single subject describes them. Never use it as a guess.
+
+A blank cell shows as Unclassified. An unknown word is flagged in the page's
+issues list and shown as Unclassified; these rows stay visible under any
+subject filter. Old names such as Finance are translated automatically, but
+use the list above for new rows.
 
 Set these as a dropdown: select the column, **Data → Data validation**, paste
-the list. It stops typos splitting one subject into two filter buttons.
+the whole list, including Sports Science. It helps prevent typos.
 
 ---
 

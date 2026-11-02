@@ -708,8 +708,64 @@ check('sorting does not reorder the caller array', sample.map((p) => p.id).join(
 
 // ---------------------------------------------------------------- search
 
-section('Search: every word, any order; short words start a word (S01)');
 const filtersMod = await import(new URL('../js/filters.js', import.meta.url));
+
+section('One subject vocabulary, without hiding unknowns (S02)');
+const { SUBJECT_AREAS, SUBJECT_ALIASES, UNCLASSIFIED, subjectAreasOf } =
+  await import(new URL('../js/subjects.js', import.meta.url));
+const subjectDocs = read('MAINTENANCE.md').split('### Subject areas\n')[1].split('\n---')[0];
+const documentedSubjects = subjectDocs.split('\n').filter((line) => line.includes('·'))
+  .flatMap((line) => [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+equal('the code vocabulary matches the maintainer list exactly', SUBJECT_AREAS, documentedSubjects);
+check('all aliases have lower-case noncanonical keys and canonical targets',
+  [...SUBJECT_ALIASES].every(([key, targets]) => key === key.toLowerCase()
+    && !SUBJECT_AREAS.some((area) => area.toLowerCase() === key)
+    && targets.every((area) => SUBJECT_AREAS.includes(area))));
+const subjectIssues = [];
+equal('Finance expands and deduplicates in first-seen order',
+  subjectAreasOf('Economics; Finance', subjectIssues, 'subject fixture'), ['Economics', 'Business & Management']);
+equal('known vague aliases add no subject beside a precise one',
+  subjectAreasOf('Psychology; Cognitive Science; Interdisciplinary', subjectIssues, 'subject fixture'), ['Psychology']);
+equal('canonical names ignore case and surrounding spaces',
+  subjectAreasOf(' engineering ', subjectIssues, 'subject fixture'), ['Engineering']);
+for (const raw of ['', 'Humanities', 'Interdisciplinary', 'Innovation']) {
+  equal(`blank or vague subject ${JSON.stringify(raw)} becomes Unclassified`,
+    subjectAreasOf(raw, subjectIssues, 'subject fixture'), [UNCLASSIFIED]);
+}
+equal('blank, canonical and known alias inputs raise no issues', subjectIssues, []);
+equal('an unknown spelling becomes Unclassified',
+  subjectAreasOf('Enginering', subjectIssues, 'subject fixture'), [UNCLASSIFIED]);
+equal('the unknown issue names the value and row exactly once', subjectIssues,
+  ['subject fixture: subject_area "Enginering" is not on the subject list — shown as Unclassified.']);
+const mixedSubjectIssues = [];
+equal('a valid subject never swallows an unknown spelling',
+  subjectAreasOf('Engineering; Enginering', mixedSubjectIssues, 'mixed subject fixture'), ['Engineering', UNCLASSIFIED]);
+check('mixed input reports the unknown spelling once', mixedSubjectIssues.length === 1
+  && mixedSubjectIssues[0].includes('mixed subject fixture: subject_area "Enginering"'));
+const { programmes: subjectRows, meta: subjectMeta } = await load(uni, [
+  'programme_id,university_id,programme,subject_area,application_deadline,official_url,last_verified,verified_by',
+  'subject-unknown,u,Unknown course,Enginering,,https://example.org,2026-08-14,TT',
+  'subject-mixed,u,Mixed course,Engineering; Enginering,,https://example.org,2026-08-14,TT',
+  'subject-known,u,Known course,Law,,https://example.org,2026-08-14,TT',
+  'subject-alias,u,Alias course,Finance,,https://example.org,2026-08-14,TT',
+].join('\n') + '\n');
+check('load keeps misspelled rows and exposes their issues', subjectRows.length === 4
+  && subjectMeta.issues.filter((issue) => /subject_area "Enginering"/.test(issue)).length === 2
+  && subjectRows[0].subjectAreas.includes(UNCLASSIFIED));
+const engineeringFilter = { ...filtersMod.createFilterState(), subjectAreas: new Set(['Engineering']) };
+equal('unknown and mixed subjects pass Engineering while known nonmatches do not',
+  filtersMod.applyFilters(subjectRows, engineeringFilter).map((row) => row.id), ['subject-unknown', 'subject-mixed']);
+equal('unknown subjects are counted under the Unclassified chip',
+  filtersMod.applyFilters(subjectRows, { ...engineeringFilter, subjectAreas: new Set([UNCLASSIFIED]) }).length, 2);
+equal('Unclassified sorts after every known facet, including Sports Science',
+  filtersMod.buildFacets([...subjectRows, { ...subjectRows[0], subjectAreas: ['Sports Science'] }]).subjectAreas,
+  ['Business & Management', 'Economics', 'Engineering', 'Law', 'Sports Science', UNCLASSIFIED]);
+check('search keeps an alias word and adds the mapped subjects',
+  ['finance', 'economics', 'business management'].every((q) => filtersMod.matchesSearch(subjectRows[3].searchBlob, q)));
+equal('obsolete Finance URL selection is quietly dropped',
+  [...filtersMod.paramsToState('?subject=Finance', filtersMod.buildFacets(subjectRows)).subjectAreas], []);
+
+section('Search: every word, any order; short words start a word (S01)');
 // Stand-ins that always fail, so a missing export shows as FAIL lines, not a crash.
 const missing = () => ({ value: undefined, valid: undefined });
 const matchesSearch = filtersMod.matchesSearch || (() => false);
@@ -723,8 +779,8 @@ const uniF = [
 ].join('\n') + '\n';
 const progF = [
   'programme_id,university_id,programme,subject_area,application_deadline,official_url,last_verified,verified_by',
-  'f-cs,nl,Computer Science and Engineering,Computer Science & IT,2027-01-15,https://example.org,2026-08-14,TT',
-  'f-phys,nl,Applied Physics,Natural Sciences,2027-01-15,https://example.org,2026-08-14,TT',
+  'f-cs,nl,Computer Science and Engineering,Computer Science,2027-01-15,https://example.org,2026-08-14,TT',
+  'f-phys,nl,Applied Physics,Physics,2027-01-15,https://example.org,2026-08-14,TT',
   'f-law,cz,Law,Law,2026-08-14,https://example.org,2026-08-14,TT',
   'f-med,cz,Všeobecné lékařství,Medicine & Health,2027-01-15,https://example.org,2026-08-14,TT',
   'f-socio,cz,Socio-economic Studies,Social Sciences,2027-01-15,https://example.org,2026-08-14,TT',
@@ -951,9 +1007,18 @@ const freeEnglish = live.filter((p) => p.country === 'Czechia' && p.languages.in
 check('no English-taught Czech programme shows as free', freeEnglish.length === 0,
   freeEnglish.map((p) => p.id).join(', '));
 
+const liveRow = (id) => live.find((p) => p.id === id);
+check('every real subject is canonical or Unclassified',
+  live.every((row) => row.subjectAreas.every((area) => SUBJECT_AREAS.includes(area) || area === UNCLASSIFIED)));
+const liveSubjects = filtersMod.buildFacets(live).subjectAreas;
+check('live facet stays within the closed vocabulary', liveSubjects.length <= SUBJECT_AREAS.length + 1);
+equal('the current dataset has 23 subject facets', liveSubjects.length, 23);
+check('no current programme becomes Unclassified', live.every((row) => !row.subjectAreas.includes(UNCLASSIFIED)));
+check('bocconi-fin maps Finance to Business & Management', liveRow('bocconi-fin').subjectAreas.includes('Business & Management'));
+equal('sdu-mech maps to Engineering', liveRow('sdu-mech').subjectAreas, ['Engineering']);
+equal('au-cog maps to Psychology', liveRow('au-cog').subjectAreas, ['Psychology']);
 // D01: WBB closes 1 Nov 2026 and goes through the Common App. The row used to
 // say "2027/28 dates not out yet" and inherit Bocconi's own portal.
-const liveRow = (id) => live.find((p) => p.id === id);
 const wbb = liveRow('bocconi-wbb');
 check('bocconi-wbb: deadline is 2026-11-01 and it applies via the Common App',
   wbb && wbb.deadline && wbb.deadline.toISOString().slice(0, 10) === '2026-11-01'
@@ -1148,6 +1213,39 @@ for (const f of ['tools/import-tcd.mjs', 'tools/import-ucd.mjs', 'tools/lib/iris
   check(`${f} checks HPAT_CODES before the CAO test marker`, hpatAt > 0 && hpatAt < testAt);
 }
 check('areasFor("Dentistry") includes Medicine & Health', ie.areasFor('Dentistry').includes('Medicine & Health'));
+
+section('Importer subject fallbacks and keyword boundaries (S02, D30, D31)');
+const czAreas = await import(new URL('./lib/czech-areas.mjs', import.meta.url));
+equal('unmatched English and Czech titles stay blank, never guessed Liberal Arts',
+  [ie.areasFor('Underwater Basket Weaving'), czAreas.areasForCz('Underwater Basket Weaving')], ['', '']);
+for (const [name, patterns] of [['SUBJ', ie.SUBJ], ['CZ', czAreas.CZ]]) {
+  check(`${name} uses only canonical subjects`, patterns.every(([, area]) => SUBJECT_AREAS.includes(area)));
+}
+// Read only the literal: importing this script would fetch pages and write rows.
+const muniSource = read('tools/import-muni.mjs');
+const muniCategories = runInNewContext(`(${muniSource.match(/const CATEGORIES = (\{[^]*?\n\});/)[1]})`);
+check('Masaryk catalogue categories use only canonical subjects',
+  Object.values(muniCategories).every((area) => SUBJECT_AREAS.includes(area)));
+check('Masaryk falls back to its catalogue category only for an unmatched title',
+  muniSource.includes('subject_area: areas || area,') && !muniSource.includes("=== 'Liberal Arts'"));
+const { areasFor: muniAreasFor } = await import(new URL('./lib/czechia.mjs', import.meta.url));
+for (const [name, areasFor] of [['Irish', ie.areasFor], ['Masaryk', muniAreasFor]]) {
+  for (const title of ['Physical Education', 'Physical Education and Sport', 'Sports Studies and Physical Education']) {
+    const areas = areasFor(title).split('; ');
+    check(`${name}: ${title} is sport and education, never Physics (D30)`,
+      areas.includes('Sports Science') && areas.includes('Education') && !areas.includes('Physics'));
+  }
+  check(`${name}: Physics and Physical Sciences still map to Physics`,
+    ['Physics', 'Physical Sciences', 'Astrophysics'].every((title) => areasFor(title).includes('Physics')));
+}
+for (const title of ['Tělesná výchova a sport', 'Učitelství tělesné výchovy', 'Tělesná výchova se zaměřením na vzdělávání']) {
+  const areas = czAreas.areasForCz(title).split('; ');
+  check(`${title} maps to sport, never forestry (D31)`,
+    areas.includes('Sports Science') && !areas.includes('Environmental Sciences'));
+}
+check('genuine forestry titles still map to Environmental Sciences',
+  ['Lesnictví', 'Lesní inženýrství', 'Ekologie a lesnictví'].every((title) =>
+    czAreas.areasForCz(title).includes('Environmental Sciences')));
 
 // P02: a cutoff of 601-625 is NOT above the IB scale. 45 IB points convert to
 // 600, so 602-625 is reachable with the 25 HL Maths bonus. The importers wrote
@@ -1773,6 +1871,13 @@ check('the detail fixture parses with only the blank official_url reported',
   fxs.length === fxRows.length && fxMeta.issues.length === 1 && /official_url is blank/.test(fxMeta.issues[0]), JSON.stringify(fxMeta.issues));
 const fxRow = (id) => fxs.find((p) => p.id === id);
 const fxDetail = (id, state) => detailOf(fxRow(id), state);
+for (const row of subjectRows) {
+  const note = 'Shown because its subject area is not classified.';
+  equal(`${row.id}: subject filter note agrees with the unknown marker`,
+    detailOf(row, engineeringFilter).textContent.includes(note), row.subjectAreas.includes(UNCLASSIFIED));
+  check(`${row.id}: no subject note without an active subject filter`,
+    !detailOf(row, noFilters()).textContent.includes(note));
+}
 const cellOf = (a, name) => byClass(a, name)[0];
 const fillOf = (cell) => ['v-fit', 'v-cond', 'v-unk', 'v-time', 'v-past'].filter((c) => cell.classList.contains(c)).join(' ');
 check('every fixture row renders cleanly with My points empty and at 36',

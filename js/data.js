@@ -4,6 +4,7 @@
 
 import { csvToObjects } from './csv.js';
 import { parseCaoSentence, ibForCutoff } from './points.js';
+import { subjectAreasOf } from './subjects.js';
 import {
   SHEET_CSV_URLS, SAMPLE_CSV_URLS, SNAPSHOT_URL,
   STALE_AFTER_DAYS, URGENT_WITHIN_DAYS,
@@ -249,12 +250,13 @@ function build(universityRows, programmeRows, today) {
     const otherRequirements = list(row.other_requirements, BULLET);
     const rankedWithHpat = ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE);
     const cao = cutoffSentence(uni, ibPointsMin, rankedWithHpat, deadlineNotes, otherRequirements);
+    const subjectAreas = subjectAreasOf(row.subject_area, issues, where);
 
     programmes.push({
       id,
       programme: text(row.programme),
       degreeType: text(row.degree_type),
-      subjectAreas: list(row.subject_area),
+      subjectAreas,
       languages: list(row.language),
 
       universityId: uni.id,
@@ -355,7 +357,7 @@ function build(universityRows, programmeRows, today) {
       // would match most rows, and language has its own filter.
       searchBlob: foldAccents(
         [text(row.programme), uni.name, ...uni.aliases, city, LOCAL_CITY_NAMES.get(city) || '',
-          uni.country, ...list(row.subject_area)].join(' ')
+          uni.country, ...list(row.subject_area), ...subjectAreas].join(' ')
       ).toLowerCase(),
     });
   }

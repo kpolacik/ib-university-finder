@@ -3,6 +3,7 @@
 
 import { foldAccents } from './data.js';
 import { caoPointsFor, MATHS_BONUS_POINTS } from './points.js';
+import { UNCLASSIFIED } from './subjects.js';
 
 export function createFilterState() {
   return {
@@ -51,6 +52,7 @@ export function applyFilters(rows, state, shortlist) {
     if (!tokensMatch(row.searchBlob, tokens)) return false;
 
     if (state.subjectAreas.size &&
+        !row.subjectAreas.includes(UNCLASSIFIED) &&
         !row.subjectAreas.some((a) => state.subjectAreas.has(a))) return false;
 
     if (state.countries.size && !state.countries.has(row.country)) return false;
@@ -361,7 +363,8 @@ export function buildFacets(rows) {
 
   const sorted = (set) => [...set].sort((a, b) => a.localeCompare(b));
   return {
-    subjectAreas: sorted(subjectAreas),
+    subjectAreas: [...sorted(subjectAreas).filter((a) => a !== UNCLASSIFIED),
+      ...(subjectAreas.has(UNCLASSIFIED) ? [UNCLASSIFIED] : [])],
     countries: sorted(countries),
     languages: sorted(languages),
     degreeTypes: sorted(degreeTypes),

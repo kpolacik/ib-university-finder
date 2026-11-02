@@ -138,11 +138,12 @@ export function convertCutoff(points, { test = false, hpat = false } = {}) {
   return { ib, notes };
 }
 
-const SUBJ = [
+export const SUBJ = Object.freeze([
   [/comput|software|information systems|informat|data science|artificial intelligence/i, 'Computer Science'],
   [/engineer/i, 'Engineering'],
   [/mathemat|actuarial|statistic/i, 'Mathematics'],
-  [/physic|astro|nanotech/i, 'Physics'],
+  // Physical Education is sport, not Physics (also used by Masaryk's importer).
+  [/physic(?!al\s+education)|astro|nanotech/i, 'Physics'],
   [/chemi/i, 'Chemistry'],
   [/biolog|biochem|botany|zoolog|genetic|immunolog|microbiolog|neuroscience|physiolog|biomedical sci|biotechnolog|bioscience|marine science/i, 'Biology & Life Sciences'],
   [/environment|geoscience|geography|earth|geolog|climate|agricultur|food science|forestry|equine|horticultur/i, 'Environmental Sciences'],
@@ -160,12 +161,13 @@ const SUBJ = [
   [/\bart\b|art history|music|drama|theatre|design|visual|creative|performance/i, 'Art & Design'],
   [/architect|planning|surveying|construction/i, 'Architecture'],
   [/education|teaching|\bsed\b/i, 'Education'],
-  [/sport|exercise/i, 'Sports Science'],
-];
+  [/sport|exercise|physical\s+education/i, 'Sports Science'],
+]);
 
+// Unmatched titles stay blank: Liberal Arts describes a course, not a failed guess.
 /** Up to three subject areas keyword-mapped from a course title. */
 export const areasFor = (name) =>
-  [...new Set(SUBJ.filter(([re]) => re.test(name)).map(([, a]) => a))].slice(0, 3).join('; ') || 'Liberal Arts';
+  [...new Set(SUBJ.filter(([re]) => re.test(name)).map(([, a]) => a))].slice(0, 3).join('; ');
 
 /**
  * The CAO codes whose applicants sit the HPAT, from ACER's HPAT-Ireland home

@@ -10,6 +10,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 1240 programmes · 35 universities · 5 countries · all checks passing.
 
+Subject filters now use 23 fixed names, including Sports Science, with old names mapped in code (S02). Unclassified rows stay visible and labelled. Importers leave unmatched titles blank and no longer mistake Physical Education for Physics or tělesná for forestry (D30, D31); existing CSV rows are unchanged.
+
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
 | Netherlands | 13 | 197 | **Complete** — every Dutch research university |
