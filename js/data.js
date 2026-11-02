@@ -4,7 +4,7 @@
 
 import { csvToObjects } from './csv.js';
 import { parseCaoSentence, ibForCutoff } from './points.js';
-import { subjectAreasOf } from './subjects.js';
+import { subjectAreasOf, UNCLASSIFIED } from './subjects.js';
 import {
   SHEET_CSV_URLS, SAMPLE_CSV_URLS, SNAPSHOT_URL,
   STALE_AFTER_DAYS, URGENT_WITHIN_DAYS,
@@ -360,7 +360,9 @@ function build(universityRows, programmeRows, today) {
       // would match most rows, and language has its own filter.
       searchBlob: foldAccents(
         [text(row.programme), uni.name, ...uni.aliases, city, LOCAL_CITY_NAMES.get(city) || '',
-          uni.country, ...list(row.subject_area), ...subjectAreas].join(' ')
+          uni.country, ...list(row.subject_area),
+          // "Unclassified" is a site label, not something a student searches for.
+          ...subjectAreas.filter((a) => a !== UNCLASSIFIED)].join(' ')
       ).toLowerCase(),
     });
   }
@@ -437,7 +439,8 @@ function addProgrammeIdentity(programmes) {
   const known = (value) => value !== null && value !== undefined && value !== '' && value !== '?';
   const facts = (row) => [
     row.faculty?.name, row.degreeType, row.city, row.languages.filter(known).join(', '),
-    row.ibSubjects, row.otherRequirements.filter(known).join(' · '),
+    // "None required" is shown on the card, so it is a known difference.
+    row.noSubjectsRequired ? 'none' : row.ibSubjects, row.otherRequirements.filter(known).join(' · '),
     row.admission.filter(known).join(' · '), row.tuitionEu, row.deadline?.getTime(),
     row.ibPointsMin,
   ];

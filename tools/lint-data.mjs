@@ -168,6 +168,9 @@ export function compareIds({ base, work }) {
       byIdentity.get(key).push(row);
     }
     const renamed = new Set();
+    // An old id that still exists but no longer has its old identity.
+    const shiftedFrom = (matches) => matches.find((r) => current.has(r[idColumn])
+      && identity(current.get(r[idColumn])) !== identity(r));
     for (const row of rows) {
       const id = row[idColumn];
       const before = old.get(id);
@@ -178,6 +181,15 @@ export function compareIds({ base, work }) {
         if (disappeared) {
           renamed.add(disappeared[idColumn]);
           add('warning', kind === 'programmes' ? 'id-renamed' : 'uni-renamed', `${id} looks like ${disappeared[idColumn]} under a new id. Keep ${disappeared[idColumn]}; ids must never change.`);
+        } else if (kind === 'programmes' && shiftedFrom(matches)) {
+          // An importer that meets one more row first hands every later id
+          // to its neighbour: the new id gets an old row, and that old id now
+          // points at something else. If the old id took over a third row's
+          // identity too, it is a chain, which only renumbering explains.
+          const shifted = shiftedFrom(matches);
+          const chain = (byIdentity.get(identity(current.get(shifted.programme_id))) || [])
+            .some((r) => r.programme_id !== shifted.programme_id);
+          add(chain ? 'error' : 'warning', 'id-shift', `${id} is new but holds what ${shifted.programme_id} held in the comparison commit, and ${shifted.programme_id} now holds something else. An importer probably shifted the ids. Put the old ids back; ids must never change.`);
         } else if (kind === 'programmes') {
           const prefix = mostCommon(oldRows.filter((r) => r.university_id === row.university_id).map((r) => r.programme_id.split('-')[0])) || row.university_id;
           if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || !id.startsWith(prefix + '-')) {
@@ -232,6 +244,7 @@ export function formatReport(findings, notes = [], { all = false } = {}) {
 function main(args) {
   const usage = 'Usage: node tools/lint-data.mjs [--against <git ref>] [--no-git] [--today YYYY-MM-DD] [--all]';
   let ref = 'HEAD';
+  let explicitRef = false;
   let noGit = false;
   let all = false;
   let today = new Date();
@@ -242,7 +255,7 @@ function main(args) {
     else if (arg === '--against' || arg === '--today') {
       const value = args[++i];
       if (!value || value.startsWith('--') || (arg === '--today' && !isoDate(value))) { console.log(usage); return 2; }
-      if (arg === '--against') ref = value;
+      if (arg === '--against') { ref = value; explicitRef = true; }
       else {
         const date = isoDate(value);
         today = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -255,9 +268,16 @@ function main(args) {
   if (!noGit) {
     for (const kind of Object.keys(base)) {
       try {
-        base[kind] = execFileSync('git', ['show', `${ref}:data/${kind}.csv`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        // Node's default 1 MiB buffer would fail silently once the CSV grows
+        // past about 2,800 rows, and the id comparison would quietly stop.
+        base[kind] = execFileSync('git', ['show', `${ref}:data/${kind}.csv`],
+          { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
       } catch (err) {
-        const reason = err.code === 'ENOENT' ? 'git is not installed' : `cannot read data/${kind}.csv at ${ref}`;
+        const reason = err.code === 'ENOENT' ? 'git is not installed'
+          : `cannot read data/${kind}.csv at ${ref}${err.code ? ` (${err.code})` : ''}`;
+        // A maintainer who typed --against wants that comparison (before an
+        // upstream merge, say); a typo must not end in "OK to commit".
+        if (explicitRef && err.code !== 'ENOENT') { console.log(`Cannot compare ids: ${reason}.`); return 2; }
         notes.push(reason);
       }
     }

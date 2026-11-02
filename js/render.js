@@ -491,13 +491,16 @@ function unknownTag(text) {
 function notes(row, state, pointsSays) {
   const box = el('div', 'notes');
   if (state.subjectAreas.size && row.subjectAreas.includes(UNCLASSIFIED)) {
-    box.append(el('p', 'note', 'Not filtered by subject area: its subject area is not classified.'));
+    // A row can mix a known subject with an unknown word (both are kept).
+    box.append(el('p', 'note', row.subjectAreas.length > 1
+      ? 'Not filtered by subject area: one of its subject areas is not on the subject list.'
+      : 'Not filtered by subject area: its subject area is not classified.'));
   }
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
   }
   if (row.identity?.unresolved) {
-    box.append(el('p', 'note', `This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
+    box.append(el('p', 'note', `This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. This is entry ${row.identity.entry} of ${row.identity.count}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
   }
   if (pointsSays) box.append(el('p', 'note pnote', pointsSays));
   if (!row.officialUrl) {

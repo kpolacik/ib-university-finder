@@ -1116,6 +1116,15 @@ const swappedIds = idCompare([{ ...idA, official_url: idB.official_url }, { ...i
 equal('M02 reciprocal URL swap is two errors', lintRules(swappedIds), ['error:id-swap', 'error:id-swap']);
 check('M02 swap names the other id', swappedIds.every((f) => f.message.includes(f.id === idA.programme_id ? idB.programme_id : idA.programme_id)));
 equal('M02 one-sided collision warns once', lintRules(idCompare([{ ...idA, official_url: idB.official_url }, idB])), ['warning:id-collision']);
+// An importer that meets a new row first shifts every later id by one (review
+// of b7ceeff): new -3 gets -2's old row, -2 gets the first row's, and the
+// first id points at the new course. That chain is an error.
+const idShift = idCompare([{ ...idA, official_url: 'https://test.nl/new' }, { ...idB, official_url: idA.official_url },
+  { ...idB, programme_id: 'test-maths-3', official_url: idB.official_url }]);
+check('M02 importer shift is caught as an error naming both ids', idShift.some((f) => f.severity === 'error' && f.rule === 'id-shift'
+  && f.id === 'test-maths-3' && f.message.includes('test-maths-2')), JSON.stringify(idShift));
+equal('M02 one-step shift without a chain only warns', lintRules(idCompare([{ ...idA, official_url: 'https://test.nl/new' }, idB,
+  { ...idA, programme_id: 'test-maths-3' }])), ['warning:id-shift']);
 equal('M02 renamed id warns only once', lintRules(idCompare([{ ...idA, programme_id: 'test-renamed' }, idB])), ['warning:id-renamed']);
 equal('M02 deleted id', lintRules(idCompare([idA])), ['warning:id-gone']);
 equal('M02 title spelling fix', lintRules(idCompare([{ ...idA, programme: 'Mathematic' }, idB])), ['warning:id-retitled']);
@@ -1156,6 +1165,11 @@ check('T05 CLI works away from root without git', cliGood.status === 0 && cliGoo
 for (const args of [['--bogus'], ['--against'], ['--today'], ['--against', '--all'], ['--today', '--all'], ['--today', '2026-02-31'], ['--today', '2026-13-01'], ['--today', 'tomorrow'], ['--today', '2026-2-1']]) {
   const result = runLint(args);
   check(`T05 CLI rejects ${args.join(' ')}`, result.status === 2 && /^Usage: [^\n]+\n$/.test(result.stdout) && !result.stderr, result.stdout + result.stderr);
+}
+{
+  const typo = spawnSync(process.execPath, [lintScript, '--against', 'NO_SUCH_REF_X'], { encoding: 'utf8', cwd: tmpdir() });
+  check('T05 a mistyped --against stops with exit 2, not "OK to commit"', typo.status === 2 && !typo.stdout.includes('OK to commit'), typo.stdout + typo.stderr);
+  check('T05 git show has a buffer big enough for a growing CSV', /maxBuffer: 64 \* 1024 \* 1024/.test(read('tools/lint-data.mjs')));
 }
 const noGitDir = mkdtempSync(join(tmpdir(), 'ib-lint-no-git-'));
 try {
@@ -2052,8 +2066,14 @@ check('the detail fixture parses with only the blank official_url reported',
   fxs.length === fxRows.length && fxMeta.issues.length === 1 && /official_url is blank/.test(fxMeta.issues[0]), JSON.stringify(fxMeta.issues));
 const fxRow = (id) => fxs.find((p) => p.id === id);
 const fxDetail = (id, state) => detailOf(fxRow(id), state);
+check('S02 search does not match the site label "Unclassified"',
+  subjectRows.every((r) => !r.searchBlob.includes('unclassified')));
 for (const row of subjectRows) {
-  const note = 'Not filtered by subject area: its subject area is not classified.';
+  // A mixed row ("Engineering; Enginering") says one of its subjects is off
+  // the list; a row with nothing known says it is not classified.
+  const note = row.subjectAreas.length > 1
+    ? 'Not filtered by subject area: one of its subject areas is not on the subject list.'
+    : 'Not filtered by subject area: its subject area is not classified.';
   equal(`${row.id}: subject filter note agrees with the unknown marker`,
     detailOf(row, engineeringFilter).textContent.includes(note), row.subjectAreas.includes(UNCLASSIFIED));
   check(`${row.id}: no subject note without an active subject filter`,
@@ -3989,7 +4009,7 @@ for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r)
     check(`D14 ${row.id} official link carries identity`,
       byTag(detail, 'a').find((a) => a.href === row.officialUrl).textContent.includes(row.identity?.text || row.faculty.name));
     if (row.identity?.unresolved) check(`D14 ${row.id} honest fallback note in pane/slot`,
-      detail.textContent.includes(`This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
+      detail.textContent.includes(`This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. This is entry ${row.identity.entry} of ${row.identity.count}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));
   }
   if (row.identity?.text) {
     const identity = byClass(rowDOM, 'identity')[0];
@@ -4037,6 +4057,15 @@ check('D14 group titles ignore case, edge spaces and Unicode composition',
 equal('D14 numbering uses sorted programme ids', identityFixture.find((r) => r.id === 'u-a').identity.entry, 1);
 check('D14 unknown faculty adds no search terms', !identityFixture.find((r) => r.id === 'u-a').searchBlob.includes('faculty'));
 check('D14 unique title gets no fallback', !identityFixture.find((r) => r.id === 's-a').identity);
+// "None required" is on the card, so it tells two same-name entries apart
+// from one that lists subjects (review of 68e5ad9).
+{
+  const subjHeader = d14Header + ',ib_subjects';
+  const rows = [['ns-a', 'none'], ['ns-b', 'Maths HL 5']].map(([id, subj]) =>
+    [id, 'cuni', 'NoneVsSubjects', 'BA', '', 'English', '', '', '', `https://example.org/${id}`, 'AI-DRAFT', subj].join(','));
+  const { programmes: noneRows } = await load(d14Uni, [subjHeader, ...rows].join('\n'));
+  check('D14 "None required" vs listed subjects is a known difference', noneRows.every((r) => !r.identity.unresolved));
+}
 equal('D14 identity stable under input reorder',
   identityFixture.map((r) => [r.id, r.identity]).sort(), reversedIdentity.map((r) => [r.id, r.identity]).sort());
 const d14Examples = [
