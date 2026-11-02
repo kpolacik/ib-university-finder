@@ -206,8 +206,11 @@ function renderRow(row, state, wide) {
     country.setAttribute('data-country', row.country);
     sub.append(document.createTextNode(' '), country);
   }
-  if (row.identity?.text) {
-    const identity = el('span', 'identity', row.identity.text);
+  // The Charles faculty shows on every Charles row, not only on same-name
+  // ones: students compare faculties (1st/2nd/3rd Medicine) across titles (U2).
+  const identityText = row.identity?.text || row.faculty?.name;
+  if (identityText) {
+    const identity = el('span', 'identity', identityText);
     identity.id = `identity-${row.id}`;
     title.setAttribute('aria-describedby', identity.id);
     sub.append(document.createTextNode(' · '), identity);

@@ -407,6 +407,7 @@ svg:not(.sprite) {
 /* Options: 36 px on a fine pointer, 44 px on touch and in the phone sheet
    (--tap is 44 below 600). A picked option is filled, not only ticked. */
 .options{display:grid;gap:2px}
+.dd-help{padding:4px 8px 8px}
 .option{display:flex;align-items:center;gap:10px;min-height:max(36px,var(--tap));padding:4px 8px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:18px;white-space:normal;cursor:pointer;user-select:none}
 .option:hover{background:var(--hover)}
 .option:has(input:checked){font-weight:600;background:var(--accent-tint);color:var(--accent)}

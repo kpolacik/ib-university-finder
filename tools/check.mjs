@@ -4097,11 +4097,28 @@ for (const item of realRendered.children) {
 }
 equal('D14 real rows have distinct displayed facts', collisions, []);
 const uniqueCharles = charles.find((r) => !r.identity);
-const uniqueDOM = d14Rows([uniqueCharles]);
-equal('D14 unique-title sub-line keeps exactly its existing children',
+const uniquePlain = live.find((r) => !r.identity && !r.faculty);
+const uniqueDOM = d14Rows([uniquePlain]);
+equal('D14 unique-title sub-line keeps exactly its existing children (no faculty)',
   byClass(uniqueDOM, 'sub')[0].children.map((c) => typeof c === 'string' ? c : [c.tagName, c.className, c.textContent]),
-  [['span', 'uc', `${uniqueCharles.university} · ${uniqueCharles.city}`], ' ', ['span', 'cc', uniqueCharles.country]]);
-check('D14 unique title has no identity description', !byClass(uniqueDOM, 'open')[0].getAttribute('aria-describedby'));
+  [['span', 'uc', `${uniquePlain.university} · ${uniquePlain.city}`], ' ', ['span', 'cc', uniquePlain.country]]);
+check('D14 unique title without a faculty has no identity description', !byClass(uniqueDOM, 'open')[0].getAttribute('aria-describedby'));
+// U2: a unique-title Charles row still shows its faculty on the row, as a
+// separate described element, so students can compare faculties across titles.
+const uniqueCharlesDOM = d14Rows([uniqueCharles]);
+const uniqueCharlesId = byClass(uniqueCharlesDOM, 'identity')[0];
+equal('U2 unique-title Charles row shows its faculty', uniqueCharlesId?.textContent, uniqueCharles.faculty.name);
+equal('U2 unique-title Charles row button is described by the faculty', byClass(uniqueCharlesDOM, 'open')[0].getAttribute('aria-describedby'), uniqueCharlesId?.id);
+check('U2 every Charles row with a mapped faculty shows it on the row', charles.filter((r) => r.faculty).every((r) => byClass(d14Rows([r]), 'identity')[0]?.textContent.startsWith(r.faculty.name)));
+// U5: the Czech-language note sits inside the Language dropdown (not as a
+// fourth help line in the filter area) and describes that panel.
+{
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const panel = html.slice(html.indexOf('id="dd-languages"'), html.indexOf('</details>', html.indexOf('id="dd-languages"')));
+  check('U5 Language panel carries the Czech-taught note and is described by it',
+    panel.includes('aria-describedby="f-languages-help"') && /<p class="help dd-help" id="f-languages-help">Degrees taught in Czech at public universities are free, whatever your nationality\./.test(panel));
+  equal('U5 note appears once', html.split('id="f-languages-help"').length, 2);
+}
 for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r) => r.identity?.unresolved)]) {
   const rowDOM = d14Rows([row]);
   const pane = detailOf(row);

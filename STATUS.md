@@ -56,7 +56,7 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
-**Same-name programmes (D14).** Charles entries show the faculty in Applying and search; same-name rows also name it on the sub-line. Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Unique-title rows keep their existing layout.
+**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The Language dropdown opens with a note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement (U5).
 
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective

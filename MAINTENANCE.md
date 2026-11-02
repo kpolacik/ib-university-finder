@@ -32,7 +32,7 @@ Two tabs. Everything else follows from this.
 | `universities` | university | City, country, living cost, default tuition — typed once |
 | `programmes` | programme | The degree itself, its requirements and its deadline |
 
-Charles faculty names come from the official SIS link; same-name cards show the faculty or, where the recorded facts do not distinguish entries, a catalogue-entry number to help readers compare official pages.
+Charles faculty names come from the official SIS link; every Charles card shows the faculty; same-name cards elsewhere show, where the recorded facts do not distinguish entries, a catalogue-entry number to help readers compare official pages.
 
 Country badges use five named tints in `css/styles.css`; any new country gets a neutral badge automatically, and its full name always stays visible.
 
