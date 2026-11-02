@@ -119,8 +119,9 @@ reopen any of them unless the user asks. The most load-bearing:
 - Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
 - No save button / shortlist (code kept on purpose); UK excluded; non-EU tuition not collected
 
-The visual direction (two typefaces, country tints, light only, no dark
-palette) is under STATUS.md "The look of it".
+The visual direction (one summary row per programme, colour only for
+verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
+build spec is `plans/design-round1/design-spec.md`.
 
 ## Workflow profile
 

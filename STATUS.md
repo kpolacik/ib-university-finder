@@ -174,58 +174,52 @@ plans/backlog/wording.md.
 
 ## The look of it
 
-**Reopened 2026-10-26** (Leon): the redesign starts again from design
-interviews, with Jakub. This section describes the current look until the new
-direction replaces it; see `plans/backlog/redesign.md`.
-
-Redesigned 2026-08-16, then redirected 2026-10-24 from reference images Jakub
-supplied (a product-design portfolio: serif display type, white page, content in
-large tinted rounded panels, rose brand accent, blue links, arrow motif).
+**Rebuilt 2026-10-27 to 2026-11-01** (local branch `redesign`, not upstream
+yet). Leon took it as the working direction on 2026-11-02; he has not been
+through the built site in detail, so refinements will follow. The full build
+brief is `plans/design-round1/design-spec.md` (with its 2026-10-28 amendment)
+and the picture is `plans/design-round1/full/mockup.html`. Both are local to
+the checkout that built it (`plans/` is not in git), so the rules that matter
+are repeated here. This replaces the Playfair Display / pastel-panel look of
+2026-10-24, which came from Jakub's reference images.
 
 **The direction, so a later edit does not quietly undo it:**
 
-- **Two faces.** `Playfair Display` for display — the masthead, every card title,
-  the points number — and `DM Sans` for everything else. Serif is for display
-  only; it never carries UI text, labels or dense data. Both load from Google
-  Fonts with full system stacks behind them, so a blocked font costs character
-  and nothing else.
-- **White page, tinted panels.** Content sits in large soft-cornered panels
-  (`--r-xl`, 26px) with **no borders and almost no shadow** — separation comes
-  from tint and space, as in the reference. This inverts the old design, where
-  white cards with grey hairlines sat on a grey page.
-- **The panel tint carries information.** The reference gives each project card
-  its own pastel; with 757 cards arbitrary pastels would be noise, so the tint is
-  the **country**: Netherlands periwinkle (`--tint-nl`), Ireland mint
-  (`--tint-ie`). Each card's title and points number take the darker ink of its
-  own tint. The class comes from `row.country` in `js/render.js`, so a new
-  country needs a tint pair in `css/styles.css` and nothing else — Czechia would
-  just get a third.
-- **The requirements block inverted** to a white inset (`--inset`) inside the
-  tinted panel, the reverse of the old tinted block on a white card.
-- **Rose brands, blue links.** `--accent` (rose) appears only *outside* cards —
-  the masthead's full stop, a checked filter, the active-filter count — because
-  inside a card the country tint already does the colour work. `--link` (blue) is
-  for interactive text. Amber and red stay semantic and never decorate.
-- **Motion** is transform and opacity only, first ten cards only, and stops
-  entirely under `prefers-reduced-motion`.
-- **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light` is
-  declared in `:root`, and it has to be: without it a browser on a dark OS
+- **One summary row per programme.** A row shows the title, university, a
+  requirements line and three cells: points, deadline, EU fee. Below 1200 px a
+  tap opens the detail in place under the row; from 1200 px the detail sits
+  in a sticky pane on the right. Phones get compact rows, a "Filters" sheet
+  and a count bar that sticks to the top. Phones are a real target, not an
+  afterthought.
+- **Colour only for a verdict.** A cell is filled only when it tells the
+  student something they can act on: green "Within your points", amber "Only
+  with HL Maths 4+", orange for a deadline within 60 days. A verdict is always
+  a word, a mark and a fill, never colour alone. Plain facts are plain ink.
+- **Unknown is a dashed box,** never a blank and never a reason to hide a row.
+- **Blue only for interaction** (links, focus, the primary button, the
+  selected row, active filters). **Red only** on the sample-data banner and
+  the total-failure alert. Field errors and notes use ink and weight.
+- **Identity is not status.** The lavender masthead and the country badges
+  are the only other tints, and a badge always says the country's name in
+  words. Flags appear only inside the Country filter.
+- **One typeface: IBM Plex Sans,** self-hosted in `fonts/` (400, 600, 700;
+  licence in `fonts/OFL.txt`). No Google Fonts request, so no visitor IPs go to
+  Google and a slow font server can't block the page (L10). Tabular figures,
+  no italics.
+- **Every colour is a token** in the one `:root` block of `css/styles.css`;
+  never put a hex value anywhere else. `node tools/check-contrast.mjs` checks
+  every text and mark pair (65 today). Never lower its minimum.
+- **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light`
+  is declared in `:root`, and it has to be: without it a browser on a dark OS
   renders form controls, scrollbars and the canvas dark underneath a light page.
   `tools/check-contrast.mjs` throws if a `prefers-color-scheme: dark` block
-  reappears, so nobody can add one back and leave its pairs unchecked.
-- **Desktop is the design target**, but the responsive CSS stays. It is written,
-  verified at 375/768/1280 and costs nothing to keep, and the ~30 classmates
-  browsing will not all be at a desk. "Desktop only" means no further mobile
-  polish, not ripping out working breakpoints.
-- **Contrast is measured, not eyeballed.** `node tools/check-contrast.mjs` —
-  44 pairs, every foreground against the background it is genuinely painted on.
-
-**What was deliberately not taken from the reference.** It is a portfolio with
-six elements on a screen and enormous type. This is a data tool where one card
-carries a points total, subject requirements, a fee, a deadline, provenance and
-two links. The character transferred; the density did not. Serif stays out of the
-body text, padding is tighter than the reference, and the per-card pastel became
-a per-country system.
+  reappears.
+- **Motion** is transform and opacity plus the one expand, 120–200 ms, and
+  none at all under `prefers-reduced-motion`. No reordering animation.
+- **Print** prints the filtered rows in order, ink on white (A08).
+- **Speed.** The first screen of rows is drawn at once and the rest in short
+  8 ms chunks after it, so a filter change paints quickly even with 1,240 rows
+  (L09).
 
 ### Three traps this hit, all of which looked like working code
 

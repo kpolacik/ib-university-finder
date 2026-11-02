@@ -1,7 +1,8 @@
 # Redesign
 
 Registry: Q15 and the VIS items below. Decided 2026-10-26 (Leon): the visual
-direction is reopened entirely.
+direction is reopened entirely. Built and described in STATUS.md (2026-11-02);
+further refinements come after Leon has been through the built site.
 
 ## How it starts
 
@@ -15,19 +16,17 @@ direction is reopened entirely.
 
 ## Items folded into it
 
-- **S07:** the default sort opens on Czech portfolio courses; 813 rows tie on
-  date.
-- **S08:** filter help lives only in `title` tooltips; "Max fee" doesn't say it
-  is the EU fee (wording half in `wording.md`).
-- **L09:** all ~1,240 cards render at once, slow on a cheap phone.
-- **L10:** Google Fonts blocks first paint and sends visitor IP addresses to
-  Google.
-- **A03 (rest):** control borders are about 1.2:1 against the page. The focus
-  outline was fixed in b914ded.
-- **A05 (rest):** empty `<dt>`, uppercase names read letter by letter, the
-  degree in the serif face.
-- **A08:** printing prints every visible card (680 pages), and titles print
-  tinted.
+Built 2026-10-27 to 2026-11-01 on the local `redesign` branch; STATUS.md "The
+look of it" describes the result (2026-11-02).
+
+- **S07:** dropped (Leon, 2026-11-02): soonest deadline stays the default sort.
+- **S08:** done (Stage 5): visible filter help, "Max EU fee".
+- **L09:** first screen drawn at once, the rest in 8 ms chunks; closes after
+  one confirming measurement (Leon, 2026-11-02, yardstick (a)).
+- **L10:** done (Stage 1): IBM Plex Sans self-hosted, no Google Fonts.
+- **A03 (rest):** done (Stage 5): control borders on `--edge`, 4.00:1.
+- **A05 (rest):** done.
+- **A08:** done (Stage 6): prints the filtered rows, ink on white.
 
 ## What the redesign inherits from the points batch
 
