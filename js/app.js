@@ -125,10 +125,11 @@ let copyTimer;
 // window at once and appends the rest in slices just after the first paint.
 const FIRST_ROWS = 40;
 // Each task after the first paint appends rows a few at a time and stops once
-// SLICE_MS has passed, so a task plus one of Chrome's major garbage collections
-// (30-37 ms at 4x CPU) stays under 50 ms on a slow machine too. Fixed slices
-// were too big there: 50 rows took about 25 ms and, with a collection, up to
-// 119 ms; even 20 rows plus a collection once took 53 ms.
+// SLICE_MS has passed, so the site's own work in a task stays short on a slow
+// machine too. Fixed slices were too big there: 50 rows took about 25 ms and,
+// with one of Chrome's major garbage collections, up to 119 ms; even 20 rows
+// plus a collection once took 53 ms. A collection can still land inside a task
+// (up to 82 ms at 4x CPU) and no budget can shorten it (STATUS.md, L09).
 const SLICE_MS = 8;
 const CHUNK_ROWS = 5;
 // The smallest height a drawn row can take, used to work out how many rows fill

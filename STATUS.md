@@ -775,8 +775,8 @@ medians 517 → 383 ms; second-frame medians 816 → 622 ms. Every sample missed
 150 ms. These are measurements, not a performance fix or final design approval;
 raw timings and environment are in `plans/design-round2/phase3-l09.json`.
 
-The October 31 fix is in, but L09 stays open because it still misses parts of
-the strict target. A filter change draws only the first screenful of rows (at
+The October 31 fix is in, but L09 stays open: it met the strict target on one
+day and missed parts of it on another (below). A filter change draws only the first screenful of rows (at
 least 40) at once and adds the rest just after, so every row still ends up on
 the page. Opening a row, the wide-screen pick, keyboard focus, switching between
 narrow and wide, and printing all work as before. Printing first adds any rows
@@ -800,22 +800,43 @@ percentile):
 - 1920 px: **157 / 176 ms, and 154 / 160 ms with AI off. This misses the
   target.** Before: 625 ms.
 
+The same tests were run again on November 2, on the same laptop with the same
+scripts and settings, but plugged in (on November 1 it was on battery, late at
+night). Everything ran about 1.8 times faster, the old version too, so the
+laptop itself was faster that day; the code was the same. This time every
+case met the target, with no pause of 50 ms or more while the rest of the
+rows went in (80 changes):
+- 1280 px: 70 / 80 ms, and 68 / 73 ms with AI off. Before: 314 ms.
+- 1920 px: 90 / 96 ms, and 86 / 92 ms with AI off. Before: 348 ms.
+- Ticking Ireland (1,240 rows down to 548): 110-123 ms in normal Chrome and
+  109-133 ms with AI off. Before: 198-223 ms.
+The new version takes about a quarter of the old version's time on both days.
+Whether L09 passes therefore depends on how fast the laptop happens to be
+running, and nobody has yet decided which state counts.
+
 What is still missing:
-- **1920 px is over 150 ms.** Almost all of the time goes on removing the old
-  rows from the page (about 85 ms at four times slower). Every way of removing
-  them costs the same. The ways that avoid it either push that cost into a
-  later pause of 94-272 ms, shift the page by 16-96 px when you are deep in
-  the list, or reuse old rows. Reusing rows risks showing an out-of-date points
-  verdict, and the plan rejected it. Fixing this needs a new plan.
-- **Ticking a filter that removes many rows is still well over 150 ms.** For
-  example, ticking Ireland takes 1,240 rows down to 548. It takes about
-  280-320 ms (before: 357-420 ms), because it removes 1,240 rows. The target was only ever
-  measured in the other direction.
-- **Short pauses while the rest of the rows go in.** About one change in ten
-  has a pause of 54-96 ms (at four times slower). This is the browser's memory
-  clean-up of the removed rows, which smaller batches cannot shorten. It still
-  counts against the site.
-  Rarely, the frame right after the last rows go in takes 60-130 ms.
+- **A fixed yardstick.** The target says "a laptop slowed four times", but the
+  same laptop gave results 1.8 times apart. Before L09 can be closed, someone
+  has to decide what to measure against (for example, plugged in, or a
+  stronger slowdown that stands for a slow phone, or a limit relative to the
+  old version).
+- **1920 px on the slower day was over 150 ms.** Almost all of the time goes on
+  removing the old rows from the page (about 85 ms at four times slower that
+  day). Every way of removing them costs the same. The ways that avoid it
+  either push that cost into a later pause of 94-272 ms, shift the page by
+  16-96 px when you are deep in the list, or reuse old rows. Reusing rows
+  risks showing an out-of-date points verdict, and the plan rejected it.
+  Fixing this, if the yardstick needs it, needs a new plan.
+- **Ticking a filter that removes many rows was well over 150 ms on the slower
+  day.** For example, ticking Ireland takes 1,240 rows down to 548. It took
+  about 280-320 ms in normal Chrome and 200-240 ms with AI off (before:
+  357-420 ms), because it removes 1,240 rows. The target was only ever set for
+  the other direction.
+- **Short pauses while the rest of the rows go in, on the slower day.** About
+  one change in ten had a pause of 54-96 ms (at four times slower). This is the
+  browser's memory clean-up of the removed rows, which smaller batches cannot
+  shorten. It still counts against the site.
+  Rarely, the frame right after the last rows go in took 60-130 ms.
 - **Chrome's own AI page reader** reads the whole page for 1.2-1.9 seconds
   about a second after every change. Leon decided on October 31 that this
   is Chrome's work and does not count against the site. It is still reported
