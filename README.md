@@ -2,6 +2,9 @@
 
 A single-page site for filtering European bachelor programmes by the things IB
 students actually need: entry requirements, deadlines, tuition, language.
+It covers 11 countries: the Netherlands, Ireland, Czechia, Italy, Denmark,
+Sweden, Finland, Norway, Austria, Germany and the United Kingdom (counts are in
+STATUS.md).
 
 Static files only. No server, no database, no accounts, nothing paid.
 
@@ -35,7 +38,8 @@ has no Sheet URLs, so the site reads `data/*.csv` from the repo.
 **Two tabs, not one**, so that university-level facts are typed once no matter
 how many programmes you list:
 
-- `universities` — one row per university (city, country, living cost, default tuition)
+- `universities` — one row per university (city, country, living cost as a
+  monthly range with its source, default tuition)
 - `programmes` — one row per programme, pointing at a university via `university_id`,
   optionally overriding the university's city, tuition or English requirement
 
@@ -131,6 +135,15 @@ With "My IB points" set, the count after the total says how many of the shown
 programmes are within your IB points, only with HL Maths 4+, or can’t be compared.
 The **HL Maths 4+** tick adds the 25 CAO bonus points on Irish courses: it
 changes those labels and that count, never which programmes are shown.
+**My maths** (which IB maths courses a programme accepts) and **Entrance exam**
+hide programmes that state they don't fit your choice; a programme whose maths
+or exam nobody has checked stays in the list, and while the filter is on its
+entry says it was not filtered.
+
+**Fees are what an EU student pays.** The site shows EU fees only and is built
+for a cohort of EU citizens. The UK is included, and there that figure is the
+international fee, because EU students have paid it since 2021. Each UK card
+says where Irish citizens or settled status change it.
 
 **`verified_by` means a person looked.** Rows marked `AI-DRAFT` were gathered
 automatically; the banner at the top of the page says nothing has been checked

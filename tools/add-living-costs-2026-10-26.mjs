@@ -1,0 +1,285 @@
+// One-off: monthly living costs per university, as a range with its source,
+// checked on 2026-10-26.
+//
+//   node tools/add-living-costs-2026-10-26.mjs
+//
+// Order of sources, and the words the card shows after the range:
+//   1. the university's own published figure           "university's estimate"
+//   2. another university in the same city             "estimate from <name>"
+//   3. an official national study portal               "national estimate (<portal>)"
+// Nothing else — no Numbeo, no blogs. Blank if none of the three says.
+//
+// A figure dated before 2021 is treated as not published, because rents have
+// moved too far since. Where a university lists rent "+ utilities" without a
+// utilities figure, the card says "bills extra".
+//
+// Figures are rent included, tuition excluded, in euros. Where a university
+// gives only a table of items, the range is the sum of the items it lists.
+// A single figure goes in min with max left blank. Re-runnable: it writes only
+// living_cost_min, living_cost_max, living_cost_source and last_verified.
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { parseCsv } from '../js/csv.js';
+
+const DATA = new URL('../data/', import.meta.url);
+const TODAY = '2026-10-26';
+const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const UNI = "university's estimate";
+
+// [min, max, source]; max null for a single figure.
+const COSTS = {
+  // ------------------------------------------------------------- Netherlands
+
+  // eur.nl/en/education/practical-matters/orientation-arrival/costs-living:
+  // "students living and studying in Rotterdam spend approximately €1000 to
+  // €1800 per month, mainly depending on housing costs."
+  eur: [1000, 1800, UNI],
+  // wur.nl/en/education/bachelor/study-expenses-bachelors, "Estimated total
+  // costs for 3 years": "Living expenses €41,400.00" (EU/EFTA) = €1,150 a month.
+  wur: [1150, null, UNI],
+  // maastrichtuniversity.nl/study/student-life/cost-studying-financial-
+  // assistance, "Monthly cost (euro)": rent 561, groceries 272, books 53,
+  // transport 67, leisure 238, clothing 60, health insurance 156, phone and
+  // internet 55 — €1,462 in total.
+  maastricht: [1462, null, UNI],
+  // tue.nl/en/education/become-a-tue-student/tuition-fees-living-expenses,
+  // "Estimated monthly cost (€)": housing €500 - €1,000, food €200 - €300,
+  // study materials €50, insurance €100 - €130, transport €30 - €100, personal
+  // €150 - €200 — €1,030 to €1,780 in total.
+  tue: [1030, 1780, UNI],
+  // rug.nl/fse/education/choose-your-study/international-portal/get-to-know-
+  // us/faq: "our students spend on average €1000- €1,100 per month, excluding
+  // tuition fees."
+  rug: [1000, 1100, UNI],
+  // uva.nl/en/programmes/bachelors/business-administration/tuition-fee: "expect
+  // to spend between €900 and €1,500 per month on living expenses. This
+  // includes rent, but not tuition fees."
+  uva: [900, 1500, UNI],
+  // vu.nl/en/education/more-about/cost-of-living-and-working: "living and
+  // studying in the Netherlands for one year costs a student between €1,000
+  // and €2,000 per month."
+  vu: [1000, 2000, UNI],
+  // utwente.nl/en/education/student-services/upcoming-students/money-matters/
+  // cost-of-living: "studying and living in the Netherlands will cost you, on
+  // average, about 1,300 euros a month, excluding tuition fees" (UT quoting Nibud).
+  twente: [1300, null, UNI],
+  // tilburguniversity.edu/education/bachelors-programs/tuition-fees-and-monthly-
+  // cost-living: "The approximate cost of living is between € 1,000 and € 1,200
+  // per month."
+  tilburg: [1000, 1200, UNI],
+  // universiteitleiden.nl/en/education/international-students/financial-
+  // matters, "Monthly living costs" (Leiden and The Hague): "Total (excluding
+  // tuition fees) €1214 – €1644".
+  leiden: [1214, 1644, UNI],
+  // ru.nl/en/education/studying-at-radboud-university/finances/costs-and-
+  // expenses, "Average expenses per month (€)", EU/EEA column: "Total €1,681 -
+  // €1,720", which includes "Tuition fee (2027-2028) €231" — €1,450 to €1,489
+  // without it.
+  radboud: [1450, 1489, UNI],
+  // uu.nl/en/education/welcome-to-utrecht/prepare-your-stay/cost-of-living:
+  // "you can expect to spend between €1000 and €1,400 a month on living
+  // expenses."
+  utrecht: [1000, 1400, UNI],
+  // TU Delft gives no figure of its own: its tuition-fee-finances page says
+  // "Would you like an estimate of the cost of living for students? You can
+  // find information on this topic on the Study in NL website", linking
+  // studyinnl.org/finances/daily-student-expenses-and-cost-of-living-in-the-
+  // netherlands: "Students spend an average of € 1000 - € 1,500 a month." No
+  // other university is in Delft.
+  'tu-delft': [1000, 1500, 'national estimate (Study in NL)'],
+
+  // ----------------------------------------------------------------- Ireland
+  //
+  // An Irish academic year runs September to May: DCU's sheet below totals
+  // "September 2025 – May 2026", nine months. Figures given per academic year
+  // are divided by nine, per calendar year by twelve.
+
+  // tcd.ie/study/international/welcome/cost-of-living, "Total estimated annual
+  // costs … (including accommodation but excluding tuition)": "Undergraduate
+  // €19,937 – €29,050" — by twelve, €1,661 to €2,421.
+  tcd: [1660, 2420, UNI],
+  // ucd.ie/global/study-at-ucd/scholarshipsfinances/livingcosts, per month,
+  // "Total (last updated April 2026)": lowest €1,735, median €2,445 (high
+  // €4,035); "the costs incurred by most students align more closely with the
+  // median" — lowest to median.
+  ucd: [1735, 2445, UNI],
+  // ucc.ie/en/international/studentinfohub/beforeyouarrive/costofliving,
+  // "Average Cost Range per month": "Overall Expense (including Accommodation)
+  // €1,181 - €2,923 approx."
+  ucc: [1181, 2923, UNI],
+  // dcu.ie/sites/default/files/inline-files/cost-of-attending-university-
+  // 2025.26-away-from-home.pdf, "Monthly Costs of Living Away from Home":
+  // total 1822 (rent, average single room, 796).
+  dcu: [1822, null, UNI],
+  // ul.ie/media/cost-of-living-2024-25 ("Cost of Living 2024/25", linked from
+  // UL's cost-of-living page), "Monthly Costs": accommodation including
+  // utilities €700 - €1100, food €200 - €400, books €75, Leap Card €45, mobile
+  // €11-20, recreation €100 - €300 — €1,131 to €1,940.
+  ul: [1131, 1940, UNI],
+  // maynoothuniversity.ie/international/money-and-budgeting, "Costs estimator
+  // for your time in Maynooth (valid: Summer 2025)": accommodation 529 to
+  // 1,100 per month (on or off campus), groceries 300 – 425, social life 200 —
+  // €1,029 to €1,725. Utilities ("350-400 per month per household") are left
+  // out because the page does not say per person.
+  maynooth: [1029, 1725, UNI],
+  // University of Galway publishes rent (€700 - €1,200 a month) and sample
+  // prices but no total; its cost page sends readers to Numbeo. The other
+  // university in the city, ATU: atu.ie/study/global/international-faqs, "The
+  // cost of living includes accommodation, food, transport and other personal
+  // expenses … generally ranges between €10,000 and €15,000 per academic
+  // year" — by nine, €1,111 to €1,667. ATU's figure covers all its campuses,
+  // Galway included.
+  galway: [1110, 1670, 'estimate from ATU, same city'],
+
+  // ----------------------------------------------------------------- Czechia
+
+  // mff.cuni.cz/en/admissions/costs-and-dates (Charles University, Faculty of
+  // Mathematics and Physics): "Average living costs range from 600 to 800 EUR
+  // per month, including accommodation, meals, public transport, and leisure
+  // activities."
+  cuni: [600, 800, UNI],
+  // admissions.vse.cz/living-costs: "The estimated living costs in Prague are
+  // around 7,000 EUR per academic year (approximately 550–800 EUR per month)".
+  vse: [550, 800, UNI],
+  // ČVUT publishes dormitory prices (suz.cvut.cz "Student's estimated financial
+  // cost for accommodation", valid from 08.09.2025) and FEL's partial list
+  // (fel.cvut.cz/en/admissions/life-at-fee-ctu: dormitory about 4 000 CZK,
+  // "about 2 000 CZK per month for lunches", transport 130 CZK) — no total, and
+  // the list covers lunches only. So Prague's figure from VŠE, above.
+  cvut: [550, 800, 'estimate from VŠE, same city'],
+  // fss.muni.cz/en/faculty-of-social-studies/student-life/life-in-brno
+  // (Masaryk University, Faculty of Social Studies): accommodation EUR 250–400,
+  // meals ca EUR 200, pocket money EUR 150 - 200, "Total: EUR 600–850 per month".
+  muni: [600, 850, UNI],
+  // fit.vut.cz/applicants/degree-programme-en (Brno University of Technology,
+  // Faculty of Information Technology): "the monthly costs of living may vary
+  // between EUR 300-600." Probably dated: the same paragraph prices BUT halls
+  // at "about EUR 120/month", where vut.cz/en/cooperation/welcome-service/
+  // guide/costs now gives "Student halls (month) 4 710 Kč / 186 EUR". It is
+  // VUT's own figure, so it is used; STATUS.md flags it.
+  vut: [300, 600, UNI],
+
+  // ----------------------------------------------------------------- Denmark
+  //
+  // Krone figures converted at the fixed peg, 7.46 to the euro, as elsewhere
+  // in this dataset.
+
+  // international.au.dk/…/Aarhus_University_Fact_Sheet_2026-2027.pdf,
+  // "BUDGET EURO": housing 350-600, meals 300, books 25, local transportation
+  // 30, personal expenses 100, "Monthly estimate 1.000".
+  aarhus: [1000, null, UNI],
+  // dtu.dk/english/-/media/…/budget-living-expenses.pdf, "Budget (living on
+  // Campus)": "TOTAL 1244-1840 EUR/month".
+  dtu: [1244, 1840, UNI],
+  // ruc.dk/sites/default/files/2026-07/Getting_Started_2026-27.pdf: "In total,
+  // you should expect to use approximately DKK 8,000 (€ 1,070) per month."
+  ruc: [1070, null, UNI],
+  // ITU's own figure is too old to use: en.itu.dk/Programmes/International-
+  // students/Practical-information-for-international-students says "Living
+  // expenses in Copenhagen are on average 6.500 DKK per month/ app. 870€ …
+  // (exchange rate November 2019)". Figures from before 2021 are skipped (see
+  // the top), and no other university here publishes a Copenhagen total — so
+  // Study in Denmark, below.
+  // sdu.dk/-/media/files/samarbejde/internationalt_samarbejde/fact_sheet_
+  // university_of_southern_denmark.pdf, "Approximate expenses per month in
+  // Euros": accommodation € 350 - 500, food € 250 - 350, public transport € 50,
+  // others € 100 - 200 for books — €750 to €1,100.
+  sdu: [750, 1100, UNI],
+  // Study in Denmark (the Danish Agency for Higher Education's portal),
+  // studyindenmark.dk/live-in-denmark/bank-budget: rent 3000-6,500 DKK,
+  // insurance 300, streaming 200, books 400-650, mobile 250, food 2,000-3,500,
+  // transport 300, other personal expenses 2,000 — DKK 7,450 to 13,000, €999
+  // to €1,743.
+  //   CBS gives no figure: cbs.dk/en/study-programmes/international-students
+  //   says "Staying in Copenhagen is not exactly cheap … You can get a broad
+  //   idea of the monthly expenditures … on studyindenmark.dk".
+  //   AAU publishes rent but no total, and no other university here is in
+  //   Aalborg.
+  cbs: [1000, 1740, 'national estimate (Study in Denmark)'],
+  itu: [1000, 1740, 'national estimate (Study in Denmark)'],
+  aau: [1000, 1740, 'national estimate (Study in Denmark)'],
+
+  // ------------------------------------------------------------------- Italy
+
+  // unive.it/pag/12525: "you need to consider a monthly budget of 900€."
+  unive: [900, null, UNI],
+  // tor vergata: ing.uniroma2.it/…/FACT-SHEET_School-of-Engineering-Tor-
+  // Vergata_25-26.pdf: "The minimum costs of living for a student is
+  // approximately € 1000 per month. This includes food and … monthly expenses".
+  uniroma2: [1000, null, UNI],
+  // uniroma1.it/…/international_student_guide_2024.pdf: "On average, you will
+  // need at least €800-900/month to live in Rome."
+  sapienza: [800, 900, UNI],
+  // luiss.it/en/international/incoming-exchange-students/erasmus-and-bilateral-
+  // exchanges/living-rome: shared room €350–650 or single room €500–900,
+  // utilities €60–100, food €200–300 per month, monthly pass €35 — €645 to
+  // €1,335.
+  luiss: [645, 1335, UNI],
+  // en.unipv.it/en/university/campus/town-pavia: "students should consider a
+  // monthly budget of 600/1000 euros depending on the location."
+  unipv: [600, 1000, UNI],
+  // international.unicatt.it/ucscinternational-milan-living, "Money matters":
+  // "Monthly total: € 1,500 - € 2,200".
+  unicatt: [1500, 2200, UNI],
+  // unibocconi.it/en/applying-bocconi/bachelor-and-law-programs/funding/
+  // economic-and-asset-situation-ay-2027-2028: "The average cost of
+  // accommodation and living expenses in Milan is generally estimated at
+  // approximately € 20,000 per year" — €1,667 a month.
+  bocconi: [1670, null, UNI],
+  // polimi.it/en/information-for/international-prospective-students/life/
+  // living-in-italy/useful-information/cost-of-living: accommodation "€400 -
+  // €700 per month", food "€150 - €200 per month", social life "€100-200 for
+  // month" — €650 to €1,100 (study costs "impossible to calculate").
+  polimi: [650, 1100, UNI],
+  // Milan Statale publishes residence fees but no monthly total; Milano-
+  // Bicocca's only total ("€700-900 per month") is in its 2017-18 guide. Both
+  // use Politecnico di Milano's figure, the other public university in Milan.
+  unimi: [650, 1100, 'estimate from Politecnico di Milano, same city'],
+  unimib: [650, 1100, 'estimate from Politecnico di Milano, same city'],
+  // polito.it/en/education/international-students/practical-information/
+  // cost-of-living: rent "around 400-600 euros", food "between 200 and 300
+  // euros", student pass "approximately 26 euros", utilities "around 70-100
+  // euros per month" — €696 to €1,026.
+  polito: [696, 1026, UNI],
+  // University of Turin's cost page (studyprogram.unito.it/node/41) did not
+  // answer from this machine on 2026-10-26; Politecnico di Torino's figure for
+  // the same city, above.
+  unito: [696, 1026, 'estimate from Politecnico di Torino, same city'],
+  // unibo.it/en/study/life-at-university-and-in-the-city/living-in-the-city/
+  // living-costs-in-bologna: shared room "€ 300,00 a month + utilities" or
+  // single room "€ 400,00 a month + utilities", food "€ 60,00" a week (€260 a
+  // month), student monthly bus ticket "€ 27,00" — €587 to €687, no utilities
+  // figure.
+  unibo: [587, 687, "university's estimate, bills extra"],
+  // unipd.it/en/studying-padova/funding-and-fees/living-costs: double room
+  // "from € 250 to € 400 + expenses", single room "from € 300 to € 600 +
+  // expenses", groceries "approximately € 60" a week (€260 a month), travelcard
+  // "€247,50 (annual)" (€21 a month) — €531 to €881, no figure for the expenses.
+  unipd: [531, 881, "university's estimate, bills extra"],
+  // unitn.it/en/international/coming-unitrento/all-you-need-know/cost-living:
+  // student residences "from €190 to €390 monthly … utilities included",
+  // private "from €300 to €700 monthly, utilities excluded", transport
+  // "€70/year" (€6 a month), food "approximately €150-€200 monthly" — €346 to
+  // €906.
+  unitn: [346, 906, "university's estimate, bills extra"],
+};
+
+// ------------------------------------------------------------------- write
+
+const url = new URL('universities.csv', DATA);
+const [head, ...rows] = parseCsv(readFileSync(url, 'utf8'));
+const col = (name) => { const i = head.indexOf(name); if (i < 0) throw new Error(`no column ${name}`); return i; };
+const [iId, iMin, iMax, iSrc, iVer] = ['university_id', 'living_cost_min', 'living_cost_max', 'living_cost_source', 'last_verified'].map(col);
+const seen = new Set();
+for (const r of rows) {
+  const c = COSTS[r[iId]];
+  if (!c) continue;
+  const [min, max, source] = c;
+  if (max !== null && max <= min) throw new Error(`${r[iId]}: max must be above min`);
+  r[iMin] = String(min); r[iMax] = max === null ? '' : String(max); r[iSrc] = source; r[iVer] = TODAY;
+  seen.add(r[iId]);
+}
+const missing = Object.keys(COSTS).filter((id) => !seen.has(id));
+if (missing.length) throw new Error(`unknown university: ${missing}`);
+writeFileSync(url, [head, ...rows].map((r) => r.map(esc).join(',')).join('\n') + '\n');
+console.log(`living costs written for ${seen.size} of ${rows.length} universities`);

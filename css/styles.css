@@ -76,6 +76,14 @@
   --cty-it-fill:#f0e7f5; --cty-it-ink:#563d66;
   --cty-nl-fill:#eae7f5; --cty-nl-ink:#4b426c;
   --cty-cz-fill:#eee9ee; --cty-cz-ink:#4e4352;
+  /* Added with Jakub's six countries. Same muted, low-chroma family, nudged in hue so
+     neighbours in a list are told apart by more than the word. */
+  --cty-uk-fill:#e6edf5; --cty-uk-ink:#2f4d6b;
+  --cty-de-fill:#e6eef0; --cty-de-ink:#2c4f58;
+  --cty-at-fill:#f3e7ec; --cty-at-ink:#69384a;
+  --cty-se-fill:#e7eaf5; --cty-se-ink:#37467a;
+  --cty-fi-fill:#e4f0ee; --cty-fi-ink:#2a5650;
+  --cty-no-fill:#ecebf1; --cty-no-ink:#42485f;
 
   /* ---------- Flags: ONLY inside the Country filter options. Never on rows, cells or headings. ---------- */
   --flag-white:#ffffff;
@@ -84,6 +92,12 @@
   --flag-it-green:#009246; --flag-it-red:#ce2b37;
   --flag-dk-red:#c8102e;
   --flag-cz-red:#d7141a; --flag-cz-blue:#11457e;
+  --flag-gb-blue:#012169; --flag-gb-red:#c8102e;
+  --flag-de-black:#000000; --flag-de-red:#dd0000; --flag-de-gold:#ffce00;
+  --flag-at-red:#c8102e;
+  --flag-se-blue:#006aa7; --flag-se-yellow:#fecc02;
+  --flag-fi-blue:#002f6c;
+  --flag-no-red:#ba0c2f; --flag-no-blue:#00205b;
 
   /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
   --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -561,6 +575,12 @@ html:has(.sheet[open]){overflow:hidden}
 .cc[data-country=Italy]{background:var(--cty-it-fill);color:var(--cty-it-ink)}
 .cc[data-country=Netherlands]{background:var(--cty-nl-fill);color:var(--cty-nl-ink)}
 .cc[data-country=Czechia]{background:var(--cty-cz-fill);color:var(--cty-cz-ink)}
+.cc[data-country="United Kingdom"]{background:var(--cty-uk-fill);color:var(--cty-uk-ink)}
+.cc[data-country=Germany]{background:var(--cty-de-fill);color:var(--cty-de-ink)}
+.cc[data-country=Austria]{background:var(--cty-at-fill);color:var(--cty-at-ink)}
+.cc[data-country=Sweden]{background:var(--cty-se-fill);color:var(--cty-se-ink)}
+.cc[data-country=Finland]{background:var(--cty-fi-fill);color:var(--cty-fi-ink)}
+.cc[data-country=Norway]{background:var(--cty-no-fill);color:var(--cty-no-ink)}
 /* The row disclosure: i-chevron in a fixed 16 px box, centred on the title's
    first 22 px line, turned whole when open. It was a rotated CSS border that
    dropped 3 px when open (Phase 3 diagnosis). */

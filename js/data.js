@@ -184,7 +184,7 @@ function build(universityRows, programmeRows, today) {
       city: text(row.city),
       country: text(row.country),
       applicationSystem: text(row.application_system),
-      livingCostMonthly: number(row.living_cost_monthly, issues, `Universities row ${row.__row}, living_cost_monthly`, NOT_NEGATIVE),
+      ...livingCost(row, issues),
       tuitionEuDefault: number(row.tuition_eu_default, issues, `Universities row ${row.__row}, tuition_eu_default`, NOT_NEGATIVE),
       tuitionNonEuDefault: number(row.tuition_noneu_default, issues, `Universities row ${row.__row}, tuition_noneu_default`, NOT_NEGATIVE),
       englishRequirementDefault: text(row.english_requirement_default),
@@ -282,7 +282,9 @@ function build(universityRows, programmeRows, today) {
       // university: Bocconi's World Bachelor goes through the Common App, not
       // Bocconi's own portal. Blank inherits, "?" means unknown.
       applicationSystem: inheritText(row.application_system, uni.applicationSystem),
-      livingCostMonthly: uni.livingCostMonthly,
+      livingCostMin: uni.livingCostMin,
+      livingCostMax: uni.livingCostMax,
+      livingCostSource: uni.livingCostSource,
       baselineRequirement: uni.baselineRequirement,
 
       tuitionEu,
@@ -324,6 +326,11 @@ function build(universityRows, programmeRows, today) {
       // to fill in must never read as "there is nothing to meet".
       ibSubjects: subjects === NO_REQUIREMENT ? '' : subjects,
       noSubjectsRequired: subjects === NO_REQUIREMENT,
+      // Jakub's columns (upstream, 2026-10-26/27): which IB maths courses the
+      // programme accepts, and whether every applicant sits an entrance exam.
+      // null means nobody has checked, and a filter never hides it.
+      mathsAccepted: mathsCourses(row.ib_maths, issues, `${where}, ib_maths`),
+      entranceExam: examState(row.entrance_exam, issues, `${where}, entrance_exam`),
       otherRequirements,
 
       // How the place is actually decided: open entry, a ranking, an entrance
@@ -587,6 +594,65 @@ function inheritText(raw, fallback) {
 
 function list(value, separator = ';') {
   return text(value).split(separator).map((s) => s.trim()).filter(Boolean);
+}
+
+// The four IB maths courses. ib_maths lists the ones a programme accepts, so
+// the maths filter can answer "can I apply with what I take?" — a yes/no on HL
+// alone could not, because some programmes take AA SL but not AI HL.
+export const MATHS_COURSES = ['AA HL', 'AA SL', 'AI HL', 'AI SL'];
+
+// Same three states as ib_subjects, plus "?":
+//   "none"  -> no maths requirement, so every course qualifies
+//   blank or "?" -> not known; returns null and the filter never hides the row
+//   list    -> the courses accepted, e.g. "AA HL · AA SL · AI HL"
+function mathsCourses(value, issues, label) {
+  const raw = text(value);
+  if (!raw || raw === UNKNOWN) return null;
+  if (raw === NO_REQUIREMENT) return [...MATHS_COURSES];
+  const courses = list(raw, BULLET);
+  const bad = courses.filter((c) => !MATHS_COURSES.includes(c));
+  if (bad.length) {
+    issues.push(`${label}: "${bad.join('", "')}" is not one of ${MATHS_COURSES.join(', ')} — treated as unknown.`);
+    return null;
+  }
+  return courses;
+}
+
+// Whether you have to sit an entrance exam, test or audition:
+//   "yes"       every applicant sits one
+//   "waivable"  there is one, but some IB applicants can skip it
+//   "no"        none: grades, documents, interviews, matching or a lottery
+//   blank or "?" -> not known; returns null and the filter never hides the row
+export const EXAM_STATES = ['yes', 'waivable', 'no'];
+
+function examState(value, issues, label) {
+  const raw = text(value);
+  if (!raw || raw === UNKNOWN) return null;
+  if (!EXAM_STATES.includes(raw)) {
+    issues.push(`${label}: "${raw}" is not one of ${EXAM_STATES.join(', ')} — treated as unknown.`);
+    return null;
+  }
+  return raw;
+}
+
+// Living costs are a monthly range, because that is how universities publish
+// them ("€900–1,200"), plus a few words saying whose estimate it is. A single
+// figure is min with a blank max. The old one-number column is still read, so
+// a Sheet that has not been updated keeps working.
+function livingCost(row, issues) {
+  const where = `Universities row ${row.__row}`;
+  let min = number(row.living_cost_min, issues, `${where}, living_cost_min`, NOT_NEGATIVE);
+  let max = number(row.living_cost_max, issues, `${where}, living_cost_max`, NOT_NEGATIVE);
+  if (min === null && max === null) {
+    min = number(row.living_cost_monthly, issues, `${where}, living_cost_monthly`, NOT_NEGATIVE);
+  }
+  if (min === null && max !== null) min = max;
+  if (max === null) max = min;
+  if (min !== null && max < min) {
+    issues.push(`${where}: living_cost_max (${max}) is below living_cost_min (${min}) — swapped.`);
+    [min, max] = [max, min];
+  }
+  return { livingCostMin: min, livingCostMax: max, livingCostSource: text(row.living_cost_source) };
 }
 
 // Ranges for number(). Every money column is a fee or a cost, so never below

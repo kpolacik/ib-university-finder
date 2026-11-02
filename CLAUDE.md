@@ -5,7 +5,11 @@
 A single-page static site that helps IB students find European bachelor
 programmes, filtering on entry requirements, deadlines, tuition and language.
 The users are a Slovak school cohort of about 30, all EU citizens, so EU fees
-are the only fees shown and the UK is left out. Each programme has one row in
+are the only fees shown. The UK is shown too (Leon, 2026-11-02, reversing the
+fork's earlier exclusion): its `tuition_eu` is the international fee, which is
+what EU students pay there now. The data covers 11 countries, 159 universities
+and about 2,900 programmes (recount from `data/*.csv`; STATUS.md "State"
+has the table). Each programme has one row in
 `data/programmes.csv`, joined to `data/universities.csv` by `university_id`.
 The browser loads the CSVs (or the published Google Sheet once
 `js/config.js` has the URLs), and falls back to `data/fallback.json` if those
@@ -70,7 +74,11 @@ The column rules are in MAINTENANCE.md and the parsing is in `js/data.js`.
 - **Irish fee = Free Fees figure** (student contribution plus levy). Don't use
   the bigger "EU fee" a page prints (STATUS.md).
 - **Unknown never hides a programme.** Filters show unknown values and label
-  them (`js/filters.js`, README "Design decisions").
+  them (`js/filters.js`, README "Design decisions"). That includes the
+  "My maths" filter (`ib_maths`: `?` or blank is unknown, `none` is no
+  requirement) and the "Entrance exam" filter (`entrance_exam`: `yes`,
+  `waivable`, `no`, `?`/blank unknown). Living costs are a range:
+  `living_cost_min`, `living_cost_max`, `living_cost_source`.
 - **Every row has an `official_url`** that passes `safeUrl` (http(s) only).
   A row that fails is reported, not quietly dropped. `check.mjs` asserts this
   on the real data.
@@ -119,7 +127,8 @@ reopen any of them unless the user asks. The most load-bearing:
 - `none` and blank are different; `?` never inherits
 - Irish fee is the Free Fees figure (contribution + levy)
 - Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
-- No save button / shortlist (code kept on purpose); UK excluded; non-EU tuition not collected
+- Jakub's data and choices win over the fork's older decisions (Leon, 2026-11-02, at the upstream merge); the UK is shown
+- No save button / shortlist (code kept on purpose); non-EU tuition not collected
 
 The visual direction (one summary row per programme, colour only for
 verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the

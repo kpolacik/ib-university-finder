@@ -2,7 +2,7 @@
 
 import { loadData, applyToday } from './data.js';
 import {
-  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS,
+  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
   parsePoints, parseFee, stateToParams, paramsToState, pointsSummaryParts,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
@@ -37,6 +37,8 @@ const dom = {
   countries: document.getElementById('f-countries'),
   languages: document.getElementById('f-languages'),
   deadline: document.getElementById('f-deadline'),
+  myMaths: document.getElementById('f-mymaths'),
+  exam: document.getElementById('f-exam'),
   degrees: document.getElementById('f-degrees'),
   cities: document.getElementById('f-cities'),
   degreesCount: document.getElementById('dd-degrees-count'),
@@ -149,7 +151,10 @@ let pendingRows = null;
 // every row, as before L09. A fresh visit starts at the top and needs no more.
 let firstDraw = true;
 // Flags only inside the Country options; any other country gets text only.
-const COUNTRY_FLAGS = { Czechia: 'f-cz', Denmark: 'f-dk', Ireland: 'f-ie', Italy: 'f-it', Netherlands: 'f-nl' };
+const COUNTRY_FLAGS = {
+  Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
+  Italy: 'f-it', Netherlands: 'f-nl', Norway: 'f-no', Sweden: 'f-se', 'United Kingdom': 'f-gb',
+};
 let selectedId = null;
 let shownRows = new Map();
 let appliedWide = null;
@@ -225,6 +230,8 @@ function applyUrlFields() {
   dom.maths.checked = fromUrl.hlMaths;
   if (fromUrl.maxTuition !== null) dom.tuition.value = String(fromUrl.maxTuition);
   dom.deadline.value = fromUrl.deadlineWindow;
+  dom.myMaths.value = fromUrl.myMaths ?? '';
+  dom.exam.value = fromUrl.exam ?? '';
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
 }
@@ -310,6 +317,8 @@ function toggle(set) {
 function readFields() {
   state.search = dom.search.value;
   state.deadlineWindow = dom.deadline.value;
+  state.myMaths = dom.myMaths.value || null;
+  state.exam = dom.exam.value || null;
   state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
     'Enter a whole number from 24 to 45.');
   state.hlMaths = dom.maths.checked;
@@ -357,6 +366,16 @@ function wireInputs() {
 
   dom.deadline.addEventListener('change', () => {
     state.deadlineWindow = dom.deadline.value;
+    update();
+  });
+
+  dom.myMaths.addEventListener('change', () => {
+    state.myMaths = dom.myMaths.value || null;
+    update();
+  });
+
+  dom.exam.addEventListener('change', () => {
+    state.exam = dom.exam.value || null;
     update();
   });
 
@@ -446,6 +465,8 @@ function clearAll() {
   state.degreeTypes.clear();
   state.cities.clear();
   dom.deadline.value = 'any';
+  dom.myMaths.value = '';
+  dom.exam.value = '';
 
   dom.search.value = '';
   dom.points.value = '';
@@ -1041,6 +1062,8 @@ function drawAppliedChips() {
   scalar('hlMaths', 'HL Maths 4+', state.hlMaths);
   scalar('maxTuition', `Max EU fee: €${state.maxTuition}/year`, state.maxTuition !== null);
   scalar('deadlineWindow', `Deadline: ${DEADLINE_WINDOWS[state.deadlineWindow]}`, state.deadlineWindow !== 'any');
+  scalar('myMaths', `My maths: ${state.myMaths}`, state.myMaths !== null);
+  scalar('exam', `Entrance exam: ${EXAM_OPTIONS[state.exam]}`, state.exam !== null);
   for (const [key, label] of [['subjectAreas', 'Subject area'], ['countries', 'Country'], ['languages', 'Language'], ['degreeTypes', 'Degree type'], ['cities', 'City']]) {
     for (const value of state[key]) chips.push({ key: `${key}:${value}`, label: `${label}: ${value}` });
   }
@@ -1058,7 +1081,7 @@ function removeChip(key) {
     const box = { subjectAreas: dom.subjects, countries: dom.countries, languages: dom.languages, degreeTypes: dom.degrees, cities: dom.cities }[group];
     for (const input of box.querySelectorAll('input')) if (input.type === 'checkbox') input.checked = state[group].has(input.value);
   } else {
-    const input = { search: dom.search, myIbPoints: dom.points, hlMaths: dom.maths, maxTuition: dom.tuition, deadlineWindow: dom.deadline }[key];
+    const input = { search: dom.search, myIbPoints: dom.points, hlMaths: dom.maths, maxTuition: dom.tuition, deadlineWindow: dom.deadline, myMaths: dom.myMaths, exam: dom.exam }[key];
     if (key === 'hlMaths') input.checked = false;
     else input.value = key === 'deadlineWindow' ? 'any' : '';
     readFields();
@@ -1092,7 +1115,7 @@ function renderCounts(shown) {
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? `Clear all (${active})` : 'Clear all';
   // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.degreeTypes.size > 0, state.cities.size > 0]
+  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
     .filter(Boolean).length;
   dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
   dom.more.classList.toggle('is-on', inSheet > 0);
@@ -1104,6 +1127,8 @@ function renderCounts(shown) {
   markSet(dom.points, state.myIbPoints !== null);
   markSet(dom.tuition, state.maxTuition !== null);
   markSet(dom.deadline, state.deadlineWindow !== 'any');
+  markSet(dom.myMaths, state.myMaths !== null);
+  markSet(dom.exam, state.exam !== null);
   for (const [box, set] of [[dom.subjects, state.subjectAreas], [dom.countries, state.countries], [dom.languages, state.languages], [dom.degrees, state.degreeTypes], [dom.cities, state.cities]]) {
     box.closest('.dropdown').classList.toggle('is-set', set.size > 0);
   }
@@ -1167,6 +1192,8 @@ function filtersInUse() {
   if (state.countries.size) used.push('the countries');
   if (state.languages.size) used.push('the languages');
   if (state.deadlineWindow !== 'any') used.push('the deadline window');
+  if (state.myMaths !== null) used.push('your maths course');
+  if (state.exam !== null) used.push('the entrance-exam choice');
   if (state.degreeTypes.size) used.push('the degree types');
   if (state.cities.size) used.push('the cities');
   return used;

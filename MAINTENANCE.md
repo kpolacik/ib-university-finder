@@ -34,7 +34,7 @@ Two tabs. Everything else follows from this.
 
 Charles faculty names come from the official SIS link; every Charles card shows the faculty; same-name cards elsewhere show, where the recorded facts do not distinguish entries, a catalogue-entry number to help readers compare official pages.
 
-Country badges use five named tints in `css/styles.css`; any new country gets a neutral badge automatically, and its full name always stays visible.
+Country badges use a named tint for each of the 11 data countries in `css/styles.css` (pairs checked by `tools/check-contrast.mjs`); any new country gets a neutral badge automatically, and its full name always stays visible.
 
 A programme is linked to its university by putting the university's
 `university_id` in the programme row. Get that wrong and the row will not
@@ -61,7 +61,8 @@ Only if it is not already on the `universities` tab.
 | `name` | Full official name | `Delft University of Technology` |
 | `city`, `country` | | `Delft`, `Netherlands` |
 | `application_system` | How you apply | `Studielink`, `UCAS`, `CAO`, `direct` |
-| `living_cost_monthly` | Rough EUR per month. Leave blank if unsure. | `950` |
+| `living_cost_min`, `living_cost_max` | Monthly living costs in EUR, rent included, as a range. One figure? Put it in `min` and leave `max` blank. Leave both blank if unsure | `900`, `1200` |
+| `living_cost_source` | A few words saying whose estimate it is — the card shows it after the range | `university's estimate` |
 | `tuition_eu_default` | Normal EU fee, in EUR | `2694` |
 | `tuition_noneu_default` | Non-EU fee. **Optional** — nothing on the site reads it | `20200` |
 | `baseline_requirement` | What any diploma must clear here, before programme-specific rules | `a school diploma equivalent to Dutch VWO` |
@@ -85,8 +86,10 @@ Only if it is not already on the `universities` tab.
 | `language` | Language of teaching. Several allowed, separated by `;` |
 | `ib_points_min` | **A number only**, or blank. Never `34-36`, never `34 (typical)` |
 | `ib_subjects` | Subject requirements only. Type `none` if the university says there are none. **Leave blank if you haven't checked** |
+| `ib_maths` | Which IB maths courses the programme accepts, separated by ` · `, from `AA HL`, `AA SL`, `AI HL`, `AI SL`. `none` = no maths requirement. `?` or blank = not known. Drives the "My maths" filter. See below |
 | `other_requirements` | Anything else you must do, separated by ` · `. See below |
 | `admission` | How places are decided, separated by ` · `. Blank uses the university's `admission_default`; `?` means unknown. See below |
+| `entrance_exam` | `yes`, `waivable`, `no`, or `?`/blank for not known. Drives the "Entrance exam" filter. See below |
 | `application_system` | **Leave blank** unless this programme is applied for some other way than the rest of the university. `?` means unknown. It is the last column in the sheet. See below |
 | `tuition_eu` | **Leave blank** unless this programme differs from the university default |
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
@@ -105,6 +108,7 @@ A card shows five kinds of requirement, and only the ones that apply:
 | `admission` | `Entrance exam: TSP aptitude test · Exam can be waived on set criteria` |
 | `ib_points_min` | `30` — most Dutch universities publish nothing here, which is fine |
 | `ib_subjects` | `Maths AA HL + Physics HL required` |
+| `ib_maths` | `AA HL` |
 | `other_requirements` | `Numerus fixus (440 places) · Selection exam` |
 | `english_requirement` | `IELTS 6.5 · or English B HL 6` |
 
@@ -119,6 +123,37 @@ mistake you can make on this site:**
 
 Blank means "not checked" on purpose. If you forget to fill a cell in, the card
 admits it rather than telling someone there is nothing to meet.
+
+**`ib_maths`** is the machine-readable half of the maths line in `ib_subjects`,
+so the "My maths" filter can hide what a student's course doesn't qualify for.
+List every course that is accepted, not just the minimum:
+
+| `ib_subjects` says | `ib_maths` |
+|---|---|
+| Maths AA HL | `AA HL` |
+| Maths AA SL/HL or AI HL | `AA HL · AA SL · AI HL` |
+| Maths HL 5 (any course) | `AA HL · AI HL` |
+| Maths SL 4 or HL 3 (any course) | `AA HL · AA SL · AI HL · AI SL` |
+| no maths requirement | `none` |
+| "Mathematics required", no IB course given | `?` |
+
+Grades stay in `ib_subjects`; `ib_maths` is only about the course and level.
+`?` and blank never hide a programme — the card says so instead. A misspelt
+course shows up under "spreadsheet problems" and is treated as unknown.
+
+**`entrance_exam`** answers one question: will I have to sit something?
+
+| Cell | Card shows | Means |
+|---|---|---|
+| `yes` | "Entrance exam or test" | Every applicant sits one: a selection test (online or not), Scio/TSP, CEnT-S/TOLC/SAT, HPAT, a talent exam or an audition |
+| `waivable` | "Entrance exam — some IB applicants can skip it" | There is one, but it can be waived on IB points or grades, or only applies if your maths falls short |
+| `no` | "No entrance exam" | Grades, documents, letters, interviews, portfolios, matching or a lottery only |
+| `?` or blank | "Not checked yet" | Nobody has checked — never hidden by the filter |
+
+Interviews, portfolios, motivation videos and matching are not exams. A test
+you can only sit to *add* to your chances (SDU's uniTEST for IB holders, who
+already compete on converted grades) is `no`. Write the exam itself in
+`admission` or `other_requirements` as before; this column is only the yes/no.
 
 **`other_requirements`** is for hurdles beyond grades — separate each with ` · `
 and keep them short, they render as chips:
@@ -182,6 +217,11 @@ the whole list, including Sports Science. It helps prevent typos.
 default". A `0` means the course genuinely has no fee. The site shows these
 differently — "No tuition fee" is a real statement — and getting them backwards
 is misleading in a way that matters.
+
+**UK rows hold the international fee.** `tuition_eu` is what an EU student pays.
+For the UK that is the international fee, not the Home fee, because EU students
+have paid it since August 2021 (Irish citizens and settled status are the
+exceptions; say so in the note). The sterling figure stays in the note.
 
 **Use `?` when the default is wrong but you don't know the right number.**
 There are three things a tuition cell can say:
@@ -251,6 +291,13 @@ because the cutoff includes test or audition marks, so no IB figure is given."
 (with `ib_points_min` blank) makes it say "Cutoff includes a test score". Keep
 all three word for word: `check.mjs` complains if one is changed, missing or on
 the wrong row.
+
+**Keep `Test, interview, portfolio or audition` in an Irish row's
+`other_requirements`**, even when a more specific label sits next to it
+("Audition · Test, interview, portfolio or audition"). It is not a duplicate:
+it is the CAO's "#" mark, and the site reads that exact tag to know a cutoff
+may include test marks, which decides the IB figure and the HL Maths bonus.
+The CAO refresh (`tools/update-cao-points.mjs`) writes it.
 
 **The card says what kind of points figure it is.** You do not fill this in;
 the site works it out:

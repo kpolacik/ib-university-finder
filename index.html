@@ -94,6 +94,12 @@
   <symbol id="f-ie" viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" style="fill:var(--flag-ie-green)"/><rect x="1" width="1" height="2" style="fill:var(--flag-white)"/><rect x="2" width="1" height="2" style="fill:var(--flag-ie-orange)"/></symbol>
   <symbol id="f-it" viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" style="fill:var(--flag-it-green)"/><rect x="1" width="1" height="2" style="fill:var(--flag-white)"/><rect x="2" width="1" height="2" style="fill:var(--flag-it-red)"/></symbol>
   <symbol id="f-nl" viewBox="0 0 9 6" preserveAspectRatio="none"><rect width="9" height="2" style="fill:var(--flag-nl-red)"/><rect y="2" width="9" height="2" style="fill:var(--flag-white)"/><rect y="4" width="9" height="2" style="fill:var(--flag-nl-blue)"/></symbol>
+  <symbol id="f-at" viewBox="0 0 3 3" preserveAspectRatio="none"><rect width="3" height="3" style="fill:var(--flag-at-red)"/><rect y="1" width="3" height="1" style="fill:var(--flag-white)"/></symbol>
+  <symbol id="f-de" viewBox="0 0 5 3" preserveAspectRatio="none"><rect width="5" height="1" style="fill:var(--flag-de-black)"/><rect y="1" width="5" height="1" style="fill:var(--flag-de-red)"/><rect y="2" width="5" height="1" style="fill:var(--flag-de-gold)"/></symbol>
+  <symbol id="f-fi" viewBox="0 0 18 11" preserveAspectRatio="none"><rect width="18" height="11" style="fill:var(--flag-white)"/><rect x="5" width="3" height="11" style="fill:var(--flag-fi-blue)"/><rect y="4" width="18" height="3" style="fill:var(--flag-fi-blue)"/></symbol>
+  <symbol id="f-gb" viewBox="0 0 60 30" preserveAspectRatio="none"><rect width="60" height="30" style="fill:var(--flag-gb-blue)"/><path d="M0 0L60 30M60 0L0 30" style="fill:none;stroke:var(--flag-white);stroke-width:6"/><path d="M0 0L60 30M60 0L0 30" style="fill:none;stroke:var(--flag-gb-red);stroke-width:2"/><rect x="25" width="10" height="30" style="fill:var(--flag-white)"/><rect y="10" width="60" height="10" style="fill:var(--flag-white)"/><rect x="27" width="6" height="30" style="fill:var(--flag-gb-red)"/><rect y="12" width="60" height="6" style="fill:var(--flag-gb-red)"/></symbol>
+  <symbol id="f-no" viewBox="0 0 22 16" preserveAspectRatio="none"><rect width="22" height="16" style="fill:var(--flag-no-red)"/><rect x="6" width="4" height="16" style="fill:var(--flag-white)"/><rect y="6" width="22" height="4" style="fill:var(--flag-white)"/><rect x="7" width="2" height="16" style="fill:var(--flag-no-blue)"/><rect y="7" width="22" height="2" style="fill:var(--flag-no-blue)"/></symbol>
+  <symbol id="f-se" viewBox="0 0 16 10" preserveAspectRatio="none"><rect width="16" height="10" style="fill:var(--flag-se-blue)"/><rect x="5" width="2" height="10" style="fill:var(--flag-se-yellow)"/><rect y="4" width="16" height="2" style="fill:var(--flag-se-yellow)"/></symbol>
   <!-- Phosphor Regular globe, @phosphor-icons/core 2.1.1, MIT. -->
   <symbol id="i-globe" viewBox="0 0 256 256"><path d="M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z"/></symbol>
 </svg>
@@ -186,7 +192,7 @@
         </div>
       </details>
 
-      <div class="more-filters" role="group" aria-label="Deadline, degree type and city">
+      <div class="more-filters" role="group" aria-label="Deadline, maths, entrance exam, degree type and city">
         <div class="fld">
           <label for="f-deadline">Deadline</label>
           <select class="inp" id="f-deadline" aria-describedby="f-unknown-help">
@@ -194,6 +200,26 @@
             <option value="open">Not passed yet</option>
             <option value="30">Within 30 days</option>
             <option value="60">Within 60 days</option>
+          </select>
+        </div>
+        <!-- Jakub's two filters (upstream 2026-10-26/27). A programme whose maths
+             or exam nobody has checked is never hidden; the card says so. -->
+        <div class="fld">
+          <label for="f-mymaths">My maths</label>
+          <select class="inp" id="f-mymaths" aria-describedby="f-unknown-help">
+            <option value="">Any course</option>
+            <option value="AA HL">AA HL</option>
+            <option value="AA SL">AA SL</option>
+            <option value="AI HL">AI HL</option>
+            <option value="AI SL">AI SL</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="f-exam">Entrance exam</label>
+          <select class="inp" id="f-exam" aria-describedby="f-unknown-help">
+            <option value="">Any</option>
+            <option value="none">No exam</option>
+            <option value="skippable">None or skippable</option>
           </select>
         </div>
         <details class="dropdown" id="dd-degrees">
@@ -213,7 +239,7 @@
       <div id="applied-filters" role="group" aria-label="Applied filters" hidden></div>
 
       <button type="button" id="f-clear" class="btn btn-q clear">Clear all</button>
-      <p class="help filter-help" id="f-unknown-help">Unknown points, fees or deadlines never hide a programme.</p>
+      <p class="help filter-help" id="f-unknown-help">Unknown values never hide a programme.</p>
     </div>
   </form>
 </header>

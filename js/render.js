@@ -13,6 +13,9 @@ const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
 });
 
+// The top of a range: "€900–1,200", not "€900–€1,200".
+const plain = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 0 });
+
 const longDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 });
@@ -416,6 +419,12 @@ function requirementsSection(row) {
     reqRow(list, 'Admission', [unknownTag('Not published')]);
   }
 
+  // --- entrance exam -----------------------------------------------------
+  // The admission line names the exam; this row answers the yes/no question
+  // the exam filter asks, so the entry and the filter never disagree
+  // (Jakub's entrance_exam column, upstream 2026-10-27).
+  reqRow(list, 'Entrance exam', [EXAM_TEXT[row.entranceExam] ?? unknownTag('Not checked yet')]);
+
   // --- subjects ----------------------------------------------------------
   // "none" is the university saying there are none; blank is nobody checked.
   if (row.noSubjectsRequired) {
@@ -465,8 +474,12 @@ function applyingSection(row) {
   // On Irish rows this is the CAO sentence the points lines were read from.
   if (row.deadlineNotes) deadlineNotes.push(row.deadlineNotes);
   if (deadlineNotes.length) reqRow(list, 'Deadline notes', deadlineNotes.map((t) => el('p', '', t)));
-  if (row.livingCostMonthly !== null) {
-    reqRow(list, 'Living costs', [`${money.format(row.livingCostMonthly)} / month`]);
+  if (row.livingCostMin !== null) {
+    // A monthly range with whose estimate it is (Jakub's living_cost_* columns).
+    const range = row.livingCostMax > row.livingCostMin
+      ? `${money.format(row.livingCostMin)}–${plain.format(row.livingCostMax)}`
+      : money.format(row.livingCostMin);
+    reqRow(list, 'Living costs', [`${range} / month${row.livingCostSource ? ` · ${row.livingCostSource}` : ''}`]);
   }
   if (row.languages.length) reqRow(list, 'Language', [row.languages.join(', ')]);
   if (row.applicationSystem) reqRow(list, 'Apply via', [row.applicationSystem]);
@@ -485,6 +498,12 @@ function reqRow(dl, label, nodes) {
   dl.append(dd);
 }
 
+const EXAM_TEXT = {
+  yes: 'Entrance exam or test',
+  waivable: 'Entrance exam — some IB applicants can skip it',
+  no: 'No entrance exam',
+};
+
 function unknownTag(text) {
   return el('span', 'unk-t', text);
 }
@@ -501,6 +520,12 @@ function notes(row, state, pointsSays) {
   }
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
+  }
+  if (state.myMaths !== null && row.mathsAccepted === null) {
+    box.append(el('p', 'note', 'Not filtered by your maths course: its maths requirement is not checked yet.'));
+  }
+  if (state.exam !== null && row.entranceExam === null) {
+    box.append(el('p', 'note', 'Not filtered by the entrance-exam choice: nobody has checked whether it has one.'));
   }
   if (row.identity?.unresolved) {
     box.append(el('p', 'note', `This list has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. This is entry ${row.identity.entry} of ${row.identity.count}. Differences beyond the facts shown here are not recorded. Compare the official admissions pages.`));

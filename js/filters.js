@@ -1,7 +1,7 @@
 // Pure functions: given rows and a filter state, give back the rows that match,
 // in the requested order. No DOM in here, so this stays easy to reason about.
 
-import { foldAccents } from './data.js';
+import { foldAccents, MATHS_COURSES } from './data.js';
 import { caoPointsFor, MATHS_BONUS_POINTS } from './points.js';
 import { UNCLASSIFIED } from './subjects.js';
 
@@ -19,6 +19,11 @@ export function createFilterState() {
     // "HL Maths 4+": adds the 25 CAO bonus points on Irish cutoff rows. It
     // changes labels and counts, never which rows are shown (pointsBucket).
     hlMaths: false,
+    // Jakub's filters (upstream 2026-10-26/27): the student's IB maths course
+    // (null or one of MATHS_COURSES), and the entrance-exam choice (null,
+    // "none" or "skippable"). Unknown values never hide a programme.
+    myMaths: null,
+    exam: null,
     shortlistOnly: false,
     sort: 'deadline',
     dir: 'asc',
@@ -40,6 +45,8 @@ export function activeFilterCount(state) {
   if (state.maxTuition !== null) n++;
   if (state.myIbPoints !== null) n++;
   if (state.hlMaths) n++;
+  if (state.myMaths !== null) n++;
+  if (state.exam !== null) n++;
   return n;
 }
 
@@ -76,6 +83,16 @@ export function applyFilters(rows, state, shortlist) {
         row.tuitionEu > state.maxTuition) return false;
 
     if (pointsBucket(row, state) === 'hidden') return false;
+
+    // Same rule: a programme whose maths requirement nobody has checked stays.
+    if (state.myMaths !== null && row.mathsAccepted !== null &&
+        !row.mathsAccepted.includes(state.myMaths)) return false;
+
+    // And for exams: a programme nobody has checked stays.
+    if (state.exam !== null && row.entranceExam !== null) {
+      if (state.exam === 'none' && row.entranceExam !== 'no') return false;
+      if (state.exam === 'skippable' && row.entranceExam === 'yes') return false;
+    }
 
     return true;
   });
@@ -246,6 +263,8 @@ export function stateToParams(state) {
   if (state.search.trim()) params.set('q', state.search.trim());
   if (state.myIbPoints !== null) params.set('points', String(state.myIbPoints));
   if (state.hlMaths) params.set('maths', '1');
+  if (state.myMaths !== null) params.set('mymaths', state.myMaths);
+  if (state.exam !== null) params.set('exam', state.exam);
   if (state.maxTuition !== null) params.set('fee', String(state.maxTuition));
   for (const v of state.subjectAreas) params.append('subject', v);
   for (const v of state.countries) params.append('country', v);
@@ -273,6 +292,8 @@ export function paramsToState(query, facets = null) {
     myIbPoints: points.valid ? points.value : null,
     // Only "1": a hand-edited "maths=yes" is ignored, like any other bad value.
     hlMaths: params.get('maths') === '1',
+    myMaths: MATHS_COURSES.includes(params.get('mymaths')) ? params.get('mymaths') : null,
+    exam: Object.hasOwn(EXAM_OPTIONS, params.get('exam')) ? params.get('exam') : null,
     maxTuition: fee.valid ? fee.value : null,
     subjectAreas: known('subject', facets && facets.subjectAreas),
     countries: known('country', facets && facets.countries),
@@ -300,6 +321,9 @@ export const REVERSE_SORTS = {
   points: 'IB points — highest first',
   name: 'University — Z to A',
 };
+
+// The entrance-exam filter's choices; "Any" is null.
+export const EXAM_OPTIONS = { none: 'No exam', skippable: 'None or skippable' };
 
 export const DEADLINE_WINDOWS = {
   any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days',

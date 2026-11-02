@@ -278,6 +278,25 @@ equal('"?" english does not inherit', row('p-unknown').englishRequirement, []);
 equal('a bulleted english requirement splits into parts',
   row('p-bullets').englishRequirement, ['IELTS 6.5', 'or English B HL 6']);
 check('"?" city does not inherit either', row('p-unknown-city').city === '');
+check('the old single living-cost column still reads as one figure',
+  row('p-inherit').livingCostMin === 800 && row('p-inherit').livingCostMax === 800);
+
+section('Living costs are a range with a source');
+const rangeUni = 'university_id,name,city,country,application_system,living_cost_min,living_cost_max,living_cost_source,last_verified,verified_by\n'
+  + 'r,Range U,Town,Testland,direct,900,1200,university\'s estimate,2026-08-14,TT\n'
+  + 's,Single U,Town,Testland,direct,1000,,national estimate,2026-08-14,TT\n'
+  + 'b,Backwards U,Town,Testland,direct,1200,900,,2026-08-14,TT\n'
+  + 'n,No Cost U,Town,Testland,direct,,,,2026-08-14,TT\n';
+const rangeProg = [head, ...['r', 's', 'b', 'n'].map((u) =>
+  `p-${u},${u},,P,BSc,Engineering,English,,HL Maths,,,,,2027-05-01,,https://example.org,2026-08-14,TT`)].join('\n') + '\n';
+const { programmes: ranged, meta: rangedMeta } = await load(rangeUni, rangeProg);
+const rr = (id) => ranged.find((p) => p.id === id);
+check('a range keeps both ends', rr('p-r').livingCostMin === 900 && rr('p-r').livingCostMax === 1200);
+check('the source travels with it', rr('p-r').livingCostSource === 'university\'s estimate');
+check('a single figure is min = max', rr('p-s').livingCostMin === 1000 && rr('p-s').livingCostMax === 1000);
+check('a backwards range is swapped and reported',
+  rr('p-b').livingCostMin === 900 && rr('p-b').livingCostMax === 1200 && rangedMeta.issues.some((i) => /swapped/.test(i)));
+check('blank stays unknown, never zero', rr('p-n').livingCostMin === null && rr('p-n').livingCostMax === null);
 check('"none" means no subjects required', row('p-none').noSubjectsRequired === true);
 check('blank subjects means NOT CHECKED, not none',
   row('p-inherit').noSubjectsRequired === false && row('p-unknown').noSubjectsRequired === false);
@@ -457,6 +476,59 @@ const progNoCol = [
 const { programmes: noCol } = await load(uniS, progNoCol);
 equal('a programmes CSV with no application_system column still inherits',
   noCol[0] && noCol[0].applicationSystem, 'Own portal');
+
+// ------------------------------------------------------------- maths filter
+
+section('ib_maths: accepted courses, "none", unknown, and the filter');
+const progM = [
+  'programme_id,university_id,programme,ib_maths,application_deadline,official_url,last_verified,verified_by',
+  'm-aa,a,AA HL only,AA HL,,https://example.org,2026-08-14,TT',
+  'm-three,a,Three,AA HL · AA SL · AI HL,,https://example.org,2026-08-14,TT',
+  'm-none,a,No maths,none,,https://example.org,2026-08-14,TT',
+  'm-blank,a,Not checked,,,https://example.org,2026-08-14,TT',
+  'm-q,a,Unknown,?,,https://example.org,2026-08-14,TT',
+  'm-bad,a,Typo,AA Higher,,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: mrows, meta: mmeta } = await load(uniA, progM);
+const mOf = (id) => mrows.find((p) => p.id === id).mathsAccepted;
+equal('a list splits on the bullet', mOf('m-three'), ['AA HL', 'AA SL', 'AI HL']);
+equal('"none" accepts every course', mOf('m-none'), ['AA HL', 'AA SL', 'AI HL', 'AI SL']);
+check('blank and "?" are unknown, never "none"', mOf('m-blank') === null && mOf('m-q') === null);
+check('a misspelt course is reported and treated as unknown',
+  mOf('m-bad') === null && mmeta.issues.some((i) => /AA Higher/.test(i)));
+const { applyFilters: upApplyFilters, createFilterState: upCreateFilterState } = await import(new URL('../js/filters.js', import.meta.url));
+const mstate = upCreateFilterState();
+mstate.myMaths = 'AI SL';
+equal('AI SL hides only what states it is not accepted',
+  upApplyFilters(mrows, mstate, new Set()).map((p) => p.id), ['m-none', 'm-blank', 'm-q', 'm-bad']);
+mstate.myMaths = 'AA HL';
+check('AA HL keeps everything here', upApplyFilters(mrows, mstate, new Set()).length === mrows.length);
+
+// ------------------------------------------------------------- exam filter
+
+section('entrance_exam: yes, waivable, no, unknown, and the filter');
+const progE = [
+  'programme_id,university_id,programme,entrance_exam,application_deadline,official_url,last_verified,verified_by',
+  'e-yes,a,Exam,yes,,https://example.org,2026-08-14,TT',
+  'e-waive,a,Waivable,waivable,,https://example.org,2026-08-14,TT',
+  'e-no,a,No exam,no,,https://example.org,2026-08-14,TT',
+  'e-blank,a,Not checked,,,https://example.org,2026-08-14,TT',
+  'e-q,a,Unknown,?,,https://example.org,2026-08-14,TT',
+  'e-bad,a,Typo,maybe,,https://example.org,2026-08-14,TT',
+].join('\n') + '\n';
+const { programmes: erows, meta: emeta } = await load(uniA, progE);
+const eOf = (id) => erows.find((p) => p.id === id).entranceExam;
+check('the three states load as written', eOf('e-yes') === 'yes' && eOf('e-waive') === 'waivable' && eOf('e-no') === 'no');
+check('blank and "?" are unknown, never "no"', eOf('e-blank') === null && eOf('e-q') === null);
+check('an unexpected value is reported and treated as unknown',
+  eOf('e-bad') === null && emeta.issues.some((i) => /"maybe"/.test(i)));
+const estate = upCreateFilterState();
+estate.exam = 'none';
+equal('"No exam" hides exams, waivable or not, and keeps unknowns',
+  upApplyFilters(erows, estate, new Set()).map((p) => p.id), ['e-no', 'e-blank', 'e-q', 'e-bad']);
+estate.exam = 'skippable';
+equal('"None or skippable" hides only compulsory exams',
+  upApplyFilters(erows, estate, new Set()).map((p) => p.id), ['e-waive', 'e-no', 'e-blank', 'e-q', 'e-bad']);
 
 // ---------------------------------------------------------------- bad input
 
@@ -885,6 +957,43 @@ equal('unknown values and invalid numbers are dropped',
   [null, null, [], ['Italy'], [], 'deadline']);
 equal('an empty state gives an empty query string, and the default sort is left out',
   stateToParams(filtersMod.createFilterState()), '');
+// The ported My maths and Entrance exam filters (Jakub's) travel in the address
+// as `mymaths` and `exam`, apart from the HL Maths 4+ tick (`maths=1`). A bad
+// value must come back as "no choice", never as a value that hides rows.
+{
+  const both = paramsToState('maths=1&mymaths=AI SL&exam=skippable');
+  equal('maths=1&mymaths=AI SL&exam=skippable: the tick, the course and the exam choice are three separate settings',
+    [both.hlMaths, both.myMaths, both.exam], [true, 'AI SL', 'skippable']);
+  const written = stateToParams({ ...filtersMod.createFilterState(), hlMaths: true, myMaths: 'AI SL', exam: 'skippable' });
+  equal('they are written as maths=1, mymaths and exam, and read back unchanged',
+    [written, paramsToState(written).hlMaths, paramsToState(written).myMaths, paramsToState(written).exam],
+    ['maths=1&mymaths=AI+SL&exam=skippable', true, 'AI SL', 'skippable']);
+  equal('mymaths alone leaves the tick and the exam unset, and the other way round',
+    [paramsToState('mymaths=AA HL').hlMaths, paramsToState('mymaths=AA HL').exam, paramsToState('exam=none').myMaths, paramsToState('exam=none').exam, paramsToState('exam=none').hlMaths],
+    [false, null, null, 'none', false]);
+  equal('every listed course and exam choice survives the round trip',
+    Object.keys(filtersMod.EXAM_OPTIONS).map((e) => paramsToState(stateToParams({ ...filtersMod.createFilterState(), exam: e })).exam),
+    ['none', 'skippable']);
+  const dataMod = await import(new URL('../js/data.js', import.meta.url));
+  equal('all four maths courses survive the round trip',
+    dataMod.MATHS_COURSES.map((c) => paramsToState(stateToParams({ ...filtersMod.createFilterState(), myMaths: c })).myMaths),
+    ['AA HL', 'AA SL', 'AI HL', 'AI SL']);
+  equal('bad values are rejected to null: a wrong course name, a wrong case, and exam words that are not choices (or are Object.prototype names)',
+    ['mymaths=AA Higher', 'mymaths=aa hl', 'mymaths=', 'exam=maybe', 'exam=yes', 'exam=', 'exam=__proto__', 'exam=hasOwnProperty', 'exam=toString', 'exam=constructor']
+      .map((q) => { const s = paramsToState(q); return q.startsWith('mymaths') ? s.myMaths : s.exam; }),
+    [null, null, null, null, null, null, null, null, null, null]);
+  equal('the unset state writes neither parameter',
+    [stateToParams(filtersMod.createFilterState()).includes('mymaths'), stateToParams(filtersMod.createFilterState()).includes('exam'),
+      stateToParams({ ...filtersMod.createFilterState(), hlMaths: true })],
+    [false, false, 'maths=1']);
+  equal('My maths and Entrance exam each count as one active filter, and the tick is counted apart',
+    [filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), myMaths: 'AA SL' }),
+      filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), exam: 'none' }),
+      filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), myMaths: 'AA SL', exam: 'none' }),
+      filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), myMaths: 'AA SL', exam: 'none', hlMaths: true }),
+      filtersMod.activeFilterCount(filtersMod.createFilterState())],
+    [1, 1, 2, 3, 0]);
+}
 check('app.js writes the URL values into the fields before loading, and keeps the address up to date',
   startBody.indexOf('applyUrlFields(') > 0 && startBody.indexOf('applyUrlFields(') < startBody.indexOf('await loadData(')
     && appSrc.includes('history.replaceState('));
@@ -1076,7 +1185,7 @@ const lintCases = [
 for (const [name, changes, expected] of lintCases) {
   equal(`T05 ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ...changes }] })), expected);
 }
-for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system']) {
+for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths']) {
   equal(`T05 ? is meaningful in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), []);
 }
 equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
@@ -1240,11 +1349,19 @@ check('tcd-columbia-dual-degree has its own admission and an unknown fee',
   columbia ? JSON.stringify([columbia.admission, columbia.tuitionEu]) : 'row missing');
 
 // D05: Groningen UCG says it is "not a numerus fixus programme"; the row said
-// it was, and its note gave a 15 January deadline the page doesn't have.
+// it was. Its note also said the February intake closes 1 January; rug.nl's
+// 2027/28 deadline table says 1 November for a non-Dutch diploma.
+// A 15 January date used to fail this check too, but upstream (e1a0317) added
+// UCG's Early Bird deadline, and UCG's own page has it ("Early Bird Deadline:
+// 15 January 2027", rug.nl/ucg/application/early-bird-deadline, read
+// 2026-11-02). So 15 January is allowed only as the Early Bird date.
 const ucg = liveRow('rug-ucg');
 const ucgText = ucg ? [...ucg.otherRequirements, ...ucg.admission, ucg.deadlineNotes].join(' | ') : '';
-check('rug-ucg is not called numerus fixus, and has no 15 January date',
-  ucg && !/(?<!not (a )?)numerus fixus/i.test(ucgText) && !/15 January/i.test(ucgText), ucgText || 'row missing');
+check('rug-ucg is not called numerus fixus, and its February intake closes 1 November',
+  ucg && !/(?<!not (a )?)numerus fixus/i.test(ucgText) && !/1 January/i.test(ucgText)
+    && /February intake closes 1 November/.test(ucgText)
+    && !/15 January/i.test(ucgText.replaceAll(/Early Bird deadline 15 January/gi, '')),
+  ucgText || 'row missing');
 
 // D09: notes are for students, not maintainer to-dos, and must not promise
 // news by a date that has gone. Real deadlines ("by 15 January 2027") are fine;
@@ -1256,10 +1373,35 @@ check('no note promises news by a date that has passed', lapsed.length === 0,
   lapsed.map((f) => `${f.where} (${f.id}): ${f.message}`).join('\n'));
 
 // R02 on the real data: these three rows have a different admission route from
-// their university and nobody has published it. They must say so on the card.
-const unknownAdmission = ['lei-archaeology', 'lei-luc', 'uu-ucr'].filter((id) => !(liveRow(id) && liveRow(id).admissionUnknown));
-check('lei-archaeology, lei-luc and uu-ucr show an unknown admission route', unknownAdmission.length === 0,
-  unknownAdmission.join(', '));
+// their university. They used to say "?" and had to show "Not published".
+// Upstream (e1a0317) then found and wrote each route, so the check is now that
+// they show their own route and never fall back to the university's.
+const ownAdmission = ['lei-archaeology', 'lei-luc', 'uu-ucr'].filter((id) => {
+  const p = liveRow(id);
+  return !(p && !p.admissionUnknown && p.admission.length > 0);
+});
+check('lei-archaeology, lei-luc and uu-ucr show their own admission route', ownAdmission.length === 0,
+  ownAdmission.join(', '));
+// R02 itself, on whatever rows still say "?": the card must say so.
+const rawProgrammes = csvToObjects(read('data/programmes.csv'), 'Programmes').rows;
+const questionAdmission = rawProgrammes.filter((r) => r.admission.trim() === '?')
+  .filter((r) => !(liveRow(r.programme_id) && liveRow(r.programme_id).admissionUnknown));
+check('every "?" admission row shows an unknown admission route', questionAdmission.length === 0,
+  questionAdmission.map((r) => r.programme_id).join(', '));
+
+// The merge kept entrance_exam=yes on Trinity Dental Science, Trinity
+// Molecular Medicine and Galway Podiatry after the fork had removed their wrong
+// "HPAT admission test" (ACER's HPAT list covers undergraduate Medicine only),
+// and left UCD and UL Medicine blank though both name the HPAT. Jakub's rule
+// for Irish rows (tools/add-entrance-exam-2026-10-27.mjs) is: yes only when a
+// test or audition is named. So every Irish "yes" has to name one.
+const irishUnis = new Set(csvToObjects(read('data/universities.csv'), 'Universities').rows
+  .filter((u) => u.country === 'Ireland').map((u) => u.university_id));
+const unnamedIrishExam = rawProgrammes
+  .filter((r) => irishUnis.has(r.university_id) && r.entrance_exam.trim() === 'yes')
+  .filter((r) => !/HPAT|GAMSAT|test|exam|audition|assessment/i.test(`${r.admission} ${r.other_requirements}`));
+check('every Irish row with entrance_exam=yes names the test, exam or audition', unnamedIrishExam.length === 0,
+  unnamedIrishExam.map((r) => r.programme_id).join(', '));
 
 // D11: "Dentistry" matched no subject pattern and fell through to Liberal Arts.
 check('ucc-dentistry is filed under Medicine & Health',
@@ -1321,8 +1463,11 @@ check('the UvA housing sentence is on the open-entry rows (at least 15)', housin
 const baselineOf = new Map(csvToObjects(read('data/universities.csv'), 'Universities').rows
   .map((u) => [u.name.trim(), (u.baseline_requirement || '').trim()]));
 const lostBaseline = live.filter((p) => p.baselineRequirement !== baselineOf.get(p.university));
-check('every programme carries its university\'s baseline (29 universities have one)',
-  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length === 29,
+// The count guards against a whole column going blank. It was 29 on the fork;
+// upstream filled baselines for the countries it added, so it is 144 since the
+// merge (all 29 fork baselines survived unchanged).
+check('every programme carries its university\'s baseline (144 universities have one)',
+  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length === 144,
   `${lostBaseline.length} rows differ; ${[...baselineOf.values()].filter(Boolean).length} baselines`);
 check('the one "?" city on the real data is flagged', liveRow('cvut-aplikace-informatiky-v-prirodnich-vedac')?.cityUnknown === true);
 
@@ -1505,7 +1650,7 @@ check('no UCD row carries a conversion sentence (UCD\'s figure is its own)', ucd
   ucdConverted.map((p) => p.id).join(', '));
 const CAO_TEST = 'Test, interview, portfolio or audition';
 const shouldBonus = (p) => !p.id.startsWith('ucd-') && cutoffOf(p) > 600 && cutoffOf(p) <= 625
-  && !p.otherRequirements.includes(ie.HPAT) && p.otherRequirements.join(' · ') !== CAO_TEST;
+  && !p.otherRequirements.includes(ie.HPAT) && !p.otherRequirements.includes(CAO_TEST);
 const bonusMismatch = live.filter(isIrish).filter((p) => shouldBonus(p) !== p.deadlineNotes.includes(ie.BONUS_ONLY));
 check('every non-UCD Irish 601-625 cutoff without a test has the bonus sentence, and no other row does',
   bonusMismatch.length === 0, bonusMismatch.map((p) => p.id).join(', '));
@@ -1752,13 +1897,13 @@ check('every non-UCD Irish row with a CAO code has a CAO sentence that parses', 
   unparsed.map((p) => p.id).join(', '));
 const figureWrong = nonUcdCao.filter((p) => caoOf(p)).filter((p) => {
   if (isHpatRow(p)) return p.ibPointsMin !== 35;
-  const test = p.otherRequirements.join(' · ') === CAO_TEST;
+  const test = p.otherRequirements.includes(CAO_TEST);
   return p.ibPointsMin !== pts.ibForCutoff(latestOf(p)?.points ?? null, { test, code: caoOf(p).code }).ib;
 });
 check('every non-UCD Irish ib_points_min is ibForCutoff of its latest round (HPAT rows 35)', figureWrong.length === 0,
   figureWrong.map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
 const bonusWrong = nonUcdCao.filter((p) => caoOf(p) && !isHpatRow(p)).filter((p) => {
-  const test = p.otherRequirements.join(' · ') === CAO_TEST;
+  const test = p.otherRequirements.includes(CAO_TEST);
   return pts.ibForCutoff(latestOf(p)?.points ?? null, { test }).bonusOnly !== p.deadlineNotes.includes(ie.BONUS_ONLY);
 });
 check('BONUS_ONLY is on a row exactly when its latest round is bonus-only', bonusWrong.length === 0,
@@ -2053,7 +2198,7 @@ check('points help is one short visible line that spans the bar, with no tooltip
     && /\.filter-help\{grid-column:1\/-1;flex-basis:100%\}/.test(cssText)
     && cssText.includes('.is-set:not(.f-pts)>label::after{content:" · active";'));
 check('shared uncertainty help (points, fees, deadlines) travels inside the extra filters; fee and deadline name it (S08)',
-  elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Unknown points, fees or deadlines never hide a programme.</p>')
+  elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Unknown values never hide a programme.</p>')
     && /id="f-deadline" aria-describedby="f-unknown-help"/.test(indexHtml));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
 // digit per line, because .req-points did not wrap (A02). Redesign stage 2:
@@ -2321,6 +2466,29 @@ const feeState = { ...noFilters(), maxTuition: 3000 };
 check('the tuition note appears for an unknown fee only while Max fee is set',
   byClass(fxDetail('fx-fee-blank', feeState), 'note').some((n) => n.textContent === tuitionNote)
     && !byClass(fxDetail('fx-fee-blank'), 'note').length && !byClass(fxDetail('fx-plain', feeState), 'note').length);
+// Jakub's My maths and Entrance exam filters keep a row nobody has checked, and
+// the detail says so only while the filter is set and the cell is unknown.
+{
+  const notesOf = (row, state) => byClass(detailOf(row, state), 'note').map((n) => n.textContent);
+  const mathsNote = 'Not filtered by your maths course: its maths requirement is not checked yet.';
+  const examNote = 'Not filtered by the entrance-exam choice: nobody has checked whether it has one.';
+  const plainRow = fxRow('fx-plain');
+  const unknownRow = { ...plainRow, mathsAccepted: null, entranceExam: null };
+  const knownRow = { ...plainRow, mathsAccepted: ['AA HL'], entranceExam: 'no' };
+  const maths = { ...noFilters(), myMaths: 'AA SL' }, exam = { ...noFilters(), exam: 'none' };
+  check('My maths set + maths requirement unknown: the detail says "Not filtered by your maths course"; not for a known row, not when unset, not for the exam',
+    notesOf(unknownRow, maths).includes(mathsNote) && !notesOf(unknownRow, maths).includes(examNote)
+      && !notesOf(knownRow, maths).includes(mathsNote) && !notesOf(unknownRow, noFilters()).includes(mathsNote)
+      && !notesOf(unknownRow, exam).includes(mathsNote), JSON.stringify(notesOf(unknownRow, maths)));
+  check('Entrance exam set + exam unknown: the detail says "Not filtered by the entrance-exam choice"; not for a known row, not when unset, not for My maths',
+    notesOf(unknownRow, exam).includes(examNote) && !notesOf(unknownRow, exam).includes(mathsNote)
+      && !notesOf(knownRow, exam).includes(examNote) && !notesOf(unknownRow, noFilters()).includes(examNote)
+      && !notesOf(unknownRow, maths).includes(examNote), JSON.stringify(notesOf(unknownRow, exam)));
+  const examRowText = (entranceExam) => kvOf(detailOf({ ...plainRow, entranceExam }))['Entrance exam']?.textContent;
+  equal('the Entrance exam row shows its three texts, and "Not checked yet" when nobody has checked',
+    ['yes', 'waivable', 'no', null].map(examRowText),
+    ['Entrance exam or test', 'Entrance exam — some IB applicants can skip it', 'No entrance exam', 'Not checked yet']);
+}
 check('no official link: a strong note, no button, and the row is still rendered',
   (() => {
     const a = fxDetail('fx-nolink');
@@ -2515,17 +2683,17 @@ check('row provenance keeps the detail signature/date/sample chain',
 // change, and every mapped pair (and the neutral one) is contrast-checked.
 {
   const { PAIRS } = await import('./check-contrast.mjs');
-  const mapped = [...cssRules.matchAll(/\.cc\[data-country=(\w+)\]\{background:var\((--[\w-]+)\);color:var\((--[\w-]+)\)\}/g)];
+  const mapped = [...cssRules.matchAll(/\.cc\[data-country="?([\w ]+?)"?\]\{background:var\((--[\w-]+)\);color:var\((--[\w-]+)\)\}/g)];
   const paired = (fg, bg) => PAIRS.some(([f, b, , min]) => f === fg && b === bg && min >= 4.5);
   const r = fxRow('fx-plain');
   const badge = (country) => byClass(rowOf({ ...r, country }), 'cc')[0];
-  check('country badges: the five data countries are mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
-    mapped.map(([, c]) => c).sort().join() === 'Czechia,Denmark,Ireland,Italy,Netherlands'
+  check('country badges: the eleven data countries are mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
+    mapped.map(([, c]) => c).sort().join() === 'Austria,Czechia,Denmark,Finland,Germany,Ireland,Italy,Netherlands,Norway,Sweden,United Kingdom'
       && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
       && /background:var\(--cty-fill\);color:var\(--cty-ink\)/.test(ruleBody('.cc'))
       && badge('Portugal')?.textContent === 'Portugal' && badge('Portugal').getAttribute('data-country') === 'Portugal'
       && !mapped.some(([, c]) => c === 'Portugal') && badge('Denmark')?.getAttribute('data-country') === 'Denmark'
-      && new Set(live.map((row) => row.country)).size === 5 && [...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
+      && new Set(live.map((row) => row.country)).size === 11 &&[...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
 }
 check('requirements run across the row: the line is a direct child of .row after the three cells, never inside the title block',
   [...live.slice(0, 40), fxRow('fx-checked')].every((row) => {
@@ -3118,8 +3286,8 @@ check('every button in the filter form and the sheet is type="button" (no implic
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
 }));
-check('the sprite has the Phosphor funnel and five flags filled only from the canonical flag tokens',
-  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && ['f-cz', 'f-dk', 'f-ie', 'f-it', 'f-nl'].every((id) => {
+check('the sprite has the Phosphor funnel and a flag for each of the 11 data countries, filled only from the canonical flag tokens',
+  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && ['f-at', 'f-cz', 'f-de', 'f-dk', 'f-fi', 'f-gb', 'f-ie', 'f-it', 'f-nl', 'f-no', 'f-se'].every((id) => {
     const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
     return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
   }));
@@ -3975,6 +4143,63 @@ appCheck('chips count values, sheet counts groups, removal preserves controls/UR
   while (box.children.length) fire(box.children[0],'click');
   return stubDocument.activeElement === get('f-search') && run('activeFilterCount(state)') === 0 && run('state.sort + state.dir') === 'namedesc';
 });
+// Jakub's My maths (#f-mymaths) and Entrance exam (#f-exam) selects, driven through the real handlers.
+appCheck('actual My maths / Entrance exam selects: choosing updates state and address, chips read "My maths: AA SL" and "Entrance exam: No exam", Filters (n) and Clear all count them, the HL Maths tick stays separate', ({ run, get, fire, context }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  const maths = get('f-mymaths'), exam = get('f-exam'), box = get('applied-filters'), more = get('f-more'), clear = get('f-clear');
+  const chip = (key) => box.children.find((c) => c.getAttribute('data-chip') === key);
+  maths.value = 'AA SL'; fire(maths, 'change');
+  if (run('state.myMaths') !== 'AA SL' || run('state.exam') !== null || run('state.hlMaths') !== false) return false;
+  if (urls.at(-1) !== '/?mymaths=AA+SL' || chip('myMaths')?.getAttribute('data-label') !== 'My maths: AA SL' || chip('exam')) return false;
+  exam.value = 'none'; fire(exam, 'change');
+  if (run('state.exam') !== 'none' || run('state.myMaths') !== 'AA SL') return false;
+  if (urls.at(-1) !== '/?mymaths=AA+SL&exam=none' || chip('exam')?.getAttribute('data-label') !== 'Entrance exam: No exam') return false;
+  if (!maths.closest('.fld')?.classList.contains('is-set') || !exam.closest('.fld')?.classList.contains('is-set')) return false;
+  if (more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (2)') return false;
+  // The tick is a different filter: it adds a Clear all count and a chip, but nothing to the sheet's count.
+  get('f-maths').checked = true; fire(get('f-maths'), 'change');
+  if (run('state.hlMaths') !== true || run('state.myMaths') !== 'AA SL' || !chip('hlMaths') || !urls.at(-1).includes('maths=1&mymaths=AA+SL&exam=none')
+    || more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (3)') return false;
+  exam.value = 'skippable'; fire(exam, 'change');
+  return chip('exam')?.getAttribute('data-label') === 'Entrance exam: None or skippable' && urls.at(-1).includes('exam=skippable');
+});
+appCheck('actual My maths / Entrance exam chips: removing one resets its select to "" and state to null and leaves the other; Clear all resets both', ({ run, get, fire, context }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  const maths = get('f-mymaths'), exam = get('f-exam'), box = get('applied-filters'), clear = get('f-clear');
+  const chip = (key) => box.children.find((c) => c.getAttribute('data-chip') === key);
+  maths.value = 'AI HL'; fire(maths, 'change'); exam.value = 'skippable'; fire(exam, 'change');
+  fire(chip('myMaths'), 'click');
+  if (maths.value !== '' || run('state.myMaths') !== null || exam.value !== 'skippable' || run('state.exam') !== 'skippable'
+    || chip('myMaths') || !chip('exam') || urls.at(-1) !== '/?exam=skippable') return false;
+  maths.value = 'AI HL'; fire(maths, 'change');
+  fire(chip('exam'), 'click');
+  if (exam.value !== '' || run('state.exam') !== null || maths.value !== 'AI HL' || run('state.myMaths') !== 'AI HL'
+    || chip('exam') || !chip('myMaths') || urls.at(-1) !== '/?mymaths=AI+HL') return false;
+  exam.value = 'none'; fire(exam, 'change');
+  if (run('activeFilterCount(state)') !== 2) return false;
+  fire(clear, 'click');
+  return maths.value === '' && exam.value === '' && run('state.myMaths') === null && run('state.exam') === null
+    && run('activeFilterCount(state)') === 0 && !chip('myMaths') && !chip('exam') && run('stateToParams(state)') === '';
+});
+appCheck('actual empty state names "your maths course" and "the entrance-exam choice" only while they are set', ({ run, get }) => {
+  const hint = () => { run('renderEmptyState(0);'); return get('empty-hint').textContent; };
+  run("state.myMaths = 'AA SL';"); if (hint() !== 'Try changing your maths course.') return false;
+  run("state.exam = 'none';"); if (hint() !== 'Try changing your maths course or the entrance-exam choice.') return false;
+  run('state.myMaths = null;'); return hint() === 'Try changing the entrance-exam choice.';
+});
+await asyncAppCheck('real start: a URL with mymaths and exam restores both selects and the state on load, and bad values restore neither', async ({ run, get, context, settle }) => {
+  context.location.search = '?mymaths=AI+SL&exam=skippable';
+  run('applyUrlFields();');
+  if (get('f-mymaths').value !== 'AI SL' || get('f-exam').value !== 'skippable') return false;
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  if (run('loaded') !== true || run('state.myMaths') !== 'AI SL' || run('state.exam') !== 'skippable'
+    || get('f-mymaths').value !== 'AI SL' || get('f-exam').value !== 'skippable') return false;
+  if (!get('applied-filters').children.some((c) => c.getAttribute('data-label') === 'My maths: AI SL')
+    || !get('applied-filters').children.some((c) => c.getAttribute('data-label') === 'Entrance exam: None or skippable')) return false;
+  context.location.search = '?mymaths=AA+Higher&exam=maybe';
+  run('applyUrlFields();');
+  return get('f-mymaths').value === '' && get('f-exam').value === '';
+}, { boot: true });
 appCheck('all new controls keep identity across 599/600 focus moves; sheet chip removal falls back to heading', ({run,get,fire,flip600}) => {
   const deadline = get('f-deadline'), degrees = get('f-degrees'), cities = get('f-cities');
   fire(get('f-more'),'click'); deadline.focus(); fire(deadline,'focusin'); flip600(true);
@@ -3984,8 +4209,20 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
   const box = get('applied-filters'); fire(box.children[0],'click');
   return stubDocument.activeElement === get('sheet-h') && get('filter-sheet').open;
 });
-check('new controls retain the existing Language end-menu alignment within two wrapping groups',
-  /<div class="more-filters" role="group" aria-label="Deadline, degree type and city">/.test(indexHtml));
+// Two groups, as before: the outer .more-filters (fee, Subject, Country, Language) and the
+// inner named group that now also holds Jakub's My maths and Entrance exam selects. Only the
+// pick-lists are <details>, so Language stays the outer group's last <details> and City the inner
+// group's, and the `.dropdown:last-of-type` rule keeps opening each group's end menu leftwards.
+{
+  const inner = indexHtml.match(/<div class="more-filters" role="group" aria-label="Deadline, maths, entrance exam, degree type and city">([\s\S]*?)<div id="applied-filters"/)?.[1] ?? '';
+  const order = [...inner.matchAll(/id="(f-deadline|f-mymaths|f-exam|dd-degrees|dd-cities)"/g)].map((m) => m[1]).join();
+  const outer = indexHtml.slice(indexHtml.indexOf('<div class="more-filters">'), indexHtml.indexOf('<div class="more-filters" role="group"'));
+  const outerLists = [...outer.matchAll(/<details class="dropdown" id="([\w-]+)"/g)].map((m) => m[1]).join();
+  check('new controls retain the existing Language end-menu alignment within two wrapping groups',
+    order === 'f-deadline,f-mymaths,f-exam,dd-degrees,dd-cities' && outerLists === 'dd-subjects,dd-countries,dd-languages'
+      && (indexHtml.match(/<div class="more-filters"/g) ?? []).length === 2
+      && /\.dropdown:last-of-type \.dropdown-panel,#dd-countries \.dropdown-panel\{left:auto;right:0\}/.test(cssRules));
+}
 appCheck('dormant shortlist export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
   run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
   const expected = context.fixture.slice().sort((a,b) => b.university.localeCompare(a.university) || b.programme.localeCompare(a.programme)).map((r) => r.id).join(',');
