@@ -6,7 +6,9 @@
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -211,6 +213,9 @@ async function load(universities, programmes, today = new Date('2026-08-14'),
   const { loadData } = await import(new URL(`../js/data.js?t=${Math.random()}`, import.meta.url));
   return timeoutMs === undefined ? loadData(today) : loadData(today, { timeoutMs });
 }
+
+const sheetsModule = await import(new URL('../js/data.js', import.meta.url));
+check('readSheets exposes the same validation as the browser loader', typeof sheetsModule.readSheets === 'function');
 
 // ---------------------------------------------------------------- CSV parsing
 
@@ -992,6 +997,158 @@ check('the CSS header no longer mentions a dark palette or a 1080px rail',
 check('index.html declares an icon, so no favicon request 404s', /<link rel="icon" href="data:,">/.test(indexHtml));
 check('the unused fromCutoff converter is gone', !read('tools/lib/ireland.mjs').includes('fromCutoff'));
 
+// ---------------------------------------------------------------- maintainer lint
+
+section('Data lint (T05) and id stability (M02)');
+const { lintData, compareIds, formatReport } = await import(new URL('./lint-data.mjs', import.meta.url));
+const lintToday = new Date(2026, 10, 2, 15);
+const lintUniHeader = parseCsv(read('data/universities.csv'))[0];
+const lintProgHeader = parseCsv(read('data/programmes.csv'))[0];
+const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT' };
+const lintProg = { programme_id: 'test-maths', university_id: 'test', programme: 'Mathematics', official_url: 'https://test.nl/maths', verified_by: 'AI-DRAFT' };
+const lintCsv = (header, rows) => [header, ...rows.map((row) => header.map((key) => row[key] ?? ''))]
+  .map((row) => row.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(',')).join('\n');
+const lintSheets = (programmes = [lintProg], universities = [lintUni]) => ({
+  programmes: lintCsv(lintProgHeader, programmes), universities: lintCsv(lintUniHeader, universities),
+});
+const lintFixture = ({ programmes, universities, progHeader = lintProgHeader, uniHeader = lintUniHeader } = {}) =>
+  lintData({ programmesCsv: lintCsv(progHeader, programmes || [lintProg]),
+    universitiesCsv: lintCsv(uniHeader, universities || [lintUni]), today: lintToday });
+const lintRules = (findings) => findings.map((f) => `${f.severity}:${f.rule}`).sort();
+const lintCases = [
+  ['clean fixture', {}, []],
+  ['TODO marker', { deadline_notes: 'TODO check this' }, ['error:marker']],
+  ['question marker', { deadline_notes: 'Date ??' }, ['error:marker']],
+  ['lapsed promise', { deadline_notes: 'We will publish dates by 1 November 2026.' }, ['error:promise']],
+  ['today promise', { deadline_notes: 'We will confirm dates by 2 November 2026.' }, []],
+  ['future promise', { deadline_notes: 'We will announce dates by 3 November 2026.' }, []],
+  ['ordinary deadline text', { deadline_notes: 'Apply by 1 November 2026.' }, []],
+  ['unknown subjects', { ib_subjects: ' ? ' }, ['error:unknown-misuse']],
+  ['embedded question is prose', { deadline_notes: 'Check whether an interview is needed?' }, []],
+  ['None is not none', { ib_subjects: 'None' }, ['error:none-spelling']],
+  ['N/A is not none', { ib_subjects: 'n/a' }, ['error:none-spelling']],
+  ['dash is not none', { ib_subjects: '-' }, ['error:none-spelling']],
+  ['no requirements is not none', { ib_subjects: 'No requirements' }, ['error:none-spelling']],
+  ['explicit none', { ib_subjects: 'none' }, []],
+  ['bad signature', { verified_by: 'ai-draft', last_verified: '2026-11-01' }, ['error:signer']],
+  ['human initials', { verified_by: 'JK', last_verified: '2026-11-01' }, []],
+  ['accented human initials', { verified_by: 'ĽŠ', last_verified: '2026-11-01' }, []],
+  ['sample is not a bad signature', { verified_by: 'SAMPLE' }, ['error:sample']],
+  ['comparison page', { official_url: 'https://www.bachelorsportal.com/course' }, ['error:comparison-site']],
+  ['not a comparison hostname', { official_url: 'https://bachelorsportal.com.example/course' }, []],
+  ['broken encoding', { programme: 'MathÃ©matics' }, ['error:encoding']],
+  ['future verification', { last_verified: '2026-11-03' }, ['error:future-verified']],
+  ['today verification', { last_verified: '2026-11-02' }, []],
+  ['past deadline', { application_deadline: '2026-11-01' }, ['warning:past-deadline']],
+  ['today deadline', { application_deadline: '2026-11-02' }, []],
+  ['far deadline', { application_deadline: '2207-01-01' }, ['warning:far-deadline']],
+  ['18 month deadline', { application_deadline: '2028-05-02' }, []],
+  ['over 18 months', { application_deadline: '2028-05-03' }, ['warning:far-deadline']],
+  ['http link', { official_url: 'http://test.nl/maths' }, ['warning:http']],
+  ['unknown text', { admission: 'not published' }, ['warning:unknown-text']],
+  ['mixed question text', { admission: '? not published' }, ['warning:unknown-text']],
+  ['bad bullet', { other_requirements: 'A·B' }, ['warning:bullet']],
+  ['spaced bullet', { other_requirements: 'A · B' }, []],
+  ['unknown subject uses loader only', { subject_area: 'Enginering' }, ['error:site']],
+  ['subject alias', { subject_area: 'Finance' }, []],
+];
+for (const [name, changes, expected] of lintCases) {
+  equal(`T05 ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ...changes }] })), expected);
+}
+for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system']) {
+  equal(`T05 ? is meaningful in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), []);
+}
+equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
+equal('T05 duplicate header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'city'] })), ['error:header-dup']);
+equal('T05 unknown header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'offical_url'] })), ['warning:header-extra']);
+equal('T05 missing optional header', lintRules(lintFixture({ progHeader: lintProgHeader.filter((c) => c !== 'admission') })), ['warning:header-missing']);
+equal('T05 missing required header uses loader only', lintRules(lintFixture({ progHeader: lintProgHeader.filter((c) => c !== 'official_url') })), ['error:site']);
+equal('T05 duplicated id uses loader', lintRules(lintFixture({ programmes: [lintProg, lintProg] })), ['error:site', 'warning:dup-row']);
+equal('T05 duplicated programme under distinct ids', lintRules(lintFixture({ programmes: [lintProg, { ...lintProg, programme_id: 'test-copy' }] })), ['warning:dup-row']);
+equal('T05 Czech points', lintRules(lintFixture({ programmes: [{ ...lintProg, ib_points_min: '28' }], universities: [{ ...lintUni, country: 'Czechia' }] })), ['warning:czech-points']);
+const domainRows = ['a', 'b', 'c', 'd'].map((id, i) => ({ ...lintProg, programme_id: `test-${id}`, programme: id, official_url: `https://${i === 3 ? 'other.example' : 'test.nl'}/${id}` }));
+equal('T05 minority domain', lintRules(lintFixture({ programmes: domainRows })), ['warning:off-domain']);
+for (const [id, usual, extra] of [['vut', 'vut.cz', 'vutbr.cz'], ['eur', 'eur.nl', 'rsm.nl']]) {
+  equal(`T05 ${id} allowed extra domain`, lintRules(lintFixture({
+    universities: [{ ...lintUni, university_id: id }], programmes: domainRows.map((row, i) => ({ ...row, university_id: id,
+      official_url: `https://${i === 3 ? extra : usual}/${i}` })),
+  })), []);
+}
+const badCell = lintFixture({ programmes: [{ ...lintProg, deadline_notes: 'TODO' }] })[0];
+check('T05 findings identify sheet row, id and column', badCell.where === 'Programmes row 2' && badCell.id === 'test-maths' && badCell.message.includes('deadline_notes'));
+let emptySheetsRejected = false;
+try { sheetsModule.readSheets(lintSheets().universities, lintCsv(lintProgHeader, []), lintToday); }
+catch (err) { emptySheetsRejected = /no data rows/.test(err.message); }
+check('T05 readSheets preserves the explicit empty-programme guard', emptySheetsRejected);
+const parsedIssues = sheetsModule.readSheets(lintSheets().universities,
+  lintSheets().programmes + '\nwrong,width\n' + lintCsv(lintProgHeader, [{ ...lintProg, programme_id: 'test-bad', ib_points_min: 'oops' }]).split('\n')[1], lintToday).issues;
+check('T05 readSheets combines CSV and build issues', parsedIssues.length === 2 && parsedIssues.some((s) => s.includes('columns')) && parsedIssues.some((s) => s.includes('not a number')));
+
+const idA = { ...lintProg, programme_id: 'test-maths', official_url: 'https://test.nl/a' };
+const idB = { ...lintProg, programme_id: 'test-maths-2', official_url: 'https://test.nl/b' };
+const idBase = lintSheets([idA, idB]);
+const idCompare = (rows, base = idBase, universities) => compareIds({ base, work: lintSheets(rows, universities) });
+equal('M02 unchanged ids', idCompare([idA, idB]), []);
+equal('M02 same title with different URLs is fine', lintRules(lintFixture({ programmes: [idA, idB] })), []);
+equal('M02 URL-only update', idCompare([{ ...idA, official_url: 'https://test.nl/new' }, idB]), []);
+const swappedIds = idCompare([{ ...idA, official_url: idB.official_url }, { ...idB, official_url: idA.official_url }]);
+equal('M02 reciprocal URL swap is two errors', lintRules(swappedIds), ['error:id-swap', 'error:id-swap']);
+check('M02 swap names the other id', swappedIds.every((f) => f.message.includes(f.id === idA.programme_id ? idB.programme_id : idA.programme_id)));
+equal('M02 one-sided collision warns once', lintRules(idCompare([{ ...idA, official_url: idB.official_url }, idB])), ['warning:id-collision']);
+equal('M02 renamed id warns only once', lintRules(idCompare([{ ...idA, programme_id: 'test-renamed' }, idB])), ['warning:id-renamed']);
+equal('M02 deleted id', lintRules(idCompare([idA])), ['warning:id-gone']);
+equal('M02 title spelling fix', lintRules(idCompare([{ ...idA, programme: 'Mathematic' }, idB])), ['warning:id-retitled']);
+equal('M02 moved university', lintRules(idCompare([{ ...idA, university_id: 'other' }, idB])), ['warning:id-moved']);
+equal('M02 new bad id', lintRules(idCompare([idA, idB, { ...idA, programme_id: 'WRONG id', programme: 'New' } ])), ['warning:new-id-format']);
+equal('M02 new wrong prefix', lintRules(idCompare([idA, idB, { ...idA, programme_id: 'other-new', programme: 'New' } ])), ['warning:new-id-format']);
+equal('M02 historical odd ids stay unchanged', compareIds({ base: lintSheets([{ ...idA, programme_id: 'Old ID' }]), work: lintSheets([{ ...idA, programme_id: 'Old ID' }]) }), []);
+equal('M02 null base does not invent new ids', idCompare([idA, idB], { programmes: null, universities: null }), []);
+equal('M02 missing university', lintRules(idCompare([idA, idB], idBase, [])), ['warning:uni-gone']);
+equal('M02 renamed university', lintRules(idCompare([idA, idB], idBase, [{ ...lintUni, university_id: 'renamed' }])), ['warning:uni-renamed']);
+
+for (const column of ['programme', 'programme_id', 'university_id', 'official_url']) {
+  let malformedComparison;
+  try {
+    malformedComparison = compareIds({ base: idBase, work: { ...idBase,
+      programmes: lintCsv(lintProgHeader.filter((c) => c !== column), [idA, idB]) } });
+  } catch { malformedComparison = 'crashed'; }
+  equal(`M02 missing ${column} leaves the loader to report the bad header`, malformedComparison, []);
+}
+equal('M02 fully missing base', idCompare([idA, idB], null), []);
+for (const marker of ['CONFIRM', 'TBD', 'FIXME', 'XXX']) {
+  equal(`T05 ${marker} marker`, lintRules(lintFixture({ programmes: [{ ...lintProg, deadline_notes: marker }] })), ['error:marker']);
+}
+for (const damaged of ['â€', 'Â']) {
+  equal(`T05 encoding ${damaged}`, lintRules(lintFixture({ universities: [{ ...lintUni, name: damaged }] })), ['error:encoding']);
+}
+equal('T05 past deadline becomes current the day before', lintRules(lintData({ programmesCsv: lintCsv(lintProgHeader, [{ ...lintProg, application_deadline: '2026-11-01' }]),
+  universitiesCsv: lintSheets().universities, today: new Date(2026, 9, 31) })), []);
+
+const reportRows = Array.from({ length: 12 }, (_, i) => ({ ...badCell, id: `test-${i}` }));
+const cappedReport = formatReport(reportRows, ['Id comparison skipped: test.']);
+check('T05 report groups, caps and counts errors', cappedReport.includes('marker (12)') && cappedReport.includes('2 more (add --all)') && cappedReport.endsWith('Result: 12 errors, 0 warnings. Fix the errors first.'));
+check('T05 --all report shows every finding', !formatReport(reportRows, [], { all: true }).includes('more (add --all)'));
+const lintScript = join(root, 'tools/lint-data.mjs');
+const runLint = (args, options = {}) => spawnSync(process.execPath, [lintScript, ...args], { encoding: 'utf8', cwd: tmpdir(), ...options });
+const cliGood = runLint(['--no-git', '--today', '2026-11-02']);
+check('T05 CLI works away from root without git', cliGood.status === 0 && cliGood.stdout.trimEnd().endsWith('OK to commit.') && !cliGood.stderr, cliGood.stderr || cliGood.stdout);
+for (const args of [['--bogus'], ['--against'], ['--today'], ['--against', '--all'], ['--today', '--all'], ['--today', '2026-02-31'], ['--today', '2026-13-01'], ['--today', 'tomorrow'], ['--today', '2026-2-1']]) {
+  const result = runLint(args);
+  check(`T05 CLI rejects ${args.join(' ')}`, result.status === 2 && /^Usage: [^\n]+\n$/.test(result.stdout) && !result.stderr, result.stdout + result.stderr);
+}
+const noGitDir = mkdtempSync(join(tmpdir(), 'ib-lint-no-git-'));
+try {
+  const result = runLint([], { env: { ...process.env, GIT_DIR: noGitDir } });
+  check('T05 unavailable git is one note, not a failure', result.status === 0 && (result.stdout.match(/Id comparison skipped/g) || []).length === 1 && !result.stderr, result.stdout + result.stderr);
+} finally { rmSync(noGitDir, { recursive: true }); }
+const importOnly = spawnSync(process.execPath, ['--input-type=module', '-e', `import ${JSON.stringify(new URL('./lint-data.mjs', import.meta.url).href)}`], { encoding: 'utf8', cwd: tmpdir() });
+check('T05 importing the lint runs nothing', importOnly.status === 0 && !importOnly.stdout && !importOnly.stderr);
+const lintImports = [...read('tools/lint-data.mjs').matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+check('T05 lint uses only Node built-ins and browser helpers', lintImports.length > 0 && lintImports.every((path) => path.startsWith('node:') || path.startsWith('../js/')));
+const realLint = lintData({ universitiesCsv: read('data/universities.csv'), programmesCsv: read('data/programmes.csv'), today: new Date() });
+check('T05 real data has zero lint errors', !realLint.some((f) => f.severity === 'error'), formatReport(realLint));
+console.log(`  ${realLint.filter((f) => f.severity === 'warning').length} lint warnings (node tools/lint-data.mjs shows them)`);
+
 // ---------------------------------------------------------------- the real data
 
 section('The real dataset');
@@ -1057,19 +1214,11 @@ check('rug-ucg is not called numerus fixus, and has no 15 January date',
 // D09: notes are for students, not maintainer to-dos, and must not promise
 // news by a date that has gone. Real deadlines ("by 15 January 2027") are fine;
 // only "will confirm / announce / publish ... by <date>" is a promise.
-const confirm = live.filter((p) => /CONFIRM/.test(p.deadlineNotes));
-check('no note contains a CONFIRM to-do', confirm.length === 0, confirm.map((p) => p.id).join(', '));
-const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
-  'september', 'october', 'november', 'december'];
-const runDate = new Date();
-const lapsed = live.filter((p) => [...p.deadlineNotes.matchAll(
-  /\bwill (?:confirm|announce|publish)\b[^.]*?\bby (\d{1,2}) ([A-Za-z]+) (\d{4})/gi,
-)].some(([, d, m, y]) => {
-  const month = MONTHS.indexOf(m.toLowerCase());
-  return month >= 0 && new Date(Date.UTC(+y, month, +d)) < runDate;
-}));
+const confirm = realLint.filter((f) => f.rule === 'marker');
+check('no cell contains a maintainer to-do', confirm.length === 0, confirm.map((f) => f.id).join(', '));
+const lapsed = realLint.filter((f) => f.rule === 'promise');
 check('no note promises news by a date that has passed', lapsed.length === 0,
-  `a note promises news by a date that has passed — re-read the page: ${lapsed.map((p) => p.id).join(', ')}`);
+  lapsed.map((f) => `${f.where} (${f.id}): ${f.message}`).join('\n'));
 
 // R02 on the real data: these three rows have a different admission route from
 // their university and nobody has published it. They must say so on the card.
@@ -1114,6 +1263,8 @@ check('lei-polsci is dropped and lei-iro stays numerus fixus',
 // Take them off this list the day their pages show the 2027 dates.
 const UVA_NOT_YET_CONFIRMED = new Set(['uva-anthro', 'uva-comm']);
 const uvaRows = live.filter((p) => p.id.startsWith('uva-') && !UVA_NOT_YET_CONFIRMED.has(p.id));
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december'];
 const housingDate = (p) => {
   const m = p.deadlineNotes.match(/Want UvA housing\? Apply by (\d{1,2}) ([A-Za-z]+) (\d{4}) instead\./);
   const month = m ? MONTHS.indexOf(m[2].toLowerCase()) : -1;

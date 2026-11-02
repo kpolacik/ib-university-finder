@@ -31,16 +31,7 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
         fetchText(source.urls.universities, timeoutMs),
         fetchText(source.urls.programmes, timeoutMs),
       ]);
-      const uni = csvToObjects(uniText, 'Universities');
-      const prog = csvToObjects(progText, 'Programmes');
-      // A file that read without error can still be useless: empty, only a
-      // header, a login page served as HTML, or a renamed column. Each of those
-      // used to load as an empty or blank site (L01, L05). Throwing here sends
-      // the loader to the saved copy, and the reason lands in the issues.
-      requireColumns(uni, 'Universities', REQUIRED_UNIVERSITY_COLUMNS);
-      requireColumns(prog, 'Programmes', REQUIRED_PROGRAMME_COLUMNS);
-      if (prog.rows.length === 0) throw new Error('the Programmes file has no data rows');
-      const built = build(uni.rows, prog.rows, today);
+      const built = readSheets(uniText, progText, today);
       return {
         programmes: built.programmes,
         meta: {
@@ -49,7 +40,7 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
           draftCount: built.draftCount,
           total: built.programmes.length,
           snapshotDate: null,
-          issues: [...uni.issues, ...prog.issues, ...built.issues],
+          issues: built.issues,
         },
       };
     } catch (err) {
@@ -101,6 +92,18 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
       issues: [...built.issues, ...reasons],
     },
   };
+}
+
+// The maintainer lint must use the same checks as the page, including parse
+// problems and empty files that should send the browser to its saved copy.
+export function readSheets(uniText, progText, today = new Date()) {
+  const uni = csvToObjects(uniText, 'Universities');
+  const prog = csvToObjects(progText, 'Programmes');
+  requireColumns(uni, 'Universities', REQUIRED_UNIVERSITY_COLUMNS);
+  requireColumns(prog, 'Programmes', REQUIRED_PROGRAMME_COLUMNS);
+  if (prog.rows.length === 0) throw new Error('the Programmes file has no data rows');
+  const built = build(uni.rows, prog.rows, today);
+  return { ...built, issues: [...uni.issues, ...prog.issues, ...built.issues] };
 }
 
 // The columns whose loss blanks the whole site or its trust signal. Every other

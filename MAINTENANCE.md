@@ -13,6 +13,14 @@ the person who last checked it.** Somebody may plan their application around a
 deadline on this page. That is the whole reason for the `last_verified` and
 `official_url` columns, and why the site refuses to show a card without them.
 
+> **Before you commit**
+>
+> Run `node tools/check.mjs` and `node tools/lint-data.mjs`. Fix every error;
+> read each warning and leave it only if the data is right. Add `--all` to see
+> every row, or `--against ORIG_HEAD` after a merge to compare with the fork's
+> previous ids. The lint only reads files. For the browser smoke test, see
+> [Rebuilding the offline copy](#rebuilding-the-offline-copy) below.
+
 ---
 
 ## The Sheet
