@@ -709,6 +709,7 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 ```bash
 node tools/serve.mjs            # then open http://localhost:8765
 node tools/check.mjs            # must end "All checks passed"
+node tools/smoke.mjs            # real Chrome, phone + desktop; must end "Smoke test passed"
 node tools/check-contrast.mjs   # every text colour vs its real background
 node tools/make-snapshot.mjs    # rebuild data/fallback.json after data changes
 ```
@@ -726,6 +727,10 @@ sensible headers. It listens on this computer only (127.0.0.1) and refuses
 hidden paths such as `.git/`: the first version listened on every network
 interface, so anyone on the same Wi-Fi could download the repository (X02). To
 try the site on a phone, use the live site or a deliberate tunnel, not this.
+
+`smoke.mjs` opens the real page in an invisible Chrome with a temporary profile
+(never yours), clicks through it at phone and desktop widths, then deletes the
+profile; without Chrome it prints SKIP and changes nothing (L08).
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette

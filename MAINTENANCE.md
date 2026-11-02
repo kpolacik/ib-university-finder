@@ -340,6 +340,10 @@ node tools/check.mjs
 It should end with "All checks passed". If it does not, whatever it names is
 worth fixing before the next application season.
 
+If Google Chrome is installed, also run `node tools/smoke.mjs`. It opens the
+real page invisibly, clicks through it the way a student would, and should end
+with "Smoke test passed". Without Chrome it just says SKIP.
+
 ---
 
 ## When something looks wrong
