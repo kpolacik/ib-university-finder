@@ -37,7 +37,8 @@ node tools/make-snapshot.mjs    # REWRITES data/fallback.json from the CSVs
 - `make-snapshot.mjs` ignores every argument, so `--help` will also rewrite
   `fallback.json`. Run it on purpose after a data change and commit the
   result with it, so the snapshot matches the CSVs.
-- Testing happens only on this machine. This fork has no Pages site.
+- Testing happens on this machine. Jakub's `main` is the live GitHub Pages
+  site, so nothing reaches students until a PR is merged into `main`.
 
 ## Data rules you must not break
 
@@ -104,10 +105,11 @@ The column rules are in MAINTENANCE.md and the parsing is in `js/data.js`.
   corrected Bocconi fees (registry D12).
 - ČVUT importer needs `node --use-system-ca`.
 - **Every bug fix gets a regression check in `tools/check.mjs`.**
-- Jakub commits to upstream often, mostly to `data/programmes.csv`. Sync
-  before any large data edit to avoid conflicts. There is no upstream remote:
-  use `git fetch https://github.com/kpolacik/ib-university-finder main`, then
-  merge `FETCH_HEAD`.
+- Work lives in Jakub's repo (`origin` = `kpolacik/ib-university-finder`,
+  since 2026-11-03; Leon's fork is retired). Local branches are staging,
+  branches pushed to `origin` carry PRs for Jakub, and `main` is live.
+  Jakub commits to `main` often, mostly to `data/programmes.csv`: run
+  `git fetch origin` and merge `origin/main` before any large data edit.
 
 ## Plans and the issue registry
 
@@ -137,9 +139,9 @@ build spec is `plans/design-round1/design-spec.md`.
 ## Workflow profile
 
 Default exposure: Local
-Local scope: editing files, running checks, the local server, and commits on local branches in this checkout (`Leonsalner/ib-university-finder` fork).
-Shared boundaries: pushing branches to the fork `origin` (`Leonsalner/ib-university-finder`). Students can't see it, and you can recover by deleting the branch or force-pushing a feature branch. Never rewrite fork `main`.
-Consequential boundaries: opening or updating PRs or issues on `kpolacik/ib-university-finder` (fixes go upstream later in one large batch PR, only with the user's explicit approval); anything that changes the live GitHub Pages site (upstream `main`); messaging Jakub (maintainer); rewriting fork history on `main`.
+Local scope: editing files, running checks, the local server, and commits on local branches in this checkout (staging).
+Shared boundaries: pushing non-`main` branches to `origin` (`kpolacik/ib-university-finder`) and opening or updating draft PRs there (Leon, 2026-11-03: "local = staging, pr = for jakub, main = live"). Jakub can see them; students can't. Recover by pushing a fix or closing the PR. Never force-push a branch someone else has pushed to.
+Consequential boundaries: merging into or pushing to `main` (the live GitHub Pages site); marking a PR ready or merging it; issues or comments addressed to Jakub outside a PR description; rewriting history on `main`; deleting a repository.
 
 ## Style
 
