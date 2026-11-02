@@ -52,6 +52,8 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
+**Same-name programmes (D14).** Charles entries show the faculty in Applying and search; same-name rows also name it on the sub-line. Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Unique-title rows keep their existing layout.
+
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
 application, CAO points, or a Czech entrance exam. Irish rows inherit

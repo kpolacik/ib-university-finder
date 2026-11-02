@@ -257,6 +257,7 @@ function build(universityRows, programmeRows, today) {
       subjectAreas: list(row.subject_area),
       languages: list(row.language),
 
+      universityId: uni.id,
       university: uni.name,
       // Satellite campuses: University College Roosevelt is in Middelburg, not
       // Utrecht. Blank means "the university's home city".
@@ -359,6 +360,7 @@ function build(universityRows, programmeRows, today) {
     });
   }
 
+  addProgrammeIdentity(programmes);
   applyToday(programmes, today);
 
   if (programmes.length === 0 && programmeRows.length > 0) {
@@ -373,6 +375,88 @@ function build(universityRows, programmeRows, today) {
   const draftCount = programmes.filter((p) => !p.isChecked && !p.isSample).length;
 
   return { programmes, issues, sampleCount, draftCount };
+}
+
+// SIS codes identify faculties independently of CSV order and programme ids.
+// Names: https://is.cuni.cz/studium/eng/prijimacky/index.php?do=info_fakulta
+// Czech aliases: https://is.cuni.cz/studium/prijimacky/index.php?do=info_fakulta
+const CHARLES_FACULTIES = new Map([
+  ['11110', ['First Faculty of Medicine', '1. lékařská fakulta', '1st Faculty of Medicine']],
+  ['11130', ['Second Faculty of Medicine', '2. lékařská fakulta', '2nd Faculty of Medicine']],
+  ['11120', ['Third Faculty of Medicine', '3. lékařská fakulta', '3rd Faculty of Medicine']],
+  ['11140', ['Faculty of Medicine in Pilsen', 'Lékařská fakulta v Plzni']],
+  ['11150', ['Faculty of Medicine in Hradec Králové', 'Lékařská fakulta v Hradci Králové']],
+  ['11160', ['Faculty of Pharmacy in Hradec Králové', 'Farmaceutická fakulta v Hradci Králové']],
+  ['11210', ['Faculty of Arts', 'Filozofická fakulta']],
+  ['11220', ['Faculty of Law', 'Právnická fakulta']],
+  ['11230', ['Faculty of Social Sciences', 'Fakulta sociálních věd']],
+  ['11240', ['Faculty of Humanities', 'Fakulta humanitních studií']],
+  ['11260', ['Catholic Theological Faculty', 'Katolická teologická fakulta']],
+  ['11270', ['Faculty of Protestant Theology', 'Evangelická teologická fakulta']],
+  ['11280', ['Hussite Theological Faculty', 'Husitská teologická fakulta']],
+  ['11310', ['Faculty of Science', 'Přírodovědecká fakulta']],
+  ['11320', ['Faculty of Mathematics and Physics', 'Matematicko-fyzikální fakulta']],
+  ['11410', ['Faculty of Education', 'Pedagogická fakulta']],
+  ['11510', ['Faculty of Physical Education and Sport', 'Fakulta tělesné výchovy a sportu']],
+]);
+
+export function charlesFaculty(officialUrl, universityId) {
+  if (universityId !== 'cuni') return null;
+  try {
+    const url = new URL(officialUrl);
+    if (url.hostname !== 'is.cuni.cz' || url.port ||
+        !['https:', 'http:'].includes(url.protocol) ||
+        url.pathname !== '/studium/prijimacky/index.php' ||
+        url.searchParams.get('do') !== 'detail_obor') return null;
+    const names = CHARLES_FACULTIES.get(url.searchParams.get('fakulta'));
+    return names ? { name: names[0], aliases: names.slice(1) } : null;
+  } catch {
+    return null;
+  }
+}
+
+function addProgrammeIdentity(programmes) {
+  const groups = new Map();
+  for (const row of programmes) {
+    row.faculty = charlesFaculty(row.officialUrl, row.universityId);
+    if (row.faculty) {
+      row.searchBlob += ' ' + foldAccents([row.faculty.name, ...row.faculty.aliases].join(' ')).toLowerCase();
+    }
+    const key = JSON.stringify([row.universityId, row.programme.trim().toLowerCase().normalize('NFC')]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  // Compute once on the full catalogue: filtering or chunked rendering must
+  // never renumber a sibling or erase the fact that it has a same-name entry.
+  // Unknown values cannot establish a difference; already displayed facts can.
+  const known = (value) => value !== null && value !== undefined && value !== '' && value !== '?';
+  const facts = (row) => [
+    row.faculty?.name, row.degreeType, row.city, row.languages.filter(known).join(', '),
+    row.ibSubjects, row.otherRequirements.filter(known).join(' · '),
+    row.admission.filter(known).join(' · '), row.tuitionEu, row.deadline?.getTime(),
+    row.ibPointsMin,
+  ];
+  const differs = (a, b) => facts(a).some((value, i) => {
+    const other = facts(b)[i];
+    return known(value) && known(other) && value !== other;
+  });
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    group.forEach((row, i) => {
+      const unresolved = group.some((other) => other !== row && !differs(row, other));
+      row.identity = {
+        text: row.faculty?.name || '',
+        entry: i + 1,
+        count: group.length,
+        unresolved,
+      };
+      if (unresolved) {
+        const fallback = `Same-name entry ${i + 1} of ${group.length} · compare official pages`;
+        row.identity.text = [row.identity.text, fallback].filter(Boolean).join(' · ');
+      }
+    });
+  }
 }
 
 // The fields that depend on today's date. They used to be set once at load,

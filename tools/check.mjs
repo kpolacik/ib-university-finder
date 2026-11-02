@@ -3639,5 +3639,142 @@ section('Dev server (tools/serve.mjs)');
     /\.listen\(port, '127\.0\.0\.1'/.test(read('tools/serve.mjs')));
 }
 
+// D14: identity is derived at load time, so all sources and filtered views agree.
+section('D14 same-name programmes');
+const { charlesFaculty } = await import(new URL('../js/data.js', import.meta.url));
+const sis = (code) => `https://is.cuni.cz/studium/prijimacky/index.php?fakulta=${code}&do=detail_obor&id=123`;
+for (const [code, name] of [['11110', 'First'], ['11130', 'Second'], ['11120', 'Third']]) {
+  equal(`D14 ${code} faculty and reordered parameters`, charlesFaculty(sis(code), 'cuni')?.name, `${name} Faculty of Medicine`);
+}
+for (const [url, uni] of [
+  [sis('99999'), 'cuni'], [sis(''), 'cuni'], ['broken', 'cuni'],
+  [sis('11110').replace('is.cuni.cz', 'is.cuni.cz.example.org'), 'cuni'],
+  [sis('11110').replace('detail_obor', 'info_fakulta'), 'cuni'],
+  [sis('11110').replace('/studium/', '/other/'), 'cuni'], [sis('11110'), 'muni'],
+  [sis('11110').replace('fakulta=11110&', ''), 'cuni'],
+]) equal(`D14 no faculty claim for ${url} / ${uni}`, charlesFaculty(url, uni), null);
+const charles = live.filter((r) => r.universityId === 'cuni');
+equal('D14 real SIS codes remain the reviewed 17 codes',
+  [...new Set(charles.map((r) => new URL(r.officialUrl).searchParams.get('fakulta')))].sort(),
+  ['11110', '11120', '11130', '11140', '11150', '11160', '11210', '11220', '11230', '11240', '11260', '11270', '11280', '11310', '11320', '11410', '11510']);
+check('D14 every Charles faculty is mapped', charles.length > 0 && charles.every((r) => r.faculty));
+check('D14 faculty labels cover every same-name Charles sibling', charles.filter((r) => r.identity).every((r) => r.identity.text === r.faculty.name));
+equal('D14 only eight real rows still need fallback', live.filter((r) => r.identity?.unresolved).length, 8);
+check('D14 MUNI psychology and physiotherapy already differ on the requirements line',
+  ['muni-psychology', 'muni-psychology-2', 'muni-physiotherapy', 'muni-physiotherapy-2'].every((id) => !liveRow(id).identity.unresolved && !liveRow(id).identity.text));
+const d14Rows = (rows, append = false) => withStubDocument(() => {
+  const container = document.createElement('ul');
+  const options = { state: noFilters() };
+  if (append) {
+    renderRows(container, rows.slice(0, 1), options);
+    appendRows(container, rows.slice(1), options);
+  } else renderRows(container, rows, options);
+  return container;
+});
+const realRendered = d14Rows(live);
+const signatures = new Set();
+const collisions = [];
+for (const item of realRendered.children) {
+  // Requirements, fee and deadline already distinguish some same-name rows.
+  const signature = JSON.stringify([liveRow(item.getAttribute('data-id')).universityId, item.textContent]);
+  if (signatures.has(signature)) collisions.push(item.getAttribute('data-id'));
+  signatures.add(signature);
+}
+equal('D14 real rows have distinct displayed facts', collisions, []);
+const uniqueCharles = charles.find((r) => !r.identity);
+const uniqueDOM = d14Rows([uniqueCharles]);
+equal('D14 unique-title sub-line keeps exactly its existing children',
+  byClass(uniqueDOM, 'sub')[0].children.map((c) => typeof c === 'string' ? c : [c.tagName, c.className, c.textContent]),
+  [['span', 'uc', `${uniqueCharles.university} · ${uniqueCharles.city}`], ' ', ['span', 'cc', uniqueCharles.country]]);
+check('D14 unique title has no identity description', !byClass(uniqueDOM, 'open')[0].getAttribute('aria-describedby'));
+for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r) => r.identity?.unresolved)]) {
+  const rowDOM = d14Rows([row]);
+  const pane = detailOf(row);
+  const slot = withStubDocument(() => renderSlot(row, noFilters()));
+  for (const detail of [pane, slot]) {
+    if (row.faculty) equal(`D14 ${row.id} Faculty in pane/slot`, kvOf(detail).Faculty?.textContent, row.faculty.name);
+    check(`D14 ${row.id} official link carries identity`,
+      byTag(detail, 'a').find((a) => a.href === row.officialUrl).textContent.includes(row.identity?.text || row.faculty.name));
+    if (row.identity?.unresolved) check(`D14 ${row.id} honest fallback note in pane/slot`,
+      detail.textContent.includes(`This catalogue has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Apart from what is shown here, what distinguishes them is not recorded. Compare the official admissions pages.`));
+  }
+  if (row.identity?.text) {
+    const identity = byClass(rowDOM, 'identity')[0];
+    equal(`D14 ${row.id} identity matches row description`, identity.textContent, row.identity.text);
+    equal(`D14 ${row.id} button describes separate identity element`, byClass(rowDOM, 'open')[0].getAttribute('aria-describedby'), identity.id);
+    check(`D14 ${row.id} identity outside truncatable university/city`, !byClass(rowDOM, 'uc')[0].children.includes(identity));
+    const ids = [...nodesOf(rowDOM), ...nodesOf(pane), ...nodesOf(slot)].map((n) => n.id).filter(Boolean);
+    equal(`D14 ${row.id} ids unique across list/pane/slot`, new Set(ids).size, ids.length);
+  }
+}
+const facultySecond = charles.find((r) => r.faculty.name === 'Second Faculty of Medicine');
+for (const query of ['Second Faculty of Medicine', '2nd Faculty of Medicine', '2. lékařská fakulta']) {
+  check(`D14 search alias ${query}`, filtersMod.matchesSearch(facultySecond.searchBlob, query));
+}
+check('D14 Plzeň stays searchable', filtersMod.matchesSearch(charles.find((r) => r.city === 'Plzeň').searchBlob, 'Plzeň'));
+
+const d14Uni = 'university_id,name,city,country,verified_by\ncuni,Test University,Prague,Czechia,AI-DRAFT';
+const d14Header = 'programme_id,university_id,programme,degree_type,city,language,admission,tuition_eu,application_deadline,official_url,verified_by';
+const d14Fixture = [
+  ['f-a', 'Faculty', 'Bc.', '', 'English', '', '', '', sis('11110')],
+  ['f-b', 'Faculty', 'Bc.', '', 'English', '', '', '', sis('11130')],
+  ['c-a', 'City', 'Bc.', 'Prague', 'English'], ['c-b', 'City', 'Bc.', 'Plzeň', 'English'],
+  ['d-a', 'Degree', 'BA', '', 'English'], ['d-b', 'Degree', 'BSc', '', 'English'],
+  ['l-a', 'Language', 'BA', '', 'English'], ['l-b', 'Language', 'BA', '', 'Czech'],
+  ['a-a', 'Admission', 'BA', '', 'English', 'Entrance exam'], ['a-b', 'Admission', 'BA', '', 'English', 'Talent exam'],
+  ['t-a', 'Tuition', 'BA', '', 'English', '', '100'], ['t-b', 'Tuition', 'BA', '', 'English', '', '200'],
+  ['e-a', 'Deadline', 'BA', '', 'English', '', '', '2027-01-01'], ['e-b', 'Deadline', 'BA', '', 'English', '', '', '2027-02-01'],
+  ['u-b', 'Same', 'BA', '', 'English'], ['u-a', ' Same ', 'BA', '', 'English'],
+  ['n-a', 'Unknown', '?', '?', '?'], ['n-b', 'Unknown', 'BA', 'Prague', 'English'],
+  ['z-a', 'École', 'BA', '', 'English'], ['z-b', ' E\u0301COLE ', 'BA', '', 'English'],
+  ['s-a', '<script>& “Unique”', 'BA', '', 'English'],
+  ['x-a', '<img>&', 'BA', '', 'English'], ['x-b', '<img>&', 'BA', '', 'English'],
+].map(([id, title, degree, city = '', language = '', admission = '', fee = '', deadline = '', url = `https://example.org/${id}`]) =>
+  [id, 'cuni', title, degree, city, language, admission, fee, deadline, url, 'AI-DRAFT'].join(','));
+const fixtureCsv = (rows) => [d14Header, ...rows].join('\n');
+const { programmes: identityFixture, meta: identityMeta } = await load(d14Uni, fixtureCsv(d14Fixture));
+const { programmes: reversedIdentity } = await load(d14Uni, fixtureCsv([...d14Fixture].reverse()));
+equal('D14 identity never creates spreadsheet issues', identityMeta.issues, []);
+for (const prefix of ['f', 'c', 'd', 'l', 'a', 't', 'e']) check(`D14 ${prefix} known difference resolves fixtures`,
+  identityFixture.filter((r) => r.id.startsWith(prefix + '-')).every((r) => !r.identity.unresolved));
+for (const id of ['u-a', 'u-b', 'n-a', 'n-b']) check(`D14 ${id} unknown or different URLs cannot distinguish entries`,
+  identityFixture.find((r) => r.id === id).identity.unresolved);
+check('D14 group titles ignore case, edge spaces and Unicode composition',
+  identityFixture.filter((r) => r.id.startsWith('z-')).every((r) => r.identity?.unresolved && r.identity.count === 2));
+equal('D14 numbering uses sorted programme ids', identityFixture.find((r) => r.id === 'u-a').identity.entry, 1);
+check('D14 unknown faculty adds no search terms', !identityFixture.find((r) => r.id === 'u-a').searchBlob.includes('faculty'));
+check('D14 unique title gets no fallback', !identityFixture.find((r) => r.id === 's-a').identity);
+equal('D14 identity stable under input reorder',
+  identityFixture.map((r) => [r.id, r.identity]).sort(), reversedIdentity.map((r) => [r.id, r.identity]).sort());
+const d14Examples = [
+  live.find((r) => r.programme === 'General Medicine' && r.faculty?.name === 'First Faculty of Medicine'),
+  liveRow('muni-psychology'),
+  live.find((r) => r.universityId === 'muni' && r.identity?.unresolved),
+];
+const d14ExampleText = [
+  'Charles University · Prague Czechia · First Faculty of Medicine',
+  'Masaryk University · Brno Czechia',
+  'Masaryk University · Brno Czechia · Same-name entry 2 of 2 · compare official pages',
+];
+d14Examples.forEach((row, i) => {
+  equal(`D14 example ${row.id}`, byClass(d14Rows([row]), 'sub')[0].textContent, d14ExampleText[i]);
+});
+const d14Original = d14Rows(identityFixture);
+const d14Chunked = d14Rows(identityFixture, true);
+equal('D14 chunked append preserves identity', d14Original.textContent, d14Chunked.textContent);
+for (const row of sortRows(identityFixture, 'university')) {
+  equal(`D14 ${row.id} identity survives sort and filtering to one sibling`,
+    byClass(d14Rows([row]), 'identity').map((n) => n.textContent), row.identity?.text ? [row.identity.text] : []);
+}
+const escaped = identityFixture.find((r) => r.id === 'x-a');
+for (const dom of [d14Rows([escaped]), detailOf(escaped), withStubDocument(() => renderSlot(escaped, noFilters()))]) {
+  check('D14 identity and note render spreadsheet markup as text', !byTag(dom, 'img').length && dom.textContent.includes('<img>&'));
+}
+const savedIdentity = await load('', '', undefined, { snapshot: {
+  universities: csvToObjects(d14Uni).rows, programmes: csvToObjects(fixtureCsv(d14Fixture)).rows,
+} });
+equal('D14 snapshot path computes the same identities',
+  savedIdentity.programmes.map((r) => [r.id, r.faculty, r.identity]), identityFixture.map((r) => [r.id, r.faculty, r.identity]));
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

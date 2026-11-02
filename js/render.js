@@ -205,6 +205,12 @@ function renderRow(row, state, wide) {
     country.setAttribute('data-country', row.country);
     sub.append(document.createTextNode(' '), country);
   }
+  if (row.identity?.text) {
+    const identity = el('span', 'identity', row.identity.text);
+    identity.id = `identity-${row.id}`;
+    title.setAttribute('aria-describedby', identity.id);
+    sub.append(document.createTextNode(' · '), identity);
+  }
   if (row.isSample) sub.append(el('span', 'tag tag-strong', 'Invented sample row · not real data'));
   main.append(heading, sub);
   const chevron = el('span', 'chev');
@@ -443,6 +449,7 @@ function requirementsSection(row) {
 
 function applyingSection(row) {
   const list = el('dl', 'kv');
+  if (row.faculty) reqRow(list, 'Faculty', [row.faculty.name]);
   const deadlineNotes = [];
   if (row.deadlinePassed) deadlineNotes.push('Check the official page for the next cycle.');
   // On Irish rows this is the CAO sentence the points lines were read from.
@@ -479,6 +486,9 @@ function notes(row, state, pointsSays) {
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Shown despite the tuition filter — we do not have a fee for this one.'));
   }
+  if (row.identity?.unresolved) {
+    box.append(el('p', 'note', `This catalogue has ${row.identity.count} entries named ‘${row.programme}’ at ${row.university}. Apart from what is shown here, what distinguishes them is not recorded. Compare the official admissions pages.`));
+  }
   if (pointsSays) box.append(el('p', 'note pnote', pointsSays));
   if (!row.officialUrl) {
     box.append(el('p', 'note note-strong', 'No official link on file — do not rely on this entry.'));
@@ -494,8 +504,9 @@ function footer(row) {
   if (row.officialUrl) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
+    const identity = row.identity?.text || row.faculty?.name;
     foot.append(externalLink('btn btn-p', 'Official admissions page', row.officialUrl,
-      ` for ${row.programme}, ${row.university}`));
+      ` for ${row.programme}, ${row.university}${identity ? ` · ${identity}` : ''}`));
   }
   if (row.studentLifeUrl) {
     foot.append(externalLink('lnk', 'Student life', row.studentLifeUrl));
