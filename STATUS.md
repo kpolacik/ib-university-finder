@@ -10,7 +10,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 1240 programmes · 35 universities · 5 countries · all checks passing.
 
-`node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps are errors; other identity changes need a human review. Importer id preservation is still open.
+`node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
 Subject filters now use 23 fixed names, including Sports Science, with old names mapped in code (S02). Unclassified rows stay visible and labelled. Importers leave unmatched titles blank and no longer mistake Physical Education for Physics or tělesná for forestry (D30, D31); existing CSV rows are unchanged.
 
