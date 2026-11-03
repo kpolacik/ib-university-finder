@@ -4277,17 +4277,16 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
   const box = get('applied-filters'); fire(box.children[0],'click');
   return stubDocument.activeElement === get('sheet-h') && get('filter-sheet').open;
 });
-// Two groups, as before: the outer .more-filters (fee, Subject, Country, Language) and the
-// inner named group that now also holds Jakub's My maths and Entrance exam selects. Only the
-// pick-lists are <details>, so Language stays the outer group's last <details> and City the inner
-// group's, and the `.dropdown:last-of-type` rule keeps opening each group's end menu leftwards.
+// One named group holds all eight pick filters, so they wrap as one row (two groups broke
+// 3 + 5 between 768 and 1024 px). Only the pick-lists are <details>, so City is the group's
+// last <details> and the `.dropdown:last-of-type` rule keeps its end menu opening leftwards.
 {
-  const inner = indexHtml.match(/<div class="more-filters" role="group" aria-label="Deadline, maths, entrance exam, degree type and city">([\s\S]*?)<div id="applied-filters"/)?.[1] ?? '';
-  const order = [...inner.matchAll(/id="(f-deadline|f-mymaths|f-exam|dd-degrees|dd-cities)"/g)].map((m) => m[1]).join();
+  const inner = indexHtml.match(/<div class="more-filters" role="group" aria-label="Subject area, country, language, deadline, maths, entrance exam, degree type and city"[^>]*>([\s\S]*?)<div id="applied-filters"/)?.[1] ?? '';
+  const order = [...inner.matchAll(/id="(dd-subjects|dd-countries|dd-languages|f-deadline|f-mymaths|f-exam|dd-degrees|dd-cities)"/g)].map((m) => m[1]).join();
   const outer = indexHtml.slice(indexHtml.indexOf('<div class="more-filters">'), indexHtml.indexOf('<div class="more-filters" role="group"'));
-  const outerLists = [...outer.matchAll(/<details class="dropdown" id="([\w-]+)"/g)].map((m) => m[1]).join();
-  check('new controls retain the existing Language end-menu alignment within two wrapping groups',
-    order === 'f-deadline,f-mymaths,f-exam,dd-degrees,dd-cities' && outerLists === 'dd-subjects,dd-countries,dd-languages'
+  check('all eight pick filters wrap as one named group and the last menu still opens leftwards',
+    order === 'dd-subjects,dd-countries,dd-languages,f-deadline,f-mymaths,f-exam,dd-degrees,dd-cities'
+      && !/<details class="dropdown"/.test(outer)
       && (indexHtml.match(/<div class="more-filters"/g) ?? []).length === 2
       && /\.dropdown:last-of-type \.dropdown-panel,#dd-countries \.dropdown-panel\{left:auto;right:0\}/.test(cssRules));
 }

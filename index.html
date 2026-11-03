@@ -196,30 +196,31 @@
       </div>
       <p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p>
 
-      <!-- Each count reads "Subject area · 2" on screen and "Subject area 2
-           selected" to a screen reader: the dot is aria-hidden and " selected"
-           is hidden text (A06). -->
-      <details class="dropdown" id="dd-subjects">
-        <summary class="inp"><span data-i18n="subject_area">Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
-        <div class="dropdown-panel" role="group" aria-label="Subject area" data-i18n-attr="aria-label:subject_area">
-          <div class="options" id="f-subjects"></div>
-        </div>
-      </details>
-      <details class="dropdown" id="dd-countries">
-        <summary class="inp"><span data-i18n="country">Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
-        <div class="dropdown-panel" role="group" aria-label="Country" data-i18n-attr="aria-label:country">
-          <div class="options" id="f-countries"></div>
-        </div>
-      </details>
-      <details class="dropdown" id="dd-languages">
-        <summary class="inp"><span data-i18n="language">Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
-        <div class="dropdown-panel" role="group" aria-label="Language" aria-describedby="f-languages-help" data-i18n-attr="aria-label:language">
-          <p class="help dd-help" id="f-languages-help" data-i18n="degrees_taught_in_czech_at_public_universities_are_free_whatever_you">Degrees taught in Czech at public universities are free, whatever your nationality. Each university sets its own language requirement; check the official page.</p>
-          <div class="options" id="f-languages"></div>
-        </div>
-      </details>
-
-      <div class="more-filters" role="group" aria-label="Deadline, maths, entrance exam, degree type and city" data-i18n-attr="aria-label:deadline_maths_entrance_exam_degree_type_and_city">
+      <!-- One named group for all eight pick filters, so they wrap as one row
+           (two groups broke 3 + 5 between 768 and 1024 px). -->
+      <div class="more-filters" role="group" aria-label="Subject area, country, language, deadline, maths, entrance exam, degree type and city" data-i18n-attr="aria-label:pick_filters">
+        <!-- Each count reads "Subject area · 2" on screen and "Subject area 2
+             selected" to a screen reader: the dot is aria-hidden and " selected"
+             is hidden text (A06). -->
+        <details class="dropdown" id="dd-subjects">
+          <summary class="inp"><span data-i18n="subject_area">Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="Subject area" data-i18n-attr="aria-label:subject_area">
+            <div class="options" id="f-subjects"></div>
+          </div>
+        </details>
+        <details class="dropdown" id="dd-countries">
+          <summary class="inp"><span data-i18n="country">Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="Country" data-i18n-attr="aria-label:country">
+            <div class="options" id="f-countries"></div>
+          </div>
+        </details>
+        <details class="dropdown" id="dd-languages">
+          <summary class="inp"><span data-i18n="language">Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="Language" aria-describedby="f-languages-help" data-i18n-attr="aria-label:language">
+            <p class="help dd-help" id="f-languages-help" data-i18n="degrees_taught_in_czech_at_public_universities_are_free_whatever_you">Degrees taught in Czech at public universities are free, whatever your nationality. Each university sets its own language requirement; check the official page.</p>
+            <div class="options" id="f-languages"></div>
+          </div>
+        </details>
         <div class="fld">
           <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-deadline" data-i18n="deadline">Deadline</label>
           <select class="inp" id="f-deadline" aria-describedby="f-unknown-help">
