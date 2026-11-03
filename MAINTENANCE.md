@@ -261,8 +261,8 @@ Groningen teaches two in Leeuwarden. Put the real city there and the card — an
 the search box — will use it.
 
 **Never edit an `id` once the row exists.** The id is how the two tabs are
-joined and how a programme is referred to elsewhere (the shortlist code, which is
-kept but switched off, stores programmes by id). Change one and anything pointing
+joined and how a programme is referred to elsewhere (every student's saved
+list, and every shared `?list=` link, stores programmes by id). Change one and anything pointing
 at it silently points at nothing. Renaming a university is fine. Fixing a typo in
 a name is fine. Changing the id is not.
 

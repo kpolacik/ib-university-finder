@@ -161,7 +161,11 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+// My list (2026-11-03): the pure share, group and compare functions app.js
+// imports, given to the harness below like the filter functions.
+const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
+const compareMod = await import(new URL('../js/compare.js', import.meta.url));
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -2558,15 +2562,17 @@ check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-c
 }
 check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
   (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
-check('renderRows keeps its call contract and the inert shortlist options',
-  /export function renderRows\(container, rows, \{ state, shortlist, onToggleStar, wide = false \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, onToggleStar, wide: wideQuery.matches \}\)/.test(appSrc));
+// The save star came back on 2026-11-03 (Leon): the rows now take the saved
+// ids and the list view's group headings.
+check('renderRows keeps its call contract: saved ids for the star, group headings',
+  /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\)/.test(renderSrc)
+    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
-  /export function appendRows\(container, rows, \{ state, wide = false \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
-    && /arrive\(appendRows\(dom.results, rows, \{ state, wide: appliedWide \}\)\)/.test(appSrc));
+  /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
+    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -3144,10 +3150,11 @@ function paneAppHarness(test, { boot = false } = {}) {
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
+      ...shortlistMod, ...compareMod, saveShortlist: (set) => { context.savedLists = [...(context.savedLists ?? []), [...set]]; return context.saveWorks ?? true; },
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(code, context);
@@ -4255,7 +4262,7 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
       && (indexHtml.match(/<div class="more-filters"/g) ?? []).length === 2
       && /\.dropdown:last-of-type \.dropdown-panel,#dd-countries \.dropdown-panel\{left:auto;right:0\}/.test(cssRules));
 }
-appCheck('dormant shortlist export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
+appCheck('my-list export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
   run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
   const expected = context.fixture.slice().sort((a,b) => b.university.localeCompare(a.university) || b.programme.localeCompare(a.programme)).map((r) => r.id).join(',');
   fire(get('export-csv'),'click');
@@ -4280,7 +4287,7 @@ appCheck('country and local option-search changes retain full new facet vocabula
     && run("state.degreeTypes.has('BSc') && state.cities.has('Odense')")
     && countNodes.every((n,i) => get('result-count').children[i] === n);
 });
-check('both list and dormant shortlist export pass direction', /sortRows\(applyFilters\(allRows, state, shortlist\), state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
+check('both the list and the my-list export pass direction', /sortRows\(state.shortlistOnly && listAll \? inScope : filtered, state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
 
 // X02: the dev server used to listen on every interface and serve .git/, so
 // anyone on the same Wi-Fi could download the repository. Start the real
@@ -4495,7 +4502,7 @@ for (const text of [
   'Some problems hide a row; others leave a value unknown. Each message explains what happened.',
   'Check requirements, EU fees and deadlines on the official admissions page before applying.',
   'Students maintain this site, and details may change.',
-  '>Export CSV', '>Clear shortlist', '>Data problems',
+  '>Export CSV', '>Clear my list', '>Data problems',
 ]) check(`static wording: ${text}`, indexHtml.includes(text));
 // Leon, 2026-11-02: the filter hints were too long. The search hint is gone
 // (the placeholder already shows examples) and the other two are one short
@@ -4516,7 +4523,7 @@ for (const [value, label] of Object.entries(filtersMod.DEADLINE_WINDOWS)) {
 equal('fee sorting uses EU fee in both directions',
   [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
 for (const text of [
-  'Your browser could not save your shortlist. It may be lost when you leave this page.',
+  'Your browser could not save your list. It may be lost when you leave this page.',
   'No programmes are saved here.', 'No programmes are available.', 'No programmes match your filters.',
   'Search: ${state.search.trim()}', 'My IB points: ${state.myIbPoints}', 'Max EU fee: €${state.maxTuition}/year',
   "['subjectAreas', 'Subject area']", "used.push('your IB points')", "used.push('the EU fee limit')",
@@ -4740,6 +4747,318 @@ await asyncAppCheck('real start: invalid budget and living in the address fill n
   return run('state.maxBudget') === null && run('state.myLiving') === null;
 }, { boot: true });
 // END yearly-cost checks
+
+// BEGIN shortlist checks
+// My list (Leon, 2026-11-03, reversing "No save button, no shortlist"): the
+// save star, the list view with its groups, Compare and Share. The pure parts
+// are tested directly; the wiring through the harness's real app.js.
+section('My list: share link, shared links, address, groups, compare (2026-11-03)');
+{
+  const { shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist, addressQuery, groupRows, groupHeadings } = shortlistMod;
+  const { compareTable, differs, visibleFacts, prunePicks, yearlyLine, money: euro } = compareMod;
+  const costMod = await import(new URL('../js/cost.js', import.meta.url));
+
+  // --- share link: the list, and points only when ticked
+  equal('share link: ids in order, commas kept, nothing else', shareQuery(['uva-law', 'tcd-x']), 'list=uva-law,tcd-x');
+  equal('share link: points are left out unless "Include my IB points" is ticked',
+    [shareQuery(['a'], { points: 36 }), shareQuery(['a'], { points: 36, includePoints: false }), shareQuery(['a'], { points: 36, includePoints: true })],
+    ['list=a', 'list=a', 'list=a&points=36']);
+  equal('share link: a ticked box with no points, or a non-whole number, adds nothing',
+    [shareQuery(['a'], { points: null, includePoints: true }), shareQuery(['a'], { points: 36.5, includePoints: true })], ['list=a', 'list=a']);
+  equal('share link: a comma or & inside an id is encoded, so it cannot split or add a parameter',
+    shareQuery(['a,b', 'c&points=45']), 'list=a%2Cb,c%26points%3D45');
+  {
+    const ids = ['uva-law', 'tcd-x', 'a,b'];
+    equal('share link round trip: the ids come back in order', readSharedList(`?${shareQuery(ids)}`, new Set(ids)).ids, ids);
+  }
+
+  // --- an incoming ?list=
+  const known = new Set(['a', 'b', 'c']);
+  equal('incoming list: none in the address is null (no shared view)', [readSharedList('', known), readSharedList('?points=36', known)], [null, null]);
+  equal('incoming list: known ids in link order without repeats; unknown ids reported once each; blanks and spaces ignored',
+    readSharedList('?list=b,a,b,ghost,,c%20,+a+,ghost,old', known), { raw: 'b,a,b,ghost,,c%20,+a+,ghost,old', ids: ['b', 'a', 'c'], unknown: ['ghost', 'old'] });
+  equal('incoming list: a broken escape is an unknown id, not a crash; a later list= is ignored',
+    readSharedList('?points=36&list=a,%E0%A4&list=b', known), { raw: 'a,%E0%A4', ids: ['a'], unknown: ['%E0%A4'] });
+  equal('incoming list: an empty list is a shared view with nothing in it', readSharedList('?list=', known), { raw: '', ids: [], unknown: [] });
+  equal('incoming list: the unknown-id sentence, singular and plural, none when nothing is missing',
+    [unknownIdsText(0), unknownIdsText(1), unknownIdsText(2)],
+    [null, '1 programme in this link no longer exists.', '2 programmes in this link no longer exist.']);
+  {
+    const mine = new Set(['x', 'a']);
+    const added = mergeIntoShortlist(mine, ['a', 'b', 'c']);
+    equal('saving a shared list adds to the saves and keeps every existing one', [added, [...mine]], [2, ['x', 'a', 'b', 'c']]);
+  }
+
+  // --- the address
+  equal('address: no shared view, no list; the filters alone', [addressQuery('', null), addressQuery('q=law&points=36', null)], ['', 'q=law&points=36']);
+  equal('address: a shared view keeps its list first, then the filters',
+    [addressQuery('', { raw: 'a,b' }), addressQuery('points=36', { raw: 'a,b' }), addressQuery('', { raw: 'a%2Cb,c' })],
+    ['list=a,b', 'list=a,b&points=36', 'list=a%2Cb,c']);
+
+  // --- groups
+  const d = (iso) => new Date(`${iso}T00:00:00Z`);
+  const g = (id, extra) => ({ id, deadline: null, deadlinePassed: false, country: 'Ireland', ...extra });
+  const dated = [g('apr', { deadline: d('2027-04-01') }), g('none'), g('mar1', { deadline: d('2027-03-31') }),
+    g('past', { deadline: d('2026-01-15'), deadlinePassed: true }), g('dec', { deadline: d('2026-12-01') }), g('mar2', { deadline: d('2027-03-01') })];
+  const byDeadline = groupRows(dated, 'deadline', noFilters(), filtersMod.pointsBucket);
+  equal('groups by deadline: year and month in date order (Dec 2026 before Mar 2027), then passed, then no date; rows keep their order',
+    byDeadline.map((x) => [x.label, x.rows.map((r) => r.id)]),
+    [['December 2026', ['dec']], ['March 2027', ['mar1', 'mar2']], ['April 2027', ['apr']], ['Deadline passed', ['past']], ['No date', ['none']]]);
+  equal('groups by deadline: a group with no rows is left out', groupRows([g('none')], 'deadline', noFilters(), filtersMod.pointsBucket).map((x) => x.key), ['none']);
+  equal('group headings: the first row of each group carries "label · count"', [...groupHeadings(byDeadline)],
+    [['dec', 'December 2026 · 1'], ['mar1', 'March 2027 · 2'], ['apr', 'April 2027 · 1'], ['past', 'Deadline passed · 1'], ['none', 'No date · 1']]);
+  {
+    const buckets = { w: 'within', m: 'maths', h: 'hidden', u: 'unknown' };
+    const stub = (row) => buckets[row.id[0]];
+    const rows = ['u1', 'h1', 'w1', 'm1', 'w2'].map((id) => g(id));
+    const withPoints = { ...noFilters(), myIbPoints: 36 };
+    equal('groups by points: within, only with HL Maths 4+, above, can’t be compared, in that order',
+      groupRows(rows, 'points', withPoints, stub).map((x) => [x.label, x.rows.map((r) => r.id)]),
+      [['Within your IB points', ['w1', 'w2']], ['Only with HL Maths 4+', ['m1']], ['Above your IB points', ['h1']], ['Can’t be compared', ['u1']]]);
+    const empty = groupRows(rows, 'points', noFilters(), stub);
+    equal('groups by points with My IB points empty: one unlabelled group (the page asks for points), no headings',
+      [empty.length, empty[0].label, empty[0].rows.length, groupHeadings(empty).size], [1, null, 5, 0]);
+    // The real pointsBucket on the real rows: every row lands in its own bucket's group.
+    const state36 = { ...noFilters(), myIbPoints: 33 };
+    const real = groupRows(live, 'points', state36, filtersMod.pointsBucket);
+    const labelOf = { within: 'Within your IB points', maths: 'Only with HL Maths 4+', hidden: 'Above your IB points', unknown: 'Can’t be compared' };
+    check('groups by points on the real data use pointsBucket: every row in its bucket, all four groups present, none lost',
+      real.length === 4 && real.reduce((n, x) => n + x.rows.length, 0) === live.length
+        && real.every((x) => x.rows.every((r) => labelOf[filtersMod.pointsBucket(r, state36)] === x.label)));
+  }
+  equal('groups by country: alphabetical, a row with no country last',
+    groupRows([g('a', { country: 'Italy' }), g('b', { country: '' }), g('c', { country: 'Denmark' }), g('d', { country: 'Italy' })], 'country', noFilters(), filtersMod.pointsBucket)
+      .map((x) => [x.label, x.rows.map((r) => r.id)]),
+    [['Denmark', ['c']], ['Italy', ['a', 'd']], ['Country not recorded', ['b']]]);
+  equal('no grouping: one unlabelled group; an empty list no groups',
+    [groupRows(dated, 'none', noFilters(), filtersMod.pointsBucket).map((x) => [x.label, x.rows.length]), groupRows([], 'none', noFilters(), filtersMod.pointsBucket)],
+    [[[null, 6]], []]);
+
+  // --- compare: only differences, unknowns, and the yearly total
+  const cell = (text, unknown = false) => ({ lines: [unknown ? { tag: text } : { text }], unknown });
+  equal('only differences: same facts go, different facts stay, any unknown stays (two unknowns are not known to be equal), the link always stays',
+    visibleFacts([
+      { key: 'same', always: false, cells: [cell('€0'), cell('€0')] },
+      { key: 'diff', always: false, cells: [cell('€0'), cell('€500')] },
+      { key: 'unk', always: false, cells: [cell('Not published', true), cell('Not published', true)] },
+      { key: 'one-unk', always: false, cells: [cell('€0'), cell('Not published', true)] },
+      { key: 'link', always: true, cells: [cell('x'), cell('x')] },
+    ], true).map((x) => x.key), ['diff', 'unk', 'one-unk', 'link']);
+  check('differs: a different second line counts; identical lines do not',
+    differs({ cells: [{ lines: [{ text: 'a' }, { text: 'b' }], unknown: false }, { lines: [{ text: 'a' }], unknown: false }] })
+      && !differs({ cells: [{ lines: [{ text: 'a' }], unknown: false }, { lines: [{ text: 'a' }], unknown: false }] }));
+  {
+    const base = live.find((r) => r.tuitionEu !== null && r.tuitionEu > 0 && r.deadline && r.mathsAccepted && r.entranceExam && r.officialUrl);
+    const twin = { ...base, id: 'twin', tuitionEu: base.tuitionEu + 1000 };
+    const table = compareTable([base, twin], noFilters());
+    equal('compare rows: the facts in order, the official link last', table.map((x) => x.label),
+      ['IB points', 'Maths courses accepted', 'Entrance exam', 'EU fee', 'Fee + 12 months\' living (estimate)', 'Deadline', 'Language', 'City', 'Apply via', 'Official page']);
+    const shown = visibleFacts(table, true).map((x) => x.key);
+    check('only differences on two rows that differ only in fee: the fee and the yearly estimate stay (and any unknown), the rest go',
+      shown.includes('fee') && shown.includes('link') && !shown.includes('deadline') && !shown.includes('exam') && !shown.includes('city')
+        && shown.every((k) => ['fee', 'yearly', 'link'].includes(k) || table.find((x) => x.key === k).cells.some((c) => c.unknown)), shown.join());
+    equal('only differences off: every fact', visibleFacts(table, false).length, table.length);
+  }
+  {
+    const unknownRow = { ...live[0], tuitionEu: null, mathsAccepted: null, entranceExam: null, applicationSystem: '', deadline: null, deadlinePassed: false, officialUrl: null, cityUnknown: true };
+    const cells = Object.fromEntries(compareTable([unknownRow, live[0]], noFilters()).map((x) => [x.key, x.cells[0]]));
+    equal('compare unknowns use the detail’s words: Not published / Not checked yet, in the dashed box',
+      ['fee', 'maths', 'exam', 'deadline', 'apply'].map((k) => [k, cells[k].lines[0].tag, cells[k].unknown]),
+      [['fee', 'Not published', true], ['maths', 'Not checked yet', true], ['exam', 'Not checked yet', true], ['deadline', 'Not published', true], ['apply', 'Not published', true]]);
+    equal('compare: no official link says what the detail says, and counts as unknown', [cells.link.lines[0].text, cells.link.unknown],
+      ['No official admissions link. Do not rely on this entry.', true]);
+    equal('compare: a "?" city says "City not published", as the detail’s place line', cells.city.lines[0].tag, 'City not published');
+    const yearly = cells.yearly.lines[0];
+    check('compare: an unknown fee gives no yearly total and says why', yearly.tag === 'Not known' && yearly.text === ' because the EU fee is not published', JSON.stringify(yearly));
+  }
+  {
+    // The compare total is yearlyCost's, with My living costs, floors labelled.
+    const sample = [live.find((r) => r.tuitionEu !== null && r.livingCostMin !== null && !costMod.livingIsFloor(r.livingCostSource)),
+      live.find((r) => r.tuitionEu !== null && r.livingCostMin !== null && costMod.livingIsFloor(r.livingCostSource)),
+      live.find((r) => r.tuitionEu === 0 && r.livingCostMin !== null)].filter(Boolean);
+    const sums = [null, 800, 0].flatMap((myLiving) => sample.map((row) => {
+      const state = { ...noFilters(), myLiving };
+      const line = compareTable([row, row], state).find((x) => x.key === 'yearly').cells[0].lines[0];
+      const cost = costMod.yearlyCost(row, myLiving);
+      return JSON.stringify(line) === JSON.stringify(yearlyLine(row, cost)) && line.text.startsWith(cost.floor ? `from ${euro.format(cost.low)}` : euro.format(cost.low))
+        && (!cost.floor || line.text.includes('national minimum, not a full budget')) && (myLiving === null || line.text.includes(`your ${euro.format(myLiving)}/month`));
+    }));
+    check('compare yearly totals are yearlyCost’s: the low figure first, floors labelled, My living costs used (3 rows × none/€800/€0)', sample.length === 3 && sums.every(Boolean));
+    // And the detail prints the very same words.
+    const row = sample[0];
+    const words = compareTable([row, row], noFilters()).find((x) => x.key === 'yearly').cells[0].lines[0].text;
+    equal('compare and the detail print the same yearly estimate', kvOf(detailOf(row))['Fee + 12 months\' living (estimate)'].textContent, words);
+    const examRow = live.find((r) => r.entranceExam === 'waivable');
+    equal('compare and the detail print the same entrance-exam line', kvOf(detailOf(examRow))['Entrance exam'].textContent,
+      compareTable([examRow, examRow], noFilters()).find((x) => x.key === 'exam').cells[0].lines[0].text);
+  }
+  {
+    const within = live.find((r) => r.pointsKind !== 'cutoff' && r.ibPointsMin !== null && r.ibPointsMin <= 36);
+    const lines = compareTable([within, within], { ...noFilters(), myIbPoints: 36 }).find((x) => x.key === 'points').cells[0].lines;
+    check('compare points: the card’s lines, then the row’s verdict words while My IB points is set',
+      lines[0].text === `${within.ibPointsMin} IB points, minimum` && lines.at(-1).text === 'Within your IB points' && lines.at(-1).verdict === 'fit', JSON.stringify(lines));
+  }
+  equal('compare picks: list order, never more than 4, a pick no longer in the list dropped',
+    [prunePicks(['c', 'a', 'gone'], ['a', 'b', 'c']), prunePicks(['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'c', 'b', 'a'])], [['a', 'c'], ['e', 'd', 'c', 'b']]);
+  {
+    const rows = [live[0], live[1]];
+    const table = compareTable(rows, noFilters());
+    const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, table, { onlyDifferences: false }); return div; });
+    const cols = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col');
+    const facts = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'row');
+    check('compare table: one column header per programme naming it and its university; one row header per fact',
+      cols.length === 2 && cols[0].textContent === `${rows[0].programme}${rows[0].university}` && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
+    const diffBox = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, [live[0], live[0]], compareTable([live[0], live[0]], noFilters()), { onlyDifferences: true }); return div; });
+    const left = findAll(diffBox, (n) => n.tagName === 'tr' && n.getAttribute('data-fact'));
+    check('compare table, only differences: identical facts are not drawn and a line says how many are hidden',
+      left.every((tr) => tr.getAttribute('data-fact') === 'link' || compareTable([live[0], live[0]], noFilters()).find((x) => x.key === tr.getAttribute('data-fact')).cells.some((c) => c.unknown))
+        && byClass(diffBox, 'cmp-same')[0]?.textContent.endsWith('the same for every programme and hidden.'));
+  }
+}
+
+section('My list in the page: star, list view, compare, share (2026-11-03)');
+const starOf = (item) => item.querySelector('button.star');
+appCheck('row star: toggles the save with aria-pressed and the filled symbol, names the programme, never opens the row; the bar counts it', ({ run, get, item, fire, context, ids: [a] }) => {
+  const star = starOf(item(a));
+  const row = context.fixture[0];
+  if (!star || star.getAttribute('aria-pressed') !== 'false' || star.querySelector('use').getAttribute('href') !== '#i-bookmark'
+    || star.textContent !== `Save ${row.programme}, ${row.university}, to my list` || !get('shortlist-bar').hidden) return false;
+  fire(star, 'click');
+  if (run('shortlist.has(fixture[0].id)') !== true || star.getAttribute('aria-pressed') !== 'true' || star.querySelector('use').getAttribute('href') !== '#i-bookmark-fill'
+    || item(a).classList.contains('is-open') || get('shortlist-bar').hidden || get('shortlist-count-text').textContent !== '1 saved · 1 shown'
+    || JSON.stringify(context.savedLists.at(-1)) !== JSON.stringify([a])) return false;
+  fire(star, 'click');
+  return run('shortlist.size') === 0 && star.getAttribute('aria-pressed') === 'false' && get('shortlist-bar').hidden;
+});
+appCheck('detail "Save to my list" in the pane and the slot: toggles with the row star, both ways', ({ run, get, item, fire, flip, click, pane, ids: [a] }) => {
+  flip(true); click(a);
+  const button = pane.querySelector('button.save');
+  if (!button || button.getAttribute('aria-pressed') !== 'false' || button.querySelector('.save-t').textContent !== 'Save to my list') return false;
+  fire(button, 'click');
+  if (button.getAttribute('aria-pressed') !== 'true' || button.querySelector('.save-t').textContent !== 'Saved to my list'
+    || starOf(item(a)).getAttribute('aria-pressed') !== 'true' || run('shortlist.has(fixture[0].id)') !== true) return false;
+  flip(false);
+  const slotButton = item(a).querySelector('.expand button.save');
+  if (!slotButton || slotButton.getAttribute('aria-pressed') !== 'true') return false;
+  fire(slotButton, 'click');
+  return run('shortlist.size') === 0 && starOf(item(a)).getAttribute('aria-pressed') === 'false' && item(a).classList.contains('is-open');
+});
+appCheck('a failed save says so in the bar', ({ get, item, fire, context, ids: [a] }) => {
+  context.saveWorks = false;
+  fire(starOf(item(a)), 'click');
+  return !get('shortlist-bar').hidden && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
+});
+appCheck('list view: the filters apply inside it, the bar says how many saves they hide, "Show all saves" brings them back, groups head the rows', ({ run, get, fire, ids: [a, b] }) => {
+  run('shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); update();');
+  if (get('shortlist-count-text').textContent !== '2 saved · 2 shown') return false;
+  run('state.search = fixture[0].programme; update();');
+  if (get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('ml-show-all').hidden) return false;
+  fire(get('f-shortlist-only'), 'click');
+  const ids = () => get('results').children.map((n) => n.dataset.id);
+  if (run('state.shortlistOnly') !== true || ids().join() !== a || get('ml-tools').hidden
+    || get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('f-shortlist-only').textContent !== 'Back to all programmes'
+    || !get('result-count').textContent.startsWith('1 of 2 saved programmes')) return false;
+  fire(get('ml-show-all'), 'click');
+  if (ids().length !== 2 || get('ml-show-all').textContent !== 'Apply my filters' || !get('shortlist-count-text').textContent.includes('your filters are off')) return false;
+  // Grouped by deadline by default: the first row of each group carries its heading.
+  const heads = get('results').children.map((n) => n.querySelector('.grp-h')?.textContent).filter(Boolean);
+  if (!heads.length || !heads.every((h) => /^(\w+ \d{4}|Deadline passed|No date) · \d+$/.test(h))) return false;
+  get('ml-group').value = 'points'; fire(get('ml-group'), 'change');
+  if (get('ml-note').textContent !== 'Enter your IB points to group the list by them.' || get('results').children.some((n) => n.querySelector('.grp-h'))) return false;
+  get('ml-group').value = 'country'; fire(get('ml-group'), 'change');
+  if (!get('results').children[0].querySelector('.grp-h')) return false;
+  fire(get('f-shortlist-only'), 'click');
+  return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
+    && !run('addressQuery(stateToParams(state), shared)').includes('list=');
+});
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn; the last unsave then closes the view', ({ run, get, item, fire, ids: [a] }) => {
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  const star = starOf(item(a)); star.focus();
+  fire(star, 'click');
+  if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false') return false;
+  run('update();');
+  return run('state.shortlistOnly') === false && get('results').children.length === 3;
+});
+appCheck('compare: pick 2 to 4 from the list, open the table (list hidden), only-differences, close returns focus to the picker', ({ run, get, fire, context }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  const boxes = get('ml-picks').querySelectorAll('input');
+  if (boxes.length !== 3 || !get('ml-compare-go').disabled || get('ml-compare').hidden) return false;
+  boxes[0].checked = true; fire(boxes[0], 'change');
+  if (!get('ml-compare-go').disabled) return false;
+  boxes[1].checked = true; fire(boxes[1], 'change');
+  if (get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare 2') return false;
+  fire(get('ml-compare-go'), 'click');
+  const cols = () => findAll(get('cmp-body'), (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col').length;
+  if (get('compare').hidden || !get('results').parent.parent.parent.hidden || cols() !== 2 || get('cmp-h').textContent !== 'Compare 2 programmes'
+    || stubDocument.activeElement !== get('compare')) return false;
+  const all = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  get('cmp-diff').checked = true; fire(get('cmp-diff'), 'change');
+  const fewer = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  // My living costs changes the compare table's totals at once.
+  run('state.myLiving = 0; update();');
+  const yearly = findAll(get('cmp-body'), (n) => n.getAttribute('data-fact') === 'yearly')[0];
+  fire(get('cmp-close'), 'click');
+  return fewer <= all && (!yearly || yearly.textContent.includes('your €0/month') || yearly.textContent.includes('Not known'))
+    && get('compare').hidden && !get('results').parent.parent.parent.hidden
+    && stubDocument.activeElement === get('ml-compare').querySelector('summary');
+});
+appCheck('compare picker: a fifth pick is disabled at four', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  run('allRows = fixture; for (const r of fixture) shortlist.add(r.id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  const boxes = get('ml-picks').querySelectorAll('input');
+  for (const box of boxes.slice(0, 4)) { box.checked = true; fire(box, 'change'); }
+  return boxes.length === 5 && boxes[4].disabled && !boxes[0].disabled && get('ml-compare-go').textContent === 'Compare 4';
+});
+appCheck('share: the link is ?list= of the saves only; no search, country or fee travels; points only with the tick', ({ run, get, fire, ids: [a, b] }) => {
+  run("shortlist.add(fixture[1].id); shortlist.add(fixture[0].id); shortlist.add('gone-row'); state.search = 'x'; state.countries.add('Ireland'); state.maxTuition = 5000; state.myIbPoints = 36; update();");
+  fire(get('f-shortlist-only'), 'click');
+  get('ml-share').open = true; fire(get('ml-share'), 'toggle');
+  const url = new URL(get('ml-share-url').value);
+  if ([...url.searchParams.keys()].join() !== 'list' || url.searchParams.get('list') !== `${b},${a}` || url.origin + url.pathname !== 'http://localhost:8765/') return false;
+  get('ml-share-points').checked = true; fire(get('ml-share-points'), 'change');
+  const withPoints = new URL(get('ml-share-url').value);
+  if ([...withPoints.searchParams.keys()].join() !== 'list,points' || withPoints.searchParams.get('points') !== '36') return false;
+  run('state.myIbPoints = null; update();'); fire(get('ml-share'), 'toggle');
+  return get('ml-share-points').disabled && !get('ml-share-points').checked && new URL(get('ml-share-url').value).search === `?list=${b},${a}`;
+});
+await asyncAppCheck('incoming ?list=: opens a shared view of the known ids, de-duplicated, reports unknown ids, keeps the points, leaves the saves alone until "Save these to my list"', async ({ run, get, fire, context, settle }) => {
+  const [a, b] = [context.fixture[0].id, context.fixture[1].id];
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  context.location.search = `?list=${b},${a},${b},ghost-1,ghost-2&points=36`;
+  run("applyUrlFields(); shortlist.add('mine');");
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  const ids = get('results').children.map((n) => n.dataset.id).sort().join();
+  if (run('state.shortlistOnly') !== true || ids !== [a, b].sort().join() || run('[...shortlist].join()') !== 'mine' || context.savedLists
+    || get('ml-title').textContent !== 'Shared list' || get('ml-save-shared').hidden || get('ml-note').textContent !== '2 programmes in this link no longer exist.'
+    || get('f-shortlist-only').textContent !== 'Close shared list' || run('state.myIbPoints') !== 36 || !get('ml-share').hidden
+    || !urls.every((u) => u.startsWith(`/?list=${b},${a},${b},ghost-1,ghost-2&points=36`))) return false;
+  fire(get('ml-save-shared'), 'click');
+  if (run('[...shortlist].join()') !== `mine,${b},${a}` || get('ml-save-shared').textContent !== 'Saved to my list'
+    || !get('ml-note').textContent.includes('2 programmes added to your list.')) return false;
+  // Filters change: the list stays in the address while the view is open.
+  run("state.search = 'a'; update();");
+  if (!urls.at(-1).startsWith('/?list=')) return false;
+  fire(get('f-shortlist-only'), 'click');
+  return run('shared') === null && run('state.shortlistOnly') === false && !urls.at(-1).includes('list=') && urls.at(-1).includes('points=36');
+}, { boot: true });
+await asyncAppCheck('incoming ?list= of only unknown ids: an empty shared view that says so', async ({ run, get, context, settle }) => {
+  context.location.search = '?list=ghost';
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('results').children.length === 0
+    && get('empty-title').textContent === 'None of the programmes in this link are listed any more.' && get('ml-note').textContent === '1 programme in this link no longer exists.';
+}, { boot: true });
+appCheck('keepAddress never adds list= outside a shared view, my list view included', ({ run, get, fire, context }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  context.location.search = '?q=zz';
+  run("shortlist.add(fixture[0].id); state.search = 'x'; update();");
+  fire(get('f-shortlist-only'), 'click');
+  return urls.length > 0 && urls.every((u) => !u.includes('list='));
+});
+check('keepAddress builds the address through addressQuery with the shared list', /function keepAddress\(\) \{[\s\S]*?addressQuery\(stateToParams\(state\), shared\)/.test(appSrc));
+// END shortlist checks
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

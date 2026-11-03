@@ -98,7 +98,8 @@ js/
   data.js             fetch, join, validate, normalise. All parsing lives here.
   filters.js          pure functions: rows + filter state -> rows, and sorting
   cost.js             fee + 12 months' living: the yearly estimate and the budget test
-  shortlist.js        localStorage and CSV export (kept but switched off: no save button)
+  shortlist.js        My list: saves in localStorage, CSV export, share links, grouping
+  compare.js          the compare table, and the detail wording it shares with render.js
   render.js           everything that touches the DOM
   app.js              wiring and event handlers
 data/
@@ -123,7 +124,7 @@ No libraries needed. It covers the things that are easy to break by accident:
 CSV quoting and malformed rows, rejection of non-http links, the
 inherit / override / `?` rules, whether bad spreadsheet input is reported rather
 than swallowed, sort order including where unknown values land, the shortlist
-export round-trip, and that the real dataset still loads with every programme
+export round-trip, share links, groups and the compare table, and that the real dataset still loads with every programme
 linked to an official page. Run it after changing anything in `js/`.
 
 ## Design decisions worth knowing
@@ -145,6 +146,16 @@ programme only when even the lowest estimate is over your budget; a range that
 crosses it says "May exceed your budget", and an unknown fee or living cost
 stays. **My living costs** (euros a month) replaces every university's estimate
 in those totals, and the page says "your €N" wherever it does.
+
+**My list.** The star on a row (or "Save to my list" in its detail) saves a
+programme in this browser. "Open my list" shows the saves, still filtered (or
+all of them with "Show all saves"), grouped by deadline month, by your IB
+points or by country. From there you can **compare** 2 to 4 programmes side by
+side ("Show only differences" never hides a fact nobody knows), **share** the
+list as a link (`?list=…`, with your IB points only if you tick the box),
+export it as CSV or print it. Opening a shared link shows its programmes and
+saves nothing until you press "Save these to my list". Saves stay in the
+browser and on the web address where they were made.
 
 **Fees are what an EU student pays.** The site shows EU fees only and is built
 for a cohort of EU citizens. The UK is included, and there that figure is the

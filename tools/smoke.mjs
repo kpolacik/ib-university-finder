@@ -13,7 +13,8 @@
 // index.html from tools/serve.mjs at four widths — 390 (phone), 1024 (bar and
 // inline details), 1280 and 1920 (side pane) — and checks that the page loads
 // every programme, that search and filters narrow the list, that a programme
-// opens with its official link, and that the browser logged no errors. It then
+// opens with its official link, that a saved list can be compared and shared
+// (390 and 1280), and that the browser logged no errors. It then
 // blocks data/programmes.csv to prove the saved copy (data/fallback.json) still
 // works, and blocks both to prove the "could not load" message appears.
 //
@@ -454,7 +455,7 @@ async function runWidth(base, width, height, want) {
   if (booted && counted) {
     await interactions(page, at, want);
   } else {
-    for (const id of ['A5', 'A6', 'A7', 'A8', 'A9', ...(at === 390 ? ['A10'] : []), ...(at === 1280 ? ['A11'] : []), ...(at >= 600 ? ['A13'] : [])]) {
+    for (const id of ['A5', 'A6', 'A7', 'A8', 'A9', ...(at === 390 ? ['A10'] : []), ...(at === 1280 ? ['A11'] : []), ...(at >= 600 ? ['A13'] : []), ...(at === 1280 || at === 390 ? ['A14'] : [])]) {
       report('SKIP', at, id, 'not run', 'the page did not load its programmes');
     }
   }
@@ -615,6 +616,60 @@ async function interactions(page, at, want) {
     assert(a.target === '_blank', 'the official link does not open in a new tab');
     assert(a.shown, 'the official link is not visible');
   });
+
+  // My list (2026-11-03): real clicks on the row stars, the list view,
+  // Compare and a share link opened in the same tab. Phone and desktop.
+  if (at === 1280 || at === 390) {
+    await check(at, 'A14', 'save two stars, open my list, compare them, and open the share link', async () => {
+      const rowId = (i) => page.ev(`document.querySelectorAll('#results > li.item')[${i}].dataset.id`);
+      const star = (id) => `document.querySelector('#results li.item[data-id=' + JSON.stringify(${JSON.stringify(id)}) + '] button.star')`;
+      const [a, b] = [await rowId(0), await rowId(1)];
+      // Every width shares one throwaway profile, so saves left by an earlier
+      // width would start these stars pressed.
+      assert(await page.ev(`localStorage.length === 0`), 'saves left over from an earlier check');
+      const openRows = `document.querySelectorAll('#results li.item.is-open').length`;
+      const openBefore = await page.ev(openRows);
+      try {
+      for (const id of [a, b]) {
+        await page.click(star(id), `the star on ${id}`);
+        await page.waitFor(`({ ok: ${star(id)}.getAttribute('aria-pressed') === 'true', why: 'star not pressed' })`, 5000, 'a pressed star');
+      }
+      await page.waitFor(`({ ok: document.querySelector('#shortlist-count-text').textContent === '2 saved · 2 shown', why: document.querySelector('#shortlist-count-text').textContent })`, 5000, '"2 saved · 2 shown"');
+      assert(await page.ev(openRows) === openBefore, 'a star click opened or closed a row');
+      await page.click(`document.querySelector('#f-shortlist-only')`, 'Open my list');
+      await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === 2, why: n + ' rows in the list' }; })()`, 10_000, 'two saved rows');
+      await page.click(`document.querySelector('#ml-compare summary')`, 'Compare');
+      for (const id of [a, b]) await page.click(`document.querySelector('#ml-picks input[value=' + JSON.stringify(${JSON.stringify('')} + ${JSON.stringify(id)}) + ']').closest('label')`, `the pick ${id}`);
+      await page.click(`document.querySelector('#ml-compare-go')`, 'Compare 2');
+      await page.waitFor(`(() => {
+        const heads = [...document.querySelectorAll('#cmp-body th[scope=col]')];
+        if (heads.length !== 2) return { why: heads.length + ' columns' };
+        if (!document.querySelector('.split').hidden) return { why: 'the list is still showing' };
+        const wide = document.documentElement.scrollWidth;
+        if (wide > innerWidth) return { why: 'the page is ' + wide + ' px wide' };
+        const r = heads[1].getBoundingClientRect();
+        return { ok: r.right <= innerWidth + 1 && r.width > 0, why: 'the second programme is off screen' };
+      })()`, 5000, 'a two-column compare table');
+      await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+      await page.click(`document.querySelector('#ml-share summary')`, 'Share');
+      // The link is filled on the panel's toggle event, just after the click.
+      const { url } = await page.waitFor(`({ ok: document.querySelector('#ml-share-url').value !== '', url: document.querySelector('#ml-share-url').value, why: 'no link yet' })`, 5000, 'the share link');
+      assert(new URL(url).search === '?list=' + [a, b].join(','), 'the share link is ' + url);
+      await page.ev(`location.href = ${JSON.stringify(url)}`);
+      await page.waitFor(`(() => {
+        if (!document.querySelector('#loading')?.hidden) return { why: 'loading' };
+        if (document.querySelector('#ml-title')?.textContent !== 'Shared list') return { why: 'no shared view' };
+        const n = document.querySelectorAll('#results > li.item').length;
+        return { ok: n === 2 && location.search.startsWith('?list='), why: n + ' rows, address ' + location.search };
+      })()`, 15_000, 'the shared view');
+      await page.click(`document.querySelector('#f-shortlist-only')`, 'Close shared list');
+      await page.waitFor(`({ ok: !location.search.includes('list=') && document.querySelectorAll('#results > li.item').length > 2, why: location.search })`, 10_000, 'the full list again');
+      } finally {
+        // Each width starts with no saves.
+        await page.ev(`localStorage.clear()`);
+      }
+    });
+  }
 
   if (at === 1280) {
     await check(at, 'A11', 'no Filters sheet on a desktop', async () => {

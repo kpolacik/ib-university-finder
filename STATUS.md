@@ -12,6 +12,10 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
+**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Compare** 2 to 4 programmes side by side (`js/compare.js`; "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns at a time, swiped sideways), **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+
+**Saves belong to one web address.** Browser storage is kept per site origin (scheme, host and port). Saves made on a test address (`localhost`, a preview host, Leon's old fork) are not on the live site at `kpolacik.github.io`, and the other way round; a different browser or device has its own list too. To move a list, use Share and open the link on the other address, then "Save these to my list".
+
 **Yearly cost** (2026-11-03): each row shows the monthly living cost under the EU fee, the detail adds "Fee + 12 months' living (estimate)", and two filters sit beside Max EU fee: Max yearly cost (`budget` in the address) and My living costs (`living`). The sum lives in `js/cost.js`; living costs from a visa or residence-permit rule (Germany, Norway, Sweden, the UK visa figure) are labelled "national minimum, not a full budget" and always count as "may exceed" against a budget.
 
 Subject filters now use 23 fixed names, including Sports Science, with old names mapped in code (S02). Unclassified rows stay visible and labelled. Importers leave unmatched titles blank and no longer mistake Physical Education for Physics or tělesná for forestry (D30, D31); existing CSV rows are unchanged.
@@ -864,9 +868,12 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   A proper column, recording the meaning and the conversion separately, is in
   `plans/backlog/points-value-kind.md`.
 
-- **Compare is a draft only** (Leon, 2026-10-26, registry Q9/F05). No code,
-  hidden or not. `plans/backlog/compare-architecture.md` holds the sketch. Ask
-  Jakub before building it.
+- **Compare is built, on the saved list** (Leon, 2026-11-03, superseding his
+  2026-10-26 "draft only, ask Jakub first", registry Q9/F05). Pick 2 to 4
+  saved programmes; the table uses the detail's own wording (`js/compare.js`,
+  which `js/render.js` imports for the exam line, the countdown and the yearly
+  estimate). The compare view is not in the address; the shared list is.
+  `plans/backlog/compare-architecture.md` is the old sketch.
 
 - **The class's target programmes come later** (Leon, 2026-10-26, registry
   Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
@@ -970,13 +977,12 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   - Milan's universities disagree widely: PoliMi €650–1,100, Bocconi €1,670,
     Cattolica €1,500–2,200. All are as published.
 
-- **No save button, no shortlist** (removed 2026-10-24 at Jakub's request). The
-  per-card bookmark is gone, and with it the only way to add to the shortlist,
-  so the shortlist bar, its CSV export and Print are hidden too. The shortlist
-  code in `js/app.js` and `js/shortlist.js` is left in place: restoring the
-  button in `js/render.js` brings the feature back. The Stage 2 "compare your
-  shortlist side by side" view depended on it and needs a different way to pick
-  programmes if it is still wanted.
+- **The save button and the list are back** (Leon, 2026-11-03, reversing the
+  2026-10-24 removal made at Jakub's request). A star on each row, "Save to my
+  list" in the detail, the My list view with groups, Compare and Share (see
+  "My list" under State). Unsaving inside the list view leaves the row in place
+  until the list is next drawn, so focus stays put and a slip is undone with
+  one more click. Saves are per browser and per web address (State).
 
 - **One row per programme**, joined to a university by `university_id`. Two
   tabs, so university-level facts are typed once.

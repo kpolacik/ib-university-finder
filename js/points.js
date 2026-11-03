@@ -131,7 +131,7 @@ export function parseCaoSentence(notes) {
 
 /**
  * What a card's Points row says, as plain data, so the card (js/render.js) and
- * the dormant CSV export (js/shortlist.js) can't say different things (R05).
+ * the My list CSV export (js/shortlist.js) can't say different things (R05).
  * One { number, unit, qualifier } per line; `number` is null on a line with no
  * IB figure, which then says why in `qualifier`.
  *

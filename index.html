@@ -16,6 +16,7 @@
 <!-- Without these the browser discovers the modules in three waves — app.js,
      then what it imports, then what those import — and only asks for the CSVs
      after the third. That is three round trips of dead air on a phone. -->
+<link rel="modulepreload" href="js/compare.js">
 <link rel="modulepreload" href="js/config.js">
 <link rel="modulepreload" href="js/cost.js">
 <link rel="modulepreload" href="js/csv.js">
@@ -287,25 +288,72 @@
       <button type="button" id="f-copy" class="btn btn-s copy">Copy link</button>
     </div>
 
-    <div class="shortlist-bar" id="shortlist-bar" hidden>
-      <p class="shortlist-count" id="shortlist-count">
-        <svg class="shortlist-icon" aria-hidden="true"><use href="#i-bookmark"/></svg>
-        <span id="shortlist-count-text"></span>
-      </p>
-      <label class="chip">
-        <input type="checkbox" id="f-shortlist-only">
-        <span>Only my shortlist</span>
-      </label>
-      <button type="button" id="export-csv" class="button">
-        <svg aria-hidden="true"><use href="#i-download"/></svg>Export CSV
-      </button>
-      <button type="button" id="print-shortlist" class="button">
-        <svg aria-hidden="true"><use href="#i-print"/></svg>Print
-      </button>
-      <button type="button" id="clear-shortlist" class="button button-quiet">
-        <svg aria-hidden="true"><use href="#i-trash"/></svg>Clear shortlist
-      </button>
-    </div>
+    <!-- My list (js/shortlist.js): the saved programmes, kept in this browser.
+         Outside the list view it says how many are saved and how many the
+         filters show; inside it, the grouping, Compare, Share and the export.
+         A shared link (?list=) opens the same view with its own programmes and
+         "Save these to my list"; nothing is saved without that click. -->
+    <section class="shortlist-bar mylist" id="shortlist-bar" aria-labelledby="ml-h" hidden>
+      <div class="ml-row">
+        <h2 class="ml-h" id="ml-h"><svg class="ic" aria-hidden="true"><use href="#i-bookmark-fill"/></svg><span id="ml-title">My list</span></h2>
+        <p class="ml-count" id="shortlist-count"><span id="shortlist-count-text"></span></p>
+        <button type="button" id="ml-show-all" class="btn btn-q" hidden>Show all saves</button>
+        <button type="button" id="ml-save-shared" class="btn btn-p btn-s" hidden>Save these to my list</button>
+        <button type="button" id="f-shortlist-only" class="btn btn-s ml-open">Open my list</button>
+      </div>
+      <p class="ml-note" id="ml-note" hidden></p>
+      <div class="ml-tools" id="ml-tools" hidden>
+        <div class="fld ml-group">
+          <label for="ml-group">Group by</label>
+          <select class="inp" id="ml-group">
+            <option value="deadline">Deadline</option>
+            <option value="points">My IB points</option>
+            <option value="country">Country</option>
+            <option value="none">No grouping</option>
+          </select>
+        </div>
+        <details class="ml-pop" id="ml-compare">
+          <summary class="btn btn-s">Compare</summary>
+          <div class="ml-panel">
+            <fieldset class="ml-picks">
+              <legend class="help">Pick 2 to 4 programmes</legend>
+              <div class="options" id="ml-picks"></div>
+            </fieldset>
+            <button type="button" id="ml-compare-go" class="btn btn-p btn-s" disabled>Compare</button>
+          </div>
+        </details>
+        <details class="ml-pop" id="ml-share">
+          <summary class="btn btn-s">Share</summary>
+          <div class="ml-panel">
+            <p class="help" id="ml-share-help">The link lists your saved programmes and nothing else.</p>
+            <label class="tick"><input type="checkbox" id="ml-share-points" aria-describedby="ml-share-points-help"> Include my IB points</label>
+            <p class="help" id="ml-share-points-help"></p>
+            <label class="help" for="ml-share-url">Link to your list</label>
+            <input class="inp" type="text" id="ml-share-url" readonly aria-describedby="ml-share-help">
+            <button type="button" id="ml-share-copy" class="btn btn-s">Copy share link</button>
+          </div>
+        </details>
+        <button type="button" id="export-csv" class="btn btn-s ml-mine">
+          <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Export CSV
+        </button>
+        <button type="button" id="print-shortlist" class="btn btn-s ml-mine">
+          <svg class="ic" aria-hidden="true"><use href="#i-print"/></svg>Print
+        </button>
+        <button type="button" id="clear-shortlist" class="btn btn-q ml-mine">Clear my list</button>
+      </div>
+      <p class="help ml-origin" id="ml-origin" hidden>Saved in this browser only. Another browser or device, or another web address for this site, has its own list.</p>
+    </section>
+
+    <!-- Compare: 2 to 4 programmes from the list, side by side (js/compare.js).
+         While it is open the list and the pane are hidden. -->
+    <section class="cmp" id="compare" aria-labelledby="cmp-h" tabindex="-1" hidden>
+      <div class="cmp-head">
+        <h2 id="cmp-h">Compare</h2>
+        <label class="tick"><input type="checkbox" id="cmp-diff"> Show only differences</label>
+        <button type="button" id="cmp-close" class="btn btn-s">Close compare</button>
+      </div>
+      <div id="cmp-body"></div>
+    </section>
 
     <div class="split">
     <section aria-labelledby="results-h" tabindex="-1">

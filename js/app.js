@@ -3,11 +3,16 @@
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
-  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts,
+  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket,
 } from './filters.js';
-import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
+import {
+  loadShortlist, saveShortlist, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
+  groupRows, groupHeadings, addressQuery,
+} from './shortlist.js';
+import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js';
 import {
   renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  setSaved, renderCompare,
 } from './render.js';
 
 const dom = {
@@ -86,6 +91,27 @@ const dom = {
   exportCsv: document.getElementById('export-csv'),
   print: document.getElementById('print-shortlist'),
   clearShortlist: document.getElementById('clear-shortlist'),
+  listTitle: document.getElementById('ml-title'),
+  listShowAll: document.getElementById('ml-show-all'),
+  listSaveShared: document.getElementById('ml-save-shared'),
+  listNote: document.getElementById('ml-note'),
+  listTools: document.getElementById('ml-tools'),
+  listOrigin: document.getElementById('ml-origin'),
+  groupBy: document.getElementById('ml-group'),
+  comparePicker: document.getElementById('ml-compare'),
+  comparePicks: document.getElementById('ml-picks'),
+  compareGo: document.getElementById('ml-compare-go'),
+  share: document.getElementById('ml-share'),
+  sharePoints: document.getElementById('ml-share-points'),
+  sharePointsHelp: document.getElementById('ml-share-points-help'),
+  shareUrl: document.getElementById('ml-share-url'),
+  shareCopy: document.getElementById('ml-share-copy'),
+  split: document.querySelector('.split'),
+  compare: document.getElementById('compare'),
+  compareHeading: document.getElementById('cmp-h'),
+  compareDiff: document.getElementById('cmp-diff'),
+  compareClose: document.getElementById('cmp-close'),
+  compareBody: document.getElementById('cmp-body'),
   issues: document.getElementById('issues'),
   issuesSummary: document.getElementById('issues-summary'),
   issuesList: document.getElementById('issues-list'),
@@ -93,6 +119,29 @@ const dom = {
 
 const state = createFilterState();
 const shortlist = loadShortlist();
+// The list view (state.shortlistOnly) shows the saved programmes, or a shared
+// link's. shared is readSharedList's { raw, ids, unknown } while a ?list= link
+// is open, else null; it is kept apart from the saves, which change only on
+// "Save these to my list". None of these go in the address except `list`.
+let shared = null;
+// "Show all saves": the list view without the page's filters.
+let listAll = false;
+let groupBy = 'deadline';
+// Ids of the programmes in the list view, the rows on screen that carry a
+// group heading, and whether the last save failed.
+let listIds = [];
+let listHeadings = new Map();
+let listShown = 0;
+let saveFailed = false;
+// Compare: the picked ids (2 to 4), whether the table is open, and the key of
+// the list the picker was last built for.
+let comparePicks = [];
+let compareOpen = false;
+let onlyDifferences = false;
+let picksKey = null;
+let shareTimer;
+// One line after a shared list was saved ("3 programmes added to your list.").
+let sharedNote = null;
 let allRows = [];
 let facets = buildFacets([]);
 let currentlyShown = 0;
@@ -184,6 +233,11 @@ async function start() {
   syncSort();
   wireInputs();
   dom.results.addEventListener('click', toggleRow);
+  // The pane's "Save to my list".
+  dom.pane.addEventListener('click', (event) => {
+    const save = event.target.closest('button[data-save-id]');
+    if (save) onToggleStar(save.getAttribute('data-save-id'));
+  });
   dom.results.addEventListener('keydown', rowKeydown);
   wideQuery.addEventListener('change', crossWide);
   document.addEventListener('focusin', rememberFocus);
@@ -207,6 +261,9 @@ async function start() {
 
     facets = buildFacets(allRows);
     applyUrlLists();
+    // An incoming share link opens its own list view, never the saves (S03).
+    shared = readSharedList(location.search, new Set(allRows.map((row) => row.id)));
+    if (shared) state.shortlistOnly = true;
     drawChips();
     renderSourceLine(dom.sourceLine, allRows, meta);
 
@@ -255,8 +312,10 @@ function applyUrlLists() {
 
 // replaceState, not pushState: one history entry per keystroke would make the
 // Back button step through every letter typed.
+// A shared list's `list` stays in the address while its view is open, so a
+// reload brings the same view back; no other view ever adds it.
 function keepAddress() {
-  const query = stateToParams(state);
+  const query = addressQuery(stateToParams(state), shared);
   const search = query ? `?${query}` : '';
   if (search === location.search) return;
   history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
@@ -289,6 +348,8 @@ function showTotalFailure(err) {
   alert.append(sentence, reload);
   dom.banner.replaceChildren(alert);
   dom.sourceLine.hidden = true;
+  dom.shortlistBar.hidden = true;
+  dom.compare.hidden = true;
   dom.banner.hidden = false;
   dom.form.hidden = true;
   dom.status.hidden = true;
@@ -427,10 +488,7 @@ function wireInputs() {
     if (document.visibilityState === 'visible' && loaded && localDay(new Date()) !== dataDay) update();
   });
 
-  dom.shortlistOnly.addEventListener('change', () => {
-    state.shortlistOnly = dom.shortlistOnly.checked;
-    update();
-  });
+  wireList();
 
   dom.exportCsv.addEventListener('click', () => {
     const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir);
@@ -443,7 +501,6 @@ function wireInputs() {
   dom.print.addEventListener('click', () => {
     if (!state.shortlistOnly) {
       state.shortlistOnly = true;
-      dom.shortlistOnly.checked = true;
       update();
     }
     window.print();
@@ -452,29 +509,178 @@ function wireInputs() {
   dom.clearShortlist.addEventListener('click', () => {
     const total = shortlist.size;
     if (total === 0) return;
-    if (!window.confirm(`Remove all ${total} saved ${plural(total)} from your shortlist?`)) return;
+    if (!window.confirm(`Remove all ${total} saved ${plural(total)} from your list?`)) return;
     shortlist.clear();
-    saveShortlist(shortlist);
+    saveFailed = !saveShortlist(shortlist);
     state.shortlistOnly = false;
-    dom.shortlistOnly.checked = false;
+    listAll = false;
+    closeCompare(false);
     update();
   });
 }
 
-// Returns the new starred state so the card can update itself in place.
+// Saves or unsaves one programme and brings every save button for it (the
+// row's star, the pane's or the slot's "Save to my list") to the new state in
+// place. Unsaving inside the list view leaves the row where it is until the
+// list is next drawn, so focus stays put and a slip can be undone with one
+// more click.
 function onToggleStar(id) {
   const starred = !shortlist.has(id);
   if (starred) shortlist.add(id); else shortlist.delete(id);
-
-  if (!saveShortlist(shortlist)) {
-    dom.shortlistCount.textContent =
-      'Your browser could not save your shortlist. It may be lost when you leave this page.';
-    return starred;
-  }
-
-  // Only a full rebuild when the row has to leave the list.
-  if (state.shortlistOnly) update(); else renderCounts(currentlyShown);
+  saveFailed = !saveShortlist(shortlist);
+  for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, starred);
+  renderCounts(currentlyShown);
   return starred;
+}
+
+// The list bar's buttons and pickers. Everything here changes the view, never
+// the filters.
+function wireList() {
+  dom.shortlistOnly.addEventListener('click', () => {
+    if (state.shortlistOnly) {
+      // Back to all programmes; a shared link's view closes for good.
+      shared = null;
+      state.shortlistOnly = false;
+    } else state.shortlistOnly = true;
+    listAll = false;
+    closeCompare(false);
+    update();
+  });
+  dom.listShowAll.addEventListener('click', () => {
+    listAll = state.shortlistOnly ? !listAll : true;
+    state.shortlistOnly = true;
+    update();
+  });
+  dom.listSaveShared.addEventListener('click', () => {
+    if (!shared) return;
+    const added = mergeIntoShortlist(shortlist, shared.ids);
+    saveFailed = !saveShortlist(shortlist);
+    for (const id of shared.ids) {
+      for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, true);
+    }
+    dom.listSaveShared.textContent = 'Saved to my list';
+    sharedNote = added === 1 ? '1 programme added to your list.' : `${added} programmes added to your list.`;
+    renderCounts(currentlyShown);
+  });
+  dom.groupBy.addEventListener('change', () => {
+    groupBy = dom.groupBy.value;
+    update();
+  });
+  dom.comparePicks.addEventListener('change', (event) => {
+    const input = event.target;
+    if (input.checked) comparePicks = [...comparePicks, input.value];
+    else comparePicks = comparePicks.filter((id) => id !== input.value);
+    comparePicks = prunePicks(comparePicks, listIds);
+    syncPicks();
+  });
+  dom.compareGo.addEventListener('click', () => {
+    if (comparePicks.length < MIN_COMPARE) return;
+    compareOpen = true;
+    dom.comparePicker.open = false;
+    drawCompare();
+    dom.compare.focus({ preventScroll: true });
+    dom.compare.scrollIntoView?.({ block: 'start' });
+  });
+  dom.compareClose.addEventListener('click', () => closeCompare(true));
+  dom.compareDiff.addEventListener('change', () => {
+    onlyDifferences = dom.compareDiff.checked;
+    drawCompare();
+  });
+  dom.share.addEventListener('toggle', syncShare);
+  dom.sharePoints.addEventListener('change', syncShare);
+  dom.shareCopy.addEventListener('click', copyShareLink);
+}
+
+// The share link for the saved programmes that still exist, in the order they
+// were saved; points only with the tick (shareQuery in js/shortlist.js).
+function shareLink() {
+  const known = new Set(allRows.map((row) => row.id));
+  const ids = [...shortlist].filter((id) => known.has(id));
+  const base = location.href.split(/[?#]/)[0];
+  return `${base}?${shareQuery(ids, { points: state.myIbPoints, includePoints: dom.sharePoints.checked })}`;
+}
+
+function syncShare() {
+  const points = state.myIbPoints;
+  dom.sharePoints.disabled = points === null;
+  if (points === null) dom.sharePoints.checked = false;
+  const help = points === null ? 'Enter your IB points above to include them.' : `Adds your ${points} points to the link.`;
+  if (dom.sharePointsHelp.textContent !== help) dom.sharePointsHelp.textContent = help;
+  dom.shareUrl.value = shareLink();
+}
+
+// Like Copy link: the button says what happened for 2 s.
+async function copyShareLink() {
+  syncShare();
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(dom.shareUrl.value);
+    copied = true;
+  } catch {
+    copied = false;
+  }
+  dom.shareCopy.textContent = copied ? 'Link copied' : 'Copy failed: select the link and copy it';
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => { dom.shareCopy.textContent = 'Copy share link'; }, 2000);
+}
+
+// The compare picker lists every programme in the list view (filters do not
+// narrow it), rebuilt only when that list changes, so ticking a box keeps
+// its focus.
+function drawPicks() {
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  const key = listIds.join(',');
+  comparePicks = prunePicks(comparePicks, listIds);
+  if (key !== picksKey) {
+    picksKey = key;
+    dom.comparePicks.replaceChildren(...listIds.map((id) => {
+      const row = byId.get(id);
+      const label = document.createElement('label');
+      label.className = 'option';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = id;
+      const text = document.createElement('span');
+      text.textContent = `${row.programme} · ${row.university}`;
+      label.append(input, text);
+      return label;
+    }));
+  }
+  syncPicks();
+}
+
+// Ticks, the fifth box disabled at four, and the button's count.
+function syncPicks() {
+  const picked = new Set(comparePicks);
+  for (const input of dom.comparePicks.querySelectorAll('input')) {
+    input.checked = picked.has(input.value);
+    input.disabled = !input.checked && picked.size >= MAX_COMPARE;
+  }
+  const n = comparePicks.length;
+  dom.compareGo.disabled = n < MIN_COMPARE;
+  dom.compareGo.textContent = n >= MIN_COMPARE ? `Compare ${n}` : 'Compare';
+}
+
+function drawCompare() {
+  if (!compareOpen) return;
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  const rows = comparePicks.map((id) => byId.get(id)).filter(Boolean);
+  if (rows.length < MIN_COMPARE) { closeCompare(false); return; }
+  dom.compareHeading.textContent = `Compare ${rows.length} programmes`;
+  dom.compareDiff.checked = onlyDifferences;
+  renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences });
+  dom.compare.hidden = false;
+  dom.split.hidden = true;
+}
+
+// returnFocus: from the Close button, focus goes back to the picker.
+function closeCompare(returnFocus) {
+  if (!compareOpen) return;
+  compareOpen = false;
+  dom.compare.hidden = true;
+  dom.split.hidden = false;
+  dom.compareBody.replaceChildren();
+  if (returnFocus) dom.comparePicker.querySelector('summary').focus({ preventScroll: true });
 }
 
 function clearAll() {
@@ -540,14 +746,26 @@ function update() {
     dataDay = localDay(now);
   }
 
-  // Turning off an empty shortlist view belongs here, before rendering — not
-  // as a side effect hidden inside the count update.
-  if (state.shortlistOnly && shortlist.size === 0) {
-    state.shortlistOnly = false;
-    dom.shortlistOnly.checked = false;
-  }
+  // Turning off an empty list view belongs here, before rendering — not as a
+  // side effect hidden inside the count update. A shared link's view stays,
+  // even empty: it says what happened to its programmes.
+  if (state.shortlistOnly && !shared && shortlist.size === 0) state.shortlistOnly = false;
+  if (!state.shortlistOnly) listAll = false;
 
-  const rows = sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir);
+  // The list view: the saved (or shared) programmes, with the page's filters
+  // unless "Show all saves" is on, sorted, then grouped (groupRows).
+  const scope = shared ? new Set(shared.ids) : shortlist;
+  const inScope = state.shortlistOnly ? allRows.filter((row) => scope.has(row.id)) : [];
+  const filtered = applyFilters(allRows, state, scope);
+  let rows = sortRows(state.shortlistOnly && listAll ? inScope : filtered, state.sort, state.dir);
+  listIds = sortRows(inScope, 'name').map((row) => row.id);
+  listShown = state.shortlistOnly ? filtered.length : 0;
+  listHeadings = new Map();
+  if (state.shortlistOnly) {
+    const groups = groupRows(rows, groupBy, state, pointsBucket);
+    rows = groups.flatMap((group) => group.rows);
+    listHeadings = groupHeadings(groups);
+  }
   // Read before the rows are rebuilt: afterwards it forces a layout of the
   // whole new list (about 120 ms at 4x CPU throttling, L09).
   const paneScroll = appliedWide ? dom.pane.scrollTop : 0;
@@ -564,7 +782,7 @@ function update() {
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
-  renderRows(dom.results, rows.slice(0, first), { state, shortlist, onToggleStar, wide: wideQuery.matches });
+  renderRows(dom.results, rows.slice(0, first), { state, shortlist, wide: wideQuery.matches, headings: listHeadings });
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
   if (appliedWide) {
@@ -579,6 +797,9 @@ function update() {
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
+  if (state.shortlistOnly) drawPicks();
+  else closeCompare(false);
+  drawCompare();
   keepAddress();
 }
 
@@ -611,7 +832,7 @@ function appendSlice(pending, count) {
   pending.next += rows.length;
   // The list's applied mode, not the query: a flipped query whose change event
   // has not run yet is crossWide's job.
-  arrive(appendRows(dom.results, rows, { state, wide: appliedWide }));
+  arrive(appendRows(dom.results, rows, { state, shortlist, wide: appliedWide, headings: listHeadings }));
 }
 
 function stopRows(pending) {
@@ -656,7 +877,7 @@ function openRow(item, row, { animate = false } = {}) {
     slot.inert = false;
     slot.setAttribute('data-state', 'open');
   } else {
-    slot = renderSlot(row, state);
+    slot = renderSlot(row, state, { saved: shortlist.has(row.id) });
     if (move) slot.setAttribute('data-state', 'closed');
     item.append(slot);
     if (move) {
@@ -736,6 +957,12 @@ function settleSlots() {
 }
 
 function toggleRow(event) {
+  // A save star on a row or the slot's "Save to my list": never opens the row.
+  const save = event.target.closest('button[data-save-id]');
+  if (save) {
+    onToggleStar(save.getAttribute('data-save-id'));
+    return;
+  }
   const goto = event.target.closest('a.goto');
   if (goto) {
     if (event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -795,7 +1022,8 @@ function drawPane({ fade = false, scroll } = {}) {
   const changed = paneId !== selectedId;
   const current = scroll ?? dom.pane.scrollTop;
   const row = allRows.find((row) => row.id === selectedId) ?? null;
-  const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state);
+  const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state,
+    { saved: row ? shortlist.has(row.id) : undefined });
   if (fade && changed && mode === 'content') dom.paneBody.children[0].classList.add('fade-in');
   paneId = selectedId;
   // Same pick keeps its place, clamped to the new content; a new pick starts
@@ -1122,11 +1350,13 @@ function removeChip(key) {
 
 function renderCounts(shown) {
   const active = activeFilterCount(state);
-  const scope = state.shortlistOnly ? ' in your shortlist' : '';
+  const listTotal = listIds.length;
 
-  const lead = active === 0 && !state.shortlistOnly
-    ? `${shown} ${plural(shown)}`
-    : `${shown} of ${allRows.length} ${plural(allRows.length)}${scope}`;
+  const lead = state.shortlistOnly
+    ? `${shown} of ${listTotal} ${shared ? `${plural(listTotal)} in this link` : `saved ${plural(listTotal)}`}`
+    : active === 0
+      ? `${shown} ${plural(shown)}`
+      : `${shown} of ${allRows.length} ${plural(allRows.length)}`;
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
   renderCount(dom.count, lead, currentSummary);
@@ -1163,13 +1393,64 @@ function renderCounts(shown) {
     box.closest('.dropdown').classList.toggle('is-set', set.size > 0);
   }
 
-  const saved = shortlist.size;
-  // Always hidden. The per-card save button was removed on 2026-10-24, so
-  // nothing can be added to the shortlist any more; a list saved before then
-  // would otherwise bring the bar back with no way to manage it. The shortlist
-  // code is left in place so the feature can return by restoring the button.
-  dom.shortlistBar.hidden = true;
-  if (saved > 0) dom.shortlistCount.textContent = `${saved} saved ${plural(saved)}`;
+  renderListBar();
+}
+
+// The My list bar. Outside the list view: "3 saved · 2 shown", and "Show all
+// saves" when the filters hide some. Inside it: the same counts for the list,
+// the grouping, Compare, Share and the export. Saves whose programme is no
+// longer in the data are not counted (they are kept, in case it comes back).
+function renderListBar() {
+  const known = new Set(allRows.map((row) => row.id));
+  const saved = [...shortlist].filter((id) => known.has(id)).length;
+  const mode = !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine';
+  dom.shortlistBar.hidden = mode === 'main' && saved === 0 && !saveFailed;
+  dom.shortlistBar.classList.toggle('is-list', mode !== 'main');
+  dom.listTitle.textContent = mode === 'shared' ? 'Shared list' : 'My list';
+
+  let total, shown;
+  if (mode === 'main') {
+    total = saved;
+    shown = [...shownRows.keys()].filter((id) => shortlist.has(id)).length;
+  } else {
+    total = listIds.length;
+    shown = listShown;
+  }
+  const hidden = total - shown;
+  const parts = [mode === 'shared' ? `${total} in this link` : `${total} saved`];
+  if (listAll && mode !== 'main') parts.push('all shown, your filters are off here');
+  else {
+    parts.push(`${shown} shown`);
+    if (hidden > 0) parts.push(`${hidden} hidden by your filters`);
+  }
+  const text = parts.join(' · ');
+  if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
+
+  const filtersOff = listAll && mode !== 'main';
+  dom.listShowAll.hidden = !filtersOff && hidden <= 0;
+  dom.listShowAll.textContent = filtersOff ? 'Apply my filters' : mode === 'shared' ? 'Show all in this link' : 'Show all saves';
+  dom.listSaveShared.hidden = mode !== 'shared';
+  dom.shortlistOnly.textContent = mode === 'main' ? 'Open my list' : mode === 'shared' ? 'Close shared list' : 'Back to all programmes';
+
+  const notes = [];
+  if (saveFailed) notes.push('Your browser could not save your list. It may be lost when you leave this page.');
+  if (mode === 'shared') {
+    const missing = unknownIdsText(shared.unknown.length);
+    if (missing) notes.push(missing);
+    if (sharedNote) notes.push(sharedNote);
+  }
+  if (mode !== 'main' && groupBy === 'points' && state.myIbPoints === null) notes.push('Enter your IB points to group the list by them.');
+  const note = notes.join(' ');
+  if (dom.listNote.textContent !== note) dom.listNote.textContent = note;
+  dom.listNote.hidden = note === '';
+
+  dom.listTools.hidden = mode === 'main';
+  dom.listOrigin.hidden = mode !== 'mine';
+  for (const node of dom.listTools.querySelectorAll('.ml-mine')) node.hidden = mode !== 'mine';
+  dom.share.hidden = mode !== 'mine';
+  dom.comparePicker.hidden = listIds.length < MIN_COMPARE;
+  if (dom.groupBy.value !== groupBy) dom.groupBy.value = groupBy;
+  if (mode === 'mine' && dom.share.open) syncShare();
 }
 
 // The "set" look on a field whose value is in force: valid, so fee 0 counts and
@@ -1193,9 +1474,9 @@ function renderEmptyState(shown) {
   dom.emptyClear.hidden = true;
   dom.emptyTips.hidden = true;
 
-  if (state.shortlistOnly && shortlist.size === 0) {
-    dom.emptyTitle.textContent = 'Your shortlist is empty.';
-    dom.emptyHint.textContent = 'No programmes are saved here.';
+  if (state.shortlistOnly && listIds.length === 0) {
+    dom.emptyTitle.textContent = shared ? 'None of the programmes in this link are listed any more.' : 'Your list is empty.';
+    dom.emptyHint.textContent = shared ? 'Close the shared list to see every programme.' : 'No programmes are saved here.';
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.

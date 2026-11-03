@@ -466,7 +466,8 @@ html:has(.sheet[open]){overflow:hidden}
 .achip:hover{background:var(--panel)}
 .achip>[aria-hidden]{flex:none;font-size:var(--fs-16);line-height:1}
 
-/* The dormant shortlist bar's "Only my shortlist" tick (shortlist.js, hidden). */
+/* Legacy pill tick, no longer in the markup (My list uses .btn); kept with
+   .button because tools/check.mjs pins their old transitions. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -514,28 +515,81 @@ html:has(.sheet[open]){overflow:hidden}
 .count .k{white-space:nowrap;font-weight:600}
 .k-fit{color:var(--fit-ink)}.k-cond{color:var(--cond-ink)}.k-unk{color:var(--ink-2)}
 
-.shortlist-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.8rem;
-  margin-bottom: 1.1rem;
-  background: var(--panel);
-  border: 0;
-  border-radius: var(--r-panel);
+/* My list (js/shortlist.js): a panel under the count line. Outside the list
+   view it is one line, "3 saved · 2 shown"; in it, a second row of tools.
+   Blue only where you can press; the counts are ink. */
+.mylist{margin:0 0 12px;padding:8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
+:where(.mylist,.cmp) :where(button,input,select,summary){font:inherit;color:inherit}
+.ml-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.ml-h{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:var(--fs-14);font-weight:700;line-height:20px}
+.mylist .ic{width:16px;height:16px;fill:currentColor}
+.ml-count{margin:0;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ml-open{margin-left:auto}
+.ml-note{margin:6px 0 0;font-weight:600}
+.ml-origin{margin-top:6px}
+.ml-tools{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline)}
+.ml-group{flex:none;width:10rem}
+.ml-pop{position:relative}
+.ml-pop>summary{list-style:none;cursor:pointer;user-select:none}
+.ml-pop>summary::-webkit-details-marker{display:none}
+.ml-pop[open]>summary{border-color:var(--accent)}
+.ml-panel{position:absolute;top:100%;left:0;z-index:20;display:grid;gap:8px;margin-top:6px;width:22rem;max-width:calc(100vw - 2 * var(--gut));padding:10px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
+.ml-picks{margin:0;padding:0;border:0;min-width:0}
+.ml-picks legend{padding:0 0 4px}
+.ml-picks .options{max-height:16rem;overflow:auto;overscroll-behavior:contain}
+.ml-picks .option:has(input:disabled){color:var(--ink-3);cursor:default}
+.ml-panel .inp{font-size:var(--fs-13)}
+.ml-panel .btn{justify-self:start}
+@media (max-width: 599.98px) {
+  /* On a phone the panels open in place, full width, like the sheet's lists. */
+  .ml-pop[open]{flex-basis:100%}
+  .ml-panel{position:static;width:auto;max-width:none}
+  .ml-group{flex:1 1 10rem}
 }
-.shortlist-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0 auto 0 0;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
+
+/* The row's save star: above the row's whole-row button (its ::after covers
+   the row), beside the title. The saved state is the filled symbol. */
+.r-main{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start}
+.r-main>.r-t,.r-main>.sub{grid-column:1}
+.r-main>.star{grid-column:2;grid-row:1/span 2}
+/* The list view's group heading, inside the group's first row (render.js). */
+.grp-h{margin:0;padding:8px 16px 6px;background:var(--hover);border-bottom:1px solid var(--hairline);font-size:var(--fs-13);font-weight:700;line-height:18px;color:var(--ink);font-variant-numeric:tabular-nums}
+.item.has-grp:first-child>.grp-h{border-radius:var(--r-panel) var(--r-panel) 0 0}
+
+/* Compare: 2 to 4 programmes side by side. Columns are programmes, rows are
+   facts; the fact names stay at the left while the columns scroll. */
+.cmp{margin:0 0 12px;min-width:0;scroll-margin-top:57px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel)}
+.cmp-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:8px 16px;border-bottom:1px solid var(--hairline)}
+.cmp-head h2{margin:0 auto 0 0;font-size:var(--fs-16);font-weight:700;line-height:24px}
+/* Positioned, so the hidden "opens in a new tab" text in an off-screen column
+   is clipped with it instead of widening the page (measured 404 px at 390). */
+.cmp-scroll{position:relative;overflow-x:auto;overscroll-behavior-x:contain}
+.cmp-t{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-14);line-height:20px;font-variant-numeric:tabular-nums}
+.cmp-t :where(th,td){padding:10px 12px;border-bottom:1px solid var(--hairline);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.cmp-t tbody tr:last-child>*{border-bottom:0}
+.cmp-t tbody th,.cmp-c{position:sticky;left:0;z-index:1;width:10rem;background:var(--panel);font-size:var(--fs-13);font-weight:600;line-height:18px;color:var(--ink-2)}
+.cmp-p{font-weight:700;color:var(--ink)}
+.cmp-n,.cmp-u{display:block}
+.cmp-u{font-size:var(--fs-13);font-weight:400;color:var(--ink-2)}
+.cmp-t p{margin:0}
+.cmp-t p+p{margin-top:2px}
+.cmp-t .verd{margin-top:4px}
+.cmp-same{margin:0;padding:8px 16px 12px}
+@media (max-width: 599.98px) {
+  /* Phones: two programmes at a time, swiped sideways, one snap per column.
+     The fact column (6.5rem) stays put, so each programme column is half of
+     what is left. */
+  .cmp-scroll{scroll-snap-type:x mandatory;scroll-padding-left:6.5rem}
+  /* A fixed layout whose width depends on the number of programmes (data-n):
+     the fact column is 6.5rem and the programme columns share the rest
+     equally, half the scroll box each, so every swipe lands on a column.
+     The percentages are of the scroll box, never the page. */
+  .cmp-t{table-layout:fixed;width:100%}
+  .cmp-t[data-n="3"]{width:calc(6.5rem + 3 * (100% - 6.5rem) / 2)}
+  .cmp-t[data-n="4"]{width:calc(6.5rem + 2 * (100% - 6.5rem))}
+  .cmp-t tbody th,.cmp-t .cmp-c{width:6.5rem;padding:8px}
+  .cmp-p,.cmp-t td{padding:8px;scroll-snap-align:start}
 }
-.shortlist-icon { color: var(--ink-2); }
 
 /* ------------------------------------------------------------ detail */
 
@@ -811,36 +865,17 @@ html:has(.sheet[open]){overflow:hidden}
   }
 }
 
-/* The save control. An outline bookmark that fills when set — a state change
-   you can read at a glance without colour alone carrying it. */
-.star {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.35rem;
-  height: 2.35rem;
-  padding: 0;
-  border: 1px solid var(--edge);
-  border-radius: var(--r-cell);
-  background: var(--panel);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: color var(--t-fast) var(--ease-out),
-              border-color var(--t-fast) var(--ease-out),
-              background-color var(--t-fast) var(--ease-out),
-              transform var(--t-fast) var(--ease-out);
-}
-.star svg { width: 1.2rem; height: 1.2rem; }
-.star:hover { color: var(--accent); border-color: var(--accent); background: var(--hover); }
-.star:active { transform: scale(0.92); }
-.star[aria-pressed="true"] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-tint);
-}
-.star[aria-pressed="true"] svg { fill: currentColor; }
-
+/* The save star on a row: an outline bookmark that fills when saved, a shape
+   change you can read without colour. 32 px, 44 on a phone (--tap). */
+.star{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:max(32px,var(--tap));height:max(32px,var(--tap));margin:-4px 0 0;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.row .star .ic{width:20px;height:20px;fill:none}
+.star:hover{background:var(--panel);color:var(--accent)}
+.star[aria-pressed="true"]{color:var(--accent)}
+.star[aria-pressed="true"] .ic{fill:currentColor}
+/* The detail's "Save to my list". */
+.save .ic{fill:none}
+.save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
+.save[aria-pressed="true"] .ic{fill:currentColor}
 
 /* ------------------------------------------------- loading + empty */
 
@@ -914,7 +949,7 @@ html:has(.sheet[open]){overflow:hidden}
   /* .listp>.f-sort, not .f-sort: the screen rule that shows the list's Sort
      select under 900 px has that weight, and paper is under 900 px, so a
      plain .f-sort lost and the select printed. */
-  .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat,
+  .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
   .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
   .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 

@@ -8,14 +8,10 @@ import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
 import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
-import { yearlyCost, budgetFit, livingIsFloor, FLOOR_LABEL, UNKNOWN_REASON, poundNote } from './cost.js';
-
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
-});
-
-// The top of a range: "€900–1,200", not "€900–€1,200".
-const plain = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 0 });
+import { yearlyCost, budgetFit, livingIsFloor, FLOOR_LABEL, UNKNOWN_REASON } from './cost.js';
+// The detail's wording for the exam, the countdown, money and the yearly
+// estimate lives in compare.js, so the compare table can't say it differently.
+import { money, moneyRange, EXAM_TEXT, countdown, yearlyLine, visibleFacts } from './compare.js';
 
 const longDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -25,29 +21,30 @@ const shortDate = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
 });
 
-// shortlist and onToggleStar are still passed by app.js and kept here on
-// purpose, unused: the save button was removed on 2026-10-24 at Jakub's
-// request, but its code stays in case it comes back (STATUS decisions). Until
-// the save button returns, the rows deliberately leave these hooks inert.
-export function renderRows(container, rows, { state, shortlist, onToggleStar, wide = false }) {
-  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide)));
+// shortlist: the saved programme ids (js/shortlist.js), for each row's save
+// star. headings: programme_id → group heading, put above that row in the
+// list view (groupHeadings in js/shortlist.js); empty outside it.
+export function renderRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
+  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide, shortlist, headings)));
 }
 
 // The rest of a long list, a slice at a time after the first screen is drawn
 // (L09). The same rows renderRows builds; the items are returned so app.js can
 // open a slot or mark the selection on a row that arrives late.
-export function appendRows(container, rows, { state, wide = false }) {
-  const items = rows.map((row) => renderRow(row, state, wide));
+export function appendRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
+  const items = rows.map((row) => renderRow(row, state, wide, shortlist, headings));
   container.append(...items);
   return items;
 }
 
 // Keep the aside and its fallback heading connected while its detail is rebuilt.
-export function renderPane({ pane, heading, body }, row, shown, state) {
+// saved: whether the programme is in the student's list, for the detail's
+// "Save to my list" button; left out, there is no button.
+export function renderPane({ pane, heading, body }, row, shown, state, { saved } = {}) {
   let content;
   const mode = !row ? 'empty' : shown ? 'content' : 'hidden';
   if (mode === 'content') {
-    content = renderDetail(row, state);
+    content = renderDetail(row, state, { saved });
   } else {
     content = el('div', 'pane-empty');
     const lead = el('b');
@@ -72,7 +69,7 @@ export function renderPane({ pane, heading, body }, row, shown, state) {
 
 // The full entry for one programme (design spec §6.7). The pane has the full
 // head and cells; the slot keeps the full points lines and other facts.
-export function renderDetail(row, state, { slot = false } = {}) {
+export function renderDetail(row, state, { slot = false, saved } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
@@ -130,7 +127,7 @@ export function renderDetail(row, state, { slot = false } = {}) {
   const said = notes(row, state, pointsSays);
   if (said) article.append(said);
 
-  const foot = footer(row);
+  const foot = footer(row, saved);
   if (foot) article.append(foot);
   return article;
 }
@@ -181,9 +178,17 @@ function pointsList(row) {
   return list;
 }
 
-function renderRow(row, state, wide) {
+function renderRow(row, state, wide, shortlist, headings) {
   const item = el('li', 'item');
   item.setAttribute('data-id', row.id);
+  // The list view's group heading ("March 2027 · 2") sits inside the group's
+  // first row, so every child of the list stays one programme and the arrow
+  // keys, the selection and the late slices need no special case.
+  const group = headings.get(row.id);
+  if (group) {
+    item.classList.add('has-grp');
+    item.append(el('h3', 'grp-h', group));
+  }
   if (row.deadlinePassed) item.classList.add('is-past');
   if (row.isSample) item.classList.add('is-sample');
   const body = el('div', 'row');
@@ -220,7 +225,7 @@ function renderRow(row, state, wide) {
     sub.append(document.createTextNode(' · '), identity);
   }
   if (row.isSample) sub.append(el('span', 'tag tag-strong', 'Invented sample row · not real data'));
-  main.append(heading, sub);
+  main.append(heading, sub, starButton(row, shortlist.has(row.id)));
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
   chevron.append(icon('i-chevron', 'ic'));
@@ -293,7 +298,7 @@ function rowPointsCell(row, state) {
   return cell;
 }
 
-export function renderSlot(row, state) {
+export function renderSlot(row, state, { saved } = {}) {
   const slot = el('div', 'expand');
   slot.id = `x-${row.id}`;
   slot.setAttribute('role', 'region');
@@ -301,7 +306,7 @@ export function renderSlot(row, state) {
   // The slot opens by animating its one grid row from 0fr to 1fr (spec §8).
   // That needs a single child that may shrink below its content and clips it.
   const inner = el('div', 'expand-inner');
-  inner.append(renderDetail(row, state, { slot: true }));
+  inner.append(renderDetail(row, state, { slot: true, saved }));
   slot.append(inner);
   return slot;
 }
@@ -403,11 +408,6 @@ function livingShort(cost) {
   if (cost.personal) return `Living: your ${money.format(cost.monthlyMin)}/mo`;
   if (cost.floor) return `Living from ${money.format(cost.monthlyMin)}/mo`;
   return `Living ${moneyRange(cost.monthlyMin, cost.monthlyMax)}/mo`;
-}
-
-// "€900–1,200", or "€900" when both ends are the same.
-function moneyRange(low, high) {
-  return high > low ? `${money.format(low)}–${plain.format(high)}` : money.format(low);
 }
 
 // The block this whole site exists for. Each kind of requirement on its own
@@ -525,18 +525,20 @@ function applyingSection(row, state) {
   return section;
 }
 
-// The yearly estimate with what it rests on: "€12,700–16,300 a year ·
-// university's estimate". A national minimum reads "from …"; an unknown total
-// says which half is missing.
+// The yearly estimate (yearlyLine in compare.js) as a node: an unknown total
+// gets the dashed "Not known" box, then says which half is missing.
 function yearlyText(row, cost) {
-  if (!cost.known) {
-    const tag = el('span');
-    tag.append(unknownTag('Not known'), document.createTextNode(` because ${UNKNOWN_REASON[cost.reason]}`));
-    return tag;
-  }
-  const range = cost.floor ? `from ${money.format(cost.low)}` : moneyRange(cost.low, cost.high);
-  const source = cost.personal ? `your ${money.format(cost.monthlyMin)}/month` : row.livingCostSource;
-  return [`${range} a year`, source, cost.floor && FLOOR_LABEL, poundNote(row)].filter(Boolean).join(' · ');
+  return lineNode(yearlyLine(row, cost));
+}
+
+// One compare.js line as a node: plain text, or the dashed unknown box with
+// any text after it.
+function lineNode(line) {
+  if (line.tag === undefined) return document.createTextNode(line.text);
+  const node = el('span');
+  node.append(unknownTag(line.tag));
+  if (line.text) node.append(document.createTextNode(line.text));
+  return node;
 }
 
 // Never called with an empty label, so no dt is ever empty (A05).
@@ -546,12 +548,6 @@ function reqRow(dl, label, nodes) {
   dd.append(...nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n)));
   dl.append(dd);
 }
-
-const EXAM_TEXT = {
-  yes: 'Entrance exam or test',
-  waivable: 'Entrance exam — some IB applicants can skip it',
-  no: 'No entrance exam',
-};
 
 function unknownTag(text) {
   return el('span', 'unk-t', text);
@@ -596,7 +592,7 @@ function notes(row, state, pointsSays) {
   return box.childElementCount ? box : null;
 }
 
-function footer(row) {
+function footer(row, saved) {
   const foot = el('footer', 'd-foot');
 
   // data.js already ran these through safeUrl and stored null or a normalised
@@ -611,6 +607,7 @@ function footer(row) {
   if (row.studentLifeUrl) {
     foot.append(externalLink('lnk', 'Student life', row.studentLifeUrl));
   }
+  if (typeof saved === 'boolean') foot.append(saveButton(row, saved));
 
   // Every card used to end "Gathered <date> · nobody has checked this yet".
   // Removed 2026-10-24 at Jakub's request: the source line at the top of the
@@ -659,10 +656,96 @@ function icon(id, className) {
   return svg;
 }
 
-function countdown(days) {
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Tomorrow';
-  return `In ${days} days`;
+// ------------------------------------------------------------ my list
+
+// The row's save star: a toggle (aria-pressed) named by the programme and its
+// university, since many titles repeat across universities. The saved state
+// is a different symbol, not only a colour: a row sets content-visibility:
+// auto, and a state expressed only as CSS inside it can paint stale (STATUS,
+// "Three traps"). app.js finds every button for a programme by data-save-id.
+function starButton(row, saved) {
+  const button = el('button', 'star');
+  button.type = 'button';
+  button.setAttribute('data-save-id', row.id);
+  button.append(icon(saved ? 'i-bookmark-fill' : 'i-bookmark', 'ic'),
+    el('span', 'visually-hidden', `Save ${row.programme}, ${row.university}, to my list`));
+  button.setAttribute('aria-pressed', String(saved));
+  return button;
+}
+
+// The detail's button: the same toggle with words, "Save to my list", then
+// "Saved to my list" once it is in.
+function saveButton(row, saved) {
+  const button = el('button', 'btn save');
+  button.type = 'button';
+  button.setAttribute('data-save-id', row.id);
+  button.append(icon(saved ? 'i-bookmark-fill' : 'i-bookmark', 'ic'), el('span', 'save-t'),
+    el('span', 'visually-hidden', `: ${row.programme}, ${row.university}`));
+  setSaved(button, saved);
+  return button;
+}
+
+// Brings one save button (star or detail) to the saved state, in place.
+export function setSaved(button, saved) {
+  button.setAttribute('aria-pressed', String(saved));
+  const use = button.querySelector('use');
+  const mark = saved ? '#i-bookmark-fill' : '#i-bookmark';
+  if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
+  const words = button.querySelector('.save-t');
+  if (words) words.textContent = saved ? 'Saved to my list' : 'Save to my list';
+}
+
+// The compare table: one column per programme, one row per fact
+// (compareTable in compare.js). Row headers are real <th scope=row>, and each
+// column is headed by the programme, so a screen reader names every cell.
+export function renderCompare(container, rows, table, { onlyDifferences = false } = {}) {
+  const facts = visibleFacts(table, onlyDifferences);
+  const wrap = el('div', 'cmp-scroll');
+  wrap.setAttribute('tabindex', '0');
+  wrap.setAttribute('role', 'region');
+  wrap.setAttribute('aria-label', 'Compare table, scrolls sideways');
+  const grid = el('table', 'cmp-t');
+  // The phone layout sizes the table by how many programmes it holds.
+  grid.setAttribute('data-n', String(rows.length));
+  const head = el('thead');
+  const top = el('tr');
+  const corner = el('td', 'cmp-c');
+  top.append(corner);
+  for (const row of rows) {
+    const th = el('th', 'cmp-p');
+    th.setAttribute('scope', 'col');
+    const name = el('span', 'cmp-n', row.programme);
+    if (row.languages.length === 1 && row.languages[0] === 'Czech') name.lang = 'cs';
+    th.append(name, el('span', 'cmp-u', row.university));
+    top.append(th);
+  }
+  head.append(top);
+  const body = el('tbody');
+  for (const fact of facts) {
+    const tr = el('tr');
+    tr.setAttribute('data-fact', fact.key);
+    const th = el('th', '', fact.label);
+    th.setAttribute('scope', 'row');
+    tr.append(th);
+    for (const cell of fact.cells) {
+      const td = el('td');
+      for (const line of cell.lines) {
+        const p = el('p', line.verdict ? `verd m m-${line.verdict}` : line.strong ? 'note note-strong' : '');
+        if (line.href) p.append(externalLink('lnk', line.text, line.href, line.name));
+        else p.append(lineNode(line));
+        td.append(p);
+      }
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  grid.append(head, body);
+  wrap.append(grid);
+  const hidden = table.length - facts.length;
+  const out = [wrap];
+  if (hidden) out.push(el('p', 'help cmp-same', `${hidden} ${hidden === 1 ? 'fact is' : 'facts are'} the same for every programme and hidden.`));
+  container.replaceChildren(...out);
+  return facts.length;
 }
 
 // ------------------------------------------------------------ filter chips

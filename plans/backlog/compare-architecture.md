@@ -1,5 +1,9 @@
 # Compare 2–4 programmes: architecture draft
 
+**Superseded 2026-11-03:** Leon had it built on the saved list (STATUS,
+"Compare is built, on the saved list"; `js/compare.js`). Picking is from My
+list, not a `compare=` address; sharing is `?list=`. Kept as the old sketch.
+
 Registry: F05, Q9. Decided 2026-10-26 (Leon): backlog and this draft only.
 **No code, hidden or otherwise** (both reviewers objected to dormant code).
 **Ask Jakub before building anything.**

@@ -130,7 +130,7 @@ reopen any of them unless the user asks. The most load-bearing:
 - Irish fee is the Free Fees figure (contribution + levy)
 - Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
 - Jakub's data and choices win over the fork's older decisions (Leon, 2026-11-02, at the upstream merge); the UK is shown
-- No save button / shortlist (code kept on purpose); non-EU tuition not collected
+- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (2–4) and `?list=` share links; non-EU tuition not collected
 
 The visual direction (one summary row per programme, colour only for
 verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
