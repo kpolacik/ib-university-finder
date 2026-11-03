@@ -768,8 +768,9 @@ html:has(.sheet[open]){overflow:hidden}
   .fbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px}
   .f-q{flex:1 1 16rem}.f-pts{flex:none;width:5.5rem}.f-hl{flex:none;width:11.5rem}
   .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
-  .f-fee{flex:none;width:8rem}
-  .f-budget{flex:none;width:9.5rem}.f-living{flex:none;width:10.5rem}
+  /* Wide enough for the Slovak hints beside their units ("Akékoľvek €/rok",
+     "Podľa univerzity €/mesiac"); they were cut off at 8 and 10.5rem. */
+  .f-fee,.f-budget{flex:none;width:10rem}.f-living{flex:none;width:12.5rem}
   .fbar .more{display:none}
   .sheet,.sheet::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every
@@ -838,6 +839,9 @@ html:has(.sheet[open]){overflow:hidden}
 
 @media (min-width: 1024px) {
   .f-q{flex-basis:13rem}.f-hl{width:auto}.f-hl .help{white-space:nowrap}
+  /* The money help sits beside its three fields, level with the boxes, and
+     fills the rest of the line so the drop-downs still start a new one. */
+  #f-budget-help{flex:1 1 calc(100% - 32.5rem - 3 * 8px);min-width:0;margin-bottom:calc((var(--ctl) - 16px) / 2);padding-left:8px}
 }
 /* The pane from 1200 (redesign revisions; it was 1024): 380 px, so the list
    keeps a readable title track. app.js uses the same query. */
