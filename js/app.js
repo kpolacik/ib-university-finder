@@ -198,6 +198,15 @@ const MIN_ROW_PX = 60;
 // The rows still to append: { rows, next, frame, timer }. Only one at a time;
 // every rebuild cancels it first.
 let pendingRows = null;
+// Old lists waiting to be deleted (L09). With 2,915 rows, removing the old rows
+// in one go took about 430 ms at 4x CPU (about 37 µs a row), so ticking one
+// country froze the page. A rebuild now draws into a fresh empty list and parks
+// the old one out of sight, layout, focus and the accessibility tree, then
+// deletes its rows a slice at a time after the first paint.
+const retiredLists = new Set();
+let retireTimer;
+// A list this short is cheaper to clear in place than to park.
+const PARK_ROWS = 200;
 // After a reload or Back/Forward the browser puts the page back where it was,
 // but only once the page is tall enough, and it gives up soon after loading.
 // With only the first screen drawn, a reload halfway down landed near the top
@@ -252,7 +261,7 @@ async function start() {
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
-  window.addEventListener('beforeprint', () => { flushRows(); printing = true; settleSlots(); });
+  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); });
   window.addEventListener('afterprint', afterPrint);
   dom.results.setAttribute('aria-busy', 'true');
 
@@ -863,6 +872,7 @@ function update() {
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
+  retireList();
   renderRows(dom.results, rows.slice(0, first), { state, shortlist, wide: wideQuery.matches, headings: listHeadings });
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
@@ -934,6 +944,51 @@ function flushRows() {
   if (!pending) return;
   cancelRows();
   appendSlice(pending, Infinity);
+}
+
+// Swaps in an empty copy of the list and parks the old one. content-visibility:
+// hidden goes on before the id comes off, so the old rows are never restyled or
+// laid out again. The parked list has no size, so the page and its scroll
+// anchor do not move (overflow-anchor: none keeps Chrome from following an old
+// row into the parked list).
+function retireList() {
+  const old = dom.results;
+  if (old.children.length <= PARK_ROWS) return;
+  const next = old.cloneNode(false);
+  old.style.cssText = 'content-visibility:hidden;contain:strict;position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;overflow-anchor:none;pointer-events:none';
+  old.inert = true;
+  old.setAttribute('aria-hidden', 'true');
+  old.removeAttribute('id');
+  old.before(next);
+  dom.results = next;
+  next.addEventListener('click', toggleRow);
+  next.addEventListener('keydown', rowKeydown);
+  retiredLists.add(old);
+  if (retireTimer === undefined) {
+    retireTimer = null;
+    requestAnimationFrame(() => { retireTimer = setTimeout(dropRetired, 0); });
+  }
+}
+
+// Deletes parked rows from the end (the cheapest order) until SLICE_MS has
+// passed, then yields; the row fill's own slices run in between.
+function dropRetired() {
+  const start = performance.now();
+  for (const old of retiredLists) {
+    while (old.lastChild && performance.now() - start < SLICE_MS) {
+      for (let i = 0; i < CHUNK_ROWS && old.lastChild; i++) old.lastChild.remove();
+    }
+    if (old.lastChild) break;
+    old.remove();
+    retiredLists.delete(old);
+  }
+  retireTimer = retiredLists.size ? setTimeout(dropRetired, 0) : undefined;
+}
+
+// Print takes the page as it is, so nothing parked may be left in it.
+function dropRetiredNow() {
+  for (const old of retiredLists) old.remove();
+  retiredLists.clear();
 }
 
 // A row that arrives gets the state it had before the rebuild: its slot open

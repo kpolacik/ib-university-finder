@@ -46,7 +46,16 @@ class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
     this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
-    this.listeners = {}; this.value = ''; this.validity = { badInput: false };
+    this.listeners = {}; this.value = ''; this.validity = { badInput: false }; this.style = {};
+  }
+  get lastChild() { return this.children.at(-1) ?? null; }
+  before(node) { this.parent.insertBefore(node, this); }
+  // A shallow copy, as cloneNode(false): tag, id, class and attributes, no
+  // children and no listeners.
+  cloneNode() {
+    const node = new ChromeNode(this.tagName);
+    node.id = this.id; node.className = this.className; node.attributes = { ...this.attributes };
+    return node;
   }
   set textContent(text) { this.replaceChildren(String(text)); }
   get textContent() { return this.children.map((c) => typeof c === 'string' ? c : c.textContent).join(''); }
@@ -77,7 +86,7 @@ class ChromeNode {
     if (name === 'class') this.className = String(value); else this.attributes[name] = String(value);
   }
   getAttribute(name) { return name === 'class' ? this.className : (this.attributes[name] ?? null); }
-  removeAttribute(name) { delete this.attributes[name]; }
+  removeAttribute(name) { delete this.attributes[name]; if (name === 'id') this.id = ''; }
   get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5), v])); }
   contains(node) { return node === this || this.children.some((c) => typeof c !== 'string' && c.contains(node)); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
@@ -3986,6 +3995,34 @@ appCheck('L09 l: the first draw after a reload or Back draws every row at once; 
   }
   const [n, total] = drawn('navigate');
   return n === 40 && total === live.length;
+});
+// L09 with 2,915 rows: clearing every old row in one task took about 430 ms at
+// 4x CPU, so ticking one country froze the page. update() now parks the old list
+// out of sight, layout, focus and the accessibility tree, and deletes it a slice
+// at a time after the first paint. Print drops whatever is still parked.
+appCheck('L09 m: a rebuild parks the old list and deletes it in slices after the first paint; print drops it at once', ({ run, get, drain, flushFrame, timers, fireWindow }) => {
+  l09(run); drain();
+  const old = get('results');
+  run("state.countries.add('Ireland'); update();");
+  const next = get('results');
+  if (next === old || old.id || !old.inert || old.getAttribute('aria-hidden') !== 'true' || !old.parent
+    || !old.style.cssText.includes('content-visibility:hidden') || !old.style.cssText.includes('width:0;height:0')
+    || next.listeners.click?.length !== 1 || next.listeners.keydown?.length !== 1
+    || old.children.length !== live.length || run('retiredLists.size') !== 1) return false;
+  // Nothing is deleted before the first paint, then one task deletes only a slice.
+  const dropTask = () => { const id = run('retireTimer'); const t = timers.get(id); if (!t) return false; timers.delete(id); t.fn(); return true; };
+  if (dropTask()) return false;
+  flushFrame();
+  if (!dropTask() || old.children.length === live.length || old.children.length === 0 || !old.parent) return false;
+  drain();
+  const want = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+  if (old.parent || run('retiredLists.size') !== 0 || run('retireTimer') !== undefined || !sameList(get, want)) return false;
+  run("state.countries.delete('Ireland'); update();");
+  const parked = get('results') !== next && next.parent;
+  fireWindow('beforeprint');
+  const dropped = !next.parent && run('retiredLists.size') === 0 && get('results').children.length === live.length;
+  fireWindow('afterprint'); drain();
+  return parked && dropped;
 });
 appCheck('L09 j: total failure while rows are pending appends nothing afterwards', ({ run, get, drain }) => {
   l09(run); const drawn = get('results').children.length;
