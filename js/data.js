@@ -118,7 +118,7 @@ export function readSheets(uniText, progText, today = new Date()) {
 // has them.
 const REQUIRED_UNIVERSITY_COLUMNS = ['university_id', 'name', 'country', 'verified_by'];
 const REQUIRED_PROGRAMME_COLUMNS = [
-  'programme_id', 'university_id', t('programme'), 'application_deadline', 'official_url', 'verified_by',
+  'programme_id', 'university_id', 'programme', 'application_deadline', 'official_url', 'verified_by',
 ];
 
 function requireColumns(parsed, label, required) {

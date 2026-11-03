@@ -1433,11 +1433,13 @@ function renderCounts(shown) {
   const active = activeFilterCount(state);
   const listTotal = listIds.length;
 
+  // Whole phrases, not "X of Y" + a plural noun: after "z" Slovak needs the
+  // genitive ("2 z 3 uložených programov"), which no stand-alone noun form gives.
   const lead = state.shortlistOnly
-    ? t('of_2', { value1: shown, value2: listTotal, value3: shared ? t('in_this_link', { value1: plural(listTotal) }) : t('saved', { value1: plural(listTotal) }) })
+    ? t(shared ? 'count_of_link' : 'count_of_saved', { shown, count: listTotal })
     : active === 0
       ? `${shown} ${plural(shown)}`
-      : t('of_2', { value1: shown, value2: allRows.length, value3: plural(allRows.length) });
+      : t('count_of_all', { shown, count: allRows.length });
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
   renderCount(dom.count, lead, currentSummary);

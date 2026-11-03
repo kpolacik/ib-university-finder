@@ -1255,6 +1255,19 @@ check('T05 readSheets preserves the explicit empty-programme guard', emptySheets
 const parsedIssues = sheetsModule.readSheets(lintSheets().universities,
   lintSheets().programmes + '\nwrong,width\n' + lintCsv(lintProgHeader, [{ ...lintProg, programme_id: 'test-bad', ib_points_min: 'oops' }]).split('\n')[1], lintToday).issues;
 check('T05 readSheets combines CSV and build issues', parsedIssues.length === 2 && parsedIssues.some((s) => s.includes('columns')) && parsedIssues.some((s) => s.includes('not a number')));
+// data.js once built its required-column list with t('programme') at import, so a
+// Slovak interface demanded a "program" column and every load failed. Re-import it
+// fresh while Slovak is on and parse the same sheets.
+{
+  const before = i18n.getLanguage();
+  i18n.initLanguage('?ui=sk', { getItem: () => null });
+  const freshData = await import('../js/data.js?slovak-columns');
+  let slovakLoads = true;
+  try { freshData.readSheets(lintSheets().universities, lintSheets().programmes, lintToday); } catch { slovakLoads = false; }
+  const slovakWord = i18n.t('programme');
+  i18n.initLanguage('', { getItem: () => before });
+  check('a Slovak interface never renames the required CSV columns', slovakLoads && slovakWord !== 'programme');
+}
 
 const idA = { ...lintProg, programme_id: 'test-maths', official_url: 'https://test.nl/a' };
 const idB = { ...lintProg, programme_id: 'test-maths-2', official_url: 'https://test.nl/b' };
@@ -5280,6 +5293,9 @@ section('SK/EN interface and data translations');
     return detail.textContent.includes(' / €800') && !detail.textContent.includes('\u0000');
   }));
   UI.sk.your_month_replacing = replacingBefore;
+  equal('Slovak "X of Y" counts use the genitive for every count',
+    i18n.inLanguage('sk', () => [[1, 1], [2, 3], [5, 7]].map(([shown, count]) => i18n.t('count_of_saved', { shown, count }))),
+    ['1 z 1 uloženého programu', '2 z 3 uložených programov', '5 z 7 uložených programov']);
   const states = [noFilters(), { ...noFilters(), search: sampleTranslation.sk }, { ...noFilters(), countries: new Set(['Ireland']), myIbPoints: 36, maxBudget: 16000 }];
   const ids = (state, lang) => { i18n.setLanguage(lang, storage); return applyFilters(live, state, new Set()).map((row) => row.id); };
   for (const [i, state] of states.entries()) equal(`filter ids are identical in EN and SK (case ${i + 1})`, ids(state, 'en'), ids(state, 'sk'));

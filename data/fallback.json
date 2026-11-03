@@ -76936,6 +76936,18 @@
       "en": "IB English 5+, or an accepted English test",
       "sk": "IB English 5+, alebo uznávaný test z angličtiny",
       "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "application_system",
+      "en": "Dual Degree application (Columbia GS) · EU applicants must also apply to Trinity through CAO and get an offer",
+      "sk": "Prihláška na Dual Degree (Columbia GS) · uchádzači z EÚ sa musia prihlásiť aj na Trinity cez CAO a dostať ponuku",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "application_system",
+      "en": "Common App: choose USC, then WBB (code 1485) as first-choice programme",
+      "sk": "Common App: vyber USC, potom WBB (kód 1485) ako program prvej voľby",
+      "verified_by": "AI-DRAFT"
     }
   ]
 }

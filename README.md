@@ -205,14 +205,16 @@ share-list links never carry the interface language. Search finds both English
 and Slovak wording in either language.
 
 `js/i18n.js` holds `UI.en`, `UI.sk` and `t(key, vars)`, including Slovak plural
-forms (`one`, `few`, `other`). The Slovak UI entries are deliberately empty
-until the separate UI translation pass; they fall back to English. Data
+forms (`one`, `few`, `other`). A count glued into a sentence needs a whole-phrase
+plural key (Slovak declines the noun after “z”). An empty Slovak entry falls
+back to English. Data
 translations are already loaded from `data/i18n/sk.csv` and baked into
 `data/fallback.json`. Lookup happens at display time, after parsing and
 inheritance: exact field + English text with whitespace normalised. Whole-cell
 matches win, otherwise ` · ` and `;` lists translate item by item. English that
-no longer matches shows an accessible EN tag. Translated data has a button to
-reveal the English original. Filtering, sorting, points and costs use English
+no longer matches shows as plain English (`lang=en`); each detail section with
+such text gets one note. One button in the detail pane reveals the English
+originals. Filtering, sorting, points and costs use English
 source facts; dates use the selected locale.
 
 `node tools/i18n-missing.mjs` prints missing and orphaned data translations

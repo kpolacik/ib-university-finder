@@ -669,7 +669,8 @@ async function interactions(page, at, want) {
       await page.ev(`location.href = ${JSON.stringify(url)}`);
       await page.waitFor(`(() => {
         if (!document.querySelector('#loading')?.hidden) return { why: 'loading' };
-        if (document.querySelector('#ml-title')?.textContent !== 'Shared list') return { why: 'no shared view' };
+        // Share links carry no ui=, so the shared view opens in the default language.
+        if (!['Shared list', 'Zdieľaný zoznam'].includes(document.querySelector('#ml-title')?.textContent)) return { why: 'no shared view' };
         const n = document.querySelectorAll('#results > li.item').length;
         return { ok: n === 2 && location.search.startsWith('?list='), why: n + ' rows, address ' + location.search };
       })()`, 15_000, 'the shared view');
@@ -698,7 +699,8 @@ async function interactions(page, at, want) {
 // --- When the data cannot be fetched -------------------------------------------
 
 async function runFallback(base, want) {
-  const page = await openPage(base, 1280, 900, { block: ['*/data/programmes.csv*'] });
+  // English UI: these checks read the English banner and count wording.
+  const page = await openPage(`${base}?ui=en`, 1280, 900, { block: ['*/data/programmes.csv*'] });
   await check('fallback', 'F1', `programmes.csv blocked: saved copy shows all ${want.fallbackTotal} rows`, async () => {
     await page.waitFor(`({ ok: !!document.querySelector('#loading')?.hidden && location.href.startsWith(${JSON.stringify(base)}), why: 'still loading' })`, 15_000, 'the list');
     const banner = await page.ev(`document.querySelector('#source-banner .bn-saved')?.textContent ?? ''`);
@@ -711,7 +713,7 @@ async function runFallback(base, want) {
   });
   await page.close();
 
-  const both = await openPage(base, 1280, 900, { block: ['*/data/programmes.csv*', '*/data/fallback.json*'] });
+  const both = await openPage(`${base}?ui=en`, 1280, 900, { block: ['*/data/programmes.csv*', '*/data/fallback.json*'] });
   await check('fallback', 'F2', 'nothing loads: the page says so', async () => {
     await both.waitFor(`(() => {
       if (!location.href.startsWith(${JSON.stringify(base)})) return { why: 'page not loaded' };
@@ -724,9 +726,8 @@ async function runFallback(base, want) {
   await both.close();
 }
 
-// The interface table is intentionally English fallback for now. The data
-// CSV already has Slovak, so exercise a real translated admission value and
-// its original, plus both directions of the switch at desktop and phone.
+// Exercise a real translated admission value and its English original, plus
+// both directions of the switch at desktop and phone.
 async function runI18n(base) {
   await mkdir('/tmp/ib-i18n-v2', { recursive: true });
   for (const width of [1280, 390]) {
