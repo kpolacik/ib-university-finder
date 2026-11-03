@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // CSVs can come from upstream: one vocabulary keeps old names and typos from
 // creating extra filter buttons, without rewriting the source data.
 export const SUBJECT_AREAS = Object.freeze([
@@ -49,7 +50,7 @@ export function subjectAreasOf(raw, issues, where) {
     else {
       // Keep the unknown marker even beside a valid subject: unknown never hides.
       areas.add(UNCLASSIFIED);
-      issues.push(`${where}: subject_area "${value}" is not on the subject list — shown as Unclassified.`);
+      issues.push(t('unrecognised_subject', { where, value }));
     }
   }
   return areas.size ? [...areas] : [UNCLASSIFIED];

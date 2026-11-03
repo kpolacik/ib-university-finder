@@ -17,7 +17,15 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
 
 const { parseCsv, csvToObjects } = await import(new URL('../js/csv.js', import.meta.url));
-const appSrcEarly = readFileSync(join(root, 'js/app.js'), 'utf8');
+const i18n = await import('../js/i18n.js');
+const { UI, t } = i18n;
+i18n.initLanguage('', { getItem: () => 'en' });
+// Older source assertions read an EN view of literal t() calls. The real
+// modules and the app harness below still execute the untranslated source.
+const englishSource = (source) => source.replace(/t\('([^']+)'\)/g, (call, key) =>
+  typeof UI.en[key] === 'string' ? JSON.stringify(UI.en[key]).replace(/^"|"$/g, "'") : call);
+const englishHtml = (source) => source.replace(/ data-active-label="[^"]*"/g, '').replace(/ data-i18n(?:-attr)?="[^"]*"/g, '');
+const appSrcEarly = englishSource(readFileSync(join(root, 'js/app.js'), 'utf8'));
 const { safeUrl, applyToday: applyTodayEarly } = await import(new URL('../js/data.js', import.meta.url));
 
 let failures = 0;
@@ -329,7 +337,7 @@ const admUnknownOf = (id) => adm.find((p) => p.id === id).admissionUnknown;
 check('"?" admission is flagged as unknown', admUnknownOf('a-unknown') === true);
 check('blank and own admission are not flagged as unknown',
   admUnknownOf('a-inherit') === false && admUnknownOf('a-own') === false);
-const renderSrc = read('js/render.js');
+const renderSrc = englishSource(read('js/render.js'));
 check('the card shows "Not published" for an unknown admission route',
   /nothingAtAll[\s\S]{0,400}!row\.admissionUnknown/.test(renderSrc)
     && /else if \(row\.admissionUnknown\)[\s\S]{0,400}'Not published'/.test(renderSrc));
@@ -650,7 +658,7 @@ check('a total failure hides the filters and lists the reasons in the problems p
 
 
 section('Stage 1 foundations: self-hosted fonts, colour policy and source chrome (L10, A05)');
-const foundationHtml = read('index.html');
+const foundationHtml = englishHtml(read('index.html'));
 check('no Google Fonts hosts or old font declarations',
   !/fonts\.(?:googleapis|gstatic)\.com/.test(foundationHtml)
     && !/DM Sans|Playfair Display/.test(css + foundationHtml));
@@ -689,17 +697,16 @@ check('alarm guard accepts banners and rejects mixed selectors and root override
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:var(--ink-2);')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--ink:#16202c;')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--stray:1px;')).includes('Unapproved root token --stray'));
-check('language buttons expose the selected English and described unavailable Slovak',
+check('language buttons expose both available choices, with their own language names',
   /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
-    && /type="button" aria-pressed="true">EN/.test(foundationHtml)
-    && /type="button" aria-pressed="false" aria-disabled="true" lang="sk" aria-describedby="sk-later">SK/.test(foundationHtml)
-    && /class="visually-hidden" id="sk-later">Slovak translation coming later/.test(foundationHtml)
-    && foundationHtml.includes('EN<span class="visually-hidden"> (English)</span>')
-    && foundationHtml.includes('SK<span class="visually-hidden"> (Slovak)</span>'));
-check('source line starts hidden without a live region and uses allRows once after load',
+    && /data-language="en" lang="en"/.test(foundationHtml)
+    && /data-language="sk" lang="sk"/.test(foundationHtml)
+    && !/aria-disabled="true"|sk-later/.test(foundationHtml)
+    && foundationHtml.includes('(English)') && foundationHtml.includes('(Slovak)'));
+check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
-    && (appSrcEarly.match(/renderSourceLine\(/g) ?? []).length === 1);
+    && (appSrcEarly.match(/renderSourceLine\(/g) ?? []).length === 2);
 check('failure hides source, filters and results bar and uses a scoped primary Reload',
   appSrcEarly.includes("alert.className = 'bn bn-fail'") && appSrcEarly.includes("reload.className = 'btn btn-p'")
     && appSrcEarly.includes('dom.sourceLine.hidden = true') && appSrcEarly.includes('dom.status.hidden = true') && appSrcEarly.includes('dom.listp.hidden = true')
@@ -902,7 +909,7 @@ equal('parseFee accepts 2771 and 0, refuses -100 and 12.5',
 check('an invalid number is never read as 0', parseFee('-100').value === null && parsePoints('abc').value === null);
 check('parseFee refuses a number too long to be exact (a 400-digit entry is Infinity, not a fee limit)',
   parseFee('9'.repeat(400)).value === null && parseFee('9'.repeat(400)).valid === false && parseFee(String(Number.MAX_SAFE_INTEGER)).value === Number.MAX_SAFE_INTEGER);
-const indexHtml = read('index.html');
+const indexHtml = englishHtml(read('index.html'));
 check('the fee field takes any whole euro amount (no step="500")',
   !indexHtml.includes('step="500"') && /id="f-tuition"[^>]*step="1"/.test(indexHtml));
 check('both number fields point at a message element',
@@ -1026,7 +1033,7 @@ check('filter controls keep the global 2.5 px focus outline: no outline:none or 
     && !keepsFocusOutline(css + '.fbar summary{outline: none}'));
 // A05: the h1's decorative full stop was read out as part of the title.
 check('the h1 is plain IB University Finder with no generated full stop',
-  /<h1>IB University Finder<\/h1>/.test(read('index.html')) && !/h1\s*::after/.test(css));
+  /<h1>IB University Finder<\/h1>/.test(englishHtml(read('index.html'))) && !/h1\s*::after/.test(css));
 // A02: dropdown panels and the masthead stat pushed a 320 px page to 354 px.
 // Stage 5: below 600 the panels are accordions in the sheet; in the bar every
 // panel is clamped to the viewport and the last one opens leftward.
@@ -1059,13 +1066,13 @@ check('a Czech-only title is marked lang="cs"', /title\.lang = 'cs'/.test(render
 check('each detail is named by its title (aria-labelledby, id from programme_id)',
   renderDetailSrc.includes("article.setAttribute('aria-labelledby'") && /title\.id = `p-\$\{row\.id\}`/.test(renderDetailSrc));
 check('the official link names its programme and says it opens a new tab',
-  renderSrc.includes('(opens in a new tab)') && /for \$\{row\.programme\}, \$\{row\.university\}/.test(renderSrc));
+  UI.en.opens_in_a_new_tab?.includes('(opens in a new tab)') && renderSrc.includes('value1: row.programme, value2: row.university'));
 // A06: the pick-lists and the live result count.
 check('a dropdown closes when focus leaves it (focusout)', appSrc.includes("addEventListener('focusout'"));
 check('Escape returns focus to the summary only from inside the open dropdown',
   /open\.contains\(document\.activeElement\)/.test(appSrc));
 check('the dropdown count reads "2 selected" (hidden text in its own span)',
-  indexHtml.includes('<span class="visually-hidden"> selected</span>') && appSrc.includes("subjectsCountNumber"));
+  englishHtml(indexHtml).includes('<span class="visually-hidden"> selected</span>') && appSrc.includes("subjectsCountNumber"));
 // Verify Impl: a hidden ", " in the box was read as "Country , 1 selected", because the
 // browser already adds a space between the label and the count.
 check('the dropdown count has no hidden comma (it read "Country , 1 selected")',
@@ -2215,7 +2222,7 @@ check('the tick counts as a filter, so Clear all clears it',
   filtersMod.activeFilterCount(fstate(null, true)) === 1);
 check('app.js restores, reads, clears and names the tick, and the count carries the split',
   appSrc.includes('dom.maths.checked = fromUrl.hlMaths') && appSrc.includes('state.hlMaths = dom.maths.checked')
-    && appSrc.includes('dom.maths.checked = false') && appSrc.includes("used.push('HL Maths 4+')")
+    && appSrc.includes('dom.maths.checked = false') && englishSource(appSrc).includes("used.push('HL Maths 4+')")
     && appSrc.includes('pointsSummaryParts(rows, state)'));
 // S08: the help lived only in a tooltip and a hidden copy. Spec §6.3: a
 // visible p.help that the tick names with aria-describedby.
@@ -2224,14 +2231,14 @@ check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip
     && /<input type="checkbox" id="f-maths"[^>]*aria-describedby="f-maths-help"/.test(indexHtml)
     && /<label class="tick">/.test(indexHtml) && !/<label class="tick"[^>]*title=/.test(indexHtml) && !indexHtml.includes('(adds the 25 CAO')
     && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
-    && /<label for="f-tuition">Max EU fee<\/label>/.test(indexHtml) && /<span class="unit">&euro;\/year<\/span>/.test(indexHtml)
+    && /<label for="f-tuition">Max EU fee<\/label>/.test(indexHtml) && /<span class="unit">(?:<span>)?&euro;\/year(?:<\/span>)?<\/span>/.test(indexHtml)
     && !/id="f-tuition"[^>]*title=/.test(indexHtml));
 check('points help is one short visible line that spans the bar, with no tooltip (S08, shortened 2026-11-02)',
   /<label for="f-points">My IB points<\/label>/.test(indexHtml)
     && /<p class="help filter-help" id="f-points-help">Hides programmes above your total.<\/p>/.test(indexHtml)
     && !/id="f-points"[^>]*title=/.test(indexHtml)
     && /\.filter-help\{grid-column:1\/-1;flex-basis:100%\}/.test(cssText)
-    && cssText.includes('.is-set:not(.f-pts)>label::after{content:" · active";'));
+    && cssText.includes('.is-set:not(.f-pts)>label::after{content:attr(data-active-label);'));
 check('shared uncertainty help (points, fees, deadlines) travels inside the extra filters; fee and deadline name it (S08)',
   elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Unknown values never hide a programme.</p>')
     && /id="f-deadline" aria-describedby="f-unknown-help"/.test(indexHtml));
@@ -2776,8 +2783,9 @@ check('slot regions have unique stable ids, resolved names and no duplicated hea
     && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-cells').length;
 }));
 check('row button name separates degree and keeps Czech pronunciation', (() => {
-  const row = live.find((p) => p.id === 'muni-anthropology'), b = byClass(rowOf(row), 'open')[0];
-  return b.lang === 'cs' && byClass(b, 'deg')[0]?.lang === 'en' && b.textContent === `${row.programme}, ${row.degreeType}`;
+  const row = live.find((p) => p.id === 'muni-anthropology'), item = rowOf(row), b = byClass(item, 'open')[0], degree = byClass(item, 'deg')[0];
+  return b.lang === 'cs' && degree?.lang === 'en' && b.textContent === row.programme
+    && degree.textContent === row.degreeType && b.getAttribute('aria-describedby').split(' ').includes(degree.id) && !byClass(b, 'deg').length;
 })());
 check('sample row carries its tag and never a Checked line', (() => {
   const row = { ...fxRow('fx-checked'), isSample: true }, li = rowOf(row);
@@ -2810,7 +2818,7 @@ check('six static skeleton rows, hidden trap guarded, no compass, no empty live 
     && !indexHtml.includes('i-compass') && !/<div[^>]*(?:role|aria-live)=[^>]*id="empty-state"|id="empty-state"[^>]*(?:role|aria-live)=/.test(indexHtml));
 check('empty h2, search tips and Clear all count are present',
   indexHtml.includes('<h2 id="empty-title">') && indexHtml.includes('Words can appear in any order')
-    && indexHtml.includes('Short words match the start of a word') && appSrc.includes('`Clear all (${activeFilterCount(state)})`'));
+    && indexHtml.includes('Short words match the start of a word') && appSrc.includes("t('clear_all', { value1: activeFilterCount(state) })") && UI.en.clear_all === 'Clear all ({value1})');
 check('row wraps whole point parts without clipping requirements; containment only on items',
   /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
     && !/line-clamp|max-height|overflow\s*:\s*hidden/.test(ruleBody('.line'))
@@ -3144,9 +3152,9 @@ function paneAppHarness(test, { boot = false } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
-      window: { scrollY: 0, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
+      window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
@@ -3172,7 +3180,7 @@ function paneAppHarness(test, { boot = false } = {}) {
     // All 1,240 real rows, for the L09 checks that need a list longer than the
     // first screen.
     context.live = live;
-    if (!boot) run('allRows = fixture; facets = buildFacets(allRows); drawChips(); renderSortOptions(dom.sort, SORTS, state.sort, state.dir); syncSort(); loaded = true; update();');
+    if (!boot) run('allRows = fixture; sourceMeta = { issues: [] }; facets = buildFacets(allRows); drawChips(); renderSortOptions(dom.sort, SORTS, state.sort, state.dir); syncSort(); loaded = true; update();');
     const item = (id) => get('results').children.find((n) => n.dataset.id === id);
     const click = (id) => { context.targetButton = item(id).querySelector('button.open'); run('toggleRow({ target: targetButton });'); };
     const flip = (wide) => { media.matches = wide; run('crossWide();'); };
@@ -4386,18 +4394,18 @@ const uniqueDOM = d14Rows([uniquePlain]);
 equal('D14 unique-title sub-line keeps exactly its existing children (no faculty)',
   byClass(uniqueDOM, 'sub')[0].children.map((c) => typeof c === 'string' ? c : [c.tagName, c.className, c.textContent]),
   [['span', 'uc', `${uniquePlain.university} · ${uniquePlain.city}`], ' ', ['span', 'cc', uniquePlain.country]]);
-check('D14 unique title without a faculty has no identity description', !byClass(uniqueDOM, 'open')[0].getAttribute('aria-describedby'));
+equal('D14 unique title without a faculty describes only its degree', byClass(uniqueDOM, 'open')[0].getAttribute('aria-describedby'), `degree-${uniquePlain.id}`);
 // U2: a unique-title Charles row still shows its faculty on the row, as a
 // separate described element, so students can compare faculties across titles.
 const uniqueCharlesDOM = d14Rows([uniqueCharles]);
 const uniqueCharlesId = byClass(uniqueCharlesDOM, 'identity')[0];
 equal('U2 unique-title Charles row shows its faculty', uniqueCharlesId?.textContent, uniqueCharles.faculty.name);
-equal('U2 unique-title Charles row button is described by the faculty', byClass(uniqueCharlesDOM, 'open')[0].getAttribute('aria-describedby'), uniqueCharlesId?.id);
+equal('U2 unique-title Charles row button is described by the faculty', byClass(uniqueCharlesDOM, 'open')[0].getAttribute('aria-describedby'), `degree-${uniqueCharles.id} ${uniqueCharlesId?.id}`);
 check('U2 every Charles row with a mapped faculty shows it on the row', charles.filter((r) => r.faculty).every((r) => byClass(d14Rows([r]), 'identity')[0]?.textContent.startsWith(r.faculty.name)));
 // U5: the Czech-language note sits inside the Language dropdown (not as a
 // fourth help line in the filter area) and describes that panel.
 {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const html = englishHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
   const panel = html.slice(html.indexOf('id="dd-languages"'), html.indexOf('</details>', html.indexOf('id="dd-languages"')));
   check('U5 Language panel carries the Czech-taught note and is described by it',
     panel.includes('aria-describedby="f-languages-help"') && /<p class="help dd-help" id="f-languages-help">Degrees taught in Czech at public universities are free, whatever your nationality\./.test(panel));
@@ -4417,7 +4425,7 @@ for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r)
   if (row.identity?.text) {
     const identity = byClass(rowDOM, 'identity')[0];
     equal(`D14 ${row.id} identity matches row description`, identity.textContent, row.identity.text);
-    equal(`D14 ${row.id} button describes separate identity element`, byClass(rowDOM, 'open')[0].getAttribute('aria-describedby'), identity.id);
+    equal(`D14 ${row.id} button describes separate identity element`, byClass(rowDOM, 'open')[0].getAttribute('aria-describedby'), `degree-${row.id} ${identity.id}`);
     check(`D14 ${row.id} identity outside truncatable university/city`, !byClass(rowDOM, 'uc')[0].children.includes(identity));
     const ids = [...nodesOf(rowDOM), ...nodesOf(pane), ...nodesOf(slot)].map((n) => n.id).filter(Boolean);
     equal(`D14 ${row.id} ids unique across list/pane/slot`, new Set(ids).size, ids.length);
@@ -4530,21 +4538,25 @@ for (const [value, label] of Object.entries(filtersMod.DEADLINE_WINDOWS)) {
 }
 equal('fee sorting uses EU fee in both directions',
   [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
-for (const text of [
-  'Your browser could not save your list. It may be lost when you leave this page.',
-  'No programmes are saved here.', 'No programmes are available.', 'No programmes match your filters.',
-  'Search: ${state.search.trim()}', 'My IB points: ${state.myIbPoints}', 'Max EU fee: €${state.maxTuition}/year',
-  "['subjectAreas', 'Subject area']", "used.push('your IB points')", "used.push('the EU fee limit')",
-]) check(`app wording: ${text}`, appSrc.includes(text));
+for (const [key, text] of [
+  ['your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave', 'Your browser could not save your list. It may be lost when you leave this page.'],
+  ['no_programmes_are_saved_here', 'No programmes are saved here.'],
+  ['no_programmes_are_available', 'No programmes are available.'],
+  ['no_programmes_match_your_filters', 'No programmes match your filters.'],
+  ['search', 'Search: {value1}'], ['my_ib_points', 'My IB points: {value1}'],
+  ['max_eu_fee_year', 'Max EU fee: €{value1}/year'],
+  ['subject_area', 'Subject area'], ['your_ib_points', 'your IB points'], ['the_eu_fee_limit', 'the EU fee limit'],
+]) check(`app wording: ${text}`, UI.en[key] === text && appSrc.includes(`t('${key}'`));
 const dataWording = read('js/data.js');
-for (const text of [
-  'contains no programmes', "${missing.length === 1 ? 'column' : 'columns'}",
-  'returned HTTP ${res.status}',
-  'blank. No "Checked" line is shown. Add the date you checked the official page.',
-  'verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.',
-  'is not a usable link. Use an http:// or https:// URL without a username or password.',
-  'is blank. No official admissions link is shown. Add the programme’s official admissions page.',
-]) check(`data diagnostic wording: ${text}`, dataWording.includes(text));
+for (const [key, text] of [
+  ['contains_no_programmes', '{value1} contains no programmes'],
+  ['the_file_has_no', 'the {value1} file has no {value2} {value3} '],
+  ['returned_http', '{value1} returned HTTP {value2}'],
+  ['signed_but_last_verified_is_blank_no_checked_line_is_shown_add_the_d', '{value1}: signed "{value2}" but last_verified is blank. No "Checked" line is shown. Add the date you checked the official page.'],
+  ['verified_by_is_blank_shown_as_not_checked_use_ai_draft_until_you_per', '{value1}: verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.'],
+  ['is_not_a_usable_link_use_an_http_or_https_url_without_a_username_or', '{value1}: "{value2}" is not a usable link. Use an http:// or https:// URL without a username or password.'],
+  ['is_blank_no_official_admissions_link_is_shown_add_the_programme_s_of', '{value1} is blank. No official admissions link is shown. Add the programme’s official admissions page.'],
+]) check(`data diagnostic wording: ${text}`, UI.en[key] === text && dataWording.includes(`t('${key}'`));
 check('option search names its group naturally and shares the clear action with its no-match help', withStubDocument(() => {
   const panel = new ChromeNode('div'); panel.setAttribute('aria-label', 'Subject area');
   const box = new ChromeNode('div'); panel.append(box);
@@ -4570,7 +4582,8 @@ equal('issues summary uses the same data-problems label as its banner', issuesSu
 section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living costs');
 {
   const cost = await import(new URL('../js/cost.js', import.meta.url));
-  const { yearlyCost, budgetFit, livingIsFloor, FLOOR_LABEL } = cost;
+  const { yearlyCost, budgetFit, livingIsFloor } = cost;
+  const FLOOR_LABEL = cost.floorLabel();
   const yc = (over, mine = null) => yearlyCost({ tuitionEu: 2000, livingCostMin: 900, livingCostMax: 1200,
     livingCostSource: 'university\'s estimate', deadlineNotes: '', ...over }, mine);
   const pick = (c) => [c.known, c.low, c.high, c.reason, c.personal, c.floor];
@@ -5111,6 +5124,140 @@ appCheck('keepAddress never adds list= outside a shared view, my list view inclu
 });
 check('keepAddress builds the address through addressQuery with the shared list', /function keepAddress\(\) \{[\s\S]*?addressQuery\(stateToParams\(state\), shared\)/.test(appSrc));
 // END shortlist checks
+
+// BEGIN i18n checks
+section('SK/EN interface and data translations');
+{
+  const renderModuleForI18n = await import('../js/render.js');
+  const { readdirSync } = await import('node:fs');
+  const { sourceLiterals } = await import('./i18n-scan.mjs');
+  const { translationInventory } = await import('./i18n-missing.mjs');
+  const allow = JSON.parse(read('tools/i18n-allowlist.json'));
+  const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
+  const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+  const forms = (value) => typeof value === 'object' ? Object.values(value) : [value];
+  equal('i18n EN and SK have exactly the same keys', Object.keys(UI.sk).sort(), Object.keys(UI.en).sort());
+  const placeholderProblems = Object.keys(UI.en).filter((key) => UI.sk[key] && forms(UI.sk[key]).some((value) =>
+    JSON.stringify(placeholders(value)) !== JSON.stringify(placeholders(forms(UI.en[key])[0]))));
+  equal('nonempty Slovak UI values preserve every placeholder', placeholderProblems, []);
+  const unknownKeys = [];
+  for (const name of readdirSync(join(root, 'js')).filter((name) => name.endsWith('.js') && name !== 'i18n.js')) {
+    const path = `js/${name}`;
+    for (const value of sourceLiterals(read(path))) {
+      if (!Object.hasOwn(UI.en, value) && !allow.sources[path]?.includes(value)) unknownKeys.push(`${path}: ${value}`);
+    }
+    for (const [, key] of read(path).matchAll(/\bt\('([^']+)'/g)) if (!Object.hasOwn(UI.en, key)) unknownKeys.push(`${path}: missing key ${key}`);
+  }
+  equal('new JS literals require a UI key or pinned technical exception', unknownKeys, []);
+  check('literal guard sees English in strings and nested templates, ignores comments',
+    sourceLiterals("// 'comment'\nconst a = `New wording ${ok ? 'Nested wording' : 'Other wording'}`;").includes('New wording ')
+      && sourceLiterals("/* 'comment' */ const a = 'A new label';").includes('A new label')
+      && !sourceLiterals("// 'comment'\n").includes('comment'));
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
+  const htmlProblems = [];
+  // Every fallback text in an attributed node must be the EN table's value.
+  const decode = (text) => text.replaceAll('&euro;', '€').replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"');
+  for (const [, key, text] of html.matchAll(/data-i18n="([^"]+)"[^>]*>([^<]*)</g)) {
+    if (!Object.hasOwn(UI.en, key) || i18n.normaliseEnglish(decode(text)) !== i18n.normaliseEnglish(UI.en[key])) htmlProblems.push(key);
+  }
+  const unmarkedHtml = html.replace(/<[^>]*data-i18n="[^"]+"[^>]*>[^<]*</g, '<');
+  for (const text of unmarkedHtml.split(/<[^>]*>/).map((text) => text.trim()).filter((text) => /[A-Za-z]/.test(text))) htmlProblems.push(text);
+  for (const tag of html.match(/<[^>]+>/g) || []) {
+    for (const [, attr, value] of tag.matchAll(/(aria-label|placeholder|title)="([^"]+)"/g)) {
+      if (!tag.includes(`data-i18n-attr="${attr}:`) && !tag.includes(`;${attr}:`)) htmlProblems.push(`${attr}=${value}`);
+    }
+  }
+  equal('all HTML text and accessible labels use existing keys with matching EN fallback', htmlProblems, []);
+  const pairs = skRows.map((row) => `${row.field}\u0000${i18n.normaliseEnglish(row.en)}`);
+  equal('Slovak CSV field + normalised English pairs are unique', pairs.length, new Set(pairs).size);
+  check('every Slovak data row has a translation and AI-DRAFT signature', skRows.every((row) => row.sk?.trim() && row.verified_by === 'AI-DRAFT'));
+  const HARD = [
+    /\d+(?:[.,:]\d+)*/g,
+    /\b(?:HL|SL|AA|AI|IB|DP|CAO|UCAS|HPAT|UCAT|LNAT|TOL|SAT|ACT|IELTS|TOEFL|DSH|TestDaF|GCSE|CEFR|OMPT|TSP|SJT)\b/g,
+    /\b[ABC][12]\b/g, /[€£%]/g, /https?:\/\/\S+/g,
+  ];
+  const bag = (text, re) => (text.match(re) || []).sort().join('|');
+  const hardProblems = skRows.filter((row) => {
+    const mismatch = HARD.some((re) => bag(row.en, re) !== bag(row.sk, re));
+    const allowed = allow.hardExceptions.some((item) => item.field === row.field && item.en === row.en && item.sk === row.sk);
+    return (mismatch && !allowed) || [' · ', ';'].some((sep) => row.en.split(sep).length !== row.sk.split(sep).length);
+  });
+  equal('all Slovak data preserves hard tokens and separators, except exact documented rows', hardProblems.map((row) => `${row.field}: ${row.en}`), []);
+  const snapshot = JSON.parse(read('data/fallback.json'));
+  equal('offline snapshot includes the exact translation CSV', snapshot.translations, skRows.map(({ __row, ...row }) => row));
+  const inventory = translationInventory(csvToObjects(read('data/universities.csv')).rows, csvToObjects(read('data/programmes.csv')).rows, skRows);
+  console.log(`        ${skRows.length} Slovak data rows; ${inventory.missing.length} missing; ${inventory.orphans.length} orphan rows (report only)`);
+
+  const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
+  equal('language defaults to Slovak', i18n.initLanguage('', storage), 'sk');
+  storage.value = 'en';
+  equal('stored language is used before the default', i18n.initLanguage('', storage), 'en');
+  equal('a valid ui= language wins over storage', i18n.initLanguage('?ui=sk', storage), 'sk');
+  equal('the teaching-language filter lang= never selects the interface', i18n.initLanguage('?lang=sk&lang=English', storage), 'en');
+  i18n.initLanguage('?ui=sk', storage);
+  equal('language address rewrite preserves raw shared-list commas', i18n.languageQuery('list=a,b&points=36'), 'list=a,b&points=36&ui=sk');
+  equal('ui= is rewritten beside lang= filters, which stay untouched', i18n.languageQuery('q=law&lang=English&ui=en'), 'q=law&lang=English&ui=sk');
+  {
+    // The two parameters restore independently: lang= feeds the teaching-language
+    // filter, ui= the interface, and neither leaks into the other.
+    const query = '?lang=English&ui=en';
+    const restored = paramsToState(query, urlFacets);
+    equal('?lang=English&ui=en restores both the filter and the interface',
+      [[...restored.languages], i18n.initLanguage(query, storage)], [['English'], 'en']);
+    equal('the interface language never becomes a teaching-language filter',
+      [...paramsToState('?ui=sk', urlFacets).languages], []);
+  }
+  i18n.initLanguage('', storage);
+  equal('implicit language is absent from rewritten URL', i18n.languageQuery('q=law'), 'q=law');
+  i18n.setLanguage('sk', storage);
+  equal('a deliberate switch persists and round-trips', [storage.value, i18n.initLanguage(`?${i18n.languageQuery('q=law')}`, storage)], ['sk', 'sk']);
+  equal('share links never carry interface language', shortlistMod.shareQuery(['a'], { points: 36, includePoints: true }), 'list=a&points=36');
+  // A temporary translation exercises the three Slovak plural branches even
+  // while the shipped UI table is deliberately empty.
+  const pluralBefore = UI.sk.programme_count;
+  UI.sk.programme_count = { one: 'program', few: 'programy', other: 'programov' };
+  equal('Slovak plurals distinguish 1, 2–4 and 5+, including 21', [1, 2, 4, 5, 21].map((count) => t('programme_count', { count })), ['program', 'programy', 'programy', 'programov', 'programov']);
+  UI.sk.programme_count = pluralBefore;
+  i18n.setDataTranslations(skRows);
+  const sampleTranslation = skRows.find((row) => row.field === 'subject_area' && row.en === 'Engineering');
+  equal('data lookup normalises whitespace and matches exact field + English', i18n.dataParts('subject_area', ' Engineering  ')[0], { text: sampleTranslation.sk, en: 'Engineering' });
+  check('subject and bullet lists translate per item when there is no whole-cell match',
+    ['Engineering;Law', 'Engineering · Law'].every((text) => i18n.dataParts('subject_area', text).filter((part) => part.en).length === 2));
+  check('missing Slovak displays English with an accessible EN tag', withStubDocument(() => {
+    const node = renderModuleForI18n.dataValue('admission', 'A new English requirement');
+    return node.textContent.includes('A new English requirement') && byClass(node, 'data-en').some((tag) => tag.attributes.role === 'img' && tag.attributes['aria-label'] === UI.en.untranslated_english);
+  }));
+  check('translated data has an English original controlled by a keyboard button', withStubDocument(() => {
+    const node = renderModuleForI18n.dataValue('subject_area', 'Engineering');
+    const button = byClass(node, 'data-en')[0], original = byClass(node, 'data-original')[0];
+    return button.tagName === 'button' && button.attributes['aria-controls'] === original.id && original.hidden && original.textContent === 'Engineering';
+  }));
+  const states = [noFilters(), { ...noFilters(), search: sampleTranslation.sk }, { ...noFilters(), countries: new Set(['Ireland']), myIbPoints: 36, maxBudget: 16000 }];
+  const ids = (state, lang) => { i18n.setLanguage(lang, storage); return applyFilters(live, state, new Set()).map((row) => row.id); };
+  for (const [i, state] of states.entries()) equal(`filter ids are identical in EN and SK (case ${i + 1})`, ids(state, 'en'), ids(state, 'sk'));
+  check('Slovak subject search finds the same English engineering programmes in either UI', states[1].search !== 'Engineering' && ids(states[1], 'en').length > 0);
+  i18n.initLanguage('', { getItem: () => 'en' });
+  i18n.setDataTranslations([]);
+}
+appCheck('switching language preserves filters, selection and page scroll', ({ run, get, context }) => {
+  context.window.scrollY = 120;
+  run("state.search = 'law'; dom.search.value = 'law'; state.maxTuition = 3000; dom.tuition.value = '3000'; selectedId = fixture[0].id; switchLanguage('sk');");
+  const kept = run("state.search === 'law' && state.maxTuition === 3000 && selectedId === fixture[0].id");
+  run("switchLanguage('en')");
+  return kept && context.window.scrollY === 120;
+});
+appCheck('switching the interface language never touches the teaching-language filter', ({ run, context }) => {
+  context.history.replaceState = (_, __, url) => { context.location.search = new URL(url, 'http://localhost').search; };
+  run("state.languages = new Set(['English']); keepAddress();");
+  const before = run('location.search');
+  run("switchLanguage('sk')");
+  const after = run("[...state.languages].join() + '|' + location.search");
+  run("switchLanguage('en')");
+  const back = run("[...state.languages].join()");
+  return /lang=English/.test(before) && after.startsWith('English|') && /lang=English/.test(after) && /ui=sk/.test(after) && back === 'English';
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+// END i18n checks
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

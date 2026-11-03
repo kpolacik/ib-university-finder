@@ -39,7 +39,7 @@
 
 import { spawn } from 'node:child_process';
 import { createWriteStream, statSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
@@ -342,8 +342,13 @@ async function openPage(base, width, height, { block = [] } = {}) {
     await ev('window.__smokeAt = undefined');
   };
 
-  const key = async (keyName, code, keyCode, commands = []) => {
-    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: keyName, code, windowsVirtualKeyCode: keyCode, commands });
+  // Chrome activates a focused button on Enter from the key's character
+  // ("\r"), not from a bare rawKeyDown, so a key that types text must say so.
+  // Without it, Enter on a real <button> did nothing here but works by hand.
+  const key = async (keyName, code, keyCode, commands = [], text) => {
+    await send('Input.dispatchKeyEvent', text
+      ? { type: 'keyDown', key: keyName, code, windowsVirtualKeyCode: keyCode, text, unmodifiedText: text, commands }
+      : { type: 'rawKeyDown', key: keyName, code, windowsVirtualKeyCode: keyCode, commands });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName, code, windowsVirtualKeyCode: keyCode });
   };
   const type = (text) => send('Input.insertText', { text });
@@ -357,7 +362,13 @@ async function openPage(base, width, height, { block = [] } = {}) {
     off();
     await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
   };
-  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close };
+  const screenshot = async (path) => {
+    const { cssContentSize } = await send('Page.getLayoutMetrics');
+    const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width, height: Math.min(6000, cssContentSize.height), scale: 1 } });
+    await writeFile(path, Buffer.from(data, 'base64'));
+  };
+  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot };
 }
 
 // --- Reporting ----------------------------------------------------------------
@@ -407,7 +418,7 @@ const visible = (selector) => `(() => {
 // --- The checks for one width ---------------------------------------------------
 
 async function runWidth(base, width, height, want) {
-  const page = await openPage(base, width, height);
+  const page = await openPage(`${base}?ui=en`, width, height);
   const at = width;
   const T = want.total;
 
@@ -713,6 +724,48 @@ async function runFallback(base, want) {
   await both.close();
 }
 
+// The interface table is intentionally English fallback for now. The data
+// CSV already has Slovak, so exercise a real translated admission value and
+// its original, plus both directions of the switch at desktop and phone.
+async function runI18n(base) {
+  await mkdir('/tmp/ib-i18n', { recursive: true });
+  for (const width of [1280, 390]) {
+    const page = await openPage(`${base}?ui=en&q=computer+science+delft`, width, 1000);
+    try {
+      await check(width, 'I18N', 'EN ↔ SK keeps the view and reveals English data originals', async () => {
+        await page.waitFor(`({ ok: !!document.querySelector('#loading')?.hidden && !!document.querySelector('[data-id="tud-cse"] .open'), why: 'waiting for Delft' })`, 15000, 'programme');
+        await page.click(`document.querySelector('[data-id="tud-cse"] .open')`, 'programme details');
+        const detail = width >= 1200 ? '#pane' : '[data-id="tud-cse"] .expand';
+        await page.waitFor(`({ ok: !!document.querySelector('${detail} .kv dd'), why: 'waiting for detail' })`, 5000, 'detail');
+        const before = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
+        await page.screenshot(`/tmp/ib-i18n/${width}-en.png`);
+        await page.click(`document.querySelector('[data-language="sk"]')`, 'Slovak');
+        assert(await page.ev(`document.documentElement.lang === 'sk'`), 'HTML language did not switch');
+        const after = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
+        assert(JSON.stringify(before) === JSON.stringify(after), 'switch changed search or results');
+        await page.click(`document.querySelector('${detail} .kv dd button.data-en')`, 'English original');
+        const revealed = await page.ev(`(() => {
+          const button = document.querySelector('${detail} .kv dd button.data-en');
+          const original = document.getElementById(button.getAttribute('aria-controls'));
+          return { english: original.textContent, visible: !original.hidden, slovak: button.parentElement.firstElementChild.textContent, expanded: button.getAttribute('aria-expanded') };
+        })()`);
+        assert(revealed.visible && revealed.expanded === 'true' && revealed.english === 'Numerus fixus: limited places'
+          && revealed.slovak !== revealed.english, 'Slovak admission or English original is missing');
+        await page.screenshot(`/tmp/ib-i18n/${width}-sk.png`);
+        // Keyboard activation closes the same reveal without losing its focus.
+        await page.ev(`document.querySelector('${detail} .kv dd button.data-en').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ ok: document.querySelector('${detail} .kv dd button.data-en').getAttribute('aria-expanded') === 'false', why: 'expanded=' + document.querySelector('${detail} .kv dd button.data-en').getAttribute('aria-expanded') + ', focused=' + document.activeElement.outerHTML.slice(0, 150) })`, 3000, 'Enter toggles the original');
+        assert(await page.ev(`document.activeElement === document.querySelector('${detail} .kv dd button.data-en') && !!document.querySelector('[data-id="tud-cse"].is-sel, [data-id="tud-cse"] .expand')`),
+          'Enter on the reveal moved focus or changed the selected programme');
+        await page.click(`document.querySelector('[data-language="en"]')`, 'English');
+        assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .data-original')`), 'EN switch lost the selected detail');
+        assert(page.errors.length === 0, page.errors.map((error) => error.text).join(' | '));
+      });
+    } finally { await page.close(); }
+  }
+}
+
 // --- Main -----------------------------------------------------------------------
 
 async function main() {
@@ -735,7 +788,7 @@ async function main() {
   for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
   // A page that never started at any width would only spend another 30 s
   // failing the same way here.
-  if (anyBooted) await runFallback(base, want);
+  if (anyBooted) { await runFallback(base, want); await runI18n(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

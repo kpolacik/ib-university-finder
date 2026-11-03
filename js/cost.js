@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // What a year costs: the EU fee plus twelve months of living costs, as a
 // range. One place for the sum, so the row, the detail, the "Max yearly cost"
 // filter and the CSV export can never disagree about it. Pure, no DOM.
@@ -20,7 +21,7 @@ export function livingIsFloor(source) {
   return FLOOR_SOURCE.test(String(source || ''));
 }
 
-export const FLOOR_LABEL = 'national minimum, not a full budget';
+export const floorLabel = () => t('national_minimum_not_a_full_budget');
 
 // A money figure we may add up: a finite number, 0 or more. 0 is a real value
 // (no tuition fee, or a student who lives at home); null, NaN, Infinity or a
@@ -77,9 +78,9 @@ export function budgetFit(cost, budget) {
 
 // Why a total is missing, in words, for the detail and the export.
 export const UNKNOWN_REASON = {
-  fee: 'the EU fee is not published',
-  living: 'living costs are not published',
-  both: 'the EU fee and living costs are not published',
+  get fee() { return t('the_eu_fee_is_not_published'); },
+  get living() { return t('living_costs_are_not_published'); },
+  get both() { return t('the_eu_fee_and_living_costs_are_not_published'); },
 };
 
 // UK fees and living costs were stored in pounds and converted (STATUS, United
@@ -88,5 +89,5 @@ export const UNKNOWN_REASON = {
 // up two converted figures. Null where the row says nothing of the kind.
 export function poundNote(row) {
   const said = /in euros at the (ECB rate of [^.]+)\./.exec(row.deadlineNotes || '');
-  return said ? `converted from £ at the ${said[1]}` : null;
+  return said ? t('converted_from_at_the', { value1: said[1] }) : null;
 }

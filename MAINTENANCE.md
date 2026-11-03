@@ -432,3 +432,34 @@ text. Fix the format, re-enter the dates, and the warning goes away.
 
 **A link does nothing.** `official_url` must start with `https://`. A bare
 `tudelft.nl` is rejected — the site tells you which row.
+
+## Slovak and English
+
+The site starts in Slovak. The EN and SK buttons switch the page language;
+this browser remembers your choice. A link with `?ui=en` or `?ui=sk`
+overrides that choice. `lang=` in the address is something else: it is the
+teaching-language filter (`?lang=English`), and switching the site language
+never changes it. Shared My list links do not set a language.
+
+Keep editing the **English** CSVs as usual. Slovak data wording lives separately
+in `data/i18n/sk.csv`, with four columns: `field`, `en`, `sk`, `verified_by`.
+The English text and its column name must match. If you change English, its old
+Slovak translation stops matching: students see the new English with a small
+**EN** tag until it is translated again. Unknown values still stay in the list.
+A button beside translated data reveals its English original.
+
+To see what needs translating, run:
+
+```bash
+node tools/i18n-missing.mjs
+```
+
+This only prints a report. `MISSING` means English without a matching Slovak
+translation; `ORPHAN` means a translation whose English is no longer in use.
+It does not change any files. After updating translations, rebuild the offline
+copy with `node tools/make-snapshot.mjs`, then run `node tools/check.mjs`.
+Translations gathered by AI keep `AI-DRAFT`; never sign for another person.
+
+CSV exports use headings in the selected language and keep **all data cells
+in English**, including requirement wording. Numbers inside data text keep
+decimal dots, such as IELTS 6.5. Quotes from official pages stay in English.

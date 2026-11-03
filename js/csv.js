@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // A small RFC 4180 CSV parser.
 //
 // We cannot use text.split(',') because fields like ib_hl_requirements are
@@ -78,19 +79,19 @@ export function csvToObjects(text, label) {
   const issues = [];
 
   if (grid.length === 0) {
-    return { rows: [], header: [], issues: [`${label}: the file is empty.`] };
+    return { rows: [], header: [], issues: [t('the_file_is_empty_2', { value1: label })] };
   }
 
   const header = grid[0].map((h) => h.trim());
   const rows = [];
-  const cutOff = `${label}: the file ends inside a quoted field that starts on line ${open ? open.line : 0}; ` +
-    'rows after it may be missing. Check for a stray quote mark, or a file that did not finish downloading.';
+  const cutOff = t('the_file_ends_inside_a_quoted_field_that_starts_on_line', { value1: label, value2: open ? open.line : 0 }) +
+    t('rows_after_it_may_be_missing_check_for_a_stray_quote_mark_or_a_file');
 
   // The row holding the unclosed quote has the rest of the file in one cell,
   // so it is never shown, even when its column count happens to fit.
   if (open && grid.length > 1 && grid[grid.length - 1] === open.row) {
     grid.pop();
-    issues.push(`${cutOff} That row (row ${grid.length + 1}) is skipped.`);
+    issues.push(t('that_row_row_is_skipped', { value1: cutOff, value2: grid.length + 1 }));
   } else if (open) {
     issues.push(cutOff);
   }
@@ -99,8 +100,8 @@ export function csvToObjects(text, label) {
     const cells = grid[i];
     if (cells.length !== header.length) {
       issues.push(
-        `${label} row ${i + 1}: expected ${header.length} columns but found ` +
-        `${cells.length}. Row skipped — check for a stray quote mark.`
+        t('row_expected_columns_but_found', { value1: label, value2: i + 1, value3: header.length }) +
+        t('row_skipped_check_for_a_stray_quote_mark', { value1: cells.length })
       );
       continue;
     }

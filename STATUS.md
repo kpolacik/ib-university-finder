@@ -8,6 +8,27 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**SK/EN infrastructure (2026-11-03).** Slovak is the default. The EN/SK buttons
+switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
+wins over this browser's stored choice. `lang=` stays the teaching-language
+filter only (`lang` was taken, hence `ui`). Share-list links never carry the UI language. All UI
+wording is keyed in `js/i18n.js`; the Slovak UI table is intentionally empty
+(falls back to English), ready for the separate UI translation run. The 658
+AI-DRAFT data translations are in `data/i18n/sk.csv` and the offline snapshot.
+Missing translations show English with an accessible EN tag; translated data
+can reveal its English original. Exact field + whitespace-normalised English
+lookup runs after parsing and inheritance; whole cells win, then list items.
+`tools/i18n-missing.mjs` reports missing/orphan rows without writes.
+
+Decisions: informal **ty**, Slovak default, decimal dots kept in data wording
+(IELTS 6.5), quoted official text stays English. Data parsing, filtering,
+sorting, points and costs keep English source values; search matches both
+languages. CSV headings follow the language, data cells stay English.
+IB subjects, deadline notes and other requirements remain English for the
+later data-translation pass. A later Gemini meaning check remains an owner
+follow-up from the translation plan.
+
+
 2,915 programmes · 159 universities · 11 countries, counted from `data/*.csv` on 2026-11-02, right after the upstream merge (the table below is the same count by country). Recount with a small node script if you need the figure again; don't trust this line after a data change.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.

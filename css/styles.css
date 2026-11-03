@@ -383,7 +383,7 @@ svg:not(.sprite) {
    border pixel so the text does not move. */
 .is-set .inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
 .f-q.is-set .inp{padding-left:33px}
-.is-set:not(.f-pts)>label::after{content:" · active";color:var(--accent)}
+.is-set:not(.f-pts)>label::after{content:attr(data-active-label);color:var(--accent)}
 /* Why My points or Max fee is not being applied (P05). Ink, never red. After
    the set rule, so an invalid field always shows the ink border. */
 .inp[aria-invalid=true]{border:2px solid var(--ink);padding-left:9px}
@@ -993,3 +993,9 @@ html:has(.sheet[open]){overflow:hidden}
   }
   .d-foot svg, .d-foot .lnk { display: none; }
 }
+
+/* The small EN tag either names untranslated data or reveals its original. */
+.data-en{font:inherit;font-size:10px;line-height:1.4;color:var(--ink-2);border:1px solid currentColor;border-radius:3px;padding:0 3px;background:transparent;vertical-align:baseline}
+button.data-en{cursor:pointer}
+.data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+.data-original[hidden]{display:none}

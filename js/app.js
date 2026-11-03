@@ -1,3 +1,4 @@
+import { t, initLanguage, setLanguage, getLanguage, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
 import { loadData, applyToday } from './data.js';
@@ -217,12 +218,18 @@ let crossingFocus = null;
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
 let loaded = false;
+let sourceMeta = null;
 // The local date the deadline fields were last worked out for (S06).
 let dataDay = localDay(new Date());
 
 start();
 
 async function start() {
+  initLanguage(location.search);
+  applyLanguage();
+  for (const button of document.querySelectorAll('[data-language]')) {
+    button.addEventListener('click', () => switchLanguage(button.getAttribute('data-language')));
+  }
   dom.banner.addEventListener('click', openIssuesFromLink);
   crossBar();
   barQuery.addEventListener('change', crossBar);
@@ -251,7 +258,9 @@ async function start() {
 
   try {
     dataDay = localDay(new Date());
-    const { programmes, meta } = await loadData();
+    const { programmes, meta, translations } = await loadData();
+    setDataTranslations(translations);
+    sourceMeta = meta;
     allRows = programmes;
 
     renderSourceBanner(dom.banner, meta);
@@ -314,8 +323,32 @@ function applyUrlLists() {
 // Back button step through every letter typed.
 // A shared list's `list` stays in the address while its view is open, so a
 // reload brings the same view back; no other view ever adds it.
+function switchLanguage(language) {
+  const x = window.scrollX;
+  const y = window.scrollY;
+  const paneScroll = dom.pane.scrollTop;
+  setLanguage(language);
+  applyLanguage();
+  clearTimeout(copyTimer);
+  clearTimeout(shareTimer);
+  if (loaded) {
+    renderSourceBanner(dom.banner, sourceMeta);
+    renderSourceLine(dom.sourceLine, allRows, sourceMeta);
+    renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, sourceMeta.issues);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
+    syncSort();
+    drawChips();
+    paneId = null;
+    readFields();
+    update();
+    dom.pane.scrollTop = paneScroll;
+  }
+  keepAddress();
+  window.scrollTo(x, y);
+}
+
 function keepAddress() {
-  const query = addressQuery(stateToParams(state), shared);
+  const query = languageQuery(addressQuery(stateToParams(state), shared));
   const search = query ? `?${query}` : '';
   if (search === location.search) return;
   history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
@@ -339,11 +372,11 @@ function showTotalFailure(err) {
   alert.className = 'bn bn-fail';
   alert.setAttribute('role', 'alert');
   const sentence = document.createElement('p');
-  sentence.textContent = 'Could not load the latest data. Check your connection and reload the page.';
+  sentence.textContent = t('could_not_load_the_latest_data_check_your_connection_and_reload_the');
   const reload = document.createElement('button');
   reload.type = 'button';
   reload.className = 'btn btn-p';
-  reload.textContent = 'Reload';
+  reload.textContent = t('reload');
   reload.addEventListener('click', () => location.reload());
   alert.append(sentence, reload);
   dom.banner.replaceChildren(alert);
@@ -365,10 +398,10 @@ function openIssuesFromLink(event) {
 }
 
 function drawChips() {
-  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas));
+  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area' });
   renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS });
   renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
-  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes));
+  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type' });
   renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities));
 }
 
@@ -387,14 +420,14 @@ function readFields() {
   state.myMaths = dom.myMaths.value || null;
   state.exam = dom.exam.value || null;
   state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-    'Enter a whole number from 24 to 45.');
+    t('enter_a_whole_number_from_24_to_45'));
   state.hlMaths = dom.maths.checked;
   state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
-    'Enter a whole number of euros, 0 or more.');
+    t('enter_a_whole_number_of_euros_0_or_more'));
   state.maxBudget = readNumber(dom.budget, dom.budgetError, parseEuros,
-    'Enter a whole number of euros, 0 or more.');
+    t('enter_a_whole_number_of_euros_0_or_more'));
   state.myLiving = readNumber(dom.living, dom.livingError, parseEuros,
-    'Enter a whole number of euros a month, 0 or more.');
+    t('enter_a_whole_number_of_euros_a_month_0_or_more'));
 }
 
 // An invalid number is never applied, and never treated as 0 or as empty: the
@@ -420,7 +453,7 @@ function wireInputs() {
   // and the intermediate "under €3" and "under €30" states flash an empty list.
   dom.points.addEventListener('input', debounce(() => {
     state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-      'Enter a whole number from 24 to 45.');
+      t('enter_a_whole_number_from_24_to_45'));
     update();
   }, 150));
 
@@ -431,19 +464,19 @@ function wireInputs() {
 
   dom.tuition.addEventListener('input', debounce(() => {
     state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
-      'Enter a whole number of euros, 0 or more.');
+      t('enter_a_whole_number_of_euros_0_or_more'));
     update();
   }, 150));
 
   dom.budget.addEventListener('input', debounce(() => {
     state.maxBudget = readNumber(dom.budget, dom.budgetError, parseEuros,
-      'Enter a whole number of euros, 0 or more.');
+      t('enter_a_whole_number_of_euros_0_or_more'));
     update();
   }, 150));
 
   dom.living.addEventListener('input', debounce(() => {
     state.myLiving = readNumber(dom.living, dom.livingError, parseEuros,
-      'Enter a whole number of euros a month, 0 or more.');
+      t('enter_a_whole_number_of_euros_a_month_0_or_more'));
     update();
   }, 150));
 
@@ -509,7 +542,7 @@ function wireInputs() {
   dom.clearShortlist.addEventListener('click', () => {
     const total = shortlist.size;
     if (total === 0) return;
-    if (!window.confirm(`Remove all ${total} saved ${plural(total)} from your list?`)) return;
+    if (!window.confirm(t('remove_all_saved_from_your_list', { value1: total, value2: plural(total) }))) return;
     changeShortlist((set) => set.clear());
     state.shortlistOnly = false;
     listAll = false;
@@ -605,8 +638,8 @@ function wireList() {
     for (const id of shared.ids) {
       for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, true);
     }
-    dom.listSaveShared.textContent = 'Saved to my list';
-    sharedNote = added === 1 ? '1 programme added to your list.' : `${added} programmes added to your list.`;
+    dom.listSaveShared.textContent = t('saved_to_my_list');
+    sharedNote = t('added_list_count', { count: added });
     renderCounts(currentlyShown);
   });
   dom.groupBy.addEventListener('change', () => {
@@ -651,7 +684,7 @@ function syncShare() {
   const points = state.myIbPoints;
   dom.sharePoints.disabled = points === null;
   if (points === null) dom.sharePoints.checked = false;
-  const help = points === null ? 'Enter your IB points above to include them.' : `Adds your ${points} points to the link.`;
+  const help = points === null ? t('enter_your_ib_points_above_to_include_them') : t('adds_your_points_to_the_link', { value1: points });
   if (dom.sharePointsHelp.textContent !== help) dom.sharePointsHelp.textContent = help;
   dom.shareUrl.value = shareLink();
 }
@@ -666,9 +699,9 @@ async function copyShareLink() {
   } catch {
     copied = false;
   }
-  dom.shareCopy.textContent = copied ? 'Link copied' : 'Copy failed: select the link and copy it';
+  dom.shareCopy.textContent = copied ? t('link_copied') : t('copy_failed_select_the_link_and_copy_it');
   clearTimeout(shareTimer);
-  shareTimer = setTimeout(() => { dom.shareCopy.textContent = 'Copy share link'; }, 2000);
+  shareTimer = setTimeout(() => { dom.shareCopy.textContent = t('copy_share_link'); }, 2000);
 }
 
 // The compare picker lists every programme in the list view (filters do not
@@ -705,7 +738,7 @@ function syncPicks() {
   }
   const n = comparePicks.length;
   dom.compareGo.disabled = n < MIN_COMPARE;
-  dom.compareGo.textContent = n >= MIN_COMPARE ? `Compare ${n}` : 'Compare';
+  dom.compareGo.textContent = n >= MIN_COMPARE ? t('compare', { value1: n }) : t('compare_2');
 }
 
 function drawCompare() {
@@ -713,7 +746,7 @@ function drawCompare() {
   const byId = new Map(allRows.map((row) => [row.id, row]));
   const rows = comparePicks.map((id) => byId.get(id)).filter(Boolean);
   if (rows.length < MIN_COMPARE) { closeCompare(false); return; }
-  dom.compareHeading.textContent = `Compare ${rows.length} programmes`;
+  dom.compareHeading.textContent = t('compare_programmes', { value1: rows.length });
   dom.compareDiff.checked = onlyDifferences;
   renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences });
   dom.compare.hidden = false;
@@ -1057,7 +1090,7 @@ function markSelected(item) {
   const goto = document.createElement('a');
   goto.className = 'goto';
   goto.setAttribute('href', '#pane');
-  goto.textContent = 'Go to details';
+  goto.textContent = t('go_to_details');
   item.append(goto);
 }
 
@@ -1329,9 +1362,9 @@ async function copyLink() {
   } catch {
     copied = false;
   }
-  dom.copy.textContent = copied ? 'Link copied' : 'Copy failed: use the address bar';
+  dom.copy.textContent = copied ? t('link_copied') : t('copy_failed_use_the_address_bar');
   clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => { dom.copy.textContent = 'Copy link'; }, 2000);
+  copyTimer = setTimeout(() => { dom.copy.textContent = t('copy_link'); }, 2000);
 }
 
 function syncSort() {
@@ -1342,9 +1375,9 @@ function syncSort() {
     const current = active && state.dir === 'desc' ? REVERSE_SORTS[key] : SORTS[key];
     const next = active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
     button.setAttribute('aria-pressed', String(active));
-    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? 'University Z–A' : 'University A–Z';
+    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? t('university_z_a') : t('university_a_z');
     button.querySelector('.visually-hidden').textContent = active
-      ? `, sorted ${current}. Activate to sort ${next}.` : `, sort ${next}.`;
+      ? t('sorted_activate_to_sort', { value1: current, value2: next }) : t('sort', { value1: next });
     // One mark box per heading, always present; only its symbol changes, so no
     // label moves. Up is the natural order (soonest, cheapest, lowest, A–Z).
     const mark = active ? (state.dir === 'desc' ? '#i-chevron' : '#i-chevron-up') : '#i-sort';
@@ -1358,16 +1391,16 @@ function syncSort() {
 function drawAppliedChips() {
   const chips = [];
   const scalar = (key, label, active) => { if (active) chips.push({ key, label }); };
-  scalar('search', `Search: ${state.search.trim()}`, state.search.trim());
-  scalar('myIbPoints', `My IB points: ${state.myIbPoints}`, state.myIbPoints !== null);
-  scalar('hlMaths', 'HL Maths 4+', state.hlMaths);
-  scalar('maxTuition', `Max EU fee: €${state.maxTuition}/year`, state.maxTuition !== null);
-  scalar('maxBudget', `Max yearly cost: €${state.maxBudget}`, state.maxBudget !== null);
-  scalar('myLiving', `My living costs: €${state.myLiving}/month`, state.myLiving !== null);
-  scalar('deadlineWindow', `Deadline: ${DEADLINE_WINDOWS[state.deadlineWindow]}`, state.deadlineWindow !== 'any');
-  scalar('myMaths', `My maths: ${state.myMaths}`, state.myMaths !== null);
-  scalar('exam', `Entrance exam: ${EXAM_OPTIONS[state.exam]}`, state.exam !== null);
-  for (const [key, label] of [['subjectAreas', 'Subject area'], ['countries', 'Country'], ['languages', 'Language'], ['degreeTypes', 'Degree type'], ['cities', 'City']]) {
+  scalar('search', t('search', { value1: state.search.trim() }), state.search.trim());
+  scalar('myIbPoints', t('my_ib_points', { value1: state.myIbPoints }), state.myIbPoints !== null);
+  scalar('hlMaths', t('hl_maths_4'), state.hlMaths);
+  scalar('maxTuition', t('max_eu_fee_year', { value1: state.maxTuition }), state.maxTuition !== null);
+  scalar('maxBudget', t('max_yearly_cost', { value1: state.maxBudget }), state.maxBudget !== null);
+  scalar('myLiving', t('my_living_costs_month', { value1: state.myLiving }), state.myLiving !== null);
+  scalar('deadlineWindow', t('deadline_2', { value1: DEADLINE_WINDOWS[state.deadlineWindow] }), state.deadlineWindow !== 'any');
+  scalar('myMaths', t('my_maths', { value1: state.myMaths }), state.myMaths !== null);
+  scalar('exam', t('entrance_exam_2', { value1: EXAM_OPTIONS[state.exam] }), state.exam !== null);
+  for (const [key, label] of [['subjectAreas', t('subject_area')], ['countries', t('country')], ['languages', t('language')], ['degreeTypes', t('degree_type')], ['cities', t('city')]]) {
     for (const value of state[key]) chips.push({ key: `${key}:${value}`, label: `${label}: ${value}` });
   }
   renderAppliedChips(dom.applied, chips, removeChip);
@@ -1400,10 +1433,10 @@ function renderCounts(shown) {
   const listTotal = listIds.length;
 
   const lead = state.shortlistOnly
-    ? `${shown} of ${listTotal} ${shared ? `${plural(listTotal)} in this link` : `saved ${plural(listTotal)}`}`
+    ? t('of_2', { value1: shown, value2: listTotal, value3: shared ? t('in_this_link', { value1: plural(listTotal) }) : t('saved', { value1: plural(listTotal) }) })
     : active === 0
       ? `${shown} ${plural(shown)}`
-      : `${shown} of ${allRows.length} ${plural(allRows.length)}`;
+      : t('of_2', { value1: shown, value2: allRows.length, value3: plural(allRows.length) });
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
   renderCount(dom.count, lead, currentSummary);
@@ -1418,15 +1451,15 @@ function renderCounts(shown) {
   showCount(dom.citiesCount, dom.citiesCountNumber, state.cities.size);
   drawAppliedChips();
   dom.clear.disabled = active === 0;
-  dom.clear.textContent = active ? `Clear all (${active})` : 'Clear all';
+  dom.clear.textContent = active ? t('clear_all', { value1: active }) : t('clear_all_2');
   // Filters (n) counts only what lives in the sheet, one per group (§6.3).
   const inSheet = [state.maxTuition !== null, state.maxBudget !== null, state.myLiving !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
     .filter(Boolean).length;
-  dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
+  dom.more.querySelector('span').textContent = inSheet ? t('filters', { value1: inSheet }) : t('filters_2');
   dom.more.classList.toggle('is-on', inSheet > 0);
   // index.html starts it disabled as "Loading programmes…": until the first
   // count there is no number to show.
-  dom.sheetShow.textContent = `Show ${shown} ${plural(shown)}`;
+  dom.sheetShow.textContent = t('show', { value1: shown, value2: plural(shown) });
   dom.sheetShow.disabled = false;
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
@@ -1453,7 +1486,7 @@ function renderListBar() {
   const mode = !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine';
   dom.shortlistBar.hidden = mode === 'main' && saved === 0 && !saveFailed;
   dom.shortlistBar.classList.toggle('is-list', mode !== 'main');
-  dom.listTitle.textContent = mode === 'shared' ? 'Shared list' : 'My list';
+  dom.listTitle.textContent = mode === 'shared' ? t('shared_list') : t('my_list');
 
   let total, shown;
   if (mode === 'main') {
@@ -1464,29 +1497,29 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
-  const parts = [mode === 'shared' ? `${total} in this link` : `${total} saved`];
-  if (listAll && mode !== 'main') parts.push('all shown, your filters are off here');
+  const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
+  if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
   else {
-    parts.push(`${shown} shown`);
-    if (hidden > 0) parts.push(`${hidden} hidden by your filters`);
+    parts.push(t('shown', { value1: shown }));
+    if (hidden > 0) parts.push(t('hidden_by_your_filters', { value1: hidden }));
   }
   const text = parts.join(' · ');
   if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
 
   const filtersOff = listAll && mode !== 'main';
   dom.listShowAll.hidden = !filtersOff && hidden <= 0;
-  dom.listShowAll.textContent = filtersOff ? 'Apply my filters' : mode === 'shared' ? 'Show all in this link' : 'Show all saves';
+  dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
-  dom.shortlistOnly.textContent = mode === 'main' ? 'Open my list' : mode === 'shared' ? 'Close shared list' : 'Back to all programmes';
+  dom.shortlistOnly.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
 
   const notes = [];
-  if (saveFailed) notes.push('Your browser could not save your list. It may be lost when you leave this page.');
+  if (saveFailed) notes.push(t('your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave'));
   if (mode === 'shared') {
     const missing = unknownIdsText(shared.unknown.length);
     if (missing) notes.push(missing);
     if (sharedNote) notes.push(sharedNote);
   }
-  if (mode !== 'main' && groupBy === 'points' && state.myIbPoints === null) notes.push('Enter your IB points to group the list by them.');
+  if (mode !== 'main' && groupBy === 'points' && state.myIbPoints === null) notes.push(t('enter_your_ib_points_to_group_the_list_by_them'));
   const note = notes.join(' ');
   if (dom.listNote.textContent !== note) dom.listNote.textContent = note;
   dom.listNote.hidden = note === '';
@@ -1522,46 +1555,46 @@ function renderEmptyState(shown) {
   dom.emptyTips.hidden = true;
 
   if (state.shortlistOnly && listIds.length === 0) {
-    dom.emptyTitle.textContent = shared ? 'None of the programmes in this link are listed any more.' : 'Your list is empty.';
-    dom.emptyHint.textContent = shared ? 'Close the shared list to see every programme.' : 'No programmes are saved here.';
+    dom.emptyTitle.textContent = shared ? t('none_of_the_programmes_in_this_link_are_listed_any_more') : t('your_list_is_empty');
+    dom.emptyHint.textContent = shared ? t('close_the_shared_list_to_see_every_programme') : t('no_programmes_are_saved_here');
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
-    dom.emptyTitle.textContent = 'No programmes are available.';
-    dom.emptyHint.textContent = 'The programme list could not be loaded. Try reloading the page.';
+    dom.emptyTitle.textContent = t('no_programmes_are_available');
+    dom.emptyHint.textContent = t('the_programme_list_could_not_be_loaded_try_reloading_the_page');
   } else {
     // Name only the filters actually in use; the old fixed hint suggested the
     // tuition limit and countries even when neither was set (S05).
-    dom.emptyTitle.textContent = 'No programmes match your filters.';
-    dom.emptyHint.textContent = `Try changing ${listOf(filtersInUse())}.`;
+    dom.emptyTitle.textContent = t('no_programmes_match_your_filters');
+    dom.emptyHint.textContent = t('try_changing', { value1: listOf(filtersInUse()) });
     dom.emptyClear.hidden = false;
-    dom.emptyClear.textContent = `Clear all (${activeFilterCount(state)})`;
+    dom.emptyClear.textContent = t('clear_all', { value1: activeFilterCount(state) });
     dom.emptyTips.hidden = false;
   }
 }
 
 function filtersInUse() {
   const used = [];
-  if (state.search.trim()) used.push(`the search “${state.search.trim()}”`);
-  if (state.myIbPoints !== null) used.push('your IB points');
-  if (state.hlMaths) used.push('HL Maths 4+');
-  if (state.maxTuition !== null) used.push('the EU fee limit');
-  if (state.maxBudget !== null) used.push('the yearly cost limit');
-  if (state.myLiving !== null) used.push('your living costs');
-  if (state.subjectAreas.size) used.push('the subject areas');
-  if (state.countries.size) used.push('the countries');
-  if (state.languages.size) used.push('the languages');
-  if (state.deadlineWindow !== 'any') used.push('the deadline window');
-  if (state.myMaths !== null) used.push('your maths course');
-  if (state.exam !== null) used.push('the entrance-exam choice');
-  if (state.degreeTypes.size) used.push('the degree types');
-  if (state.cities.size) used.push('the cities');
+  if (state.search.trim()) used.push(t('the_search', { value1: state.search.trim() }));
+  if (state.myIbPoints !== null) used.push(t('your_ib_points'));
+  if (state.hlMaths) used.push(t('hl_maths_4'));
+  if (state.maxTuition !== null) used.push(t('the_eu_fee_limit'));
+  if (state.maxBudget !== null) used.push(t('the_yearly_cost_limit'));
+  if (state.myLiving !== null) used.push(t('your_living_costs'));
+  if (state.subjectAreas.size) used.push(t('the_subject_areas'));
+  if (state.countries.size) used.push(t('the_countries'));
+  if (state.languages.size) used.push(t('the_languages'));
+  if (state.deadlineWindow !== 'any') used.push(t('the_deadline_window'));
+  if (state.myMaths !== null) used.push(t('your_maths_course'));
+  if (state.exam !== null) used.push(t('the_entrance_exam_choice'));
+  if (state.degreeTypes.size) used.push(t('the_degree_types'));
+  if (state.cities.size) used.push(t('the_cities'));
   return used;
 }
 
 function listOf(items) {
   if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
+  return t('or', { value1: items.slice(0, -1).join(', '), value2: items[items.length - 1] });
 }
 
 // The pick-lists are native <details>, so they open and close from the keyboard
@@ -1600,7 +1633,7 @@ function wireDropdowns() {
 }
 
 function plural(n) {
-  return n === 1 ? 'programme' : 'programmes';
+  return t('programme_count', { count: n });
 }
 
 function localDay(date) {

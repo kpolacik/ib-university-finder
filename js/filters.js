@@ -1,3 +1,4 @@
+import { t, translatedSearchText } from './i18n.js';
 // Pure functions: given rows and a filter state, give back the rows that match,
 // in the requested order. No DOM in here, so this stays easy to reason about.
 
@@ -63,7 +64,7 @@ export function applyFilters(rows, state, shortlist) {
   return rows.filter((row) => {
     if (state.shortlistOnly && !shortlist.has(row.id)) return false;
 
-    if (!tokensMatch(row.searchBlob, tokens)) return false;
+    if (tokens.length && !tokensMatch(`${row.searchBlob} ${foldAccents(translatedSearchText(row)).toLowerCase()}`, tokens)) return false;
 
     if (state.subjectAreas.size &&
         !row.subjectAreas.includes(UNCLASSIFIED) &&
@@ -162,12 +163,12 @@ export function pointsNote(row, state) {
   if (bucket === null || bucket === 'hidden') return null;
   if (bucket === 'unknown') {
     return row.ibPointsMin === null
-      ? 'Not compared with your IB points: no IB figure.'
-      : 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.';
+      ? t('not_compared_with_your_ib_points_no_ib_figure')
+      : t('not_compared_with_your_ib_points_the_cutoff_may_include_a_test_inter');
   }
   const parts = [];
-  if (bucket === 'maths') parts.push('Within your IB points only with HL Maths 4+.');
-  if (roundTwoOnly(row, state)) parts.push('Within your IB points on the Round 2 cutoff, not Round 1.');
+  if (bucket === 'maths') parts.push(t('within_your_ib_points_only_with_hl_maths_4'));
+  if (roundTwoOnly(row, state)) parts.push(t('within_your_ib_points_on_the_round_2_cutoff_not_round_1'));
   return parts.length ? parts.join(' ') : null;
 }
 
@@ -196,9 +197,9 @@ export function pointsSummaryParts(rows, state) {
     const bucket = pointsBucket(row, state);
     if (bucket in n) n[bucket]++;
   }
-  const parts = [{ kind: 'fit', text: `${n.within} within your IB points` }];
-  if (n.maths) parts.push({ kind: 'cond', text: `${n.maths} only with HL Maths 4+` });
-  if (n.unknown) parts.push({ kind: 'unk', text: `${n.unknown} can’t be compared` });
+  const parts = [{ kind: 'fit', text: t('within_your_ib_points_2', { value1: n.within }) }];
+  if (n.maths) parts.push({ kind: 'cond', text: t('only_with_hl_maths_4_2', { value1: n.maths }) });
+  if (n.unknown) parts.push({ kind: 'unk', text: t('can_t_be_compared_2', { value1: n.unknown }) });
   return parts;
 }
 
@@ -335,24 +336,24 @@ export function paramsToState(query, facets = null) {
 // ------------------------------------------------------------------- sorting
 
 export const SORTS = {
-  deadline: 'Deadline — soonest first',
-  tuition: 'EU fee — lowest first',
-  points: 'IB points — lowest first',
-  name: 'University — A to Z',
+  get deadline() { return t('deadline_soonest_first'); },
+  get tuition() { return t('eu_fee_lowest_first'); },
+  get points() { return t('ib_points_lowest_first'); },
+  get name() { return t('university_a_to_z'); },
 };
 
 export const REVERSE_SORTS = {
-  deadline: 'Deadline — latest first',
-  tuition: 'EU fee — highest first',
-  points: 'IB points — highest first',
-  name: 'University — Z to A',
+  get deadline() { return t('deadline_latest_first'); },
+  get tuition() { return t('eu_fee_highest_first'); },
+  get points() { return t('ib_points_highest_first'); },
+  get name() { return t('university_z_to_a'); },
 };
 
 // The entrance-exam filter's choices; "Any" is null.
-export const EXAM_OPTIONS = { none: 'No exam', skippable: 'None or skippable' };
+export const EXAM_OPTIONS = { get none() { return t('no_exam'); }, get skippable() { return t('none_or_skippable'); } };
 
 export const DEADLINE_WINDOWS = {
-  any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days',
+  get any() { return t('any_date'); }, get open() { return t('not_passed_yet'); }, get '30'() { return t('within_30_days'); }, get '60'() { return t('within_60_days'); },
 };
 
 export function sortRows(rows, key, dir = 'asc') {

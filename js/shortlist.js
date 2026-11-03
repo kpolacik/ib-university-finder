@@ -1,3 +1,4 @@
+import { t, dateFormatter, inLanguage, facetLabel } from './i18n.js';
 // The starred list, kept in localStorage. No accounts, no server — it lives in
 // this browser on this device, and that is the whole design.
 //
@@ -7,7 +8,7 @@
 
 import { BULLET } from './data.js';
 import { pointsLines, pointsLineText } from './points.js';
-import { yearlyCost, FLOOR_LABEL, UNKNOWN_REASON, poundNote } from './cost.js';
+import { yearlyCost, floorLabel, UNKNOWN_REASON, poundNote } from './cost.js';
 
 // Exported so app.js can tell this list's `storage` events from other keys'.
 export const SHORTLIST_KEY = 'ib-university-finder:shortlist:v1';
@@ -50,34 +51,34 @@ export function saveShortlist(shortlist) {
 // Each column says what the card says, qualifiers included: a bare "37" for a
 // figure that needs HL Maths 4+, or a blank for a "?" city, would tell the
 // student less than the page did (R05).
-const EXPORT_COLUMNS = [
-  ['University', (r) => r.university],
-  ['Programme', (r) => r.programme],
-  ['Degree type', (r) => r.degreeType],
-  ['City', (r) => (r.cityUnknown ? 'Not published' : r.city)],
-  ['Country', (r) => r.country],
-  ['Deadline', (r) => (r.deadline ? r.deadline.toISOString().slice(0, 10) : '')],
-  ['Deadline notes', (r) => r.deadlineNotes],
-  ['Admission', (r) => (r.admissionUnknown ? 'Not published' : r.admission.join(BULLET))],
-  ['IB points', points],
-  ['IB subjects', (r) => (r.noSubjectsRequired ? 'None required' : (r.ibSubjects || 'Not checked yet'))],
-  ['Other requirements', (r) => r.otherRequirements.join(BULLET)],
-  ['Language requirement', (r) => (r.englishUnknown ? 'Not published' : (r.englishRequirement.join(BULLET) || 'Not checked yet'))],
-  ['EU fee (EUR/year)', (r) => (r.tuitionEu === null ? 'Not published' : String(r.tuitionEu))],
+const EXPORT_COLUMNS = () => [
+  [t('university'), (r) => r.university],
+  [t('programme_2'), (r) => r.programme],
+  [t('degree_type'), (r) => r.degreeType],
+  [t('city'), (r) => (r.cityUnknown ? t('not_published') : r.city)],
+  [t('country'), (r) => r.country],
+  [t('deadline'), (r) => (r.deadline ? r.deadline.toISOString().slice(0, 10) : '')],
+  [t('deadline_notes'), (r) => r.deadlineNotes],
+  [t('admission'), (r) => (r.admissionUnknown ? t('not_published') : r.admission.join(BULLET))],
+  [t('ib_points'), points],
+  [t('ib_subjects'), (r) => (r.noSubjectsRequired ? t('none_required') : (r.ibSubjects || t('not_checked_yet')))],
+  [t('other_requirements'), (r) => r.otherRequirements.join(BULLET)],
+  [t('language_requirement'), (r) => (r.englishUnknown ? t('not_published') : (r.englishRequirement.join(BULLET) || t('not_checked_yet')))],
+  [t('eu_fee_eur_year'), (r) => (r.tuitionEu === null ? t('not_published') : String(r.tuitionEu))],
   // The yearly estimate is yearlyCost (js/cost.js), the same sum the page
   // shows, so the student's own living figure replaces the university's here too.
-  ['Living costs (EUR/month)', (r, c) => (c.monthlyMin === null ? 'Not published'
+  [t('living_costs_eur_month'), (r, c) => (c.monthlyMin === null ? t('not_published')
     : c.monthlyMax > c.monthlyMin ? `${c.monthlyMin}–${c.monthlyMax}` : String(c.monthlyMin))],
-  ['Living costs source', (r, c) => (c.personal ? 'Your own figure' : r.livingCostSource)],
-  ['Fee + 12 months living, lowest (EUR)', (r, c) => (c.known ? String(c.low) : 'Not known')],
-  ['Fee + 12 months living, highest (EUR)', (r, c) => (c.known ? String(c.high) : 'Not known')],
-  ['Yearly estimate note', (r, c) => (c.known
-    ? [c.floor && FLOOR_LABEL, poundNote(r)].filter(Boolean).join('; ')
+  [t('living_costs_source'), (r, c) => (c.personal ? t('your_own_figure') : r.livingCostSource)],
+  [t('fee_12_months_living_lowest_eur'), (r, c) => (c.known ? String(c.low) : t('not_known'))],
+  [t('fee_12_months_living_highest_eur'), (r, c) => (c.known ? String(c.high) : t('not_known'))],
+  [t('yearly_estimate_note'), (r, c) => (c.known
+    ? [c.floor && floorLabel(), poundNote(r)].filter(Boolean).join('; ')
     : UNKNOWN_REASON[c.reason])],
-  ['Apply via', (r) => r.applicationSystem],
-  ['Official admissions page', (r) => r.officialUrl || ''],
-  ['Last updated', (r) => (r.lastVerified ? r.lastVerified.toISOString().slice(0, 10) : 'Not recorded')],
-  ['Signed by', (r) => r.verifiedBy],
+  [t('apply_via'), (r) => r.applicationSystem],
+  [t('official_admissions_page'), (r) => r.officialUrl || ''],
+  [t('last_updated'), (r) => (r.lastVerified ? r.lastVerified.toISOString().slice(0, 10) : t('not_recorded'))],
+  [t('signed_by'), (r) => r.verifiedBy],
 ];
 
 // The card's Points lines, joined (pointsLines in js/points.js), so the export
@@ -88,10 +89,10 @@ function points(r) {
 
 // myLiving: the student's "My living costs" (euros a month), or null.
 export function toCsv(rows, { myLiving = null } = {}) {
-  const lines = [EXPORT_COLUMNS.map(([heading]) => escapeCsv(heading)).join(',')];
+  const lines = [EXPORT_COLUMNS().map(([heading]) => escapeCsv(heading)).join(',')];
   for (const row of rows) {
     const cost = yearlyCost(row, myLiving);
-    lines.push(EXPORT_COLUMNS.map(([, read]) => escapeCsv(read(row, cost))).join(','));
+    lines.push(inLanguage('en', () => EXPORT_COLUMNS().map(([, read]) => escapeCsv(read(row, cost))).join(',')));
   }
   return lines.join('\r\n');
 }
@@ -182,7 +183,7 @@ function decodePart(text) {
 // "2 programmes in this link no longer exist", or null when none are missing.
 export function unknownIdsText(count) {
   if (!count) return null;
-  return count === 1 ? '1 programme in this link no longer exists.' : `${count} programmes in this link no longer exist.`;
+  return t('missing_list_count', { count });
 }
 
 // Adds the shared programmes to the saved list, keeping everything already
@@ -199,18 +200,18 @@ export function mergeIntoShortlist(shortlist, ids) {
 
 // Inside the list view, one control groups the rows. Pure, so check.mjs can
 // test every bucket. Rows keep their sorted order inside a group.
-export const GROUP_BY = { none: 'No grouping', deadline: 'Deadline', points: 'My IB points', country: 'Country' };
+export const GROUP_BY = { get none() { return t('no_grouping'); }, get deadline() { return t('deadline'); }, get points() { return t('my_ib_points_2'); }, get country() { return t('country'); } };
 
-const monthYear = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const monthYear = dateFormatter({ month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 // The points groups use pointsBucket (js/filters.js), the test the filter and
 // the row verdicts use, with the row's own words. 'hidden' is a figure above
 // the student's points, which shows only while "Show all saves" is on.
-const POINT_GROUPS = [
-  ['within', 'Within your IB points'],
-  ['maths', 'Only with HL Maths 4+'],
-  ['hidden', 'Above your IB points'],
-  ['unknown', 'Can’t be compared'],
+const POINT_GROUPS = () => [
+  ['within', t('within_your_ib_points')],
+  ['maths', t('only_with_hl_maths_4')],
+  ['hidden', t('above_your_ib_points')],
+  ['unknown', t('can_t_be_compared')],
 ];
 
 // groupRows(rows, by, state, bucketOf) → [{ key, label, rows }], empty groups
@@ -232,11 +233,11 @@ export function groupRows(rows, by, state, bucketOf) {
       }
     }
     return [...[...months.values()].sort((a, b) => a.key.localeCompare(b.key)),
-      { key: 'passed', label: 'Deadline passed', rows: passed },
-      { key: 'none', label: 'No date', rows: none }].filter((g) => g.rows.length);
+      { key: 'passed', label: t('deadline_passed'), rows: passed },
+      { key: 'none', label: t('no_date'), rows: none }].filter((g) => g.rows.length);
   }
   if (by === 'points' && state.myIbPoints !== null) {
-    const groups = POINT_GROUPS.map(([key, label]) => ({ key, label, rows: [] }));
+    const groups = POINT_GROUPS().map(([key, label]) => ({ key, label, rows: [] }));
     for (const row of rows) groups.find((g) => g.key === bucketOf(row, state)).rows.push(row);
     return groups.filter((g) => g.rows.length);
   }
@@ -244,7 +245,7 @@ export function groupRows(rows, by, state, bucketOf) {
     const countries = new Map();
     for (const row of rows) {
       const key = row.country || '';
-      if (!countries.has(key)) countries.set(key, { key, label: key || 'Country not recorded', rows: [] });
+      if (!countries.has(key)) countries.set(key, { key, label: key ? facetLabel(key) : t('country_not_recorded'), rows: [] });
       countries.get(key).rows.push(row);
     }
     return [...countries.values()].sort((a, b) => (!a.key) - (!b.key) || a.key.localeCompare(b.key));

@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // The CAO's IB → points conversion, and the CAO sentence in deadline_notes.
 //
 // This lives in js/ rather than tools/ because both sides need it. The browser
@@ -151,33 +152,33 @@ export function pointsLines(row) {
     // Neither does a lower "#" cutoff whose page says the marks are added, or
     // does not say (D27).
     return [{ number: null, unit: null,
-      qualifier: row.pointsPlusTest ? 'Cutoff includes a test score'
-        : row.pointsTestUnverified ? 'Assessment required; IB equivalent unverified' : 'No minimum published' }];
+      qualifier: row.pointsPlusTest ? t('cutoff_includes_a_test_score')
+        : row.pointsTestUnverified ? t('assessment_required_ib_equivalent_unverified') : t('no_minimum_published') }];
   }
   if (row.pointsKind === 'cutoff' && row.cao) return row.cao.rounds.map((r) => roundLine(r, row.cao));
   if (row.rankedWithHpat) {
     // HPAT Medicine: the figure is the CAO's 480-point minimum, and places
     // then go on points plus the HPAT (Q12 C, 2026-10-25).
-    return [{ number: String(row.ibPointsMin), unit: 'IB points', qualifier: 'then ranked with the HPAT' }];
+    return [{ number: String(row.ibPointsMin), unit: t('ib_points'), qualifier: t('then_ranked_with_the_hpat') }];
   }
-  return [{ number: String(row.ibPointsMin), unit: 'IB points', qualifier: 'minimum' }];
+  return [{ number: String(row.ibPointsMin), unit: t('ib_points'), qualifier: t('minimum') }];
 }
 
 function roundLine(r, cao) {
   // The pre-2026-10-26 one-round sentence did not record its round.
-  const when = r.round === null ? `cutoff, ${cao.year}` : `Round ${r.round} cutoff, ${cao.year}`;
+  const when = r.round === null ? t('cutoff', { value1: cao.year }) : t('round_cutoff', { value1: r.round, value2: cao.year });
   if (r.aqa) {
     return { number: null, unit: null,
-      qualifier: `${r.round === null ? '' : `Round ${r.round}, `}${cao.year}: every qualified applicant got a place` };
+      qualifier: t('every_qualified_applicant_got_a_place', { value1: r.round === null ? '' : t('round', { value1: r.round }), value2: cao.year }) };
   }
   if (r.ib !== null) {
     // A 601–625 cutoff is only reachable with the 25 HL Maths bonus points
     // (Q13, 2026-10-25), so the line says so.
-    return { number: `≈ ${r.ib}`, unit: 'IB points', qualifier: r.bonusOnly ? `${when}, with HL Maths 4+` : when };
+    return { number: `≈ ${r.ib}`, unit: t('ib_points'), qualifier: r.bonusOnly ? t('with_hl_maths_4', { value1: when }) : when };
   }
   // Above 600 with a test, or above 625: no IB total converts to it.
   return { number: null, unit: null,
-    qualifier: `${when}: ${cao.test ? 'not an IB figure (includes a test score)' : 'above what any IB total can reach'}` };
+    qualifier: `${when}: ${cao.test ? t('not_an_ib_figure_includes_a_test_score') : t('above_what_any_ib_total_can_reach')}` };
 }
 
 /** One pointsLines line as text: "≈ 37 IB points, Round 1 cutoff, 2026". */
@@ -188,21 +189,21 @@ export const pointsLineText = (line) => (line.number === null
 // Compact row figures use the same dispatch and round order as pointsLines.
 export function pointsShort(row) {
   if (row.ibPointsMin === null) {
-    const reason = row.pointsPlusTest ? 'cutoff includes a test score'
-      : row.pointsTestUnverified ? 'assessment required, IB equivalent unverified'
-      : row.admission.some((item) => /^Entrance exam\b/.test(item)) ? 'entrance exam' : null;
-    return { parts: [], after: null, unknown: { verdict: reason ? 'No IB figure' : 'No minimum published', reason } };
+    const reason = row.pointsPlusTest ? t('cutoff_includes_a_test_score_2')
+      : row.pointsTestUnverified ? t('assessment_required_ib_equivalent_unverified_2')
+      : row.admission.some((item) => /^Entrance exam\b/.test(item)) ? t('entrance_exam_3') : null;
+    return { parts: [], after: null, unknown: { verdict: reason ? t('no_ib_figure') : t('no_minimum_published'), reason } };
   }
   if (row.pointsKind === 'cutoff' && row.cao) {
     const figured = row.cao.rounds.filter((r) => r.ib !== null);
     const allBonus = figured.length > 0 && figured.every((r) => r.bonusOnly);
     const parts = row.cao.rounds.map((r) => {
-      const when = r.round === null ? `cutoff ${row.cao.year}` : `R${r.round}`;
-      if (r.aqa) return { figure: null, label: `${when}: all qualified got a place` };
-      if (r.ib === null) return { figure: null, label: `${when}: no IB figure` };
-      return { figure: `≈${r.ib}`, label: when + (r.bonusOnly && !allBonus ? ' with HL Maths 4+' : '') };
+      const when = r.round === null ? t('cutoff_2', { value1: row.cao.year }) : t('r', { value1: r.round });
+      if (r.aqa) return { figure: null, label: t('all_qualified_got_a_place', { value1: when }) };
+      if (r.ib === null) return { figure: null, label: t('no_ib_figure_2', { value1: when }) };
+      return { figure: `≈${r.ib}`, label: when + (r.bonusOnly && !allBonus ? t('with_hl_maths_4_2') : '') };
     });
-    return { parts, after: allBonus ? 'with HL Maths 4+' : null, unknown: null };
+    return { parts, after: allBonus ? t('with_hl_maths_4_3') : null, unknown: null };
   }
-  return { parts: [{ figure: String(row.ibPointsMin), label: row.rankedWithHpat ? 'minimum, then HPAT' : 'minimum' }], after: null, unknown: null };
+  return { parts: [{ figure: String(row.ibPointsMin), label: row.rankedWithHpat ? t('minimum_then_hpat') : t('minimum') }], after: null, unknown: null };
 }

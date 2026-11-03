@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // Loads the two sheets, joins them, and normalises everything into the one
 // shape the rest of the site uses. Nothing downstream should ever see a raw
 // spreadsheet string.
@@ -32,8 +33,11 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
         fetchText(source.urls.programmes, timeoutMs),
       ]);
       const built = readSheets(uniText, progText, today);
+      let translations = [];
+      try { translations = csvToObjects(await fetchText('data/i18n/sk.csv', timeoutMs), 'data/i18n/sk.csv').rows; } catch { /* English remains usable. */ }
       return {
         programmes: built.programmes,
+        translations,
         meta: {
           source: source.kind,
           sampleCount: built.sampleCount,
@@ -51,7 +55,7 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
   // Everything above failed. Fall back to the committed snapshot — but the
   // caller must tell the user, because a snapshot can be months out of date
   // and stale deadlines are the one thing this site must not present quietly.
-  const reasons = failures.map((f) => `Could not load the latest data: ${f}`);
+  const reasons = failures.map((f) => t('could_not_load_the_latest_data', { value1: f }));
   let snapshot;
   let built;
   try {
@@ -61,11 +65,11 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
       try {
         return await res.json();
       } catch {
-        throw new Error(`${SNAPSHOT_URL} is not a readable saved copy`);
+        throw new Error(t('is_not_a_readable_saved_copy', { value1: SNAPSHOT_URL }));
       }
     });
     if (!snapshot || !Array.isArray(snapshot.programmes) || snapshot.programmes.length === 0) {
-      throw new Error(`${SNAPSHOT_URL} contains no programmes`);
+      throw new Error(t('contains_no_programmes', { value1: SNAPSHOT_URL }));
     }
     built = build(
       withRowNumbers(snapshot.universities),
@@ -74,12 +78,13 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
     );
   } catch (err) {
     // The page shows one plain sentence; the reasons go to the issues panel.
-    const total = new Error('no programme data could be loaded');
-    total.reasons = [...reasons, `Saved copy unavailable: ${err.message}`];
+    const total = new Error(t('no_programme_data_could_be_loaded'));
+    total.reasons = [...reasons, t('saved_copy_unavailable', { value1: err.message })];
     throw total;
   }
   return {
     programmes: built.programmes,
+    translations: snapshot.translations || [],
     meta: {
       source: 'snapshot',
       // No is_sample override here: build() already counted the rows marked
@@ -101,7 +106,7 @@ export function readSheets(uniText, progText, today = new Date()) {
   const prog = csvToObjects(progText, 'Programmes');
   requireColumns(uni, 'Universities', REQUIRED_UNIVERSITY_COLUMNS);
   requireColumns(prog, 'Programmes', REQUIRED_PROGRAMME_COLUMNS);
-  if (prog.rows.length === 0) throw new Error('the Programmes file has no data rows');
+  if (prog.rows.length === 0) throw new Error(t('the_programmes_file_has_no_data_rows'));
   const built = build(uni.rows, prog.rows, today);
   return { ...built, issues: [...uni.issues, ...prog.issues, ...built.issues] };
 }
@@ -113,16 +118,16 @@ export function readSheets(uniText, progText, today = new Date()) {
 // has them.
 const REQUIRED_UNIVERSITY_COLUMNS = ['university_id', 'name', 'country', 'verified_by'];
 const REQUIRED_PROGRAMME_COLUMNS = [
-  'programme_id', 'university_id', 'programme', 'application_deadline', 'official_url', 'verified_by',
+  'programme_id', 'university_id', t('programme'), 'application_deadline', 'official_url', 'verified_by',
 ];
 
 function requireColumns(parsed, label, required) {
   const missing = required.filter((c) => !parsed.header.includes(c));
   if (missing.length === 0) return;
-  if (parsed.header.length === 0) throw new Error(`the ${label} file is empty`);
+  if (parsed.header.length === 0) throw new Error(t('the_file_is_empty', { value1: label }));
   throw new Error(
-    `the ${label} file has no ${missing.map((c) => `"${c}"`).join(', ')} ${missing.length === 1 ? 'column' : 'columns'} ` +
-    `(renamed, deleted, or not a CSV at all)`
+    t('the_file_has_no', { value1: label, value2: missing.map((c) => `"${c}"`).join(', '), value3: missing.length === 1 ? t('column') : t('columns') }) +
+    t('renamed_deleted_or_not_a_csv_at_all')
   );
 }
 
@@ -142,10 +147,10 @@ async function fetchBody(url, timeoutMs, read, init = {}) {
   }
   try {
     const res = await fetch(url, { ...init, signal });
-    if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
+    if (!res.ok) throw new Error(t('returned_http', { value1: url, value2: res.status }));
     return await read(res);
   } catch (err) {
-    if (signal.aborted) throw new Error(`${url} did not answer within ${timeoutMs / 1000} s`);
+    if (signal.aborted) throw new Error(t('did_not_answer_within_s', { value1: url, value2: timeoutMs / 1000 }));
     throw err;
   } finally {
     if (timer) clearTimeout(timer);
@@ -171,11 +176,11 @@ function build(universityRows, programmeRows, today) {
   for (const row of universityRows) {
     const id = text(row.university_id);
     if (!id) {
-      issues.push(`Universities row ${row.__row}: no university_id — row skipped.`);
+      issues.push(t('universities_row_no_university_id_row_skipped', { value1: row.__row }));
       continue;
     }
     if (universities.has(id)) {
-      issues.push(`Universities row ${row.__row}: university_id "${id}" is used twice — second row skipped.`);
+      issues.push(t('universities_row_university_id_is_used_twice_second_row_skipped', { value1: row.__row, value2: id }));
       continue;
     }
     universities.set(id, {
@@ -185,8 +190,8 @@ function build(universityRows, programmeRows, today) {
       country: text(row.country),
       applicationSystem: text(row.application_system),
       ...livingCost(row, issues),
-      tuitionEuDefault: number(row.tuition_eu_default, issues, `Universities row ${row.__row}, tuition_eu_default`, NOT_NEGATIVE),
-      tuitionNonEuDefault: number(row.tuition_noneu_default, issues, `Universities row ${row.__row}, tuition_noneu_default`, NOT_NEGATIVE),
+      tuitionEuDefault: number(row.tuition_eu_default, issues, t('universities_row_tuition_eu_default', { value1: row.__row }), NOT_NEGATIVE),
+      tuitionNonEuDefault: number(row.tuition_noneu_default, issues, t('universities_row_tuition_noneu_default', { value1: row.__row }), NOT_NEGATIVE),
       englishRequirementDefault: text(row.english_requirement_default),
       // How places are decided, when it is the same across the university —
       // every Irish course goes through CAO points. Czech and Dutch rows vary
@@ -196,9 +201,9 @@ function build(universityRows, programmeRows, today) {
       // It differs by country, so it cannot be a sentence baked into the
       // renderer — the Netherlands says VWO, nowhere else does.
       baselineRequirement: text(row.baseline_requirement),
-      studentLifeUrl: url(row.student_life_url, issues, `Universities row ${row.__row}, student_life_url`),
-      lastVerified: date(row.last_verified, issues, `Universities row ${row.__row}, last_verified`),
-      verifiedBy: signer(row.verified_by, issues, `Universities row ${row.__row}`),
+      studentLifeUrl: url(row.student_life_url, issues, t('universities_row_student_life_url', { value1: row.__row })),
+      lastVerified: date(row.last_verified, issues, t('universities_row_last_verified', { value1: row.__row })),
+      verifiedBy: signer(row.verified_by, issues, t('universities_row', { value1: row.__row })),
       // Short and native names people search for ("UvA", "ČVUT", "Univerzita
       // Karlova"), only ever read into the search text. A Sheet or snapshot
       // without the column gives none, which is fine (S01).
@@ -210,40 +215,40 @@ function build(universityRows, programmeRows, today) {
   const seen = new Set();
 
   for (const row of programmeRows) {
-    const where = `Programmes row ${row.__row}`;
+    const where = t('programmes_row', { value1: row.__row });
     const id = text(row.programme_id);
 
     if (!id) {
-      issues.push(`${where}: no programme_id — row skipped.`);
+      issues.push(t('no_programme_id_row_skipped', { value1: where }));
       continue;
     }
     if (seen.has(id)) {
-      issues.push(`${where}: programme_id "${id}" is used twice — second row skipped.`);
+      issues.push(t('programme_id_is_used_twice_second_row_skipped', { value1: where, value2: id }));
       continue;
     }
     const uni = universities.get(text(row.university_id));
     if (!uni) {
-      issues.push(`${where}: university_id "${text(row.university_id)}" is not on the Universities tab — row skipped.`);
+      issues.push(t('university_id_is_not_on_the_universities_tab_row_skipped', { value1: where, value2: text(row.university_id) }));
       continue;
     }
     seen.add(id);
 
-    const tuitionEu = inheritNumber(row.tuition_eu, uni.tuitionEuDefault, issues, `${where}, tuition_eu`);
-    const tuitionNonEu = inheritNumber(row.tuition_noneu, uni.tuitionNonEuDefault, issues, `${where}, tuition_noneu`);
+    const tuitionEu = inheritNumber(row.tuition_eu, uni.tuitionEuDefault, issues, t('tuition_eu', { value1: where }));
+    const tuitionNonEu = inheritNumber(row.tuition_noneu, uni.tuitionNonEuDefault, issues, t('tuition_noneu', { value1: where }));
 
     // The programme row's own date and signer: signing a programme covers
     // everything its card shows, including what it takes from the university
     // row (T01, Q14 = A, 2026-10-26). The university's AI-DRAFT and its date
     // used to be joined in, so a signed programme never showed as checked.
-    const lastVerified = date(row.last_verified, issues, `${where}, last_verified`);
-    const deadline = date(row.application_deadline, issues, `${where}, application_deadline`);
+    const lastVerified = date(row.last_verified, issues, t('last_verified', { value1: where }));
+    const deadline = date(row.application_deadline, issues, t('application_deadline', { value1: where }));
 
     const verifiedBy = signer(row.verified_by, issues, where);
     // The card's "Checked" line needs the date as well as the initials. Since
     // the university's date no longer fills in, a signed row without its own
     // date counted as checked but showed nothing, with no hint why.
     if (verifiedBy && !verifiedBy.includes('AI-DRAFT') && !verifiedBy.includes('SAMPLE') && !lastVerified) {
-      issues.push(`${where}: signed "${verifiedBy}" but last_verified is blank. No "Checked" line is shown. Add the date you checked the official page.`);
+      issues.push(t('signed_but_last_verified_is_blank_no_checked_line_is_shown_add_the_d', { value1: where, value2: verifiedBy }));
     }
 
     const city = inheritText(row.city, uni.city);
@@ -256,7 +261,7 @@ function build(universityRows, programmeRows, today) {
     // filters never use it. UCD's figure is its own minimum, so UCD is exempt.
     const testScore = uni.country === 'Ireland' && uni.id !== UCD_ID
       ? testScoring(parseCaoSentence(deadlineNotes)?.code, otherRequirements.includes(CAO_TEST)) : null;
-    const ibPointsMin = testScore ? null : number(row.ib_points_min, issues, `${where}, ib_points_min`, IB_POINTS);
+    const ibPointsMin = testScore ? null : number(row.ib_points_min, issues, t('ib_points_min', { value1: where }), IB_POINTS);
     const rankedWithHpat = ibPointsMin !== null && deadlineNotes.includes(HPAT_NOTE);
     const cao = cutoffSentence(uni, ibPointsMin, rankedWithHpat, deadlineNotes, otherRequirements);
     const subjectAreas = subjectAreasOf(row.subject_area, issues, where);
@@ -311,7 +316,7 @@ function build(universityRows, programmeRows, today) {
       // Derived from the university and the CAO sentence because there is no
       // column for it yet; plans/backlog/points-value-kind.md replaces this
       // with a field the importers write.
-      pointsKind: ibPointsMin === null ? null : (cao ? 'cutoff' : 'minimum'),
+      pointsKind: ibPointsMin === null ? null : (cao ? 'cutoff' : t('minimum')),
       // On a "cutoff" row only: the CAO sentence read back, each round with its
       // own IB equivalent ({ ib, bonusOnly } from js/points.js), and `test` when
       // the CAO marks the course as including a test, interview or audition.
@@ -329,8 +334,8 @@ function build(universityRows, programmeRows, today) {
       // Jakub's columns (upstream, 2026-10-26/27): which IB maths courses the
       // programme accepts, and whether every applicant sits an entrance exam.
       // null means nobody has checked, and a filter never hides it.
-      mathsAccepted: mathsCourses(row.ib_maths, issues, `${where}, ib_maths`),
-      entranceExam: examState(row.entrance_exam, issues, `${where}, entrance_exam`),
+      mathsAccepted: mathsCourses(row.ib_maths, issues, t('ib_maths', { value1: where })),
+      entranceExam: examState(row.entrance_exam, issues, t('entrance_exam_4', { value1: where })),
       otherRequirements,
 
       // How the place is actually decided: open entry, a ranking, an entrance
@@ -351,7 +356,7 @@ function build(universityRows, programmeRows, today) {
 
       deadline,
       deadlineNotes,
-      officialUrl: officialUrl(row.official_url, issues, `${where}, official_url`),
+      officialUrl: officialUrl(row.official_url, issues, t('official_url', { value1: where })),
       studentLifeUrl: uni.studentLifeUrl,
 
       lastVerified,
@@ -387,7 +392,7 @@ function build(universityRows, programmeRows, today) {
   applyToday(programmes, today);
 
   if (programmes.length === 0 && programmeRows.length > 0) {
-    throw new Error('every programme row failed to load');
+    throw new Error(t('every_programme_row_failed_to_load'));
   }
 
   // "some", not "every": one invented row mixed into real data must still raise
@@ -575,7 +580,7 @@ function cutoffSentence(uni, ibPointsMin, rankedWithHpat, notes, otherRequiremen
 // the official page, so an empty one is a gap someone should fill, not a pass.
 function signer(raw, issues, where) {
   const value = text(raw);
-  if (value === '') issues.push(`${where}: verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.`);
+  if (value === '') issues.push(t('verified_by_is_blank_shown_as_not_checked_use_ai_draft_until_you_per', { value1: where }));
   return value;
 }
 
@@ -612,7 +617,7 @@ function mathsCourses(value, issues, label) {
   const courses = list(raw, BULLET);
   const bad = courses.filter((c) => !MATHS_COURSES.includes(c));
   if (bad.length) {
-    issues.push(`${label}: "${bad.join('", "')}" is not one of ${MATHS_COURSES.join(', ')} — treated as unknown.`);
+    issues.push(t('is_not_one_of_treated_as_unknown', { value1: label, value2: bad.join('", "'), value3: MATHS_COURSES.join(', ') }));
     return null;
   }
   return courses;
@@ -629,7 +634,7 @@ function examState(value, issues, label) {
   const raw = text(value);
   if (!raw || raw === UNKNOWN) return null;
   if (!EXAM_STATES.includes(raw)) {
-    issues.push(`${label}: "${raw}" is not one of ${EXAM_STATES.join(', ')} — treated as unknown.`);
+    issues.push(t('is_not_one_of_treated_as_unknown', { value1: label, value2: raw, value3: EXAM_STATES.join(', ') }));
     return null;
   }
   return raw;
@@ -640,16 +645,16 @@ function examState(value, issues, label) {
 // figure is min with a blank max. The old one-number column is still read, so
 // a Sheet that has not been updated keeps working.
 function livingCost(row, issues) {
-  const where = `Universities row ${row.__row}`;
-  let min = number(row.living_cost_min, issues, `${where}, living_cost_min`, NOT_NEGATIVE);
-  let max = number(row.living_cost_max, issues, `${where}, living_cost_max`, NOT_NEGATIVE);
+  const where = t('universities_row', { value1: row.__row });
+  let min = number(row.living_cost_min, issues, t('living_cost_min', { value1: where }), NOT_NEGATIVE);
+  let max = number(row.living_cost_max, issues, t('living_cost_max', { value1: where }), NOT_NEGATIVE);
   if (min === null && max === null) {
-    min = number(row.living_cost_monthly, issues, `${where}, living_cost_monthly`, NOT_NEGATIVE);
+    min = number(row.living_cost_monthly, issues, t('living_cost_monthly', { value1: where }), NOT_NEGATIVE);
   }
   if (min === null && max !== null) min = max;
   if (max === null) max = min;
   if (min !== null && max < min) {
-    issues.push(`${where}: living_cost_max (${max}) is below living_cost_min (${min}) — swapped.`);
+    issues.push(t('living_cost_max_is_below_living_cost_min_swapped', { value1: where, value2: max, value3: min }));
     [min, max] = [max, min];
   }
   return { livingCostMin: min, livingCostMax: max, livingCostSource: text(row.living_cost_source) };
@@ -658,8 +663,8 @@ function livingCost(row, issues) {
 // Ranges for number(). Every money column is a fee or a cost, so never below
 // 0; IB points are a whole number on the 24-45 diploma scale. A value outside
 // its range is reported and treated as not published, never clamped (L04).
-const NOT_NEGATIVE = { min: 0, says: 'below 0' };
-const IB_POINTS = { min: 24, max: 45, whole: true, says: 'not a whole number of IB points from 24 to 45' };
+const NOT_NEGATIVE = { min: 0, get says() { return t('below_0'); } };
+const IB_POINTS = { min: 24, max: 45, whole: true, get says() { return t('not_a_whole_number_of_ib_points_from_24_to_45'); } };
 
 function number(value, issues, label, range = {}) {
   const raw = text(value);
@@ -668,17 +673,17 @@ function number(value, issues, label, range = {}) {
   // A comma is accepted only as a thousands separator ("12,500"). Stripping
   // every comma read a decimal comma, "2771,00", as 277100.
   if (cleaned.includes(',') && !/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
-    issues.push(`${label}: "${raw}" is not a number (use a dot for decimals, or no separator) — treated as not published.`);
+    issues.push(t('is_not_a_number_use_a_dot_for_decimals_or_no_separator_treated_as_no', { value1: label, value2: raw }));
     return null;
   }
   const n = Number(cleaned.replace(/,/g, ''));
   if (!Number.isFinite(n)) {
-    issues.push(`${label}: "${raw}" is not a number — treated as not published.`);
+    issues.push(t('is_not_a_number_treated_as_not_published', { value1: label, value2: raw }));
     return null;
   }
   if ((range.min !== undefined && n < range.min) || (range.max !== undefined && n > range.max)
       || (range.whole && !Number.isInteger(n))) {
-    issues.push(`${label}: "${raw}" is ${range.says} — treated as not published.`);
+    issues.push(t('is_treated_as_not_published', { value1: label, value2: raw, value3: range.says }));
     return null;
   }
   return n;
@@ -707,7 +712,7 @@ function url(value, issues, label) {
   if (raw === '') return null;
   const clean = safeUrl(raw);
   if (!clean) {
-    issues.push(`${label}: "${raw}" is not a usable link. Use an http:// or https:// URL without a username or password.`);
+    issues.push(t('is_not_a_usable_link_use_an_http_or_https_url_without_a_username_or', { value1: label, value2: raw }));
   }
   return clean;
 }
@@ -717,7 +722,7 @@ function url(value, issues, label) {
 // problems list says which row needs it (T04).
 function officialUrl(value, issues, label) {
   if (text(value) === '') {
-    issues.push(`${label} is blank. No official admissions link is shown. Add the programme’s official admissions page.`);
+    issues.push(t('is_blank_no_official_admissions_link_is_shown_add_the_programme_s_of', { value1: label }));
     return null;
   }
   return url(value, issues, label);
@@ -738,14 +743,14 @@ function date(value, issues, label) {
     const d = utcDate(+m[3], +m[2], +m[1]);
     if (d) {
       issues.push(
-        `${label}: "${raw}" is not YYYY-MM-DD — read as day/month/year. ` +
-        `Set that column to Plain text in the Sheet and re-enter the date.`
+        t('is_not_yyyy_mm_dd_read_as_day_month_year', { value1: label, value2: raw }) +
+        t('set_that_column_to_plain_text_in_the_sheet_and_re_enter_the_date')
       );
       return d;
     }
   }
 
-  issues.push(`${label}: "${raw}" is not a date we can read — treated as missing.`);
+  issues.push(t('is_not_a_date_we_can_read_treated_as_missing', { value1: label, value2: raw }));
   return null;
 }
 

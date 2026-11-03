@@ -195,3 +195,26 @@ link, never a number. See MAINTENANCE.md.
 
 See [MAINTENANCE.md](MAINTENANCE.md) — written for someone who has never seen
 this project and does not code.
+
+## Site language
+
+Slovak is the default; EN/SK switches in place and remembers the choice in this
+browser. `?ui=en` or `?ui=sk` takes priority. `lang=` stays the
+teaching-language filter (`?lang=English`) and is independent of `ui=`;
+share-list links never carry the interface language. Search finds both English
+and Slovak wording in either language.
+
+`js/i18n.js` holds `UI.en`, `UI.sk` and `t(key, vars)`, including Slovak plural
+forms (`one`, `few`, `other`). The Slovak UI entries are deliberately empty
+until the separate UI translation pass; they fall back to English. Data
+translations are already loaded from `data/i18n/sk.csv` and baked into
+`data/fallback.json`. Lookup happens at display time, after parsing and
+inheritance: exact field + English text with whitespace normalised. Whole-cell
+matches win, otherwise ` · ` and `;` lists translate item by item. English that
+no longer matches shows an accessible EN tag. Translated data has a button to
+reveal the English original. Filtering, sorting, points and costs use English
+source facts; dates use the selected locale.
+
+`node tools/i18n-missing.mjs` prints missing and orphaned data translations
+without writing files. Translation maintenance is explained in MAINTENANCE.md.
+CSV headings follow the interface; data cells remain English.
