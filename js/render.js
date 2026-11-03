@@ -522,7 +522,7 @@ function notes(row, state, pointsSays) {
     box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
   }
   if (state.myMaths !== null && row.mathsAccepted === null) {
-    box.append(el('p', 'note', 'Not filtered by your maths course: its maths requirement is not checked yet.'));
+    box.append(el('p', 'note', 'Not filtered by your maths course: it depends on your other subjects or is unclear (see IB subjects).'));
   }
   if (state.exam !== null && row.entranceExam === null) {
     box.append(el('p', 'note', 'Not filtered by the entrance-exam choice: nobody has checked whether it has one.'));

@@ -2497,7 +2497,7 @@ check('the tuition note appears for an unknown fee only while Max fee is set',
 // the detail says so only while the filter is set and the cell is unknown.
 {
   const notesOf = (row, state) => byClass(detailOf(row, state), 'note').map((n) => n.textContent);
-  const mathsNote = 'Not filtered by your maths course: its maths requirement is not checked yet.';
+  const mathsNote = 'Not filtered by your maths course: it depends on your other subjects or is unclear (see IB subjects).';
   const examNote = 'Not filtered by the entrance-exam choice: nobody has checked whether it has one.';
   const plainRow = fxRow('fx-plain');
   const unknownRow = { ...plainRow, mathsAccepted: null, entranceExam: null };
