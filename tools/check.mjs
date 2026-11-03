@@ -1111,7 +1111,9 @@ equal('export proficiency distinguishes blank without inheritance from ?; none a
   ['Not checked yet', 'Not published', 'Not checked yet', 'None required', 'Not recorded']);
 equal('export names the award, EU fee, official page, record date and signer without claiming human verification',
   exported[0], ['University', 'Programme', 'Degree type', 'City', 'Country', 'Deadline', 'Deadline notes', 'Admission',
-    'IB points', 'IB subjects', 'Other requirements', 'Language requirement', 'EU fee (EUR/year)', 'Apply via',
+    'IB points', 'IB subjects', 'Other requirements', 'Language requirement', 'EU fee (EUR/year)',
+    'Living costs (EUR/month)', 'Living costs source', 'Fee + 12 months living, lowest (EUR)',
+    'Fee + 12 months living, highest (EUR)', 'Yearly estimate note', 'Apply via',
     'Official admissions page', 'Last updated', 'Signed by']);
 equal('a cell that starts with = + - or @ is exported as text, not a formula',
   [cell(5, 'Programme'), cell(5, 'Deadline notes'), cell(5, 'University')],
@@ -2367,7 +2369,7 @@ equal('EU fee: €2,500 / year, "€0 · No tuition fee", and "Not published" (d
   }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
 
 check('Irish detail fees explain contribution plus levy, with no extra label in compact rows or other countries',
-  byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levy'
+  byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levyLiving €1,100/mo'
     && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution')
     // Never under "Not published": that would describe a fee we do not have.
     && !byClass(detailOf({ ...fxRow('fx-fee-blank'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
@@ -2685,7 +2687,8 @@ equal('row date: November and December use short names', [11, 12].map((m) => byC
   ['Deadline1 Nov 2026', 'Deadline1 Dec 2026']);
 equal('row fee: known, zero, blank and ? keep distinct meanings',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => byClass(rowOf(fxRow(id)), 'c-fee')[0].textContent),
-  ['EU fee€2,500 / year', 'EU fee€0 · No tuition fee', 'EU feeNot published', 'EU feeNot published']);
+  ['EU fee€2,500 / yearLiving €1,100/mo', 'EU fee€0 · No tuition feeLiving €1,100/mo',
+    'EU feeNot publishedLiving cost not published', 'EU feeNot publishedLiving €1,100/mo']);
 const sentenceRow = { ...fxRow('fx-checked'), languages: ['Czech'], otherRequirements: ['Portfolio'], admission: ['Entrance exam: maths'], isStale: true };
 equal('row requirement groups are ordered and provenance follows them', byClass(rowOf(sentenceRow), 'line')[0].textContent,
   'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: maths Checked by JKmay be out of date');
@@ -4495,12 +4498,13 @@ for (const text of [
 // Leon, 2026-11-02: the filter hints were too long. The search hint is gone
 // (the placeholder already shows examples) and the other two are one short
 // line each. Keep them short: no hint over 60 characters, and no search hint.
+// The yearly-cost hint (2026-11-03) is the third.
 check('search has no help line and no empty grid row for one',
   !indexHtml.includes('f-search-help') && !css.includes('search-help')
     && css.includes('grid-template-areas:"q q more" "pts hl hl"'));
 {
   const hints = [...indexHtml.matchAll(/<p class="help filter-help"[^>]*>([^<]*)<\/p>/g)].map((m) => m[1]);
-  check('filter hints stay short (two, each 60 characters or fewer)', hints.length === 2 && hints.every((h) => h.length <= 60));
+  check('filter hints stay short (three, each 60 characters or fewer)', hints.length === 3 && hints.every((h) => h.length <= 60));
 }
 equal('deadline labels keep their canonical values and agree with the static options', filtersMod.DEADLINE_WINDOWS,
   { any: 'Any date', open: 'Not passed yet', '30': 'Within 30 days', '60': 'Within 60 days' });
@@ -4541,6 +4545,199 @@ const issuesDetail = new ChromeNode('details'), issuesSummary = new ChromeNode('
 const { renderIssues: wordingIssues } = await import('../js/render.js');
 withStubDocument(() => wordingIssues(issuesDetail, issuesSummary, issuesList, ['one', 'two']));
 equal('issues summary uses the same data-problems label as its banner', issuesSummary.textContent, '2 data problems');
+
+// ============================================================ yearly cost
+// BEGIN yearly-cost checks (2026-11-03). Fee + 12 months' living, the "Max
+// yearly cost" filter (budget) and "My living costs" (living). Kept in one
+// block so it merges cleanly with other work on this file.
+section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living costs');
+{
+  const cost = await import(new URL('../js/cost.js', import.meta.url));
+  const { yearlyCost, budgetFit, livingIsFloor, FLOOR_LABEL } = cost;
+  const yc = (over, mine = null) => yearlyCost({ tuitionEu: 2000, livingCostMin: 900, livingCostMax: 1200,
+    livingCostSource: 'university\'s estimate', deadlineNotes: '', ...over }, mine);
+  const pick = (c) => [c.known, c.low, c.high, c.reason, c.personal, c.floor];
+
+  equal('a known fee and range: fee + 12 × each end', pick(yc({})), [true, 12800, 16400, null, false, false]);
+  equal('a 0 fee is a real fee, not unknown', pick(yc({ tuitionEu: 0 })), [true, 10800, 14400, null, false, false]);
+  equal('personal living 0 is a real figure and replaces the range', pick(yc({}, 0)), [true, 2000, 2000, null, true, false]);
+  equal('an unknown fee gives no total', pick(yc({ tuitionEu: null })), [false, null, null, 'fee', false, false]);
+  equal('an unknown living cost gives no total', pick(yc({ livingCostMin: null, livingCostMax: null })), [false, null, null, 'living', false, false]);
+  equal('both unknown says both', pick(yc({ tuitionEu: null, livingCostMin: null, livingCostMax: null })), [false, null, null, 'both', false, false]);
+  equal('personal living replaces an unknown university estimate',
+    pick(yc({ livingCostMin: null, livingCostMax: null }, 800)), [true, 11600, 11600, null, true, false]);
+  equal('personal living never rescues an unknown fee', pick(yc({ tuitionEu: null }, 800)), [false, null, null, 'fee', true, false]);
+  equal('non-finite, negative or text personal living is ignored, never 0',
+    [NaN, Infinity, -Infinity, -5, '800', undefined].map((m) => pick(yc({}, m))),
+    Array(6).fill([true, 12800, 16400, null, false, false]));
+  equal('a non-finite or negative fee is unknown, never 0',
+    [NaN, Infinity, -1, '2000'].map((f) => yc({ tuitionEu: f }).reason), ['fee', 'fee', 'fee', 'fee']);
+  equal('a non-finite living cost is unknown', yc({ livingCostMin: Infinity, livingCostMax: Infinity }).reason, 'living');
+
+  // Bounds: 12,800–16,400. If the hide test were "low >= budget", 12,800
+  // would hide; if "high >= budget" were the crossing test, 16,400 would say maybe.
+  equal('budget: lowest estimate exactly at the budget stays (maybe); one euro under hides',
+    [12800, 12799].map((b) => budgetFit(yc({}), b)), ['maybe', 'over']);
+  equal('budget: highest estimate exactly at the budget fits; one euro under crosses',
+    [16400, 16399].map((b) => budgetFit(yc({}), b)), ['within', 'maybe']);
+  equal('budget: unknown fee or living is "unknown", even at 0', [budgetFit(yc({ tuitionEu: null }), 0),
+    budgetFit(yc({ livingCostMin: null, livingCostMax: null }), 0)], ['unknown', 'unknown']);
+  equal('budget: none set gives null', [budgetFit(yc({}), null), budgetFit(yc({}), undefined)], [null, null]);
+
+  // Floors: a visa or residence-permit figure is a minimum, so it never reads as "within".
+  const floor = yc({ tuitionEu: 0, livingCostMin: 957, livingCostMax: 957, livingCostSource: 'national estimate (Migration Agency)' });
+  equal('a national minimum is a floor; under budget it may exceed', [floor.floor, floor.low, budgetFit(floor, 20000), budgetFit(floor, 11484), budgetFit(floor, 11483)],
+    [true, 11484, 'maybe', 'maybe', 'over']);
+  check('your own living figure is never a floor', yc({ livingCostSource: 'national estimate (UDI)' }, 900).floor === false);
+  equal('floor sources: visa, UDI, Migration Agency yes; portals, universities and same-city borrowings no',
+    ['national estimate (German student visa)', 'national estimate (UDI)', 'national estimate (Migration Agency)',
+      'national estimate (UK student visa), £1,171 a month', 'national estimate (Study in NL)', 'national estimate (Study in Finland)',
+      'university\'s estimate', 'estimate from VŠE, same city', 'university\'s estimate (weekly totals × 52 / 12), £741–£2,019 a month', '', null]
+      .map(livingIsFloor), [true, true, true, true, false, false, false, false, false, false, false]);
+  const realFloors = [...new Set(live.filter((r) => livingIsFloor(r.livingCostSource)).map((r) => r.livingCostSource))].sort();
+  check('real data: every floor source names a visa, UDI or the Migration Agency, and all four kinds are found',
+    realFloors.every((s) => /visa|UDI|Migration Agency/.test(s))
+      && ['German student visa', 'UDI', 'Migration Agency', 'UK student visa'].every((k) => realFloors.some((s) => s.includes(k))), realFloors.join(' | '));
+  check('real data: no university\'s own estimate or national portal is read as a floor',
+    live.every((r) => !livingIsFloor(r.livingCostSource) || !/university's|Study in|same city/.test(r.livingCostSource)));
+  equal('UK rows say the pounds were converted', cost.poundNote({ deadlineNotes: 'International fee: £33,500 a year, shown here in euros at the ECB rate of 29 October 2026. Irish citizens…' }),
+    'converted from £ at the ECB rate of 29 October 2026');
+  check('every real UK row with a converted fee gets the conversion note', live.filter((r) => r.country === 'United Kingdom' && /ECB rate/.test(r.deadlineNotes || ''))
+    .every((r) => cost.poundNote(r)?.startsWith('converted from £ at the ECB rate of ')));
+
+  // The filter itself.
+  const base = { ...sample[0], tuitionEu: 2000, livingCostMin: 900, livingCostMax: 1200, livingCostSource: 'university\'s estimate', deadlineNotes: '' };
+  const rowsAt = [
+    { ...base, id: 'b-cross' },
+    { ...base, id: 'b-over', tuitionEu: 5000 },
+    { ...base, id: 'b-fee-unknown', tuitionEu: null },
+    { ...base, id: 'b-living-unknown', livingCostMin: null, livingCostMax: null },
+    { ...base, id: 'b-zero', tuitionEu: 0 },
+  ];
+  const shownIds = (state) => filtersMod.applyFilters(rowsAt, { ...filtersMod.createFilterState(), ...state }, new Set()).map((r) => r.id);
+  equal('Max yearly cost 12,800 hides only the row whose lowest estimate is over',
+    shownIds({ maxBudget: 12800 }), ['b-cross', 'b-fee-unknown', 'b-living-unknown', 'b-zero']);
+  equal('Max yearly cost 0 still shows unknowns', shownIds({ maxBudget: 0 }), ['b-fee-unknown', 'b-living-unknown']);
+  equal('My living costs 0 with budget 2,000: fee alone decides, and replaces the unknown living cost',
+    shownIds({ maxBudget: 2000, myLiving: 0 }), ['b-cross', 'b-fee-unknown', 'b-living-unknown', 'b-zero']);
+  equal('My living costs alone hides nothing', shownIds({ myLiving: 5000 }).length, rowsAt.length);
+  const unknownLive = live.filter((r) => !yearlyCost(r).known).map((r) => r.id);
+  const shownAtZero = new Set(filtersMod.applyFilters(live, { ...filtersMod.createFilterState(), maxBudget: 0 }, new Set()).map((r) => r.id));
+  check(`real data: Max yearly cost 0 keeps every one of the ${unknownLive.length} rows with an unknown cost`,
+    unknownLive.length > 0 && unknownLive.every((id) => shownAtZero.has(id)));
+  equal('Max yearly cost and My living costs each count as a filter',
+    [filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), maxBudget: 0 }),
+      filtersMod.activeFilterCount({ ...filtersMod.createFilterState(), maxBudget: 0, myLiving: 0 })], [1, 2]);
+
+  // The address.
+  const costQuery = stateToParams({ ...filtersMod.createFilterState(), maxBudget: 15000, myLiving: 0 });
+  equal('budget and living go in the address and come back (0 included)',
+    [costQuery, paramsToState(costQuery).maxBudget, paramsToState(costQuery).myLiving], ['budget=15000&living=0', 15000, 0]);
+  const badEuros = ['-5', 'abc', '1.5', '1e5', '', ' ', '0x10', '9'.repeat(400)];
+  equal('invalid budget and living values in the address are ignored',
+    badEuros.map((v) => { const s = paramsToState(`budget=${encodeURIComponent(v)}&living=${encodeURIComponent(v)}`); return [s.maxBudget, s.myLiving]; }),
+    badEuros.map(() => [null, null]));
+  equal('parseEuros refuses a number too long to be exact', filtersMod.parseEuros('9'.repeat(400)), { value: null, valid: false });
+
+  // What the row, the detail and the notes say.
+  const fee = (row, state) => byClass(rowOf(row, { ...noFilters(), ...state }), 'c-fee')[0];
+  const verdOf = (cell) => byClass(cell, 'verd')[0]?.textContent ?? null;
+  equal('row fee cell: crossing says "May exceed your budget" on the conditional fill; unknown says so; within says nothing',
+    [[fee(rowsAt[0], { maxBudget: 12800 }).className, verdOf(fee(rowsAt[0], { maxBudget: 12800 }))],
+      [fee(rowsAt[2], { maxBudget: 12800 }).className, verdOf(fee(rowsAt[2], { maxBudget: 12800 }))],
+      [fee(rowsAt[3], { maxBudget: 12800 }).className, verdOf(fee(rowsAt[3], { maxBudget: 12800 }))],
+      [fee(rowsAt[0], { maxBudget: 16400 }).className, verdOf(fee(rowsAt[0], { maxBudget: 16400 }))]],
+    [['cell c-fee v-cond', 'May exceed your budget'], ['cell c-fee v-unk', 'Yearly cost unknown'],
+      ['cell c-fee', 'Yearly cost unknown'], ['cell c-fee', null]]);
+  const livingLine = (row, state) => byClass(fee(row, state), 'liv')[0].textContent;
+  equal('row living line: range, your own figure, a national minimum and unknown',
+    [livingLine(rowsAt[0]), livingLine(rowsAt[0], { myLiving: 800 }), livingLine(rowsAt[3], { myLiving: 0 }),
+      livingLine({ ...base, livingCostMin: 957, livingCostMax: 957, livingCostSource: 'national estimate (Migration Agency)' }),
+      livingLine(rowsAt[3])],
+    ['Living €900–1,200/mo', 'Living: your €800/mo', 'Living: your €0/mo', 'Living from €957/mo', 'Living cost not published']);
+  const YEAR = 'Fee + 12 months\' living (estimate)';
+  const kvText = (row, state, key = YEAR) => kvOf(detailOf(row, { ...noFilters(), ...state }))[key]?.textContent ?? null;
+  equal('detail: the yearly estimate as a range with its source',
+    [kvText(rowsAt[0]), kvText(fxRow('fx-plain')), kvText(rowsAt[4])],
+    ['€12,800–16,400 a year · university\'s estimate', '€15,700 a year', '€10,800–14,400 a year · university\'s estimate']);
+  equal('detail: your own living figure replaces the estimate, said as yours, including where none was published',
+    [kvText(rowsAt[0], { myLiving: 800 }), kvText(rowsAt[0], { myLiving: 800 }, 'Living costs'),
+      kvText(fxRow('fx-no-applying'), { myLiving: 500 }), kvText(fxRow('fx-no-applying'), { myLiving: 500 }, 'Living costs')],
+    ['€11,600 a year · your €800/month', 'Your €800 / month (replacing €900–1,200 / month · university\'s estimate)',
+      '€8,500 a year · your €500/month', 'Your €500 / month (no university estimate)']);
+  equal('detail: an unknown fee says so; no living figure means no yearly row',
+    [kvText(rowsAt[2]), kvText(rowsAt[3]), kvText(fxRow('fx-fee-blank'), { myLiving: 500 })],
+    ['Not known because the EU fee is not published', null, 'Not known because the EU fee is not published']);
+  const ukRow = { ...base, country: 'United Kingdom', tuitionEu: 38000, livingCostMin: 1401, livingCostMax: 1401,
+    livingCostSource: 'national estimate (UK student visa), £1,171 a month',
+    deadlineNotes: 'International fee: £33,500 a year, shown here in euros at the ECB rate of 29 October 2026.' };
+  equal('detail: a UK visa figure reads "from", is labelled a national minimum, and keeps the £ conversion',
+    [kvText(ukRow), kvText(ukRow, {}, 'Living costs')],
+    [`from €54,812 a year · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`,
+      `€1,401 / month · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL}`]);
+  const notesOf = (row, state) => byClass(detailOf(row, { ...noFilters(), ...state }), 'note').map((n) => n.textContent);
+  equal('detail notes: unknown cost not filtered; crossing and floor explain "may exceed"; within says nothing',
+    [notesOf(rowsAt[2], { maxBudget: 12800 }), notesOf(rowsAt[0], { maxBudget: 12800 }), notesOf(ukRow, { maxBudget: 60000 }), notesOf(rowsAt[0], { maxBudget: 20000 })],
+    [['Not filtered by your yearly budget: the EU fee is not published.'],
+      ['May exceed your budget: the lowest estimate (€12,800 a year) fits, the highest (€16,400) does not.'],
+      ['May exceed your budget: €54,812 a year uses a national minimum for living costs, and real costs are usually higher.'], []]);
+
+  // The CSV export uses the same sum.
+  const costCsv = (rows, opts) => csvToObjects(toCsv(rows, opts)).rows;
+  const ex = costCsv([rowsAt[0], rowsAt[2], ukRow]);
+  const exCols = (r) => [r['Living costs (EUR/month)'], r['Living costs source'], r['Fee + 12 months living, lowest (EUR)'],
+    r['Fee + 12 months living, highest (EUR)'], r['Yearly estimate note']];
+  equal('export: yearly estimate columns, unknown reason and floor + £ note',
+    ex.map(exCols), [['900–1200', 'university\'s estimate', '12800', '16400', ''],
+      ['900–1200', 'university\'s estimate', 'Not known', 'Not known', 'the EU fee is not published'],
+      ['1401', 'national estimate (UK student visa), £1,171 a month', '54812', '54812', `${FLOOR_LABEL}; converted from £ at the ECB rate of 29 October 2026`]]);
+  equal('export: My living costs replaces the estimate there too', exCols(costCsv([rowsAt[0]], { myLiving: 0 })[0]),
+    ['0', 'Your own figure', '2000', '2000', '']);
+}
+
+appCheck('Max yearly cost and My living costs: typing sets state, address, chips, Filters (n) and Clear all (n); invalid is refused; chips and Clear all clear them', ({ run, get, fire, advance, context }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  const budget = get('f-budget'), living = get('f-living'), box = get('applied-filters'), more = get('f-more'), clear = get('f-clear');
+  const chip = (key) => box.children.find((c) => c.getAttribute('data-chip') === key);
+  budget.value = '15000'; fire(budget, 'input'); advance(150);
+  if (run('state.maxBudget') !== 15000 || urls.at(-1) !== '/?budget=15000' || chip('maxBudget')?.getAttribute('data-label') !== 'Max yearly cost: €15000') return false;
+  if (!budget.closest('.fld').classList.contains('is-set') || more.querySelector('span').textContent !== 'Filters (1)' || clear.textContent !== 'Clear all (1)') return false;
+  living.value = '0'; fire(living, 'input'); advance(150);
+  if (run('state.myLiving') !== 0 || urls.at(-1) !== '/?budget=15000&living=0' || chip('myLiving')?.getAttribute('data-label') !== 'My living costs: €0/month') return false;
+  if (more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (2)') return false;
+  budget.value = '-5'; fire(budget, 'input'); advance(150);
+  if (run('state.maxBudget') !== null || budget.getAttribute('aria-invalid') !== 'true' || get('f-budget-error').textContent === '' || chip('maxBudget')) return false;
+  budget.value = '15000'; fire(budget, 'input'); advance(150);
+  fire(chip('maxBudget'), 'click');
+  if (budget.value !== '' || run('state.maxBudget') !== null || run('state.myLiving') !== 0 || urls.at(-1) !== '/?living=0') return false;
+  budget.value = '9000'; fire(budget, 'input'); advance(150);
+  fire(clear, 'click');
+  return budget.value === '' && living.value === '' && run('state.maxBudget') === null && run('state.myLiving') === null
+    && !chip('maxBudget') && !chip('myLiving') && run('stateToParams(state)') === '';
+});
+check('Max yearly cost: label, help text exactly, its unit, and both fields in .more-filters naming their help and errors',
+  /<label for="f-budget">Max yearly cost<\/label>/.test(indexHtml) && /<label for="f-living">My living costs<\/label>/.test(indexHtml)
+    && indexHtml.includes('<p class="help filter-help" id="f-budget-help">Keeps programmes whose lowest estimate fits</p>')
+    && /id="f-budget"[^>]*aria-describedby="f-budget-help f-unknown-help f-budget-error"/.test(indexHtml)
+    && /id="f-living"[^>]*aria-describedby="f-living-error"/.test(indexHtml)
+    && moreSrc.includes('id="f-budget"') && moreSrc.includes('id="f-living"')
+    && ['f-budget', 'f-living', 'f-budget-error', 'f-living-error', 'f-budget-help'].every((id) => (indexHtml.match(new RegExp(`id="${id}"`, 'g')) ?? []).length === 1));
+await asyncAppCheck('real start: ?budget=15000&living=0 restores both fields and the state on load', async ({ run, get, context, settle }) => {
+  context.location.search = '?budget=15000&living=0';
+  run('applyUrlFields();');
+  if (get('f-budget').value !== '15000' || get('f-living').value !== '0') return false;
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.maxBudget') === 15000 && run('state.myLiving') === 0
+    && get('applied-filters').children.some((c) => c.getAttribute('data-label') === 'Max yearly cost: €15000');
+}, { boot: true });
+await asyncAppCheck('real start: invalid budget and living in the address fill neither field nor the state', async ({ run, get, context, settle }) => {
+  context.location.search = '?budget=-1&living=1.5';
+  run('applyUrlFields();');
+  if (get('f-budget').value !== '' || get('f-living').value !== '') return false;
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.maxBudget') === null && run('state.myLiving') === null;
+}, { boot: true });
+// END yearly-cost checks
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

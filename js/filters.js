@@ -4,6 +4,7 @@
 import { foldAccents, MATHS_COURSES } from './data.js';
 import { caoPointsFor, MATHS_BONUS_POINTS } from './points.js';
 import { UNCLASSIFIED } from './subjects.js';
+import { yearlyCost, budgetFit } from './cost.js';
 
 export function createFilterState() {
   return {
@@ -15,6 +16,10 @@ export function createFilterState() {
     cities: new Set(),
     deadlineWindow: 'any',
     maxTuition: null,
+    // "Max yearly cost" (euros) and "My living costs" (euros a month). The
+    // second replaces each university's estimate in every total (js/cost.js).
+    maxBudget: null,
+    myLiving: null,
     myIbPoints: null,
     // "HL Maths 4+": adds the 25 CAO bonus points on Irish cutoff rows. It
     // changes labels and counts, never which rows are shown (pointsBucket).
@@ -43,6 +48,8 @@ export function activeFilterCount(state) {
   if (state.cities.size) n++;
   if (state.deadlineWindow !== 'any') n++;
   if (state.maxTuition !== null) n++;
+  if (state.maxBudget !== null) n++;
+  if (state.myLiving !== null) n++;
   if (state.myIbPoints !== null) n++;
   if (state.hlMaths) n++;
   if (state.myMaths !== null) n++;
@@ -81,6 +88,11 @@ export function applyFilters(rows, state, shortlist) {
     if (state.maxTuition !== null &&
         row.tuitionEu !== null &&
         row.tuitionEu > state.maxTuition) return false;
+
+    // Hidden only when even the lowest yearly estimate is over the budget. A
+    // range that crosses it, or an unknown fee or living cost, stays (budgetFit).
+    if (state.maxBudget !== null &&
+        budgetFit(yearlyCost(row, state.myLiving), state.maxBudget) === 'over') return false;
 
     if (pointsBucket(row, state) === 'hidden') return false;
 
@@ -242,6 +254,12 @@ export function parseFee(raw) {
   return wholeNumberIn(raw, 0, Infinity);
 }
 
+// Max yearly cost and My living costs: whole euros, 0 or more. Capped at the
+// largest exact whole number, so 400 typed nines never become Infinity.
+export function parseEuros(raw) {
+  return wholeNumberIn(raw, 0, Number.MAX_SAFE_INTEGER);
+}
+
 function wholeNumberIn(raw, min, max) {
   const trimmed = String(raw == null ? '' : raw).trim();
   if (trimmed === '') return { value: null, valid: true };
@@ -266,6 +284,8 @@ export function stateToParams(state) {
   if (state.myMaths !== null) params.set('mymaths', state.myMaths);
   if (state.exam !== null) params.set('exam', state.exam);
   if (state.maxTuition !== null) params.set('fee', String(state.maxTuition));
+  if (state.maxBudget !== null) params.set('budget', String(state.maxBudget));
+  if (state.myLiving !== null) params.set('living', String(state.myLiving));
   for (const v of state.subjectAreas) params.append('subject', v);
   for (const v of state.countries) params.append('country', v);
   for (const v of state.languages) params.append('lang', v);
@@ -285,6 +305,8 @@ export function paramsToState(query, facets = null) {
   const params = new URLSearchParams(query);
   const points = parsePoints(params.get('points'));
   const fee = parseFee(params.get('fee'));
+  const budget = parseEuros(params.get('budget'));
+  const living = parseEuros(params.get('living'));
   const known = (name, values) => new Set(facets ? params.getAll(name).filter((v) => (values || []).includes(v)) : []);
   const sort = params.get('sort');
   return {
@@ -295,6 +317,8 @@ export function paramsToState(query, facets = null) {
     myMaths: MATHS_COURSES.includes(params.get('mymaths')) ? params.get('mymaths') : null,
     exam: Object.hasOwn(EXAM_OPTIONS, params.get('exam')) ? params.get('exam') : null,
     maxTuition: fee.valid ? fee.value : null,
+    maxBudget: budget.valid ? budget.value : null,
+    myLiving: living.valid ? living.value : null,
     subjectAreas: known('subject', facets && facets.subjectAreas),
     countries: known('country', facets && facets.countries),
     languages: known('lang', facets && facets.languages),

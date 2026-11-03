@@ -375,7 +375,8 @@ svg:not(.sprite) {
 .affix>.ic{position:absolute;left:10px;top:calc(50% - 8px);color:var(--ink-2);pointer-events:none}
 .f-q .inp{padding-left:34px}
 .affix>.unit{position:absolute;right:10px;top:calc(50% - 8px);font-size:var(--fs-12);line-height:16px;color:var(--ink-2);pointer-events:none}
-.f-fee .inp{padding-right:52px}
+.f-fee .inp,.f-budget .inp{padding-right:52px}
+.f-living .inp{padding-right:64px}
 .tick{display:flex;align-items:center;gap:8px;height:var(--ctl);font-size:var(--fs-14);font-weight:600;cursor:pointer;white-space:nowrap}
 .tick input,.option input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--accent)}
 /* Active: 2 px accent border and tint, label "· active". Padding drops by the extra
@@ -714,6 +715,7 @@ html:has(.sheet[open]){overflow:hidden}
   .f-q{flex:1 1 16rem}.f-pts{flex:none;width:5.5rem}.f-hl{flex:none;width:11.5rem}
   .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
   .f-fee{flex:none;width:8rem}
+  .f-budget{flex:none;width:9.5rem}.f-living{flex:none;width:10.5rem}
   .fbar .more{display:none}
   .sheet,.sheet::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every

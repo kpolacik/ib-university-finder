@@ -454,7 +454,7 @@ async function runWidth(base, width, height, want) {
   if (booted && counted) {
     await interactions(page, at, want);
   } else {
-    for (const id of ['A5', 'A6', 'A7', 'A8', 'A9', ...(at === 390 ? ['A10'] : []), ...(at === 1280 ? ['A11'] : [])]) {
+    for (const id of ['A5', 'A6', 'A7', 'A8', 'A9', ...(at === 390 ? ['A10'] : []), ...(at === 1280 ? ['A11'] : []), ...(at >= 600 ? ['A13'] : [])]) {
       report('SKIP', at, id, 'not run', 'the page did not load its programmes');
     }
   }
@@ -501,6 +501,28 @@ async function interactions(page, at, want) {
     await page.clearField();
     await page.waitFor(countIs(`${T} programmes`), 10_000, 'the full count after clearing');
   });
+
+  // Max yearly cost and My living costs (js/cost.js). In the bar from 600 px;
+  // on a phone they sit in the sheet, which A10 already proves opens. A budget
+  // of €1 leaves only rows whose cost is unknown, each saying so; My living
+  // costs 0 then brings back the rows with no fee (fee + 12 × 0 ≤ 1).
+  if (!phone) {
+    await check(at, 'A13', 'Max yearly cost keeps unknowns, My living costs replaces the estimate', async () => {
+      await page.click(`document.querySelector('#f-budget')`, 'the Max yearly cost box');
+      await page.type('1');
+      const { n: unknownOnly } = await page.waitFor(narrowed(T), 10_000, 'a narrowed count');
+      const unlabelled = await page.ev(`[...document.querySelectorAll('#results > li.item')].slice(0, 20)
+        .filter((li) => li.querySelector('.c-fee .verd')?.textContent !== 'Yearly cost unknown').length`);
+      assert(unlabelled === 0, `${unlabelled} of the first rows do not say "Yearly cost unknown"`);
+      await page.click(`document.querySelector('#f-living')`, 'the My living costs box');
+      await page.type('0');
+      await page.waitFor(`(() => { const r = ${narrowed(T)}; return { ok: r.ok && r.n > ${unknownOnly}, why: r.why }; })()`, 10_000, 'more rows with My living costs 0');
+      const mine = await page.ev(`document.querySelector('#results .c-fee .liv')?.textContent ?? ''`);
+      assert(mine === 'Living: your €0/mo', `the first row's living line reads "${mine}"`);
+      await page.click(`document.querySelector('#f-clear')`, 'Clear all');
+      await page.waitFor(countIs(`${T} programmes`), 10_000, 'the full count after Clear all');
+    });
+  }
 
   // On a phone the Country list lives in the Filters sheet, so the sheet opens
   // first (A10) and A8 runs inside it.

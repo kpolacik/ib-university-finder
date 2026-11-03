@@ -17,6 +17,7 @@
      then what it imports, then what those import — and only asks for the CSVs
      after the third. That is three round trips of dead air on a phone. -->
 <link rel="modulepreload" href="js/config.js">
+<link rel="modulepreload" href="js/cost.js">
 <link rel="modulepreload" href="js/csv.js">
 <link rel="modulepreload" href="js/data.js">
 <link rel="modulepreload" href="js/filters.js">
@@ -168,6 +169,31 @@
         </span>
         <p class="err" id="f-tuition-error" aria-live="polite"></p>
       </div>
+
+      <!-- The year: EU fee + 12 months' living (js/cost.js). Max yearly cost
+           hides a programme only when its lowest estimate is over; My living
+           costs replaces every university's estimate in those totals. -->
+      <div class="fld f-budget">
+        <label for="f-budget">Max yearly cost</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-budget" name="budget" min="0" step="1"
+                 inputmode="numeric" placeholder="Any"
+                 aria-describedby="f-budget-help f-unknown-help f-budget-error">
+          <span class="unit">&euro;/year</span>
+        </span>
+        <p class="err" id="f-budget-error" aria-live="polite"></p>
+      </div>
+      <div class="fld f-living">
+        <label for="f-living">My living costs</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-living" name="living" min="0" step="1"
+                 inputmode="numeric" placeholder="University's"
+                 aria-describedby="f-living-error">
+          <span class="unit">&euro;/month</span>
+        </span>
+        <p class="err" id="f-living-error" aria-live="polite"></p>
+      </div>
+      <p class="help filter-help" id="f-budget-help">Keeps programmes whose lowest estimate fits</p>
 
       <!-- Each count reads "Subject area · 2" on screen and "Subject area 2
            selected" to a screen reader: the dot is aria-hidden and " selected"

@@ -3,7 +3,7 @@
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
-  parsePoints, parseFee, stateToParams, paramsToState, pointsSummaryParts,
+  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts,
 } from './filters.js';
 import { loadShortlist, saveShortlist, toCsv, downloadCsv } from './shortlist.js';
 import {
@@ -33,6 +33,8 @@ const dom = {
   points: document.getElementById('f-points'),
   maths: document.getElementById('f-maths'),
   tuition: document.getElementById('f-tuition'),
+  budget: document.getElementById('f-budget'),
+  living: document.getElementById('f-living'),
   subjects: document.getElementById('f-subjects'),
   countries: document.getElementById('f-countries'),
   languages: document.getElementById('f-languages'),
@@ -73,6 +75,8 @@ const dom = {
   emptyTips: document.getElementById('empty-tips'),
   pointsError: document.getElementById('f-points-error'),
   tuitionError: document.getElementById('f-tuition-error'),
+  budgetError: document.getElementById('f-budget-error'),
+  livingError: document.getElementById('f-living-error'),
   shortlistBar: document.getElementById('shortlist-bar'),
   // The <p> holds an icon as well, so the text goes in its own span rather
   // than through textContent on the parent, which would wipe the icon.
@@ -229,6 +233,8 @@ function applyUrlFields() {
   if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
   dom.maths.checked = fromUrl.hlMaths;
   if (fromUrl.maxTuition !== null) dom.tuition.value = String(fromUrl.maxTuition);
+  if (fromUrl.maxBudget !== null) dom.budget.value = String(fromUrl.maxBudget);
+  if (fromUrl.myLiving !== null) dom.living.value = String(fromUrl.myLiving);
   dom.deadline.value = fromUrl.deadlineWindow;
   dom.myMaths.value = fromUrl.myMaths ?? '';
   dom.exam.value = fromUrl.exam ?? '';
@@ -324,6 +330,10 @@ function readFields() {
   state.hlMaths = dom.maths.checked;
   state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
     'Enter a whole number of euros, 0 or more.');
+  state.maxBudget = readNumber(dom.budget, dom.budgetError, parseEuros,
+    'Enter a whole number of euros, 0 or more.');
+  state.myLiving = readNumber(dom.living, dom.livingError, parseEuros,
+    'Enter a whole number of euros a month, 0 or more.');
 }
 
 // An invalid number is never applied, and never treated as 0 or as empty: the
@@ -361,6 +371,18 @@ function wireInputs() {
   dom.tuition.addEventListener('input', debounce(() => {
     state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
       'Enter a whole number of euros, 0 or more.');
+    update();
+  }, 150));
+
+  dom.budget.addEventListener('input', debounce(() => {
+    state.maxBudget = readNumber(dom.budget, dom.budgetError, parseEuros,
+      'Enter a whole number of euros, 0 or more.');
+    update();
+  }, 150));
+
+  dom.living.addEventListener('input', debounce(() => {
+    state.myLiving = readNumber(dom.living, dom.livingError, parseEuros,
+      'Enter a whole number of euros a month, 0 or more.');
     update();
   }, 150));
 
@@ -413,7 +435,7 @@ function wireInputs() {
   dom.exportCsv.addEventListener('click', () => {
     const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir);
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`my-shortlist-${stamp}.csv`, toCsv(rows));
+    downloadCsv(`my-shortlist-${stamp}.csv`, toCsv(rows, { myLiving: state.myLiving }));
   });
 
   // Printing is scoped to the shortlist by the print stylesheet, so this only
@@ -458,6 +480,8 @@ function onToggleStar(id) {
 function clearAll() {
   state.search = '';
   state.maxTuition = null;
+  state.maxBudget = null;
+  state.myLiving = null;
   state.myIbPoints = null;
   state.subjectAreas.clear();
   state.countries.clear();
@@ -472,6 +496,8 @@ function clearAll() {
   dom.points.value = '';
   dom.maths.checked = false;
   dom.tuition.value = '';
+  dom.budget.value = '';
+  dom.living.value = '';
   readFields();
   // Re-render the option lists to clear their local searches as well as ticks.
   // Re-render the chips rather than reaching into render.js's markup with a
@@ -1061,6 +1087,8 @@ function drawAppliedChips() {
   scalar('myIbPoints', `My IB points: ${state.myIbPoints}`, state.myIbPoints !== null);
   scalar('hlMaths', 'HL Maths 4+', state.hlMaths);
   scalar('maxTuition', `Max EU fee: €${state.maxTuition}/year`, state.maxTuition !== null);
+  scalar('maxBudget', `Max yearly cost: €${state.maxBudget}`, state.maxBudget !== null);
+  scalar('myLiving', `My living costs: €${state.myLiving}/month`, state.myLiving !== null);
   scalar('deadlineWindow', `Deadline: ${DEADLINE_WINDOWS[state.deadlineWindow]}`, state.deadlineWindow !== 'any');
   scalar('myMaths', `My maths: ${state.myMaths}`, state.myMaths !== null);
   scalar('exam', `Entrance exam: ${EXAM_OPTIONS[state.exam]}`, state.exam !== null);
@@ -1081,7 +1109,7 @@ function removeChip(key) {
     const box = { subjectAreas: dom.subjects, countries: dom.countries, languages: dom.languages, degreeTypes: dom.degrees, cities: dom.cities }[group];
     for (const input of box.querySelectorAll('input')) if (input.type === 'checkbox') input.checked = state[group].has(input.value);
   } else {
-    const input = { search: dom.search, myIbPoints: dom.points, hlMaths: dom.maths, maxTuition: dom.tuition, deadlineWindow: dom.deadline, myMaths: dom.myMaths, exam: dom.exam }[key];
+    const input = { search: dom.search, myIbPoints: dom.points, hlMaths: dom.maths, maxTuition: dom.tuition, maxBudget: dom.budget, myLiving: dom.living, deadlineWindow: dom.deadline, myMaths: dom.myMaths, exam: dom.exam }[key];
     if (key === 'hlMaths') input.checked = false;
     else input.value = key === 'deadlineWindow' ? 'any' : '';
     readFields();
@@ -1115,7 +1143,7 @@ function renderCounts(shown) {
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? `Clear all (${active})` : 'Clear all';
   // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
+  const inSheet = [state.maxTuition !== null, state.maxBudget !== null, state.myLiving !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
     .filter(Boolean).length;
   dom.more.querySelector('span').textContent = inSheet ? `Filters (${inSheet})` : 'Filters';
   dom.more.classList.toggle('is-on', inSheet > 0);
@@ -1126,6 +1154,8 @@ function renderCounts(shown) {
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
   markSet(dom.tuition, state.maxTuition !== null);
+  markSet(dom.budget, state.maxBudget !== null);
+  markSet(dom.living, state.myLiving !== null);
   markSet(dom.deadline, state.deadlineWindow !== 'any');
   markSet(dom.myMaths, state.myMaths !== null);
   markSet(dom.exam, state.exam !== null);
@@ -1188,6 +1218,8 @@ function filtersInUse() {
   if (state.myIbPoints !== null) used.push('your IB points');
   if (state.hlMaths) used.push('HL Maths 4+');
   if (state.maxTuition !== null) used.push('the EU fee limit');
+  if (state.maxBudget !== null) used.push('the yearly cost limit');
+  if (state.myLiving !== null) used.push('your living costs');
   if (state.subjectAreas.size) used.push('the subject areas');
   if (state.countries.size) used.push('the countries');
   if (state.languages.size) used.push('the languages');

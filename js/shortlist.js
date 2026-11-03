@@ -7,6 +7,7 @@
 
 import { BULLET } from './data.js';
 import { pointsLines, pointsLineText } from './points.js';
+import { yearlyCost, FLOOR_LABEL, UNKNOWN_REASON, poundNote } from './cost.js';
 
 const STORAGE_KEY = 'ib-university-finder:shortlist:v1';
 
@@ -49,6 +50,16 @@ const EXPORT_COLUMNS = [
   ['Other requirements', (r) => r.otherRequirements.join(BULLET)],
   ['Language requirement', (r) => (r.englishUnknown ? 'Not published' : (r.englishRequirement.join(BULLET) || 'Not checked yet'))],
   ['EU fee (EUR/year)', (r) => (r.tuitionEu === null ? 'Not published' : String(r.tuitionEu))],
+  // The yearly estimate is yearlyCost (js/cost.js), the same sum the page
+  // shows, so the student's own living figure replaces the university's here too.
+  ['Living costs (EUR/month)', (r, c) => (c.monthlyMin === null ? 'Not published'
+    : c.monthlyMax > c.monthlyMin ? `${c.monthlyMin}–${c.monthlyMax}` : String(c.monthlyMin))],
+  ['Living costs source', (r, c) => (c.personal ? 'Your own figure' : r.livingCostSource)],
+  ['Fee + 12 months living, lowest (EUR)', (r, c) => (c.known ? String(c.low) : 'Not known')],
+  ['Fee + 12 months living, highest (EUR)', (r, c) => (c.known ? String(c.high) : 'Not known')],
+  ['Yearly estimate note', (r, c) => (c.known
+    ? [c.floor && FLOOR_LABEL, poundNote(r)].filter(Boolean).join('; ')
+    : UNKNOWN_REASON[c.reason])],
   ['Apply via', (r) => r.applicationSystem],
   ['Official admissions page', (r) => r.officialUrl || ''],
   ['Last updated', (r) => (r.lastVerified ? r.lastVerified.toISOString().slice(0, 10) : 'Not recorded')],
@@ -61,10 +72,12 @@ function points(r) {
   return pointsLines(r).map(pointsLineText).join('; ');
 }
 
-export function toCsv(rows) {
+// myLiving: the student's "My living costs" (euros a month), or null.
+export function toCsv(rows, { myLiving = null } = {}) {
   const lines = [EXPORT_COLUMNS.map(([heading]) => escapeCsv(heading)).join(',')];
   for (const row of rows) {
-    lines.push(EXPORT_COLUMNS.map(([, read]) => escapeCsv(read(row))).join(','));
+    const cost = yearlyCost(row, myLiving);
+    lines.push(EXPORT_COLUMNS.map(([, read]) => escapeCsv(read(row, cost))).join(','));
   }
   return lines.join('\r\n');
 }

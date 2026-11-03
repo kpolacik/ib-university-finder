@@ -97,6 +97,7 @@ js/
   csv.js              RFC 4180 CSV parser (~90 lines, no dependencies)
   data.js             fetch, join, validate, normalise. All parsing lives here.
   filters.js          pure functions: rows + filter state -> rows, and sorting
+  cost.js             fee + 12 months' living: the yearly estimate and the budget test
   shortlist.js        localStorage and CSV export (kept but switched off: no save button)
   render.js           everything that touches the DOM
   app.js              wiring and event handlers
@@ -139,6 +140,11 @@ changes those labels and that count, never which programmes are shown.
 hide programmes that state they don't fit your choice; a programme whose maths
 or exam nobody has checked stays in the list, and while the filter is on its
 entry says it was not filtered.
+**Max yearly cost** adds the EU fee to 12 months of living costs and hides a
+programme only when even the lowest estimate is over your budget; a range that
+crosses it says "May exceed your budget", and an unknown fee or living cost
+stays. **My living costs** (euros a month) replaces every university's estimate
+in those totals, and the page says "your €N" wherever it does.
 
 **Fees are what an EU student pays.** The site shows EU fees only and is built
 for a cohort of EU citizens. The UK is included, and there that figure is the

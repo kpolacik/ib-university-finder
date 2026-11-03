@@ -8,6 +8,7 @@ import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
 import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
+import { yearlyCost, budgetFit, livingIsFloor, FLOOR_LABEL, UNKNOWN_REASON, poundNote } from './cost.js';
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
@@ -109,14 +110,14 @@ export function renderDetail(row, state, { slot = false } = {}) {
 
     // --- the three cells -------------------------------------------------------
     const cells = el('div', 'd-cells');
-    cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row));
+    cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row, { state }));
     article.append(cells);
   }
 
   // --- Requirements | Applying -----------------------------------------------
   const two = el('div', 'two');
   two.append(requirementsSection(row));
-  const applying = applyingSection(row);
+  const applying = applyingSection(row, state);
   if (applying) two.append(applying);
   article.append(two);
 
@@ -223,7 +224,7 @@ function renderRow(row, state, wide) {
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
   chevron.append(icon('i-chevron', 'ic'));
-  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true }));
+  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true, state }));
   // The requirements run under the facts across the whole row, never clipped.
   const line = rowRequirements(row);
   if (line) body.append(line);
@@ -358,9 +359,19 @@ function deadlineCell(row, { compact = false } = {}) {
 }
 
 // Blank is not zero: a null fee is "Not published", a 0 is a real claim.
-function feeCell(row, { compact = false } = {}) {
+// Under the fee, the monthly living cost, so the two read side by side; with
+// Max yearly cost set, the verdict on the year (budgetFit, the filter's own test).
+function feeCell(row, { compact = false, state = null } = {}) {
   const cell = el(compact ? 'p' : 'div', 'cell c-fee');
   cell.append(el('span', 'lab', 'EU fee'));
+  const cost = yearlyCost(row, state?.myLiving ?? null);
+  const fit = budgetFit(cost, state?.maxBudget ?? null);
+  if (fit === 'maybe') {
+    cell.classList.add('v-cond');
+    cell.append(el('span', 'verd m m-cond', 'May exceed your budget'));
+  } else if (fit === 'unknown') {
+    cell.append(el('span', 'verd m m-unk', 'Yearly cost unknown'));
+  }
   const fig = el('span', 'fig');
   if (row.tuitionEu === null) {
     cell.classList.add('v-unk');
@@ -380,7 +391,23 @@ function feeCell(row, { compact = false } = {}) {
   if (!compact && row.country === 'Ireland' && row.tuitionEu !== null) {
     cell.append(el('small', 'q', 'Student contribution + levy'));
   }
+  cell.append(el('small', 'q liv', livingShort(cost)));
   return cell;
+}
+
+// The living cost in a few words for the fee cell: "Living €900–1,200/mo",
+// "Living from €957/mo" for a national minimum, "Living: your €800/mo" when
+// the student's own figure replaced the university's.
+function livingShort(cost) {
+  if (cost.monthlyMin === null) return 'Living cost not published';
+  if (cost.personal) return `Living: your ${money.format(cost.monthlyMin)}/mo`;
+  if (cost.floor) return `Living from ${money.format(cost.monthlyMin)}/mo`;
+  return `Living ${moneyRange(cost.monthlyMin, cost.monthlyMax)}/mo`;
+}
+
+// "€900–1,200", or "€900" when both ends are the same.
+function moneyRange(low, high) {
+  return high > low ? `${money.format(low)}–${plain.format(high)}` : money.format(low);
 }
 
 // The block this whole site exists for. Each kind of requirement on its own
@@ -466,7 +493,7 @@ function requirementsSection(row) {
   return section;
 }
 
-function applyingSection(row) {
+function applyingSection(row, state) {
   const list = el('dl', 'kv');
   if (row.faculty) reqRow(list, 'Faculty', [row.faculty.name]);
   const deadlineNotes = [];
@@ -474,13 +501,21 @@ function applyingSection(row) {
   // On Irish rows this is the CAO sentence the points lines were read from.
   if (row.deadlineNotes) deadlineNotes.push(row.deadlineNotes);
   if (deadlineNotes.length) reqRow(list, 'Deadline notes', deadlineNotes.map((t) => el('p', '', t)));
-  if (row.livingCostMin !== null) {
-    // A monthly range with whose estimate it is (Jakub's living_cost_* columns).
-    const range = row.livingCostMax > row.livingCostMin
-      ? `${money.format(row.livingCostMin)}–${plain.format(row.livingCostMax)}`
-      : money.format(row.livingCostMin);
-    reqRow(list, 'Living costs', [`${range} / month${row.livingCostSource ? ` · ${row.livingCostSource}` : ''}`]);
+  const cost = yearlyCost(row, state?.myLiving ?? null);
+  // A monthly range with whose estimate it is (Jakub's living_cost_* columns).
+  const universityLiving = row.livingCostMin === null ? null
+    : [`${moneyRange(row.livingCostMin, row.livingCostMax)} / month`, row.livingCostSource,
+      livingIsFloor(row.livingCostSource) && FLOOR_LABEL].filter(Boolean).join(' · ');
+  if (cost.personal) {
+    // The student's own figure, said as theirs, with what it replaced.
+    reqRow(list, 'Living costs', [`Your ${money.format(cost.monthlyMin)} / month (${universityLiving
+      ? `replacing ${universityLiving}` : 'no university estimate'})`]);
+  } else if (universityLiving) {
+    reqRow(list, 'Living costs', [universityLiving]);
   }
+  // Only with a living figure: without one there is no year to add up, and
+  // the fee cell already says "Living cost not published".
+  if (cost.monthlyMin !== null) reqRow(list, 'Fee + 12 months\' living (estimate)', [yearlyText(row, cost)]);
   if (row.languages.length) reqRow(list, 'Language', [row.languages.join(', ')]);
   if (row.applicationSystem) reqRow(list, 'Apply via', [row.applicationSystem]);
   if (list.childElementCount === 0) return null;
@@ -488,6 +523,20 @@ function applyingSection(row) {
   const section = el('section', 'd-sec');
   section.append(el('h3', '', 'Applying'), list);
   return section;
+}
+
+// The yearly estimate with what it rests on: "€12,700–16,300 a year ·
+// university's estimate". A national minimum reads "from …"; an unknown total
+// says which half is missing.
+function yearlyText(row, cost) {
+  if (!cost.known) {
+    const tag = el('span');
+    tag.append(unknownTag('Not known'), document.createTextNode(` because ${UNKNOWN_REASON[cost.reason]}`));
+    return tag;
+  }
+  const range = cost.floor ? `from ${money.format(cost.low)}` : moneyRange(cost.low, cost.high);
+  const source = cost.personal ? `your ${money.format(cost.monthlyMin)}/month` : row.livingCostSource;
+  return [`${range} a year`, source, cost.floor && FLOOR_LABEL, poundNote(row)].filter(Boolean).join(' · ');
 }
 
 // Never called with an empty label, so no dt is ever empty (A05).
@@ -520,6 +569,16 @@ function notes(row, state, pointsSays) {
   }
   if (state.maxTuition !== null && row.tuitionEu === null) {
     box.append(el('p', 'note', 'Not filtered by your fee limit: the EU fee is unknown.'));
+  }
+  // Max yearly cost: why a row is shown that may not fit (budgetFit).
+  const cost = yearlyCost(row, state.myLiving);
+  const fit = budgetFit(cost, state.maxBudget);
+  if (fit === 'unknown') {
+    box.append(el('p', 'note', `Not filtered by your yearly budget: ${UNKNOWN_REASON[cost.reason]}.`));
+  } else if (fit === 'maybe') {
+    box.append(el('p', 'note', cost.high > state.maxBudget
+      ? `May exceed your budget: the lowest estimate (${money.format(cost.low)} a year) fits, the highest (${money.format(cost.high)}) does not.`
+      : `May exceed your budget: ${money.format(cost.low)} a year uses a national minimum for living costs, and real costs are usually higher.`));
   }
   if (state.myMaths !== null && row.mathsAccepted === null) {
     box.append(el('p', 'note', 'Not filtered by your maths course: it depends on your other subjects or is unclear (see IB subjects).'));
