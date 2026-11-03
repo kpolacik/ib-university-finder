@@ -5245,20 +5245,23 @@ section('SK/EN interface and data translations');
     const node = renderModuleForI18n.dataValue('degree_type', 'BSc');
     return node.textContent === 'BSc' && !node.querySelector('[data-english], [data-untranslated], button');
   }));
-  check('one detail button reveals all originals, persists on re-render and closes them together', withStubDocument(() => {
+  // The label says the next action ("Skryť originál" while shown) and the button has no aria-pressed.
+  const originalsLabel = (button, shown) => button.textContent === i18n.t(shown ? 'hide_english_original' : 'show_english_original')
+    && button.getAttribute('aria-pressed') === null && i18n.t('hide_english_original') !== i18n.t('show_english_original');
+  check('one detail button reveals all originals, persists on re-render, closes them together and relabels itself', withStubDocument(() => {
     const state = noFilters();
     const row = live.find((row) => row.id === 'tud-cse');
     const detail = renderModuleForI18n.renderDetail(row, state);
     const button = detail.querySelector('.detail-originals');
     const originals = detail.querySelectorAll('.data-original');
-    if (!button || button.type !== 'button' || originals.length < 2 || !originals.every((n) => n.hidden && n.lang === 'en')) return false;
+    if (!button || button.type !== 'button' || !originalsLabel(button, false) || originals.length < 2 || !originals.every((n) => n.hidden && n.lang === 'en')) return false;
     button.dispatchEvent({ type: 'click' });
-    if (button.getAttribute('aria-pressed') !== 'true' || originals.some((n) => n.hidden)) return false;
+    if (!originalsLabel(button, true) || originals.some((n) => n.hidden)) return false;
     const rerender = renderModuleForI18n.renderDetail(row, state);
     const next = rerender.querySelector('.detail-originals');
-    if (next.getAttribute('aria-pressed') !== 'true' || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
+    if (!originalsLabel(next, true) || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
     next.dispatchEvent({ type: 'click' });
-    return next.getAttribute('aria-pressed') === 'false' && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
+    return originalsLabel(next, false) && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
       && detail.querySelectorAll('.d-sec').every((section) => section.querySelectorAll('.english-note').length === (section.querySelector('[data-untranslated]') ? 1 : 0));
   }));
   check('detail without translated values hides the toggle but labels untranslated sections', withStubDocument(() => {

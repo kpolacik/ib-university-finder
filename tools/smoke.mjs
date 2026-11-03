@@ -747,7 +747,11 @@ async function runI18n(base) {
         const status = `(() => {
           const detail = document.querySelector('${detail}');
           const originals = [...detail.querySelectorAll('.data-original')];
-          const pressed = detail.querySelector('.detail-originals')?.getAttribute('aria-pressed');
+          // The label flips with the state; "pressed" here means "originals shown".
+          const toggle = detail.querySelector('.detail-originals');
+          const label = toggle?.textContent;
+          const pressed = toggle?.hasAttribute('aria-pressed') ? 'aria-pressed present'
+            : label === 'Skryť originál' ? 'true' : label === 'Zobraziť originál v angličtine' ? 'false' : 'label: ' + label;
           return { count: originals.length, pressed, allOn: originals.every(n => !n.hidden && n.lang === 'en'), allOff: originals.every(n => n.hidden) };
         })()`;
         assert(await page.ev(`![...document.querySelectorAll('#results .row')].some(n => n.querySelector('.data-en, .data-original, .detail-originals'))`), 'rows contain EN markers');

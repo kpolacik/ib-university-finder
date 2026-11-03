@@ -409,6 +409,7 @@ export const UI = {
     "loading_programmes": "Loading programmes…",
     "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "Check requirements, EU fees and deadlines on the official admissions page before applying.\n    Students maintain this site, and details may change.",
     "show_english_original": "Show the English original",
+    "hide_english_original": "Hide the English original",
     "untranslated_section": "In English, as published by the university.",
     "export_note": "CSV column headings follow the site language; data cells stay in English.",
     "programme_count": {
@@ -863,6 +864,7 @@ export const UI = {
     "loading_programmes": "",
     "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "",
     "show_english_original": "Zobraziť originál v angličtine",
+    "hide_english_original": "Skryť originál",
     "untranslated_section": "V angličtine, ako to uvádza univerzita.",
     "export_note": "",
     "programme_count": "",

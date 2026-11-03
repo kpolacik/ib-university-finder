@@ -955,8 +955,10 @@ function detailOriginals(article, id, state) {
     return original;
   });
   const sync = () => {
+    // The label names the next action, so it carries no aria-pressed:
+    // "Hide the English original, pressed" would contradict itself.
     const shown = state.englishOriginals.has(id);
-    button.setAttribute('aria-pressed', String(shown));
+    button.textContent = t(shown ? 'hide_english_original' : 'show_english_original');
     originals.forEach((original) => { original.hidden = !shown; });
   };
   button.addEventListener('click', (event) => {
