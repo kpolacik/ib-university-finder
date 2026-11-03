@@ -896,6 +896,8 @@ equal('parseFee accepts 2771 and 0, refuses -100 and 12.5',
   ['2771', '0', '-100', '12.5'].map((v) => parseFee(v)),
   [{ value: 2771, valid: true }, { value: 0, valid: true }, { value: null, valid: false }, { value: null, valid: false }]);
 check('an invalid number is never read as 0', parseFee('-100').value === null && parsePoints('abc').value === null);
+check('parseFee refuses a number too long to be exact (a 400-digit entry is Infinity, not a fee limit)',
+  parseFee('9'.repeat(400)).value === null && parseFee('9'.repeat(400)).valid === false && parseFee(String(Number.MAX_SAFE_INTEGER)).value === Number.MAX_SAFE_INTEGER);
 const indexHtml = read('index.html');
 check('the fee field takes any whole euro amount (no step="500")',
   !indexHtml.includes('step="500"') && /id="f-tuition"[^>]*step="1"/.test(indexHtml));

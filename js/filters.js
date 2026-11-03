@@ -251,7 +251,9 @@ export function parsePoints(raw) {
 }
 
 export function parseFee(raw) {
-  return wholeNumberIn(raw, 0, Infinity);
+  // Capped like parseEuros: a 400-digit entry is Infinity to Number(), and
+  // Infinity as a fee limit would quietly mean "no limit".
+  return wholeNumberIn(raw, 0, Number.MAX_SAFE_INTEGER);
 }
 
 // Max yearly cost and My living costs: whole euros, 0 or more. Capped at the
