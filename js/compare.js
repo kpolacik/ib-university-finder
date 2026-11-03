@@ -1,4 +1,4 @@
-import { t, dateFormatter, facetLabel } from './i18n.js';
+import { t, dateFormatter, facetLabel, getLanguage } from './i18n.js';
 // What the detail says about a fact, in words, and the compare table built
 // from the same words. Pure, no DOM, so tools/check.mjs can test every cell.
 //
@@ -18,20 +18,29 @@ import { pointsLines, pointsLineText } from './points.js';
 import { pointsBucket } from './filters.js';
 import { yearlyCost, floorLabel, UNKNOWN_REASON, poundNote } from './cost.js';
 
-export const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
-});
-
-// The top of a range: "€900–1,200", not "€900–€1,200".
-const plain = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 0 });
+// Euros follow the interface language: "€2,771" in English, "2 771 €" in
+// Slovak (Leon, 2026-11-03). A Slovak reads "€1,000" as one euro, because the
+// comma is the Slovak decimal mark. Chosen at format time, like dates.
+const MONEY = {
+  en: new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+  sk: new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+};
+const PLAIN = {
+  en: new Intl.NumberFormat('en-IE', { maximumFractionDigits: 0 }),
+  sk: new Intl.NumberFormat('sk-SK', { maximumFractionDigits: 0 }),
+};
+export const money = { format: (n) => MONEY[getLanguage()].format(n) };
+const plain = { format: (n) => PLAIN[getLanguage()].format(n) };
 
 const longDate = dateFormatter({
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 });
 
-// "€900–1,200", or "€900" when both ends are the same.
+// One currency sign per range, where the language puts it: "€900–1,200" in
+// English, "900–1 200 €" in Slovak; just "€900" when both ends are the same.
 export function moneyRange(low, high) {
-  return high > low ? `${money.format(low)}–${plain.format(high)}` : money.format(low);
+  if (!(high > low)) return money.format(low);
+  return getLanguage() === 'sk' ? `${plain.format(low)}–${money.format(high)}` : `${money.format(low)}–${plain.format(high)}`;
 }
 
 // The Requirements block's Entrance exam row; a missing state is "Not checked yet".

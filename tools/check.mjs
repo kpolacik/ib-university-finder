@@ -5290,9 +5290,13 @@ section('SK/EN interface and data translations');
   UI.sk.your_month_replacing = '{value2} / {value1}';
   check('personal living translation can reorder the complete estimate and personal figure', withStubDocument(() => {
     const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), { ...noFilters(), myLiving: 800 });
-    return detail.textContent.includes(' / €800') && !detail.textContent.includes('\u0000');
+    return detail.textContent.replace(/\u00a0/g, ' ').includes(' / 800 €') && !detail.textContent.includes('\u0000');
   }));
   UI.sk.your_month_replacing = replacingBefore;
+  // Slovak reads "€1,000" as one euro (comma = decimal mark), so euros follow the language.
+  equal('euros read "2 771 €" in Slovak and "€2,771" in English, one sign per range',
+    ['sk', 'en'].map((lang) => i18n.inLanguage(lang, () => [compareMod.money.format(2771), compareMod.moneyRange(1000, 1500)].join(' | ').replace(/\u00a0/g, ' '))),
+    ['2 771 € | 1 000–1 500 €', '€2,771 | €1,000–1,500']);
   equal('Slovak "X of Y" counts use the genitive for every count',
     i18n.inLanguage('sk', () => [[1, 1], [2, 3], [5, 7]].map(([shown, count]) => i18n.t('count_of_saved', { shown, count }))),
     ['1 z 1 uloženého programu', '2 z 3 uložených programov', '5 z 7 uložených programov']);
