@@ -3118,7 +3118,7 @@ function paneAppHarness(test, { boot = false } = {}) {
       navType: 'navigate', getEntriesByType(type) { return type === 'navigation' ? [{ type: this.navType }] : []; } };
     const flushFrame = () => { const due = [...frames]; frames.clear(); for (const [, fn] of due) fn(now); };
     const windowListeners = {};
-    const fireWindow = (type) => { for (const fn of windowListeners[type] ?? []) fn({ type }); };
+    const fireWindow = (type, init = {}) => { for (const fn of windowListeners[type] ?? []) fn({ type, ...init }); };
     const styleReads = [];
     // What the stylesheet hides at each width; a hidden node cannot take focus.
     // The list's Sort select follows a container query this stub cannot see; it
@@ -3150,7 +3150,15 @@ function paneAppHarness(test, { boot = false } = {}) {
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
-      ...shortlistMod, ...compareMod, saveShortlist: (set) => { context.savedLists = [...(context.savedLists ?? []), [...set]]; return context.saveWorks ?? true; },
+      ...shortlistMod, ...compareMod, saveShortlist: (set) => {
+        context.savedLists = [...(context.savedLists ?? []), [...set]];
+        const works = context.saveWorks ?? true;
+        if (works && context.stored) context.stored = [...set];
+        return works;
+      },
+      // context.stored is localStorage's list, shared with a pretend second tab;
+      // left unset, storage cannot be read (private browsing).
+      readStoredShortlist: () => (context.stored ? [...context.stored] : null),
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
@@ -4971,14 +4979,58 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
 });
-appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn; the last unsave then closes the view', ({ run, get, item, fire, ids: [a] }) => {
-  run('shortlist.add(fixture[0].id); update();');
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts and Compare drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
   fire(get('f-shortlist-only'), 'click');
+  const boxes = get('ml-picks').querySelectorAll('input');
+  for (const box of boxes.filter((x) => x.value !== c)) { box.checked = true; fire(box, 'change'); }
+  if (get('ml-compare-go').textContent !== 'Compare 2') return false;
   const star = starOf(item(a)); star.focus();
   fire(star, 'click');
-  if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false') return false;
+  // Before any redraw: the row stays, the counts and the picker do not.
+  const picks = get('ml-picks').querySelectorAll('input');
+  if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false'
+    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')
+    || picks.map((x) => x.value).sort().join() !== [b, c].sort().join() || run('comparePicks.join()') !== b
+    || !get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare') return false;
+  fire(starOf(item(b)), 'click');
+  if (!get('ml-compare').hidden || get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
+  fire(starOf(item(c)), 'click');
   run('update();');
   return run('state.shortlistOnly') === false && get('results').children.length === 3;
+});
+appCheck('two tabs: each save or unsave goes on the list as stored now, so the other tab’s changes survive; its storage events update this tab', ({ run, get, item, fire, fireWindow, context, ids: [a, b, c] }) => {
+  // This tab loaded with a saved; a second tab has since saved c.
+  context.stored = [a];
+  run('shortlist.add(fixture[0].id); update();');
+  context.stored = [a, c];
+  fire(starOf(item(b)), 'click');
+  if (JSON.stringify(context.stored) !== JSON.stringify([a, c, b])) return false;
+  // The second tab saves another; this tab unsaves a.
+  context.stored = [a, c, b, 'other-tab'];
+  fire(starOf(item(a)), 'click');
+  if (JSON.stringify(context.stored) !== JSON.stringify([c, b, 'other-tab']) || starOf(item(a)).getAttribute('aria-pressed') !== 'false') return false;
+  // The second tab unsaves b and says so; an event for another key changes nothing.
+  context.stored = [c, 'other-tab'];
+  fireWindow('storage', { key: run('SHORTLIST_KEY') });
+  if (run('[...shortlist].join()') !== `${c},other-tab` || starOf(item(b)).getAttribute('aria-pressed') !== 'false'
+    || starOf(item(c)).getAttribute('aria-pressed') !== 'true' || get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
+  context.stored = [];
+  fireWindow('storage', { key: 'something-else' });
+  if (run('shortlist.size') !== 2) return false;
+  // Inside the list view a change from the other tab draws the list again.
+  fire(get('f-shortlist-only'), 'click');
+  context.stored = [a, c];
+  fireWindow('storage', { key: run('SHORTLIST_KEY') });
+  return get('results').children.map((n) => n.dataset.id).sort().join() === [a, c].sort().join()
+    && get('shortlist-count-text').textContent === '2 saved · 2 shown';
+});
+appCheck('blocked storage: once a write fails, changes go on this tab’s list, not on what storage still holds', ({ run, get, item, fire, context, ids: [a, b] }) => {
+  context.stored = []; context.saveWorks = false;
+  fire(starOf(item(a)), 'click');
+  fire(starOf(item(b)), 'click');
+  return run('shortlist.size') === 2 && context.stored.length === 0
+    && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
 });
 appCheck('compare: pick 2 to 4 from the list, open the table (list hidden), only-differences, close returns focus to the picker', ({ run, get, fire, context }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');

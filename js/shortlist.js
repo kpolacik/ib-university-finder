@@ -9,22 +9,36 @@ import { BULLET } from './data.js';
 import { pointsLines, pointsLineText } from './points.js';
 import { yearlyCost, FLOOR_LABEL, UNKNOWN_REASON, poundNote } from './cost.js';
 
-const STORAGE_KEY = 'ib-university-finder:shortlist:v1';
+// Exported so app.js can tell this list's `storage` events from other keys'.
+export const SHORTLIST_KEY = 'ib-university-finder:shortlist:v1';
 
 export function loadShortlist() {
+  // Storage blocked in private browsing: start empty rather than break the
+  // page — the shortlist is a convenience, not the site.
+  return new Set(readStoredShortlist() ?? []);
+}
+
+// The ids as stored right now, or null when storage cannot be read at all.
+// A corrupt value reads as an empty list. Every change re-reads this first,
+// because another tab may have saved or unsaved since this one loaded.
+export function readStoredShortlist() {
+  let text;
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return new Set(Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : []);
+    text = localStorage.getItem(SHORTLIST_KEY);
   } catch {
-    // Corrupt value, or storage blocked in private browsing. Start empty
-    // rather than break the page — the shortlist is a convenience, not the site.
-    return new Set();
+    return null;
+  }
+  try {
+    const raw = JSON.parse(text);
+    return Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : [];
+  } catch {
+    return [];
   }
 }
 
 export function saveShortlist(shortlist) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...shortlist]));
+    localStorage.setItem(SHORTLIST_KEY, JSON.stringify([...shortlist]));
     return true;
   } catch {
     return false;

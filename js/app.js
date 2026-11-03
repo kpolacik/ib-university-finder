@@ -6,7 +6,7 @@ import {
   parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket,
 } from './filters.js';
 import {
-  loadShortlist, saveShortlist, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
+  loadShortlist, saveShortlist, readStoredShortlist, SHORTLIST_KEY, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
   groupRows, groupHeadings, addressQuery,
 } from './shortlist.js';
 import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js';
@@ -510,8 +510,7 @@ function wireInputs() {
     const total = shortlist.size;
     if (total === 0) return;
     if (!window.confirm(`Remove all ${total} saved ${plural(total)} from your list?`)) return;
-    shortlist.clear();
-    saveFailed = !saveShortlist(shortlist);
+    changeShortlist((set) => set.clear());
     state.shortlistOnly = false;
     listAll = false;
     closeCompare(false);
@@ -526,16 +525,64 @@ function wireInputs() {
 // more click.
 function onToggleStar(id) {
   const starred = !shortlist.has(id);
-  if (starred) shortlist.add(id); else shortlist.delete(id);
-  saveFailed = !saveShortlist(shortlist);
+  changeShortlist((set) => { if (starred) set.add(id); else set.delete(id); });
   for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, starred);
+  syncListToSaves();
   renderCounts(currentlyShown);
   return starred;
+}
+
+// Applies one change to the list as it is stored now, then writes it. Another
+// tab may have saved or unsaved since this one loaded, and writing this tab's
+// old copy back would undo that (save B here, C in a second tab: B was lost).
+// When storage cannot be read, or the last write failed (private browsing),
+// this tab's copy is all there is, so the change goes on that as before.
+function changeShortlist(change) {
+  const stored = saveFailed ? null : readStoredShortlist();
+  if (stored) {
+    shortlist.clear();
+    for (const id of stored) shortlist.add(id);
+  }
+  change(shortlist);
+  saveFailed = !saveShortlist(shortlist);
+}
+
+// Another tab changed the saves: take its list, then bring the stars and
+// counts here up to date. The list view is drawn again, as it would be for
+// any change made from outside it. Other keys are not ours.
+function onStorage(event) {
+  if (event.key !== SHORTLIST_KEY && event.key !== null) return;
+  const stored = readStoredShortlist();
+  if (!stored) return;
+  shortlist.clear();
+  for (const id of stored) shortlist.add(id);
+  if (!loaded) return;
+  if (state.shortlistOnly) { update(); return; }
+  for (const button of document.querySelectorAll('[data-save-id]')) setSaved(button, shortlist.has(button.getAttribute('data-save-id')));
+  renderCounts(currentlyShown);
+}
+
+// The list view's ids, counts and Compare picks from the saves as they are
+// now, without drawing the rows again. An unsaved row stays where it is
+// (onToggleStar), but the bar and Compare follow the real list at once.
+// Same scope as update().
+function syncListToSaves() {
+  if (!state.shortlistOnly || shared) return;
+  const inScope = allRows.filter((row) => shortlist.has(row.id));
+  const filtered = applyFilters(allRows, state, shortlist);
+  const onScreen = listAll ? inScope : filtered;
+  listIds = sortRows(inScope, 'name').map((row) => row.id);
+  listShown = filtered.length;
+  currentlyShown = onScreen.length;
+  currentSummary = pointsSummaryParts(onScreen, state);
+  drawPicks();
+  drawCompare();
 }
 
 // The list bar's buttons and pickers. Everything here changes the view, never
 // the filters.
 function wireList() {
+  window.addEventListener('storage', onStorage);
   dom.shortlistOnly.addEventListener('click', () => {
     if (state.shortlistOnly) {
       // Back to all programmes; a shared link's view closes for good.
@@ -553,8 +600,8 @@ function wireList() {
   });
   dom.listSaveShared.addEventListener('click', () => {
     if (!shared) return;
-    const added = mergeIntoShortlist(shortlist, shared.ids);
-    saveFailed = !saveShortlist(shortlist);
+    let added = 0;
+    changeShortlist((set) => { added = mergeIntoShortlist(set, shared.ids); });
     for (const id of shared.ids) {
       for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, true);
     }
