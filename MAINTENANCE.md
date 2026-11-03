@@ -136,6 +136,12 @@ List every course that is accepted, not just the minimum:
 | Maths SL 4 or HL 3 (any course) | `AA HL · AA SL · AI HL · AI SL` |
 | no maths requirement | `none` |
 | "Mathematics required", no IB course given | `?` |
+| HL Maths is one of several options ("Chemistry plus Biology, Physics or Maths at HL") | `?` |
+
+Write `none` only when maths isn't needed at all. Keep `none` when maths is
+just recommended, only lets you skip an entrance exam, only counts as a GCSE
+equivalent, or applies only to one sub-subject. `node tools/lint-data.mjs`
+warns when `none` sits next to a named maths course.
 
 Grades stay in `ib_subjects`; `ib_maths` is only about the course and level.
 `?` and blank never hide a programme — the card says so instead. A misspelt

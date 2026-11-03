@@ -1198,6 +1198,33 @@ equal('T05 duplicated programme under distinct ids', lintRules(lintFixture({ pro
 equal('T05 Czech points', lintRules(lintFixture({ programmes: [{ ...lintProg, ib_points_min: '28' }], universities: [{ ...lintUni, country: 'Czechia' }] })), ['warning:czech-points']);
 const domainRows = ['a', 'b', 'c', 'd'].map((id, i) => ({ ...lintProg, programme_id: `test-${id}`, programme: id, official_url: `https://${i === 3 ? 'other.example' : 'test.nl'}/${id}` }));
 equal('T05 minority domain', lintRules(lintFixture({ programmes: domainRows })), ['warning:off-domain']);
+
+// ---- ib_maths "none" next to a named maths course (2026-11 contradiction pass)
+// 43 UK science rows said "none" beside "Chemistry plus one of Biology,
+// Physics or Maths at HL". The warning must fire on a named requirement and
+// stay quiet on the legitimate "none" cases that pass kept.
+const mathsNoneCases = [
+  ['sole AA HL requirement', { ib_subjects: 'Maths AA HL 6' }, ['warning:maths-none']],
+  ['maths one of several HL options', { ib_subjects: 'Chemistry plus one of Biology, Physics or Mathematics at Higher Level.' }, ['warning:maths-none']],
+  ['HL grade in maths', { other_requirements: 'Physics BSc · 6 in HL Mathematics' }, ['warning:maths-none']],
+  ['plain none', { ib_subjects: 'No subject required' }, []],
+  ['recommended', { ib_subjects: 'No subject required (Maths AA SL/HL 4 or AI HL 4 highly recommended)' }, []],
+  ['exam waiver', { admission: 'Scio test · Waived for predicted Maths AA HL 6 or SL 7' }, []],
+  ['GCSE equivalence', { ib_subjects: 'GCSE Mathematics met via AA or AI SL/HL grade 2' }, []],
+  ['sub-route', { ib_subjects: 'Some BA subjects need more: Pure Mathematics HL 6 in Maths' }, []],
+  ['conditional course note', { ib_subjects: "Mathematics preferred. For Mathematics, the programme will accept either 'Analysis and Approaches' or 'Applications and Interpretation' at higher level" }, []],
+  ['entrance test', { admission: 'Entrance exam: maths test' }, []],
+  ['not a minimum', { ib_subjects: 'Competitive reference: Maths HL 5 or SL 6 (not a minimum)' }, []],
+];
+for (const [name, changes, expected] of mathsNoneCases) {
+  equal(`maths-none ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ib_maths: 'none', ...changes }] })), expected);
+}
+equal('maths-none ignores a course list', lintRules(lintFixture({ programmes: [{ ...lintProg, ib_maths: 'AA HL', ib_subjects: 'Maths AA HL 6' }] })), []);
+equal('maths-none ignores "?"', lintRules(lintFixture({ programmes: [{ ...lintProg, ib_maths: '?', ib_subjects: 'Chemistry plus one of Biology or Maths at HL' }] })), []);
+equal('maths-none reads the row, not the university baseline', lintRules(lintFixture({
+  programmes: [{ ...lintProg, ib_maths: 'none' }],
+  universities: [{ ...lintUni, baseline_requirement: 'Computer Science needs 7 in HL Mathematics (AA only)' }] })), []);
+// ---- end ib_maths "none" block
 for (const [id, usual, extra] of [['vut', 'vut.cz', 'vutbr.cz'], ['eur', 'eur.nl', 'rsm.nl']]) {
   equal(`T05 ${id} allowed extra domain`, lintRules(lintFixture({
     universities: [{ ...lintUni, university_id: id }], programmes: domainRows.map((row, i) => ({ ...row, university_id: id,

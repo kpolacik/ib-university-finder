@@ -511,6 +511,11 @@ plans/backlog/wording.md for the translation queue.
   Artificial Intelligence (programme PDF: AA SL/HL or AI HL; general diploma
   page: AA HL only). Neither changes what the maths filter hides much, but a
   student applying to either should ask the university.
+- **Maths contradiction pass done 2026-11-03.** 438 rows with `ib_maths`
+  `none` whose text (or university text) mentions maths were checked. 43 UK
+  science rows changed to `?`, because HL maths there is one of several
+  subjects that meet a requirement. The other 395 stay `none`; none became a
+  course list. `tools/lint-data.mjs` now warns (`maths-none`) if it recurs.
 - **Duplicates merged 2026-10-26** (`tools/merge-duplicates-2026-10-26.mjs`):
   `lei-polsci` into `lei-iro` (Leiden teaches Political Science in English
   only as IRO) and `tb-datascience` into `tue-ds` (TU/e runs the joint degree's

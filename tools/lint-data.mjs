@@ -49,6 +49,35 @@ function domain(raw) {
   } catch { return ''; }
 }
 
+// ib_maths "none" tells the "My maths" filter that every IB maths course
+// qualifies. It contradicts the row when the row's own text names HL maths or
+// a specific maths course (AA/AI) as needed: in 2026-11 the bulk fill had left
+// 43 UK science rows at "none" beside "Chemistry plus one of Biology, Physics
+// or Maths at HL". Only the programme's own cells are read, never the
+// university baseline, whose examples are about other courses. The text is
+// read one sentence (or " · " item) at a time, and a sentence is skipped when
+// it is one of the legitimate "none" cases found in that pass:
+//   recommended / advised / preferred / an advantage / "not a minimum"
+//   an exam waiver ("waived for Maths AA HL 6") — the exam route takes everyone
+//   GCSE-maths equivalence ("met via AA or AI at SL/HL grade 2") — any course
+//   a maths entrance test, which is not an IB course requirement
+//   a sub-route ("some BA subjects need Pure Mathematics HL 6")
+//   a conditional ("if Mathematics is offered, AA or AI is accepted")
+// A course named on its own in such a sentence still fires, so a real
+// requirement written next to one of these words can slip through; this is a
+// prompt to read the row, not proof either way.
+const MATHS_COURSE_NAMED = /\b(?:AA|AI) ?(?:HL|SL)\b|\b(?:HL|SL) (?:Maths|Mathematics) (?:AA|AI)\b|Analysis (?:and|&) Approaches|Applications? (?:and|&) Interpretations?|\b(?:HL|Higher Level) (?:\d+ (?:in )?)?(?:Maths|Mathematics)\b|\b(?:Maths|Mathematics)(?: \(?(?:AA|AI)\)?)? (?:HL|at Higher Level)\b/i;
+const MATHS_NOT_REQUIRED = /recommend|advis|prefer|advantage|not a minimum|reference|waive|G?CSE|Middle Years|\btest|\bexam|\bsome\b[^.]*\bneed|\b(?:if|for|where) (?:maths|mathematics)\b/i;
+
+export function mathsNoneConflict(row) {
+  for (const column of ['ib_subjects', 'other_requirements', 'admission']) {
+    for (const sentence of (row[column] || '').split(/(?<=[.;])\s+|\s+·\s+/)) {
+      if (MATHS_COURSE_NAMED.test(sentence) && !MATHS_NOT_REQUIRED.test(sentence)) return { column, sentence };
+    }
+  }
+  return null;
+}
+
 function mostCommon(values) {
   const counts = new Map();
   for (const value of values.filter(Boolean)) counts.set(value, (counts.get(value) || 0) + 1);
@@ -120,6 +149,10 @@ export function lintData({ universitiesCsv, programmesCsv, today = new Date() })
       if (label !== 'Programmes') continue;
       if (/^(?:none|n\/a|-|no requirements?)$/i.test(row.ib_subjects) && row.ib_subjects !== 'none') {
         cell('error', 'none-spelling', 'ib_subjects', 'Write exactly "none", and only when the university says it has no subject requirements. Leave it blank if nobody checked.');
+      }
+      const mathsConflict = row.ib_maths === 'none' && mathsNoneConflict(row);
+      if (mathsConflict) {
+        cell('warning', 'maths-none', 'ib_maths', `"none" says every maths course qualifies, but ${mathsConflict.column} says: "${mathsConflict.sentence.slice(0, 120)}". List the accepted courses, or write "?" if maths is one of several options.`);
       }
       for (const [, d, m, y] of (row.deadline_notes || '').matchAll(/\bwill (?:confirm|announce|publish)\b[^.]*?\bby (\d{1,2}) ([A-Za-z]+) (\d{4})/gi)) {
         const month = MONTHS.indexOf(m.toLowerCase());
