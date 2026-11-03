@@ -728,7 +728,7 @@ async function runFallback(base, want) {
 // CSV already has Slovak, so exercise a real translated admission value and
 // its original, plus both directions of the switch at desktop and phone.
 async function runI18n(base) {
-  await mkdir('/tmp/ib-i18n', { recursive: true });
+  await mkdir('/tmp/ib-i18n-v2', { recursive: true });
   for (const width of [1280, 390]) {
     const page = await openPage(`${base}?ui=en&q=computer+science+delft`, width, 1000);
     try {
@@ -738,28 +738,41 @@ async function runI18n(base) {
         const detail = width >= 1200 ? '#pane' : '[data-id="tud-cse"] .expand';
         await page.waitFor(`({ ok: !!document.querySelector('${detail} .kv dd'), why: 'waiting for detail' })`, 5000, 'detail');
         const before = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
-        await page.screenshot(`/tmp/ib-i18n/${width}-en.png`);
+        await page.screenshot(`/tmp/ib-i18n-v2/${width}-en.png`);
         await page.click(`document.querySelector('[data-language="sk"]')`, 'Slovak');
         assert(await page.ev(`document.documentElement.lang === 'sk'`), 'HTML language did not switch');
         const after = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
         assert(JSON.stringify(before) === JSON.stringify(after), 'switch changed search or results');
-        await page.click(`document.querySelector('${detail} .kv dd button.data-en')`, 'English original');
-        const revealed = await page.ev(`(() => {
-          const button = document.querySelector('${detail} .kv dd button.data-en');
-          const original = document.getElementById(button.getAttribute('aria-controls'));
-          return { english: original.textContent, visible: !original.hidden, slovak: button.parentElement.firstElementChild.textContent, expanded: button.getAttribute('aria-expanded') };
-        })()`);
-        assert(revealed.visible && revealed.expanded === 'true' && revealed.english === 'Numerus fixus: limited places'
-          && revealed.slovak !== revealed.english, 'Slovak admission or English original is missing');
-        await page.screenshot(`/tmp/ib-i18n/${width}-sk.png`);
-        // Keyboard activation closes the same reveal without losing its focus.
-        await page.ev(`document.querySelector('${detail} .kv dd button.data-en').focus()`);
-        await page.key('Enter', 'Enter', 13, [], '\r');
-        await page.waitFor(`({ ok: document.querySelector('${detail} .kv dd button.data-en').getAttribute('aria-expanded') === 'false', why: 'expanded=' + document.querySelector('${detail} .kv dd button.data-en').getAttribute('aria-expanded') + ', focused=' + document.activeElement.outerHTML.slice(0, 150) })`, 3000, 'Enter toggles the original');
-        assert(await page.ev(`document.activeElement === document.querySelector('${detail} .kv dd button.data-en') && !!document.querySelector('[data-id="tud-cse"].is-sel, [data-id="tud-cse"] .expand')`),
-          'Enter on the reveal moved focus or changed the selected programme');
-        await page.click(`document.querySelector('[data-language="en"]')`, 'English');
-        assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .data-original')`), 'EN switch lost the selected detail');
+        const button = `${detail} .detail-originals`;
+        const status = `(() => {
+          const detail = document.querySelector('${detail}');
+          const originals = [...detail.querySelectorAll('.data-original')];
+          const pressed = detail.querySelector('.detail-originals')?.getAttribute('aria-pressed');
+          return { count: originals.length, pressed, allOn: originals.every(n => !n.hidden && n.lang === 'en'), allOff: originals.every(n => n.hidden) };
+        })()`;
+        assert(await page.ev(`![...document.querySelectorAll('#results .row')].some(n => n.querySelector('.data-en, .data-original, .detail-originals'))`), 'rows contain EN markers');
+        let result = await page.ev(status);
+        assert(result.count >= 2 && result.pressed === 'false' && result.allOff, 'originals should start hidden');
+        assert(await page.ev(`[...document.querySelectorAll('${detail} .d-sec')].every(s => s.querySelectorAll('.english-note').length === (s.querySelector('[data-untranslated]') ? 1 : 0))`), 'section notes are missing or repeated');
+        assert(await page.ev(`[...document.querySelectorAll('.deg .data-value')].filter(n => n.textContent === 'BSc').every(n => !n.querySelector('[data-english], [data-untranslated], button'))`), 'equal degree has markers');
+        await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-off.png`);
+        await page.ev(`document.querySelector('${button}').click()`);
+        result = await page.ev(status);
+        assert(result.pressed === 'true' && result.allOn, 'toggle did not reveal every original');
+        // The same-language switch forces a real detail re-render.
+        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        result = await page.ev(status);
+        assert(result.pressed === 'true' && result.allOn, 're-render lost original state');
+        await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-on.png`);
+        await page.ev(`document.querySelector('${button}').click()`);
+        result = await page.ev(status);
+        assert(result.pressed === 'false' && result.allOff, 'toggle did not hide every original after re-render');
+        await page.ev(`document.querySelector('${button}').click()`);
+        await page.ev(`document.querySelector('[data-language="en"]').click()`);
+        assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .detail-originals, ${detail} .data-original, ${detail} .english-note')`), 'EN switch lost detail or retained Slovak controls');
+        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        result = await page.ev(status);
+        assert(result.pressed === 'false' && result.allOff, 'language change did not reset originals');
         assert(page.errors.length === 0, page.errors.map((error) => error.text).join(' | '));
       });
     } finally { await page.close(); }

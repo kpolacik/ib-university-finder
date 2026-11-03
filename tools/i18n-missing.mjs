@@ -29,12 +29,20 @@ export function translationInventory(universities, programmes, translations) {
     && !en.split(/ · |;/).every((item) => has(field, normaliseEnglish(item))));
   const orphans = translations.filter((row) => !wanted.has(`${row.field}\u0000${normaliseEnglish(row.en)}`)
     && !pieces.has(`${row.field}\u0000${normaliseEnglish(row.en)}`));
-  return { missing, orphans };
+  const freeText = Object.fromEntries(['ib_subjects', 'other_requirements', 'deadline_notes'].map((field) => [field,
+    programmes.filter((row) => {
+      const en = normaliseEnglish(row[field]);
+      return en && !['?', 'none'].includes(en) && !has(field, en)
+        && !en.split(/ · |;/).every((item) => has(field, normaliseEnglish(item)));
+    }).length,
+  ]));
+  return { missing, orphans, freeText };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const { missing, orphans } = translationInventory(read('universities.csv'), read('programmes.csv'), read('i18n/sk.csv'));
+  const { missing, orphans, freeText } = translationInventory(read('universities.csv'), read('programmes.csv'), read('i18n/sk.csv'));
   console.log(`${missing.length} English data strings need Slovak; ${orphans.length} Slovak rows no longer match current English.`);
+  console.log(`Rows showing English free text in Slovak mode: ${Object.entries(freeText).map(([field, count]) => `${field}=${count}`).join('; ')}.`);
   for (const row of missing) console.log(`MISSING ${row.field}: ${row.en}`);
   for (const row of orphans) console.log(`ORPHAN ${row.field}: ${row.en}`);
 }

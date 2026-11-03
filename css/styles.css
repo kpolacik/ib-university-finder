@@ -994,8 +994,8 @@ html:has(.sheet[open]){overflow:hidden}
   .d-foot svg, .d-foot .lnk { display: none; }
 }
 
-/* The small EN tag either names untranslated data or reveals its original. */
-.data-en{font:inherit;font-size:10px;line-height:1.4;color:var(--ink-2);border:1px solid currentColor;border-radius:3px;padding:0 3px;background:transparent;vertical-align:baseline}
-button.data-en{cursor:pointer}
+/* One detail-level control and quiet notes keep source-language context local. */
+.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;margin-bottom:16px;cursor:pointer}
+.english-note{font-size:var(--fs-14);color:var(--ink-2);margin-top:12px}
 .data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
 .data-original[hidden]{display:none}

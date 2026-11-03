@@ -5129,6 +5129,7 @@ check('keepAddress builds the address through addressQuery with the shared list'
 section('SK/EN interface and data translations');
 {
   const renderModuleForI18n = await import('../js/render.js');
+  const { compareTable: compareTableForI18n } = await import('../js/compare.js');
   const { readdirSync } = await import('node:fs');
   const { sourceLiterals } = await import('./i18n-scan.mjs');
   const { translationInventory } = await import('./i18n-missing.mjs');
@@ -5223,15 +5224,59 @@ section('SK/EN interface and data translations');
   equal('data lookup normalises whitespace and matches exact field + English', i18n.dataParts('subject_area', ' Engineering  ')[0], { text: sampleTranslation.sk, en: 'Engineering' });
   check('subject and bullet lists translate per item when there is no whole-cell match',
     ['Engineering;Law', 'Engineering · Law'].every((text) => i18n.dataParts('subject_area', text).filter((part) => part.en).length === 2));
-  check('missing Slovak displays English with an accessible EN tag', withStubDocument(() => {
+  check('missing Slovak is plain English with lang=en and no EN marker', withStubDocument(() => {
     const node = renderModuleForI18n.dataValue('admission', 'A new English requirement');
-    return node.textContent.includes('A new English requirement') && byClass(node, 'data-en').some((tag) => tag.attributes.role === 'img' && tag.attributes['aria-label'] === UI.en.untranslated_english);
+    return node.textContent === 'A new English requirement' && node.querySelector('[data-untranslated]').lang === 'en'
+      && !node.querySelector('button, .data-en');
   }));
-  check('translated data has an English original controlled by a keyboard button', withStubDocument(() => {
+  check('translated row/compare values have no reveal or EN marker', withStubDocument(() => {
     const node = renderModuleForI18n.dataValue('subject_area', 'Engineering');
-    const button = byClass(node, 'data-en')[0], original = byClass(node, 'data-original')[0];
-    return button.tagName === 'button' && button.attributes['aria-controls'] === original.id && original.hidden && original.textContent === 'Engineering';
+    return node.textContent === sampleTranslation.sk && !node.querySelector('button, .data-en, .data-original');
   }));
+  check('Slovak result/list rows and Compare contain no EN controls or markers', withStubDocument(() => {
+    const rows = live.filter((row) => ['tud-cse', 'tue-cse'].includes(row.id));
+    const list = new ChromeNode('ul'), compare = new ChromeNode('div');
+    renderModuleForI18n.renderRows(list, rows, { state: noFilters() });
+    renderModuleForI18n.renderCompare(compare, rows, compareTableForI18n(rows, noFilters()));
+    return !list.querySelector('.data-en, .data-original, .detail-originals')
+      && !compare.querySelector('.data-en, .data-original, .detail-originals');
+  }));
+  check('equal Slovak and English degrees stay plain and do not count as translated', withStubDocument(() => {
+    const node = renderModuleForI18n.dataValue('degree_type', 'BSc');
+    return node.textContent === 'BSc' && !node.querySelector('[data-english], [data-untranslated], button');
+  }));
+  check('one detail button reveals all originals, persists on re-render and closes them together', withStubDocument(() => {
+    const state = noFilters();
+    const row = live.find((row) => row.id === 'tud-cse');
+    const detail = renderModuleForI18n.renderDetail(row, state);
+    const button = detail.querySelector('.detail-originals');
+    const originals = detail.querySelectorAll('.data-original');
+    if (!button || button.type !== 'button' || originals.length < 2 || !originals.every((n) => n.hidden && n.lang === 'en')) return false;
+    button.dispatchEvent({ type: 'click' });
+    if (button.getAttribute('aria-pressed') !== 'true' || originals.some((n) => n.hidden)) return false;
+    const rerender = renderModuleForI18n.renderDetail(row, state);
+    const next = rerender.querySelector('.detail-originals');
+    if (next.getAttribute('aria-pressed') !== 'true' || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
+    next.dispatchEvent({ type: 'click' });
+    return next.getAttribute('aria-pressed') === 'false' && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
+      && detail.querySelectorAll('.d-sec').every((section) => section.querySelectorAll('.english-note').length === (section.querySelector('[data-untranslated]') ? 1 : 0));
+  }));
+  check('detail without translated values hides the toggle but labels untranslated sections', withStubDocument(() => {
+    i18n.setDataTranslations([]);
+    const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), noFilters());
+    i18n.setDataTranslations(skRows);
+    return !detail.querySelector('.detail-originals') && detail.querySelectorAll('.english-note').length === 2;
+  }));
+  equal('free-text inventory counts programme rows separately from missing strings',
+    translationInventory([], [{ ib_subjects: 'HL Maths', other_requirements: 'none', deadline_notes: 'A note' }, { ib_subjects: 'HL Maths' }], []).freeText,
+    { ib_subjects: 2, other_requirements: 0, deadline_notes: 1 });
+  const replacingBefore = UI.sk.your_month_replacing;
+  UI.sk.your_month_replacing = '{value2} / {value1}';
+  check('personal living translation can reorder the complete estimate and personal figure', withStubDocument(() => {
+    const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), { ...noFilters(), myLiving: 800 });
+    return detail.textContent.includes(' / €800') && !detail.textContent.includes('\u0000');
+  }));
+  UI.sk.your_month_replacing = replacingBefore;
   const states = [noFilters(), { ...noFilters(), search: sampleTranslation.sk }, { ...noFilters(), countries: new Set(['Ireland']), myIbPoints: 36, maxBudget: 16000 }];
   const ids = (state, lang) => { i18n.setLanguage(lang, storage); return applyFilters(live, state, new Set()).map((row) => row.id); };
   for (const [i, state] of states.entries()) equal(`filter ids are identical in EN and SK (case ${i + 1})`, ids(state, 'en'), ids(state, 'sk'));
@@ -5245,6 +5290,12 @@ appCheck('switching language preserves filters, selection and page scroll', ({ r
   const kept = run("state.search === 'law' && state.maxTuition === 3000 && selectedId === fixture[0].id");
   run("switchLanguage('en')");
   return kept && context.window.scrollY === 120;
+});
+appCheck('language changes reset original state while same-language renders preserve it', ({ run }) => {
+  run("switchLanguage('sk'); state.englishOriginals = new Set([fixture[0].id]); switchLanguage('sk');");
+  const kept = run('state.englishOriginals.has(fixture[0].id)');
+  run("switchLanguage('en'); switchLanguage('sk');");
+  return kept && run('state.englishOriginals.size === 0');
 });
 appCheck('switching the interface language never touches the teaching-language filter', ({ run, context }) => {
   context.history.replaceState = (_, __, url) => { context.location.search = new URL(url, 'http://localhost').search; };

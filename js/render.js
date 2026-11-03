@@ -1,4 +1,4 @@
-import { t, dateFormatter, dataParts, facetLabel } from './i18n.js';
+import { t, dateFormatter, dataParts, facetLabel, getLanguage } from './i18n.js';
 // Everything that touches the DOM.
 //
 // Values are written with textContent, never innerHTML: the data comes from a
@@ -131,6 +131,7 @@ export function renderDetail(row, state, { slot = false, saved } = {}) {
 
   const foot = footer(row, saved);
   if (foot) article.append(foot);
+  detailOriginals(article, row.id, state);
   return article;
 }
 
@@ -433,7 +434,10 @@ function requirementsSection(row) {
     // Falling back to a country-neutral sentence keeps this honest the day a
     // non-Dutch university is added.
     const baseline = row.baselineRequirement || t('a_qualifying_secondary_school_diploma');
-    section.append(el('p', 'kv-none', t('no_ib_subject_requirements_general_requirement_language_requirement', { value1: baseline[0].toUpperCase() + baseline.slice(1) })));
+    const sentence = t('no_ib_subject_requirements_general_requirement_language_requirement', { value1: '\u0000' }).split('\u0000');
+    const text = el('p', 'kv-none');
+    text.append(sentence[0], row.baselineRequirement ? dataValue('baseline_requirement', baseline) : baseline[0].toUpperCase() + baseline.slice(1), sentence[1]);
+    section.append(text);
     return section;
   }
 
@@ -919,50 +923,58 @@ function el(tag, className, text) {
   return node;
 }
 
-// Translation reveals are ordinary buttons: Enter/Space, touch and a mouse
-// all do the same thing. Data always enters the DOM as text, never HTML.
-let originalId = 0;
+// Rows and compare stay plain. Detail decoration adds the shared reveal.
 export function dataValue(field, english) {
   const value = el('span', 'data-value');
   for (const part of dataParts(field, english)) {
-    if (!part.en && !part.missing) { value.append(field === 'baseline_requirement' ? part.text[0].toUpperCase() + part.text.slice(1) : part.text); continue; }
-    const piece = el('span', 'data-piece');
     const display = field === 'baseline_requirement' ? part.text[0].toUpperCase() + part.text.slice(1) : part.text;
     const text = el('span', '', display);
-    if (part.missing) text.lang = 'en';
-    piece.append(text);
-    if (part.en) {
-      const button = el('button', 'data-en', 'EN');
-      button.type = 'button';
-      button.setAttribute('aria-label', t('english_original'));
-      button.setAttribute('aria-expanded', 'false');
-      const original = el('span', 'data-original', part.en);
-      original.lang = 'en';
-      original.hidden = true;
-      original.id = `original-${++originalId}`;
-      button.setAttribute('aria-controls', original.id);
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        original.hidden = !original.hidden;
-        button.setAttribute('aria-expanded', String(!original.hidden));
-      });
-      piece.append(' ', button, original);
-    } else {
-      const tag = el('span', 'data-en', 'EN');
-      tag.setAttribute('role', 'img');
-      tag.setAttribute('aria-label', t('untranslated_english'));
-      piece.append(' ', tag);
-    }
-    value.append(piece);
+    if (part.missing) { text.lang = 'en'; text.setAttribute('data-untranslated', ''); }
+    if (part.en) text.setAttribute('data-english', part.en);
+    value.append(text);
   }
   return value;
 }
 
+function detailOriginals(article, id, state) {
+  if (getLanguage() !== 'sk') return;
+  for (const section of article.querySelectorAll('.d-sec')) {
+    if (section.querySelector('[data-untranslated]')) {
+      section.append(el('p', 'english-note', t('untranslated_section')));
+    }
+  }
+  const translated = article.querySelectorAll('[data-english]');
+  if (!translated.length) return;
+  state.englishOriginals ??= new Set();
+  const button = el('button', 'detail-originals', t('show_english_original'));
+  button.type = 'button';
+  const originals = [...translated].map((text) => {
+    const original = el('span', 'data-original', text.getAttribute('data-english'));
+    original.lang = 'en';
+    text.append(original);
+    return original;
+  });
+  const sync = () => {
+    const shown = state.englishOriginals.has(id);
+    button.setAttribute('aria-pressed', String(shown));
+    originals.forEach((original) => { original.hidden = !shown; });
+  };
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (state.englishOriginals.has(id)) state.englishOriginals.delete(id);
+    else state.englishOriginals.add(id);
+    sync();
+  });
+  sync();
+  article.insertBefore(button, article.firstChild);
+}
+
 function personalLiving(cost, universityLiving) {
   const node = el('span');
-  node.append(t('your_month', { value1: money.format(cost.monthlyMin) }));
-  if (universityLiving) node.append(' (', t('replacing', { value1: '' }), universityLiving, ')');
-  else node.append(' (', t('no_university_estimate'), ')');
+  if (universityLiving) {
+    // Preserve the estimate's language markup while letting translators reorder it.
+    const parts = t('your_month_replacing', { value1: money.format(cost.monthlyMin), value2: '\u0000' }).split('\u0000');
+    node.append(parts[0], universityLiving, parts[1]);
+  } else node.append(t('your_month', { value1: money.format(cost.monthlyMin) }), ' (', t('no_university_estimate'), ')');
   return node;
 }

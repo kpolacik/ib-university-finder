@@ -12,11 +12,15 @@ pick it up without re-deriving decisions. Update it when the state changes.
 switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
 wins over this browser's stored choice. `lang=` stays the teaching-language
 filter only (`lang` was taken, hence `ui`). Share-list links never carry the UI language. All UI
-wording is keyed in `js/i18n.js`; the Slovak UI table is intentionally empty
+wording is keyed in `js/i18n.js`; the Slovak UI table is empty apart from these two detail labels
 (falls back to English), ready for the separate UI translation run. The 658
 AI-DRAFT data translations are in `data/i18n/sk.csv` and the offline snapshot.
-Missing translations show English with an accessible EN tag; translated data
-can reveal its English original. Exact field + whitespace-normalised English
+Rows and Compare show translated data or plain English without EN markers.
+In Slovak details, one “Zobraziť originál v angličtine” button reveals all
+translated originals beneath their Slovak text. Its state survives re-renders
+per programme and resets on an interface-language change. Equal SK/EN values
+stay plain. Each detail section containing untranslated data has one quiet
+“V angličtine, ako to uvádza univerzita.” line; English text keeps lang="en". Exact field + whitespace-normalised English
 lookup runs after parsing and inheritance; whole cells win, then list items.
 `tools/i18n-missing.mjs` reports missing/orphan rows without writes.
 

@@ -327,6 +327,7 @@ function switchLanguage(language) {
   const x = window.scrollX;
   const y = window.scrollY;
   const paneScroll = dom.pane.scrollTop;
+  if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
   applyLanguage();
   clearTimeout(copyTimer);

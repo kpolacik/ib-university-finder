@@ -75,7 +75,7 @@ export const UI = {
     "deadline_notes": "Deadline notes",
     "month": "{value1} / month",
     "living_costs": "Living costs",
-    "replacing": "replacing {value1}",
+    "your_month_replacing": "Your {value1} / month (replacing {value2})",
     "no_university_estimate": "no university estimate",
     "your_month": "Your {value1} / month",
     "fee_12_months_living_estimate": "Fee + 12 months' living (estimate)",
@@ -408,8 +408,8 @@ export const UI = {
     "done": "Done",
     "loading_programmes": "Loading programmes…",
     "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "Check requirements, EU fees and deadlines on the official admissions page before applying.\n    Students maintain this site, and details may change.",
-    "english_original": "English original",
-    "untranslated_english": "English; Slovak translation not available",
+    "show_english_original": "Show the English original",
+    "untranslated_section": "In English, as published by the university.",
     "export_note": "CSV column headings follow the site language; data cells stay in English.",
     "programme_count": {
       "one": "programme",
@@ -529,7 +529,7 @@ export const UI = {
     "deadline_notes": "",
     "month": "",
     "living_costs": "",
-    "replacing": "",
+    "your_month_replacing": "",
     "no_university_estimate": "",
     "your_month": "",
     "fee_12_months_living_estimate": "",
@@ -862,8 +862,8 @@ export const UI = {
     "done": "",
     "loading_programmes": "",
     "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "",
-    "english_original": "",
-    "untranslated_english": "",
+    "show_english_original": "Zobraziť originál v angličtine",
+    "untranslated_section": "V angličtine, ako to uvádza univerzita.",
     "export_note": "",
     "programme_count": "",
     "university_count": "",
@@ -974,7 +974,7 @@ export function dataParts(field, english, lang = language) {
   if (lang === 'en') return [{ text: String(english) }];
   const sk = translations.get(`${field}\u0000${en}`)
     || (['admission', 'english_requirement'].includes(field) ? translations.get(`${field}_default\u0000${en}`) : null);
-  if (sk) return [{ text: sk, en }];
+  if (sk) return normaliseEnglish(sk) === en ? [{ text: sk }] : [{ text: sk, en }];
   if (/ · |;/.test(en)) return en.split(/( · |;\s*)/).filter(Boolean).flatMap((item, i) =>
     i % 2 ? [{ text: item }] : dataParts(field, item, lang));
   return [{ text: en, missing: true }];
