@@ -603,9 +603,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   none at all under `prefers-reduced-motion`. No reordering animation.
 - **Print** prints the filtered rows in order, ink on white (A08).
 - **Speed.** The first screen of rows is drawn at once and the rest in short
-  8 ms chunks after it, so a filter change paints quickly even with 1,240 rows
-  (L09). Measured on the 1,240 rows before the upstream merge; there are now
-  2,915, so re-measure L09 before relying on these numbers.
+  8 ms chunks after it, so a filter change paints quickly (L09). A change also
+  hides the old list at once and deletes it in the same short chunks
+  afterwards, because removing 2,915 rows in one go froze the page for about
+  half a second. Re-measured on the 2,915 rows on 2026-11-03 (see L09 below).
 
 ### Three traps this hit, all of which looked like working code
 
@@ -1317,6 +1318,19 @@ case, with no pause of 50 ms or more while the rest of the rows went in:
   Before: 224-241 ms.
 - A reload halfway down the list still comes back to the same place (within
   about 1%).
+**Re-measured 2026-11-03 on the 2,915 rows after the upstream merge** (same
+yardstick: AC power, 4× slower, quiet machine; before = the 1,240-row
+version). Unticking Ireland (548 → 2,915 rows) still passes: median 139 ms at
+1920 (pane open), 99 ms at 1280, 104 ms at 390; with AI off 111 and 86 ms.
+Ticking Ireland (2,915 → 548) did not: 514-540 ms, because removing 2,915 old
+rows at once took about 430 ms. The fix (park the old list, delete it in
+chunks) brings it to 133 ms at 1280 and 151 ms at 1920 (AI off 127 and 149 ms):
+1920 sits right at the limit. With AI off, 3 of 20 changes at 1280 and 6 of 20
+at 1920 had one 51-100 ms pause while the rows went in (the memory clean-up
+below; it was there before the fix too). An earlier battery run in Low Power
+Mode made the new code look four times slower; it was the battery, not the
+code. Scripts and raw numbers: `/tmp/l09-2915` (temporary).
+
 So L09 is closed. The slower-day results below are kept as known limits: they
 do not count against the yardstick, but they are where to look first if the
 list ever feels slow on a weak machine.
