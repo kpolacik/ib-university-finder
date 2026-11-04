@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-**SK/EN infrastructure (2026-11-03).** Slovak is the default. The EN/SK buttons
+**SK/EN infrastructure (2026-11-03).** English is the default (Jakub, 2026-11-04; it was Slovak until then). The EN/SK buttons
 switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
 wins over this browser's stored choice. `lang=` stays the teaching-language
 filter only (`lang` was taken, hence `ui`). Share-list links never carry the UI language. All UI
@@ -24,7 +24,7 @@ stay plain. Each detail section containing untranslated data has one quiet
 lookup runs after parsing and inheritance; whole cells win, then list items.
 `tools/i18n-missing.mjs` reports missing/orphan rows without writes.
 
-Decisions: informal **ty**, Slovak default, decimal dots kept in data wording
+Decisions: informal **ty**, English default (changed from Slovak by Jakub on 2026-11-04), decimal dots kept in data wording
 (IELTS 6.5), quoted official text stays English. Data parsing, filtering,
 sorting, points and costs keep English source values; search matches both
 languages. CSV headings follow the language, data cells stay English.

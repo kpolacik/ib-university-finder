@@ -937,7 +937,9 @@ export const UI = {
 
 export const LANGUAGE_KEY = 'ib-university-finder:language';
 const validLanguage = (value) => value === 'sk' || value === 'en';
-let language = 'sk';
+// English is the default (Jakub, 2026-11-04); Slovak is one click away and
+// a stored choice or ?ui=sk still wins.
+let language = 'en';
 let addressLanguage = false;
 
 export const getLanguage = () => language;
@@ -948,7 +950,7 @@ export function initLanguage(query = '', storage) {
   const fromUrl = new URLSearchParams(query).getAll('ui').find(validLanguage);
   let stored;
   try { stored = (storage ?? globalThis.localStorage)?.getItem(LANGUAGE_KEY); } catch { /* Private browsing. */ }
-  language = fromUrl || (validLanguage(stored) ? stored : 'sk');
+  language = fromUrl || (validLanguage(stored) ? stored : 'en');
   addressLanguage = Boolean(fromUrl);
   return language;
 }

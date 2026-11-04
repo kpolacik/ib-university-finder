@@ -5239,7 +5239,9 @@ section('SK/EN interface and data translations');
   console.log(`        ${skRows.length} Slovak data rows; ${inventory.missing.length} missing; ${inventory.orphans.length} orphan rows (report only)`);
 
   const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
-  equal('language defaults to Slovak', i18n.initLanguage('', storage), 'sk');
+  equal('language defaults to English', i18n.initLanguage('', storage), 'en');
+  storage.value = 'sk';
+  equal('a stored Slovak choice still wins over the English default', i18n.initLanguage('', storage), 'sk');
   storage.value = 'en';
   equal('stored language is used before the default', i18n.initLanguage('', storage), 'en');
   equal('a valid ui= language wins over storage', i18n.initLanguage('?ui=sk', storage), 'sk');
