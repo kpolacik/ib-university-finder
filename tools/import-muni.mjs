@@ -136,7 +136,7 @@ for (const [key, { area }] of programmes) {
     university_id: 'muni',
     programme: title,
     degree_type: type === 'bakalářský' ? 'Bc.' : 'Long-cycle master',
-    subject_area: areas === 'Liberal Arts' ? area : areas,
+    subject_area: areas || area,
     language: 'Czech',
     // Czech admission is by exam, so there is no IB points figure to state.
     ib_points_min: '',

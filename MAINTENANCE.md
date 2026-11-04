@@ -3,10 +3,23 @@
 You do not need to know how to code. Everything below happens in a Google
 Sheet, in your browser.
 
+**Today the Google Sheet is not connected, and there is no plan to connect it for
+now.** The data is the two CSV files in the `data/` folder, edited in a plain
+text editor (never Excel) and saved with Git. The sections below describe how
+the Sheet would work if it is connected later.
+
 If you take one thing from this document: **this site is only as trustworthy as
 the person who last checked it.** Somebody may plan their application around a
 deadline on this page. That is the whole reason for the `last_verified` and
 `official_url` columns, and why the site refuses to show a card without them.
+
+> **Before you commit**
+>
+> Run `node tools/check.mjs` and `node tools/lint-data.mjs`. Fix every error;
+> read each warning and leave it only if the data is right. Add `--all` to see
+> every row, or `--against ORIG_HEAD` after a merge to compare with the fork's
+> previous ids. The lint only reads files. For the browser smoke test, see
+> [Rebuilding the offline copy](#rebuilding-the-offline-copy) below.
 
 ---
 
@@ -18,6 +31,10 @@ Two tabs. Everything else follows from this.
 |---|---|---|
 | `universities` | university | City, country, living cost, default tuition — typed once |
 | `programmes` | programme | The degree itself, its requirements and its deadline |
+
+Charles faculty names come from the official SIS link; every Charles card shows the faculty; same-name cards elsewhere show, where the recorded facts do not distinguish entries, a catalogue-entry number to help readers compare official pages.
+
+Country badges use a named tint for each of the 11 data countries in `css/styles.css` (pairs checked by `tools/check-contrast.mjs`); any new country gets a neutral badge automatically, and its full name always stays visible.
 
 A programme is linked to its university by putting the university's
 `university_id` in the programme row. Get that wrong and the row will not
@@ -54,6 +71,7 @@ Only if it is not already on the `universities` tab.
 | `student_life_url` | Student union page or city subreddit | |
 | `last_verified` | Today's date, `YYYY-MM-DD` | `2026-09-14` |
 | `verified_by` | Your initials | `JP` |
+| `aliases` | Short names and native names people search for, separated by ` · `. **Only names the university uses itself** on its own site. Search reads it; the card does not show it. Can be blank | `UvA · Universiteit van Amsterdam` |
 
 ## Adding a programme
 
@@ -72,6 +90,7 @@ Only if it is not already on the `universities` tab.
 | `other_requirements` | Anything else you must do, separated by ` · `. See below |
 | `admission` | How places are decided, separated by ` · `. Blank uses the university's `admission_default`; `?` means unknown. See below |
 | `entrance_exam` | `yes`, `waivable`, `no`, or `?`/blank for not known. Drives the "Entrance exam" filter. See below |
+| `application_system` | **Leave blank** unless this programme is applied for some other way than the rest of the university. `?` means unknown. It is the last column in the sheet. See below |
 | `tuition_eu` | **Leave blank** unless this programme differs from the university default |
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
 | `english_requirement` | Leave blank unless it differs from the university default |
@@ -117,6 +136,12 @@ List every course that is accepted, not just the minimum:
 | Maths SL 4 or HL 3 (any course) | `AA HL · AA SL · AI HL · AI SL` |
 | no maths requirement | `none` |
 | "Mathematics required", no IB course given | `?` |
+| HL Maths is one of several options ("Chemistry plus Biology, Physics or Maths at HL") | `?` |
+
+Write `none` only when maths isn't needed at all. Keep `none` when maths is
+just recommended, only lets you skip an entrance exam, only counts as a GCSE
+equivalent, or applies only to one sub-subject. `node tools/lint-data.mjs`
+warns when `none` sits next to a named maths course.
 
 Grades stay in `ib_subjects`; `ib_maths` is only about the course and level.
 `?` and blank never hide a programme — the card says so instead. A misspelt
@@ -158,6 +183,13 @@ Czech universities admit by entrance exam, not IB points, so a Czech row's
 `ib_points_min` is blank and `admission` carries the real hurdle. Mark anything
 that comes from last year's rules with `(2026 rules)`.
 
+**`application_system`** on a programme row is for the rare course you apply
+to some other way than the rest of its university. Bocconi's World Bachelor in
+Business, for example, goes through the Common App (choose USC, then WBB), not
+Bocconi's own portal. Blank uses the university's `application_system`, the way
+blank `admission` uses `admission_default`. `?` means "it differs, but we don't
+know how", and the card then leaves out "Apply via" rather than guess.
+
 **Put IB English grades in `english_requirement`, not `ib_subjects`.** A student
 looking for "what English do I need" looks at the language line.
 
@@ -170,13 +202,18 @@ Pick from this list so the filters stay tidy. Use `;` between several.
 `Psychology` · `Economics` · `Business & Management` · `Law` ·
 `Politics & International Relations` · `Sociology & Anthropology` · `History` ·
 `Philosophy` · `Languages & Literature` · `Media & Communication` ·
-`Art & Design` · `Architecture` · `Education` · `Liberal Arts`
+`Art & Design` · `Architecture` · `Education` · `Liberal Arts` · `Sports Science`
 
 `Liberal Arts` is for university-college programmes where you build your own
-curriculum, so no single subject describes them.
+curriculum, so no single subject describes them. Never use it as a guess.
+
+A blank cell shows as Unclassified. An unknown word is flagged in the page's
+issues list and shown as Unclassified; these rows stay visible under any
+subject filter. Old names such as Finance are translated automatically, but
+use the list above for new rows.
 
 Set these as a dropdown: select the column, **Data → Data validation**, paste
-the list. It stops typos splitting one subject into two filter buttons.
+the whole list, including Sports Science. It helps prevent typos.
 
 ---
 
@@ -186,6 +223,11 @@ the list. It stops typos splitting one subject into two filter buttons.
 default". A `0` means the course genuinely has no fee. The site shows these
 differently — "No tuition fee" is a real statement — and getting them backwards
 is misleading in a way that matters.
+
+**UK rows hold the international fee.** `tuition_eu` is what an EU student pays.
+For the UK that is the international fee, not the Home fee, because EU students
+have paid it since August 2021 (Irish citizens and settled status are the
+exceptions; say so in the note). The sterling figure stays in the note.
 
 **Use `?` when the default is wrong but you don't know the right number.**
 There are three things a tuition cell can say:
@@ -204,8 +246,10 @@ is an exception and haven't checked the number, put `?` and the card will say
 real one. `?` works the same way in `tuition_noneu` and `english_requirement`.
 
 **`baseline_requirement` is per country, so it lives on the universities tab.**
-When a programme has no requirements at all, the card says "No requirements
-beyond ___" and fills the blank from this column. The Netherlands measures every
+When a programme is confirmed to have no IB subject requirements and no other
+requirements are recorded, the card says "No IB subject requirements. General
+requirement: ___. Language requirement not checked yet." It fills the blank
+from this column, capitalising the first letter. The Netherlands measures every
 foreign diploma against VWO; other countries do not, so adding a German or Czech
 university means writing its own baseline there. Leave it empty and the card
 falls back to "a qualifying secondary school diploma", which is true anywhere.
@@ -216,23 +260,77 @@ is in Middelburg, not Utrecht; Leiden teaches three programmes in The Hague;
 Groningen teaches two in Leeuwarden. Put the real city there and the card — and
 the search box — will use it.
 
-**Never edit an `id` once the row exists.** Students star programmes to build a
-shortlist, saved in their own browser against these ids. Change one and their
-saved star silently points at nothing. Renaming a university is fine. Fixing a
-typo in a name is fine. Changing the id is not.
+**Never edit an `id` once the row exists.** The id is how the two tabs are
+joined and how a programme is referred to elsewhere (every student's saved
+list, and every shared `?list=` link, stores programmes by id). Change one and anything pointing
+at it silently points at nothing. Renaming a university is fine. Fixing a typo in
+a name is fine. Changing the id is not.
 
 **Only write in `ib_points_min` what the university actually publishes.** Many
 do not publish a number at all — this is normal, especially in the Netherlands,
 where admission runs on required subjects rather than a total score. Leave it
-blank and put the real requirement in `ib_hl_requirements`. The card will say
+blank and put the real requirement in `ib_subjects`. The card will say
 "Points not published", which is honest and useful. A number copied from a
 commercial university-comparison site is not a fact, and it is exactly the kind
-of thing that makes someone apply for a course they cannot get into.
+of thing that makes someone apply for a course they cannot get into. The one
+exception is HPAT Medicine in Ireland: there the figure is the CAO's published
+480-point minimum (35 IB points), which applies to every HPAT course.
+
+**The CAO sentence in Irish notes is written by the refresh, not by hand.**
+"2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028)." means
+the CAO's cutoff was 510 points in its first round of offers and 495 in its
+second (later, lower) round; a course with no second round names only Round 1.
+"Some applicants on that score missed out in Round 2 (random draw)." means not
+everyone on exactly that score got a place in that round. The IB figure is the
+conversion of the latest round. `tools/update-cao-points.mjs` rewrites these
+sentences each August, so don't edit them; anything else in the note is kept.
+
+**Some Irish notes contain a sentence the card reads.** When an Irish row's
+`deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
+points.", its figure assumes the 25 bonus points, and the card's cutoff line
+for that round ends "with HL Maths 4+". That sentence belongs only on rows whose figure assumes the 25 bonus points (a
+CAO cutoff of 601 to 625 with no test). Two more work the same way:
+"The CAO minimum for Medicine is 480 points; places then go on points plus the
+HPAT test, so last year's cutoff is not an IB figure." makes the card say "35 IB
+points, then ranked with the HPAT", and "Above what any IB total can reach,
+because the cutoff includes test or audition marks, so no IB figure is given."
+(with `ib_points_min` blank) makes it say "Cutoff includes a test score". Keep
+all three word for word: `check.mjs` complains if one is changed, missing or on
+the wrong row.
+
+**Keep `Test, interview, portfolio or audition` in an Irish row's
+`other_requirements`**, even when a more specific label sits next to it
+("Audition · Test, interview, portfolio or audition"). It is not a duplicate:
+it is the CAO's "#" mark, and the site reads that exact tag to know a cutoff
+may include test marks, which decides the IB figure and the HL Maths bonus.
+The CAO refresh (`tools/update-cao-points.mjs`) writes it.
+
+**The card says what kind of points figure it is.** You do not fill this in;
+the site works it out:
+
+- An Irish course (not UCD, not HPAT Medicine) whose note has the CAO sentence
+  shows last year's cutoff, one line per round, Round 1 first: "≈ 37 IB points,
+  Round 1 cutoff, 2026". "≈" because it is the IB equivalent of a CAO points
+  figure, not a number the university published. A round no IB total reaches
+  says why instead ("Round 1 cutoff, 2026: not an IB figure (includes a test
+  score)").
+- Every other row with a figure shows it as a minimum: "36 IB points, minimum".
+  That includes UCD (its own published IB minimum) and HPAT Medicine ("35 IB
+  points, then ranked with the HPAT").
+- A row with `ib_points_min` blank says "No minimum published" (or "Cutoff
+  includes a test score", as above).
+
+A later column will say this directly (plans/backlog/points-value-kind.md).
 
 **`verified_by` is a signature.** Put your initials there only if you personally
 opened `official_url` and read it. If a row says `AI-DRAFT`, it was gathered
-automatically and nobody has confirmed it — the site marks those with a badge.
+automatically and nobody has confirmed it — the site says so in a banner at the top
+and shows no "checked" line on that card.
 Replacing `AI-DRAFT` with your initials is how you sign it off.
+Signing a programme means you checked everything its card shows, including the
+values it takes from the university row. The card's "Checked" line uses the
+programme row's own date and initials, whatever the university row says.
+A signed row with an empty `last_verified` shows no line and is listed as a problem.
 
 **Do not invent scores.** No "student life: 8/10", no rankings we made up.
 `student_life_url` is a link so people can judge for themselves. A number we
@@ -259,7 +357,7 @@ between two people.
 1. **Open the site and sort by deadline.** Anything marked "passed" is last
    year's date and needs rolling forward.
 2. **Work down the `programmes` tab.** For each row, open `official_url` and
-   check three things: the deadline, `ib_points_min` / `ib_hl_requirements`,
+   check three things: the deadline, `ib_points_min` / `ib_subjects`,
    and the tuition fee.
 3. **Update `application_deadline` to next year's date.** Most are the same date
    each year — 15 January is common across the Netherlands for capped courses —
@@ -270,8 +368,8 @@ between two people.
    if there is an amber box, it lists exactly which row and column is wrong.
 6. **Rebuild the offline copy** (see below).
 
-Anything not checked for six months shows a "may be out of date" badge
-automatically, so you can see at a glance what has been missed.
+Anything a person signed off and has not re-checked for six months shows a "may
+be out of date" badge automatically, so you can see at a glance what has been missed.
 
 ## Before each application season
 
@@ -297,7 +395,9 @@ node tools/make-snapshot.mjs
 ```
 
 Then commit and push. Do it after the autumn pass, and any time the Sheet
-changes a lot.
+changes a lot. While the site reads the CSVs in the repo, `node tools/check.mjs`
+fails when `data/fallback.json` no longer matches them: run the command above
+and commit the result with the CSVs.
 
 While you are there, this checks that nothing is broken:
 
@@ -307,6 +407,10 @@ node tools/check.mjs
 
 It should end with "All checks passed". If it does not, whatever it names is
 worth fixing before the next application season.
+
+If Google Chrome is installed, also run `node tools/smoke.mjs`. It opens the
+real page invisibly, clicks through it the way a student would, and should end
+with "Smoke test passed". Without Chrome it just says SKIP.
 
 ---
 
@@ -328,3 +432,34 @@ text. Fix the format, re-enter the dates, and the warning goes away.
 
 **A link does nothing.** `official_url` must start with `https://`. A bare
 `tudelft.nl` is rejected — the site tells you which row.
+
+## Slovak and English
+
+The site starts in Slovak. The EN and SK buttons switch the page language;
+this browser remembers your choice. A link with `?ui=en` or `?ui=sk`
+overrides that choice. `lang=` in the address is something else: it is the
+teaching-language filter (`?lang=English`), and switching the site language
+never changes it. Shared My list links do not set a language.
+
+Keep editing the **English** CSVs as usual. Slovak data wording lives separately
+in `data/i18n/sk.csv`, with four columns: `field`, `en`, `sk`, `verified_by`.
+The English text and its column name must match. If you change English, its old
+Slovak translation stops matching: students see the new English with a small
+**EN** tag until it is translated again. Unknown values still stay in the list.
+A button beside translated data reveals its English original.
+
+To see what needs translating, run:
+
+```bash
+node tools/i18n-missing.mjs
+```
+
+This only prints a report. `MISSING` means English without a matching Slovak
+translation; `ORPHAN` means a translation whose English is no longer in use.
+It does not change any files. After updating translations, rebuild the offline
+copy with `node tools/make-snapshot.mjs`, then run `node tools/check.mjs`.
+Translations gathered by AI keep `AI-DRAFT`; never sign for another person.
+
+CSV exports use headings in the selected language and keep **all data cells
+in English**, including requirement wording. Numbers inside data text keep
+decimal dots, such as IELTS 6.5. Quotes from official pages stay in English.

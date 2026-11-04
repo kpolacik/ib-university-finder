@@ -10,8 +10,10 @@
 // sits on the page. Those two things are the config; everything else is here.
 
 import { writeFileSync } from 'node:fs';
-import { getHtml, toText, lowestIB, areasFor, otherFor, toRow, idMaker, SKIP_TITLE } from './ireland.mjs';
-import { fetchCaoPoints, caoNote } from './cao-points.mjs';
+import {
+  getHtml, toText, convertCutoff, areasFor, otherFor, toRow, idMaker, SKIP_TITLE, HPAT_CODES, HPAT,
+} from './ireland.mjs';
+import { fetchCaoPoints, caoNote, hasCaoTest } from './cao-points.mjs';
 
 /**
  * @param {object} cfg
@@ -82,28 +84,22 @@ export async function importUniversity(cfg) {
     const title = link.title.replace(/\s*\([A-Z]{2}\d{3}\)\s*$/, '').trim();
     const fees = (cfg.fees ? cfg.fees(text) : feeTable?.get(code)) ?? {};
     if (fees.eu) withFees++;
-    const needsMaths = /engineer|mathemat|physic|comput|actuarial|financ|econom/i.test(title);
 
     let ib = null;
     const notes = [caoNote(entry)];
 
-    if (entry.latest.aqa) {
-      // No cutoff existed, so there is no total to convert. Left blank, which
-      // the site shows and labels rather than reading as "no requirement".
-      ib = null;
-    } else if (entry.latest.points !== null) {
-      ib = lowestIB(entry.latest.points);
-      if (ib === null && needsMaths) {
-        ib = lowestIB(entry.latest.points - 25);
-        if (ib !== null) notes.push('Only reachable with the 25 HL Maths bonus points.');
-      } else if (ib !== null && needsMaths) {
-        notes.push('HL Maths 4+ adds 25 bonus points.');
-      }
-      if (ib === null) {
-        skipped.aboveReach++;
-        notes.push('Above the 625-point IB maximum, so no IB equivalent.');
-      }
-    }
+    // One conversion for all three Irish writers (ireland.mjs). A test marker
+    // or an HPAT code means the cutoff may include test marks. AQA means no
+    // cutoff existed, so there is no total to convert (points null): the
+    // figure stays blank, which the site labels rather than reading as "no
+    // requirement", except on HPAT Medicine, which gets the CAO's minimum.
+    const points = entry.latest.aqa ? null : entry.latest.points;
+    const c = convertCutoff(points, {
+      test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), code,
+    });
+    ib = c.ib;
+    notes.push(...c.notes);
+    if (points !== null && ib === null) skipped.aboveReach++;
 
     rows.push({
       code,
@@ -119,7 +115,8 @@ export async function importUniversity(cfg) {
         // requirement per course, so nobody has checked rather than there being
         // nothing to meet.
         ib_subjects: '',
-        other_requirements: entry.latest.test ? 'Test, interview, portfolio or audition' : otherFor(title),
+        other_requirements: HPAT_CODES.has(code) ? HPAT
+          : hasCaoTest(entry) ? 'Test, interview, portfolio or audition' : otherFor(title),
         tuition_eu: fees.eu ?? '',
         tuition_noneu: fees.noneu ?? '',
         application_deadline: '2027-02-01',

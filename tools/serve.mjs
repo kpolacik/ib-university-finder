@@ -17,12 +17,17 @@
 // every response is exactly wrong in production, and GitHub Pages sets sensible
 // headers of its own.
 //
+// It listens on 127.0.0.1 only and refuses dot-paths (.git/, .claude/, .env…).
+// The first version listened on every network interface and served the whole
+// folder, so anyone on the same school or café Wi-Fi could download .git/ —
+// the full history, including anything ever committed by mistake (audit X02).
+//
 // No dependencies, like everything else in tools/.
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve, extname, sep } from 'node:path';
+import { dirname, join, resolve, relative, extname, sep } from 'node:path';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const port = Number(process.argv[2]) || 8765;
@@ -64,6 +69,11 @@ createServer(async (req, res) => {
     // this, "/../../.ssh/id_rsa" would be served happily.
     const file = resolve(join(root, pathname));
     if (file !== root && !file.startsWith(root + sep)) return send(403, 'Forbidden');
+    // Hidden files and folders are never part of the site. Checked on the
+    // resolved path, so "/%2egit/HEAD" and "/js/../.git/HEAD" are caught too.
+    if (relative(root, file).split(sep).some((part) => part.startsWith('.'))) {
+      return send(404, `Not found: ${pathname}`);
+    }
 
     const info = await stat(file).catch(() => null);
     if (!info || !info.isFile()) return send(404, `Not found: ${pathname}`);
@@ -72,7 +82,7 @@ createServer(async (req, res) => {
   } catch (err) {
     send(500, `Server error: ${err.message}`);
   }
-}).listen(port, () => {
+}).listen(port, '127.0.0.1', () => {
   console.log(`Serving ${root}`);
   console.log(`  http://localhost:${port}`);
   console.log('  Cache-Control: no-store — every reload gets what is on disk.');

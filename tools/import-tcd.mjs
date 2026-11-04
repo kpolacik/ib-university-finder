@@ -22,10 +22,19 @@
 //     from the CAO table, which alone says whether a cutoff was a real cutoff,
 //     an every-qualified-applicant year, or a score that still needed a test or
 //     a random draw. See tools/lib/cao-points.mjs.
+//
+// Hand corrections to re-apply after any rerun (this writes tools/tcd-rows.csv,
+// never data/, so merge by hand):
+//
+//   * tcd-columbia-dual-degree (2026-10-25): admission, application_system and
+//     tuition_eu "?" were set by hand. It is a joint Trinity–Columbia
+//     application with its own deadline, not a plain CAO course, and years 3–4
+//     are spent at Columbia, so Trinity's standard fee can't be shown as the
+//     fee. This importer would write it back as a plain CAO row.
 
 import { writeFileSync } from 'node:fs';
-import { getHtml, toText, lowestIB, areasFor, otherFor, toRow } from './lib/ireland.mjs';
-import { fetchCaoPoints, caoNote } from './lib/cao-points.mjs';
+import { getHtml, toText, convertCutoff, areasFor, otherFor, toRow, HPAT_CODES, HPAT } from './lib/ireland.mjs';
+import { fetchCaoPoints, caoNote, hasCaoTest } from './lib/cao-points.mjs';
 
 const BASE = 'https://www.tcd.ie';
 const cao = await fetchCaoPoints();
@@ -38,7 +47,10 @@ const links = [...list.matchAll(/href="(\/courses\/undergraduate\/courses\/[a-z0
   .filter((x) => !/\(JH\)/i.test(x.t))
   // Irish-language, vocational and clinical-support routes a Slovak IB student
   // realistically cannot or would not apply to.
-  .filter((x) => !/irish|gaeilge|acting|deaf studies|dental (nursing|hygiene|technology)|diploma in/i.test(x.t));
+  .filter((x) => !/irish|gaeilge|acting|deaf studies|dental (nursing|hygiene|technology)|diploma in/i.test(x.t))
+  // Graduate entry needs a first degree. Trinity's list doesn't go through
+  // SKIP_TITLE, so the same words are kept out here.
+  .filter((x) => !/graduate[- ]entry/i.test(x.t));
 
 console.log(`courses to fetch: ${links.length}`);
 
@@ -106,28 +118,24 @@ for (const c of links) {
   }
 
   const entry = cao.get(code);
-  const needsMaths = /mathemat/i.test(subjects) || /engineer|mathemat|physic|comput/i.test(c.t);
   const notes = [];
   let ib = null;
 
-  if (entry && entry.latest.points !== null) {
-    notes.push(caoNote(entry));
-    ib = lowestIB(entry.latest.points);
-    if (ib === null && needsMaths) {
-      ib = lowestIB(entry.latest.points - 25);
-      if (ib !== null) notes.push('Only reachable with the 25 HL Maths bonus points.');
-    } else if (ib !== null && needsMaths) {
-      notes.push('HL Maths 4+ adds 25 bonus points.');
-    }
-    if (ib === null) {
-      notes.push('Above the 625-point IB maximum, so no IB equivalent.');
-    }
-  } else if (entry) {
+  if (entry) {
     notes.push(caoNote(entry));
   } else {
     counts.noCutoff++;
     notes.push(`No CAO cutoff is published for this course${code ? ` (code ${code})` : ''}.`);
   }
+  // One conversion for all three Irish writers (lib/ireland.mjs), called on
+  // every branch: with no cutoff (AQA, none published, no CAO entry) points is
+  // null and the figure stays blank, except on HPAT Medicine, which gets the
+  // CAO's minimum whatever the cutoff.
+  const conv = convertCutoff(entry ? entry.latest.points : null, {
+    test: hasCaoTest(entry) || HPAT_CODES.has(code), hpat: HPAT_CODES.has(code), code,
+  });
+  ib = conv.ib;
+  notes.push(...conv.notes);
 
   rows.push(toRow({
     programme_id: idFor(c.h),
@@ -137,7 +145,8 @@ for (const c of links) {
     language: 'English',
     ib_points_min: ib === null ? '' : String(ib),
     ib_subjects: subjects,
-    other_requirements: entry?.latest.test ? 'Test, interview, portfolio or audition' : otherFor(c.t),
+    other_requirements: HPAT_CODES.has(code) ? HPAT
+      : hasCaoTest(entry) ? 'Test, interview, portfolio or audition' : otherFor(c.t),
     application_deadline: '2027-02-01',
     deadline_notes: [...notes, ...extra].filter(Boolean).join(' '),
     official_url: BASE + c.h,

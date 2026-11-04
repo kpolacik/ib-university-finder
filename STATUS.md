@@ -8,21 +8,96 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-2916 programmes · 159 universities · 11 countries · all checks passing.
+**SK/EN infrastructure (2026-11-03).** Slovak is the default. The EN/SK buttons
+switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
+wins over this browser's stored choice. `lang=` stays the teaching-language
+filter only (`lang` was taken, hence `ui`). Share-list links never carry the UI language. All UI
+wording is keyed in `js/i18n.js`. The Slovak UI table is filled (AI-DRAFT: Opus 5.5 translated it,
+Sol checked the meaning; a missing entry falls back to English). The 660
+AI-DRAFT data translations are in `data/i18n/sk.csv` and the offline snapshot.
+Rows and Compare show translated data or plain English without EN markers.
+In Slovak details, one “Zobraziť originál v angličtine” button reveals all
+translated originals beneath their Slovak text (it then reads “Skryť originál”). Its state survives re-renders
+per programme and resets on an interface-language change. Equal SK/EN values
+stay plain. Each detail section containing untranslated data has one quiet
+“V angličtine, ako to uvádza univerzita.” line; English text keeps lang="en". Exact field + whitespace-normalised English
+lookup runs after parsing and inheritance; whole cells win, then list items.
+`tools/i18n-missing.mjs` reports missing/orphan rows without writes.
+
+Decisions: informal **ty**, Slovak default, decimal dots kept in data wording
+(IELTS 6.5), quoted official text stays English. Data parsing, filtering,
+sorting, points and costs keep English source values; search matches both
+languages. CSV headings follow the language, data cells stay English.
+IB subjects, deadline notes and other requirements remain English for the
+later data-translation pass. A later Gemini meaning check remains an owner
+follow-up from the translation plan.
+
+
+2,915 programmes · 159 universities · 11 countries, counted from `data/*.csv` on 2026-11-02, right after the upstream merge (the table below is the same count by country). Recount with a small node script if you need the figure again; don't trust this line after a data change.
+
+`node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
+
+**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Compare** 2 to 4 programmes side by side (`js/compare.js`; "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns at a time, swiped sideways), **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+
+**Saves belong to one web address.** Browser storage is kept per site origin (scheme, host and port). Saves made on a test address (`localhost`, a preview host, Leon's old fork) are not on the live site at `kpolacik.github.io`, and the other way round; a different browser or device has its own list too. To move a list, use Share and open the link on the other address, then "Save these to my list".
+
+**Yearly cost** (2026-11-03): each row shows the monthly living cost under the EU fee, the detail adds "Fee + 12 months' living (estimate)", and two filters sit beside Max EU fee: Max yearly cost (`budget` in the address) and My living costs (`living`). The sum lives in `js/cost.js`; living costs from a visa or residence-permit rule (Germany, Norway, Sweden, the UK visa figure) are labelled "national minimum, not a full budget" and always count as "may exceed" against a budget.
+
+Subject filters now use 23 fixed names, including Sports Science, with old names mapped in code (S02). Unclassified rows stay visible and labelled. Importers leave unmatched titles blank and no longer mistake Physical Education for Physics or tělesná for forestry (D30, D31); existing CSV rows are unchanged.
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 197 | **Complete** — every Dutch research university |
+| Netherlands | 13 | 196 | **Complete** — every Dutch research university |
 | Ireland | 7 | 548 | **Complete** — every Irish university |
 | Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
 | Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
 | Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
-| United Kingdom | 25 | 883 | Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
+| United Kingdom | 25 | 883 | **Shown since 2026-11-02** (see Decisions). Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
 | Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
 | Germany | 38 | 474 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU, Heidelberg (140, 2026-10-29) and KIT, RWTH, TU Berlin, FU Berlin, Freiburg, Tübingen (273, 2026-10-30). HU Berlin missing (bot check blocks this machine) |
 | Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
 | Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
+
+**Upstream merge (2026-11-02).** The fork's redesign merged Jakub's `main`
+(c7b5495). Leon's rule: Jakub's data and choices win. So Jakub's two CSVs
+are the base, and the fork's own data fixes were then re-applied **cell by
+cell, only where Jakub had not changed that cell** since the two sides split.
+The tally: 585 fork cells applied (584 programme cells, 1 university cell),
+34 conflicts kept as Jakub's (33 + 1), and 2 fork-only rows added back,
+`ucd-medicine` and `ul-undergraduate-entry-medicine-bmbs`. Those two rows
+have no `ib_subjects`, `ib_maths` or `entrance_exam` yet. The fork's own
+columns (`application_system` on programmes, `aliases` on universities) were
+kept. Of the 34 conflicts, 29 were only `last_verified` dates; the others
+were `tue-ds` deadline notes (the fork's "no selection" fact survives as open
+entry in `admission`), `rug-ucg` notes and other requirements (settled below)
+and `lei-iro` other requirements and notes (Jakub's text quotes Leiden's page).
+The full cell log was a one-off working file and is not kept.
+
+Jakub's three features now work in the redesigned page: the **My maths**
+filter (`ib_maths`), the **Entrance exam** filter (`entrance_exam`) and the
+**living-cost range** (`living_cost_min`, `living_cost_max`,
+`living_cost_source`), shown as "Living costs" in each programme's Applying
+section. The UK is shown (Leon, 2026-11-02; see Decisions). Jakub's notes on
+each country follow, then his 2026-10-26 additions for Denmark and Italy.
+
+Found while finishing the merge:
+- **The CAO "#" tag.** Irish courses with a test, interview, portfolio or
+  audition carry `Test, interview, portfolio or audition` in
+  `other_requirements`; the site, `update-cao-points.mjs` and the checks read
+  that tag to know a cutoff may include test marks (Q12, D27). Jakub's data
+  replaced it with specific labels ("Audition", "Interview (adds points)"), so
+  the CAO refresh put the tag back after his label on 19 rows. Keep it, even
+  next to a more specific label. The 11 D27 rows now show no IB figure.
+- **MH002** (Maynooth) has no 2026 cutoff: the CAO table lists it as a bare
+  "#", so the row shows "No 2026 cutoff published" and no figure.
+- **Dropped again:** vu-las (AUC listed twice, Q10/D22) and the two
+  graduate-entry rows (UCC CK791, Trinity graduate pharmacy). Jakub's edits to
+  them were bulk column fills, not a decision to keep them.
+- **UCG:** Jakub's "Early Bird deadline 15 January 2027" is right (rug.nl);
+  the February intake closes 1 November for a non-Dutch diploma, not 1 January.
+- **`?` in `entrance_exam` and `ib_maths`** means "not known" and is allowed
+  by the lint, as in Jakub's MAINTENANCE.
 
 **Sweden** (`tools/add-sweden-2026-10-27.mjs`, which quotes every page). The
 list is UHR's: universityadmissions.se's search API, autumn 2027, bachelor
@@ -59,7 +134,7 @@ Aalto, LUT and UEF.
 `tools/fix-uk-2026-10-29.mjs`). Merged from Jakub's research. Three things
 were corrected on 2026-10-29: tuition_eu held the Home fee, but EU students
 have paid the international fee since August 2021 (GOV.UK eligibility rules;
-Irish citizens and settled status excepted, as each card says); pounds were
+Irish citizens and settled status excepted, as most UK cards say); pounds were
 stored as euros (now converted at the ECB rate of 29 October 2026, the pound
 figure kept in the note); living costs mixed monthly, weekly-rent and annual
 figures (now monthly, with the GOV.UK student-visa amount where only rent is
@@ -303,6 +378,8 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
+**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The Language dropdown opens with a note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement (U5).
+
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
 application, CAO points, or a Czech entrance exam. Irish rows inherit
@@ -312,8 +389,9 @@ universities tab; Dutch rows were classified from their own
 where nothing on record says; Czech rows come from each faculty's own
 description of its entrance procedure.
 
-Ireland breaks down as UCD 140, UL 87, Trinity 83, DCU 71, Maynooth 64,
-UCC 56, Galway 54.
+Ireland breaks down as UCD 141, UL 88, Trinity 82, DCU 70, Maynooth 59,
+UCC 55, Galway 53 (counted at the 2026-11-02 merge, after the two
+graduate-entry rows were dropped again).
 
 **Every row is `AI-DRAFT`.** Nobody has verified a single one against an
 official page. The banner at the top tells readers to treat the site as a
@@ -321,18 +399,41 @@ starting point for research and to check every requirement, fee and deadline on
 the official page — it is shown while any row is still `AI-DRAFT`. It used to say
 it on every card too ("Gathered <date> · nobody has checked this yet"); that was
 removed on 2026-10-24 as noise repeated 757 times. A card now shows a
-provenance line only once someone signs it off — set `verified_by` to real
-initials and it reads "Checked <date> by <initials>".
+provenance line only once someone signs it off — set the programme row's
+`verified_by` to real initials and it reads "Checked <date> by <initials>", with
+the date and initials from that programme row alone. The university row's
+`AI-DRAFT` does not stop it (decided 2026-10-26, registry T01).
+
+**Points (2026-10-26, plans/archive/points-honesty.md).** Each card says
+whether its figure is a published minimum or the IB equivalent of last year's
+CAO cutoff, with the round and year (Round 1 first). "My IB points" has an **HL
+Maths 4+** tick, and the count splits the shown programmes into within your
+IB points, only with HL Maths 4+, and programmes that can’t be compared. The tick
+changes labels and counts, never which programmes are shown. The kind of figure (`pointsKind`) is
+worked out in the browser from the university and the CAO sentence in the
+note; a value-kind column written by the importers is to replace it
+(plans/backlog/points-value-kind.md). Every string this added is listed in
+plans/backlog/wording.md.
+
+**English wording (S08/S09, 2026-11-02).** Filters, counts and details now use
+IB points, EU fee, subject area, IB subjects and language requirement consistently.
+Points help is visible on phones; shared help in the extra filters explains
+that unknown figures, fees and deadlines stay visible. Irish detail fees say
+"Student contribution + levy". The masthead still says "This site is a starting
+point for research, not a source of truth." Data prose, saved snapshots and CAO
+marker sentences were left for after the upstream merge (done 2026-11-02, so they can be reworded now); Slovak remains disabled. See
+plans/backlog/wording.md for the translation queue.
 
 ## The next obvious jobs, in order
 
-1. ~~Groningen and Wageningen IB maths~~ — done 2026-10-26 from Groningen's IB
+1. ~~Merge Jakub's upstream~~ — done 2026-11-02 (see *Upstream merge* under State). Next: the Supabase question (Q17), then the Slovak translation behind the reserved EN/SK toggle (`plans/backlog/wording.md`). Run `node tools/lint-data.mjs --against ORIG_HEAD` straight after a merge to see which ids moved.
+2. ~~Groningen and Wageningen IB maths~~ — done 2026-10-26 from Groningen's IB
    diploma table and Wageningen's 2027 Diploma Eligibility List, along with
    RSM (Erasmus IBA), Radboud's non-Dutch diploma page and UL's subject pages.
-2. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
+3. **Sign off the rows that matter.** Pick the 15–20 programmes actually being
    applied to, open each official page, and replace `AI-DRAFT` with real
-   initials. Do not attempt all 757.
-3. ~~DCU's English requirement~~ — filled 2026-10-26. DCU's own pages give no
+   initials. Do not attempt them all.
+4. ~~DCU's English requirement~~ — filled 2026-10-26. DCU's own pages give no
    IB English grade, but its entry-requirements page points EU applicants to
    the CAO's *Agreed Entry Requirements for EU/EFTA/UK* guide, which sets IB
    English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
@@ -347,42 +448,49 @@ initials and it reads "Checked <date> by <initials>".
    levy, which UCD does publish. See the Free Fees entry below.
 
 
-4. **Connect the Google Sheet.** Two tabs, published to the web as CSV, URLs
+5. **Connect the Google Sheet.** *Not planned for now (decided 2026-10-25).*
+   Two tabs, published to the web as CSV, URLs
    pasted into `js/config.js`. Until then the site reads `data/*.csv` from the
    repo and nobody can maintain it without Git.
-5. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
+6. **Czech deadlines that are still last year's.** On 2026-10-24 ČVUT's FSv,
    FEL, FJFI, FD and FBMI, and VŠE's FFÚ, FIS, NF and FM had not published their
    2027 round. Their rows carry no deadline and their admission line says
    `(2026 rules)`. Re-run `tools/import-cvut.mjs` and `tools/import-vse.mjs`
    after their pages update (usually by November), and fill the tables there.
-6. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
+7. **CAO cutoffs are 2026's** (refreshed 2026-10-25 by
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
-   than re-running the importers). Re-run it each August when the CAO
+   than re-running the importers; notes rewritten 2026-10-26 to quote both
+   rounds, figures unchanged). Re-run it each August when the CAO
    replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
    600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
    the 2027 table is not out yet.
-7. ~~Living costs~~ — filled for all 47 universities on 2026-10-26 (see
-   *Living costs* under Decisions). Re-check them each autumn with the rest.
-8. **The 13 entrance-exam unknowns** outside Sweden (`entrance_exam` = `?`),
-   rechecked 2026-10-30 (16 others were settled that day: VUT FEEC, Ca'
-   Foscari IMS, TU Wien Architecture and Spatial Planning, JKU and Klagenfurt
-   IB, Regensburg, WHU, Saarland ×2, LMU Anglistik, Heidelberg ×4, York
-   Music): five VŠE English bachelors (its admissions page points to a 2024
-   leaflet) and Masaryk's Informatika ve vzdělávání (no admission conditions
-   published), Radboud Psychology (its four-part Matching Assignment may or
-   may not include a test), UL Music and Dance, Maynooth MH002, UCD Veterinary
-   Nursing, Bologna 6653 (open access, names no entry check), LMU Kunst und
-   Multimedia and Kunstpädagogik (portfolio first, later stages not described).
-9. ~~Finland and Norway~~ — added 2026-10-27. Norway has few English-taught
+8. ~~Living costs~~ — filled on 2026-10-26 for the 47 universities of the time
+   (see *Living costs* under Decisions); every university added since carries
+   a figure too. Re-check them each autumn with the rest.
+9. **The entrance-exam unknowns** (`entrance_exam` = `?`; 19 outside Sweden at
+   the 2026-11-02 merge). Jakub rechecked them on 2026-10-30 (16 others were
+   settled that day: VUT FEEC, Ca' Foscari IMS, TU Wien Architecture and
+   Spatial Planning, JKU and Klagenfurt IB, Regensburg, WHU, Saarland ×2, LMU
+   Anglistik, Heidelberg ×4, York Music). Still open: five VŠE English
+   bachelors (its admissions page points to a 2024 leaflet) and Masaryk's
+   Informatika ve vzdělávání (no admission conditions published), Radboud
+   Psychology (its four-part Matching Assignment may or may not include a
+   test), UL Music and Dance, Maynooth MH002, UCD Veterinary Nursing, Bologna
+   6653 (open access, names no entry check), LMU Kunst und Multimedia and
+   Kunstpädagogik (portfolio first, later stages not described), the four
+   German rows named under Germany above (KIT Architektur, KIT Sport, RWTH
+   Psychology, Freiburg Psychology), and the two fork-added Irish medicine
+   rows (see *Upstream merge*).
+10. ~~Finland and Norway~~ — added 2026-10-27. Norway has few English-taught
    bachelors (14 here); its Norwegian maths codes (R1, S1+S2) have no IB
    equivalent on the programme pages, so two rows show maths as unknown.
-10. **Swedish gaps**: open the Linnaeus and Mid Sweden pages from a normal
+11. **Swedish gaps**: open the Linnaeus and Mid Sweden pages from a normal
    browser and fill their 11 rows; replace the national living-cost floor with
    each university's own estimate.
 
 ## Known gaps
 
-- **Czech gaps** (424 rows): 65 have no deadline — the faculties above plus
+- **Czech gaps** (424 rows): 61 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no
   fee (`?`). 10 have no admission line. Subjects were filled on 2026-10-26:
@@ -394,22 +502,26 @@ initials and it reads "Checked <date> by <initials>".
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
   Kondiční trenér are listed as Czech-taught but carry a fee "za studium v
   cizím jazyce". Their fee is `?` and the note says so.
-- 3 programmes have no deadline: VU Law in Society, Leiden University College
-  (Early Bird 1 December; its regular deadline isn't on the how-to-apply page)
-  and University College Utrecht. Leiden Archaeology and UCR got theirs on
-  2026-10-27. Was 20 — fourteen Leiden
-  deadlines and Tilburg Psychology were recovered on 2026-08-21.
-- 249 of 757 show no English requirement, counting the university default each
-  programme inherits. Almost all are Dutch. DCU's 70 were filled on
-  2026-10-26 (job 2), so no Irish row is missing one now.
-- 3 of 757 show no tuition figure, after inheritance: Galway Pharmacy, whose
-  page carries no fee table, and two Dutch rows. Was 147 — the Irish fees were
-  re-based on the Free Fees Initiative on 2026-08-21, which both corrected them
-  and filled UCD's 140.
+- 176 of 2,915 programmes have no deadline (counted 2026-11-02): 78 Italian
+  (2027/28 calls not out yet), 61 Czech, 30 Austrian (entrance-procedure
+  dates not out), 3 Dutch, 2 German, 1 Finnish and 1 Norwegian. The Dutch ones
+  are VU Law in Society, Leiden University College (Early Bird 1 December; its
+  regular deadline isn't on the how-to-apply page) and University College
+  Utrecht; Leiden Archaeology and UCR got theirs on 2026-10-27. Was 20 on the
+  Dutch side — fourteen Leiden deadlines and Tilburg Psychology were recovered
+  on 2026-08-21.
+- 618 of 2,915 say "Not checked yet" for the language requirement, counting
+  the university default each programme inherits (Czechia 344, Netherlands
+  172, Italy 51, Finland 25, Germany 13, Norway 6, Denmark 4, UK 2, Austria 1).
+  No Irish row is missing one: DCU's were filled on 2026-10-26 (job 4).
+- 92 of 2,915 show no tuition figure, after inheritance: 79 Italian rows (public
+  fees depend on ISEE), 10 Czech, 2 Dutch and Trinity's Columbia dual
+  degree, whose page does not say what each part costs. Was 147 on the Dutch and Irish rows alone — the Irish
+  fees were re-based on the Free Fees Initiative on 2026-08-21, which both
+  corrected them and filled UCD's 140.
   Galway no longer has a university default at all — its fees are per course,
   because only 1 of its 54 courses charged the figure that used to be the
   default. See the GLM re-check section.
-- 19 of 757 have no deadline.
 - `student_life_url` is empty everywhere. Never invent these.
 - Subject areas are keyword-mapped from course titles across all seven Irish
   universities, and a few are rough.
@@ -419,13 +531,22 @@ initials and it reads "Checked <date> by <initials>".
   and a Slovak applicant goes through the CAO as an EU applicant. Left blank
   rather than borrowed from the wrong audience. The per-course `ib_points_min`
   carries the number that actually matters anyway.
-- **Every programme now has subject requirements and `ib_maths`** (no `?`
-  left). Two official pages contradict each other and the card says so:
+- **Subject requirements and `ib_maths` are filled almost everywhere.** At
+  the 2026-11-02 merge, 20 programmes have a blank `ib_subjects` (Sweden 13,
+  UK 4, Ireland 2, Finland 1) and 23 an unknown `ib_maths` (Sweden 14, UK 4,
+  Norway 2, Ireland 2, Finland 1). The two Irish ones are the fork-added
+  medicine rows. Blank means "not checked", never "none". Two official pages
+  contradict each other and the card says so:
   Groningen's Global Politics & Sustainability (its IB table asks for maths,
   its programme page says maths isn't required since 2023) and Radboud's
   Artificial Intelligence (programme PDF: AA SL/HL or AI HL; general diploma
   page: AA HL only). Neither changes what the maths filter hides much, but a
   student applying to either should ask the university.
+- **Maths contradiction pass done 2026-11-03.** 438 rows with `ib_maths`
+  `none` whose text (or university text) mentions maths were checked. 43 UK
+  science rows changed to `?`, because HL maths there is one of several
+  subjects that meet a requirement. The other 395 stay `none`; none became a
+  course list. `tools/lint-data.mjs` now warns (`maths-none`) if it recurs.
 - **Duplicates merged 2026-10-26** (`tools/merge-duplicates-2026-10-26.mjs`):
   `lei-polsci` into `lei-iro` (Leiden teaches Political Science in English
   only as IRO) and `tb-datascience` into `tue-ds` (TU/e runs the joint degree's
@@ -438,54 +559,54 @@ initials and it reads "Checked <date> by <initials>".
 
 ## The look of it
 
-Redesigned 2026-08-16, then redirected 2026-10-24 from reference images Jakub
-supplied (a product-design portfolio: serif display type, white page, content in
-large tinted rounded panels, rose brand accent, blue links, arrow motif).
+**Rebuilt 2026-10-27 to 2026-11-01** (local branch `redesign`, not upstream
+yet). Leon took it as the working direction on 2026-11-02; he has not been
+through the built site in detail, so refinements will follow. The full build
+brief is `plans/design-round1/design-spec.md` (with its 2026-10-28 amendment)
+and the picture is `plans/design-round1/full/mockup.html`. Both are local to
+the checkout that built it (`plans/` is not in git), so the rules that matter
+are repeated here. This replaces the Playfair Display / pastel-panel look of
+2026-10-24, which came from Jakub's reference images.
 
 **The direction, so a later edit does not quietly undo it:**
 
-- **Two faces.** `Playfair Display` for display — the masthead, every card title,
-  the points number — and `DM Sans` for everything else. Serif is for display
-  only; it never carries UI text, labels or dense data. Both load from Google
-  Fonts with full system stacks behind them, so a blocked font costs character
-  and nothing else.
-- **White page, tinted panels.** Content sits in large soft-cornered panels
-  (`--r-xl`, 26px) with **no borders and almost no shadow** — separation comes
-  from tint and space, as in the reference. This inverts the old design, where
-  white cards with grey hairlines sat on a grey page.
-- **The panel tint carries information.** The reference gives each project card
-  its own pastel; with 757 cards arbitrary pastels would be noise, so the tint is
-  the **country**: Netherlands periwinkle (`--tint-nl`), Ireland mint
-  (`--tint-ie`). Each card's title and points number take the darker ink of its
-  own tint. The class comes from `row.country` in `js/render.js`, so a new
-  country needs a tint pair in `css/styles.css` and nothing else — Czechia would
-  just get a third.
-- **The requirements block inverted** to a white inset (`--inset`) inside the
-  tinted panel, the reverse of the old tinted block on a white card.
-- **Rose brands, blue links.** `--accent` (rose) appears only *outside* cards —
-  the masthead's full stop, a checked filter, the active-filter count — because
-  inside a card the country tint already does the colour work. `--link` (blue) is
-  for interactive text. Amber and red stay semantic and never decorate.
-- **Motion** is transform and opacity only, first ten cards only, and stops
-  entirely under `prefers-reduced-motion`.
-- **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light` is
-  declared in `:root`, and it has to be: without it a browser on a dark OS
+- **One summary row per programme.** A row shows the title, university, a
+  requirements line and three cells: points, deadline, EU fee. Below 1200 px a
+  tap opens the detail in place under the row; from 1200 px the detail sits
+  in a sticky pane on the right. Phones get compact rows, a "Filters" sheet
+  and a count bar that sticks to the top. Phones are a real target, not an
+  afterthought.
+- **Colour only for a verdict.** A cell is filled only when it tells the
+  student something they can act on: green "Within your IB points", amber "Only
+  with HL Maths 4+", orange for a deadline within 60 days. A verdict is always
+  a word, a mark and a fill, never colour alone. Plain facts are plain ink.
+- **Unknown is a dashed box,** never a blank and never a reason to hide a row.
+- **Blue only for interaction** (links, focus, the primary button, the
+  selected row, active filters). **Red only** on the sample-data banner and
+  the total-failure alert. Field errors and notes use ink and weight.
+- **Identity is not status.** The lavender masthead and the country badges
+  are the only other tints, and a badge always says the country's name in
+  words. Flags appear only inside the Country filter.
+- **One typeface: IBM Plex Sans,** self-hosted in `fonts/` (400, 600, 700;
+  licence in `fonts/OFL.txt`). No Google Fonts request, so no visitor IPs go to
+  Google and a slow font server can't block the page (L10). Tabular figures,
+  no italics.
+- **Every colour is a token** in the one `:root` block of `css/styles.css`;
+  never put a hex value anywhere else. `node tools/check-contrast.mjs` checks
+  every text and mark pair (65 today). Never lower its minimum.
+- **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light`
+  is declared in `:root`, and it has to be: without it a browser on a dark OS
   renders form controls, scrollbars and the canvas dark underneath a light page.
   `tools/check-contrast.mjs` throws if a `prefers-color-scheme: dark` block
-  reappears, so nobody can add one back and leave its pairs unchecked.
-- **Desktop is the design target**, but the responsive CSS stays. It is written,
-  verified at 375/768/1280 and costs nothing to keep, and the ~30 classmates
-  browsing will not all be at a desk. "Desktop only" means no further mobile
-  polish, not ripping out working breakpoints.
-- **Contrast is measured, not eyeballed.** `node tools/check-contrast.mjs` —
-  29 pairs, every foreground against the background it is genuinely painted on.
-
-**What was deliberately not taken from the reference.** It is a portfolio with
-six elements on a screen and enormous type. This is a data tool where one card
-carries a points total, subject requirements, a fee, a deadline, provenance and
-two links. The character transferred; the density did not. Serif stays out of the
-body text, padding is tighter than the reference, and the per-card pastel became
-a per-country system.
+  reappears.
+- **Motion** is transform and opacity plus the one expand, 120–200 ms, and
+  none at all under `prefers-reduced-motion`. No reordering animation.
+- **Print** prints the filtered rows in order, ink on white (A08).
+- **Speed.** The first screen of rows is drawn at once and the rest in short
+  8 ms chunks after it, so a filter change paints quickly (L09). A change also
+  hides the old list at once and deletes it in the same short chunks
+  afterwards, because removing 2,915 rows in one go froze the page for about
+  half a second. Re-measured on the 2,915 rows on 2026-11-03 (see L09 below).
 
 ### Three traps this hit, all of which looked like working code
 
@@ -535,13 +656,271 @@ a per-country system.
   Sciences" does not repeat the requirement; it links to the parent course that
   carries it. The importer follows that link once, which recovered 15 rows.
 
+- **Graduate-entry courses got in, and a GAMSAT score became IB points (fixed
+  2026-10-25).** UCC's "Medicine (Graduate Entry)" and Trinity's "Graduate
+  Entry to Pharmacy" need a first degree, yet both were listed, and UCC's
+  GAMSAT cutoff of 58 was run through the IB table as "24 IB points". Both rows
+  are gone. `SKIP_TITLE` in `tools/lib/ireland.mjs` and Trinity's own title
+  filter in `import-tcd.mjs` now drop "graduate entry", so a rerun can't bring
+  them back. `update-cao-points.mjs` only edits rows that exist.
+
+- **The HPAT was guessed from course titles (fixed 2026-10-25).** `otherFor()`
+  wrote "HPAT admission test" on any title with "medicine" or "dental science",
+  so Dental Science, Podiatric Medicine and Molecular Medicine claimed a test
+  they don't have, while the real Medicine rows only said "Test, interview,
+  portfolio or audition". The HPAT now comes from a list of CAO codes
+  (`HPAT_CODES`, from ACER's own page), checked before the CAO marker in every
+  Irish importer.
+
+- **A one-off merge script could undo later fixes (guarded 2026-10-25).**
+  `tools/merge-italy-denmark.mjs` rebuilds every Italian and Danish row, so a
+  rerun would bring back the old Bocconi fees, the wrong World Bachelor
+  deadline and the old DTU English note. It now refuses to run without
+  `--rerun-one-off`, and `check.mjs` checks that by reading the file, never by
+  running it.
+
+- **A duplicate row inherited the wrong fee, and a `?` hid a published
+  numerus fixus (fixed 2026-10-25).** The VU "Liberal Arts and Sciences" row is
+  Amsterdam University College, the same college as the UvA entry, but it had a
+  blank fee and so showed VU's own €2,771 instead of AUC's €5,580. It now carries
+  AUC's name and fee. Leiden's English-taught International Relations and
+  Organisations had `?` for its admission route although Leiden's page says it
+  has a numerus fixus with a selection and placement procedure; it now says so.
+  `check.mjs` guards both. Leon then dropped both duplicate rows on
+  2026-10-25 (`vu-las`, and `lei-polsci`, whose English option is `lei-iro`).
+
+- **A `?` admission route vanished from the card (fixed 2026-10-25).** `?` empties
+  the admission list, so Leiden Archaeology, Leiden University College and
+  University College Roosevelt showed no Admission row at all, as if there were no
+  route. The card now shows "Admission: Not published" (`admissionUnknown` in
+  `js/data.js`). `check.mjs` guards it.
+
+- **Cutoffs of 602–625 were called "above the IB maximum" (fixed 2026-10-25).**
+  A 45 converts to 600 and the HL Maths bonus adds 25, so UCC Dentistry, DCU
+  Global Business (USA) and UL Architecture are reachable, only not by the IB
+  total alone. UCC Dentistry and DCU now show the bonus figure (next entry). UL
+  Architecture's cutoff carries the CAO test marker, so its note now says the
+  cutoff may include test or portfolio marks, and it still gives no IB figure.
+  The wording comes from `aboveIB` in `tools/lib/ireland.mjs`, which both Irish
+  importers and `update-cao-points.mjs` share. Rows really above 625 are the
+  next-but-one entry.
+
+- **The HL Maths bonus figure depended on the course title (fixed 2026-10-25,
+  registry P03).** The importers only tried the 25 bonus points on courses with
+  a maths-sounding name, so Trinity Dental Science (625) showed 44 while UCC
+  Dentistry (625) showed nothing. The CAO bonus counts for any course. All
+  three Irish writers now share `convertCutoff` in `tools/lib/ireland.mjs`:
+  every 601–625 cutoff without a test gets the bonus figure and the sentence
+  "Only reachable with the 25 HL Maths bonus points.", and the card reads
+  "44 IB points, needs HL Maths 4+". `check.mjs` ties the sentence to the
+  figure.
+
+- **Irish Medicine said "No minimum published" (fixed 2026-10-25, registry
+  P02).** Its cutoffs (730–741) are points plus the HPAT test score, not points
+  totals, and the CAO does publish a minimum: 480 points for every HPAT course
+  (CAO, "Selection Criteria for Undergraduate Entry to Medicine for EU
+  Applicants 2027"). The 5 Medicine rows now show 35 IB points (480 converted),
+  and the card reads "35 IB points, then ranked with the HPAT". The other two
+  cutoffs above 625 (Trinity Music Education, Galway Commerce International)
+  include an audition or test, so they still give no figure and the card reads
+  "Cutoff includes a test score". No row says "Above the 625-point IB maximum"
+  any more. The sentences come from `convertCutoff` in `tools/lib/ireland.mjs`.
+
+- **The CAO table was read by splitting on double spaces (fixed 2026-10-26,
+  registry D29).** The table is fixed-width text, and `fetchCaoPoints` split
+  each line wherever two or more spaces ran together. Some course titles have
+  two spaces of their own ("Arts - Music - 3 years or 4 years  (BMus or …",
+  CK104; "Post Primary Teacher Education -  Technology, …", DC015), so their
+  Round 1 figure was read as Round 2, and a bare `#` (MH002) dropped the
+  course. The figures on our rows happened to be right, because only the
+  latest round was quoted, but quoting both rounds would have mislabelled
+  them. `parseCaoTable` in `tools/lib/cao-points.mjs` now reads each value
+  from the column under its "RND 1" / "RND 2" heading, and stops with "layout
+  has changed" if the headings on the page disagree or a title runs into the
+  figures. `check.mjs` runs it on a copy of those lines.
+
+  Verification also caught a test marker being read from the latest round
+  only. The importers and refresh now check both rounds, so a Round 1-only
+  `#` keeps the course's test requirement and the stricter conversion. The
+  refresh adds a missing test tag without replacing other requirements.
+  Regression fixtures cover it; no data was changed or importer run.
+
+- **"HL Maths 4+ adds 25 bonus points." went on courses by title (removed
+  2026-10-26, registry D28).** 126 rows carried it because their name sounded
+  mathematical, though the bonus applies to any course. The sentence is gone
+  from the data and the tools (`OLD_CAO_SENTENCES` still strips it on a
+  refresh); the "HL Maths 4+" tick next to My IB points says it once instead.
+
+- **Passed-deadline cards were dimmed until unreadable (fixed 2026-10-26,
+  registry A01).** A card whose deadline had gone was drawn at 65% opacity,
+  which took its text to 2.7–3.6:1 contrast, below what anyone can read
+  comfortably. The first one (Bocconi's World Bachelor, 1 November) would have
+  dimmed on 2 November. The dimming is gone. Since the redesign the deadline
+  cell says "Passed, check next cycle" over the struck-through date, in neutral
+  ink, never red. `check.mjs` fails if a passed or selected row gets an opacity
+  again.
+
+- **Cards left out what nobody knew (fixed 2026-10-26, registry R01, R03, R04,
+  T04).** A card with no language requirement had no Language row, so 608 cards
+  looked as if there were nothing to meet; they now say "Not checked yet" (or
+  "Not published" for `?`). The university's general requirement (the
+  `baseline_requirement` column) only showed on a card with no other
+  requirement at all, which no real row is, so it was never seen; every card now
+  ends with a "General requirement" row when its university has one. A `?` city showed only
+  the country; it now says "City not published". And a blank `verified_by`
+  read as "Checked" with no name; it now counts as not checked and is listed
+  under Data problems. `check.mjs` guards all four.
+
+- **Search and the number filters misbehaved (fixed 2026-10-26, registry S01,
+  S04, S05, S06, P05).** Search was one exact phrase, so "computer science
+  netherlands" found nothing and "cs" matched "Physics". Now every word has to
+  appear, in any order, words of three letters or fewer must start a word, and
+  the subject areas are searched too. Anything typed while the list loaded was
+  ignored; it now counts. My IB points and Max EU fee applied 46, −3 or 36.5 without a
+  word, and the fee box rejected €2,771; a number that is not a whole number in
+  range is now refused with a message under the box and not applied. The
+  "nothing matches" hint named filters nobody had set; it now names the ones in
+  use and has a Clear all button. A tab left open past midnight kept yesterday's
+  deadline badges; they are worked out again on the next action or when the tab
+  comes back into view. `check.mjs` guards each. Universities are also found by
+  their short and native names (UvA, TCD, ČVUT, Univerzita Karlova; the
+  `aliases` column on the universities tab), and Prague, Milan, Turin, Rome and
+  The Hague by their local names.
+
+- **A broken, empty or slow file loaded as an empty site (fixed 2026-10-26,
+  registry L01–L07, X01, T04).** An empty or header-only programmes file, a
+  login page served instead of the CSV, or a renamed column (`official_url`,
+  `application_deadline`, `verified_by`, …) loaded as 0 programmes or as cards
+  with no deadline. A request that never answered left the page loading for
+  ever. Now each of those falls back to the saved copy (`data/fallback.json`),
+  after 10 seconds for a request that hangs, and the banner says so and links
+  to the problems list, which names the file and the column. If even the saved
+  copy fails, the page says "Could not load the latest data" with a Reload
+  button instead of a JavaScript error. A file that ends inside an open quote
+  mark is reported (it used to swallow every row after it). Numbers are
+  checked: IB points must be a whole number from 24 to 45, fees and living
+  costs 0 or more, and a comma only separates thousands ("2771,00" used to read
+  as 277,100). A blank `official_url` is listed as a problem, and a link with a
+  user name in it (`https://www.ucd.ie@evil.example/`, which goes to
+  evil.example) is refused. `check.mjs` guards each, and also fails when
+  `data/fallback.json` no longer matches the CSVs field for field.
+
+- **Keyboard, screen reader and phone problems (fixed 2026-10-26, registry
+  A02–A07).** On a 320 px phone the open filter lists and the masthead count
+  made the page wider than the screen; a list is now never wider than the
+  screen (the last one opens to the left) and the count wraps. The text boxes and Sort had their focus outline
+  replaced by a ring nobody could see; they now show the same blue outline as
+  everything else. A filter list stayed open after tabbing out of it, and
+  Escape in Search moved the cursor to a filter button; both fixed. A screen
+  reader now hears "Subject area 2 selected" instead of "Subject area 2", the
+  result count only when it changes, "Architektura a urbanismus, Bc." instead
+  of the title and degree run together, Czech titles in Czech, the masthead
+  without its decorative full stop, and each "Official admissions page" link
+  with the programme's name and a note that it opens a new tab. The filter bar
+  no longer sticks to the top on a phone held sideways (it took half the
+  screen). Since the redesign nothing in the header sticks: only the count line
+  below 600 px and the column header from 600 px, and "Skip to results", Tab
+  and the arrow keys land below whichever one it is. `check.mjs` guards each.
+
+- **Motion, print and the last screen-reader comma (fixed 2026-10-28, redesign
+  stage 6, registry A05, A08, L09).** Traps worth knowing before touching them:
+  - A slot added already "open" never animates: the browser's first look at it
+    is the open style. app.js adds it closed, reads its style once, then opens
+    it on the next frame. A close removes it when its own `grid-template-rows`
+    transition ends, or after 250 ms if that never comes. A close or reopen,
+    a rebuild, a 1024 crossing, print or reduced motion first cancels whatever
+    the old slot had pending, so a late callback cannot remove the new one.
+  - Reduced motion used to shorten every effect to 0.01ms. That is still a
+    transition, with late events. It is now `none`, the scrim included, and a
+    closing slot is removed at once.
+  - Paper is narrower than the screen, so the 1024 and 600 px queries can fire
+    while printing. Between `beforeprint` and `afterprint` nothing moves; a
+    crossing or filter change still due runs afterwards.
+  - A row named "World Bachelor in Business , BSc" in Chrome: the hidden ", "
+    before the degree is clipped and absolute, so it counted as a block of its
+    own. Inside a row button and the detail title it is now inline at font
+    size 0. Size 0 alone kept the 20 px line height and made every row 5 px
+    taller; `line-height: 0` puts the rows back to the exact pixel.
+  - Clear all left focus on itself (now disabled) in the bar, and on the empty
+    state's button after it hid. Focus now goes to Search, or to the sheet's
+    heading inside the sheet.
+  - The sheet's footer said "Show programmes", with no number, while the list
+    loaded. It is now a disabled "Loading programmes…" until the first count.
+  - Print was colour on paper, cut open details at page breaks and could print
+    a half-closed slot. It now prints the rows on screen, in their order, ink
+    on white, every open slot in full, the sample warning kept and the saved-copy
+    and failure banners dropped.
+  `check.mjs` guards each, and `plans/finish-review/` (not in git) has the browser
+  evidence.
+
 ## Decisions already made, so they are not relitigated
+
+- **A programme's own signature is enough** (Leon, 2026-10-26, registry T01).
+  A card says "Checked <date> by <initials>" when its programme row is signed,
+  even while its university row says `AI-DRAFT`; the date and initials come
+  from the programme row only. Signing a programme means checking everything
+  its card shows, including what it takes from the university row. Before, both
+  rows had to be signed, and all 35 university rows are `AI-DRAFT`, so a
+  programme sign-off could never show.
+
+- **Both CAO rounds are shown, Round 1 as the headline** (Leon, 2026-10-26,
+  registry Q4/P06). Each is labelled with its round and year ("Round 1 cutoff,
+  2026") and keeps the CAO's markers. The points filter, the count and the sort
+  use the lower round, which is Round 2 wherever the CAO published one (it is
+  `ib_points_min`): a student who met last year's Round 2 cutoff did get a
+  place, so hiding that course would lose a real option. Where Round 2 is what
+  put a course within someone's points, the card says so ("Within your IB points
+  on the Round 2 cutoff, not Round 1.").
+
+- **An "HL Maths 4+" tick next to My IB points** (Leon, 2026-10-26, registry Q5;
+  settles D28). The CAO's 25 bonus points apply to any Irish CAO course, so the
+  tick applies them to every Irish cutoff, and the 126 notes that said "HL
+  Maths 4+ adds 25 bonus points." by course title are gone. Read per student:
+  unticked, a course this student reaches only with the bonus stays visible,
+  says "only with HL Maths 4+" and is not counted as within their points;
+  ticked, it counts as within. The tick changes labels and counts, never which
+  courses are shown. It does not touch UCD (its figure is its own minimum) or
+  HPAT Medicine (the CAO does not say whether the bonus counts toward its
+  480-point minimum). Unknown and test-score rows never hide.
+
+- **The count is split while My IB points is set** (Leon, 2026-10-26, registry
+  Q3/P04): "N of 1240 programmes · 47 within your IB points · 7 only with HL
+  Maths 4+ · 62 can’t be compared". This covers missing figures and cutoffs
+  that may include a test, interview, portfolio or audition.
+
+- **Points wording now, a value-kind field later** (Leon, 2026-10-26, registry
+  Q2/P01). The browser tells a minimum from a converted cutoff by the
+  university and the CAO sentence in the note (`pointsKind` in `js/data.js`).
+  A proper column, recording the meaning and the conversion separately, is in
+  `plans/backlog/points-value-kind.md`.
+
+- **Compare is built, on the saved list** (Leon, 2026-11-03, superseding his
+  2026-10-26 "draft only, ask Jakub first", registry Q9/F05). Pick 2 to 4
+  saved programmes; the table uses the detail's own wording (`js/compare.js`,
+  which `js/render.js` imports for the exam line, the countdown and the yearly
+  estimate). The compare view is not in the address; the shared list is.
+  `plans/backlog/compare-architecture.md` is the old sketch.
+
+- **The class's target programmes come later** (Leon, 2026-10-26, registry
+  Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
+  `plans/backlog/data-research.md`.
+
+- **The visual direction is reopened** (Leon, 2026-10-26, registry Q15). The
+  redesign starts with design interviews and includes Jakub, whose reference
+  images set the current look. "The look of it" below stays until the new
+  direction replaces it; `plans/backlog/redesign.md`.
+
+- **Deferred work lives in `plans/backlog/`, tracked in git** (Leon,
+  2026-10-26, registry Q16). Items are named by their registry ID only; the
+  registry (`plans/audit-issues.md`) stays the authoritative list and its State
+  column points at the backlog file.
 
 - **Entrance exams, and the exam filter** (2026-10-27,
   `tools/add-entrance-exam-2026-10-27.mjs`, which quotes the page behind every
   hand-checked row). The survey asked for an exam filter. `entrance_exam` is
-  `yes` / `waivable` / `no` / `?`; the picker offers "No exam" and "No exam, or
-  one I can skip", and unknown rows are never hidden. Most rows follow from the
+  `yes` / `waivable` / `no` / `?`; the picker offers "No exam" and "None or
+  skippable" (Jakub's "No exam, or one I can skip", shortened 2026-11-02 so the
+  select is no wider than its neighbours), and unknown rows are never hidden. Most rows follow from the
   sourced `admission` text (Czech "can be waived on set criteria" is
   `waivable`, unless the only waiver is Czech/Slovak school grades; Irish CAO
   points are `no` unless HPAT/GAMSAT, a music test or an audition is named;
@@ -593,7 +972,7 @@ a per-country system.
   `ib_maths` read off their existing wording.
 
 - **Card notes are short** (rewritten 2026-10-24, median 532 → 118 characters).
-  The Free Fees explanation that sat on all 555 Irish cards is gone — the reason
+  The Free Fees explanation that sat on every Irish card is gone — the reason
   Irish fees are the contribution plus levy is recorded once, below, not on every
   card — and so is every other sentence explaining a fee. The repeated cutoff
   disclaimers are one short line each, and notes written before the August
@@ -623,13 +1002,13 @@ a per-country system.
     dorm price is below today's. Bologna, Padova and Trento exclude bills.
   - Milan's universities disagree widely: PoliMi €650–1,100, Bocconi €1,670,
     Cattolica €1,500–2,200. All are as published.
-- **No save button, no shortlist** (removed 2026-10-24 at Jakub's request). The
-  per-card bookmark is gone, and with it the only way to add to the shortlist,
-  so the shortlist bar, its CSV export and Print are hidden too. The shortlist
-  code in `js/app.js` and `js/shortlist.js` is left in place: restoring the
-  button in `js/render.js` brings the feature back. The Stage 2 "compare your
-  shortlist side by side" view depended on it and needs a different way to pick
-  programmes if it is still wanted.
+
+- **The save button and the list are back** (Leon, 2026-11-03, reversing the
+  2026-10-24 removal made at Jakub's request). A star on each row, "Save to my
+  list" in the detail, the My list view with groups, Compare and Share (see
+  "My list" under State). Unsaving inside the list view leaves the row in place
+  until the list is next drawn, so focus stays put and a slip is undone with
+  one more click. Saves are per browser and per web address (State).
 
 - **One row per programme**, joined to a university by `university_id`. Two
   tabs, so university-level facts are typed once.
@@ -679,10 +1058,32 @@ a per-country system.
   A useful side effect: this closed the UCD gap. UCD never publishes the full EU
   fee, but it does publish the contribution and the levy, which is all this
   cohort actually pays.
-- **Irish points are last year's demand-driven cutoffs**, not minimums, and the
-  cards say so. Conversions never assume the HL Maths bonus. The one exception
-  is UCD, which publishes an IB total it will accept, so UCD's numbers are real
-  minimums and its cutoff sits in the note instead.
+- **Irish points are last year's demand-driven cutoffs**, not minimums. The
+  card says which a figure is (points-honesty batch, 2026-10-26): a published
+  minimum reads "36 IB points" with "minimum" beside it; a converted cutoff
+  reads "≈ 37 IB points" with "Round 1 cutoff, 2026" beside it, one line per
+  CAO round. Conversions assume the HL Maths bonus only when nothing else
+  reaches the cutoff (601–625, no test), and the card then says "with HL
+  Maths 4+" (decided 2026-10-25). The one exception is UCD, which publishes an
+  IB total it will accept, so UCD's numbers are real minimums and its cutoff
+  sits in the note instead.
+- **Irish cutoffs above 625 include a test score** (HPAT or audition), so they
+  are never turned into an IB figure or used to hide a course. HPAT Medicine
+  shows the CAO's 480-point minimum (35 IB) instead (decided 2026-10-25).
+- **A lower "#" cutoff is converted only when the test is a separate step**
+  (registry D27, decided 2026-11-02). The CAO's `#` says a course also has a
+  test, interview, portfolio or audition, not that its marks are in the
+  cutoff. Where the course's own page says the marks are added (UCC Theatre
+  CK112, Galway Business International GY261, DCU Jazz DC014: `TEST_IN_CUTOFF`
+  in `js/points.js`), the card shows no figure and says "Cutoff includes a
+  test score". Where no page confirms it (UCC Youth Work CK114 and seven UL
+  music, dance, design and architecture courses: `TEST_UNVERIFIED`), it says
+  "Assessment required; IB equivalent unverified". The other `#` courses
+  (TCD Drama and Nursing, UCC Music, UL Paramedic, UCD Veterinary) have a
+  separate pass/fail step and keep their figure. The browser reads the code,
+  so these cards are right even where the CSV still holds an older figure;
+  the next `update-cao-points.mjs` run blanks those figures and writes the
+  matching note. Evidence: `plans/archive/d27-test-marked-cutoffs.md`.
 - **Cutoffs come from the CAO, not from the universities' own pages.** Only the
   CAO says what a cutoff *meant*: `AQA` (everyone qualified got in, so there was
   no cutoff at all), `#` (a test, interview, portfolio or audition also
@@ -690,20 +1091,62 @@ a per-country system.
   selection). A bare number without those markers misleads. The CAO also
   publishes Round 2, which is lower than the Round 1 figure universities tend to
   advertise: UL's own page says 499 for Psychology, the CAO's Round 2 says 496.
+  Both rounds are quoted now (decided 2026-10-26, below), Round 1 first.
 - **Where several programmes share one CAO code, every row says so.** UL's
   LM116 is "Engineering (Common Entry)" and covers Civil, Biomedical and the
   rest; UL's LM002 Arts covers every Arts subject; UCD's DN250 covers three
   agriculture degrees. You apply to the code, not the programme, so the cutoff
   belongs to the code. 180 rows carry that sentence.
-- The **UK is excluded**: post-Brexit, EU students pay international fees of
-  roughly £25,000–38,000, so it is not a realistic option for this cohort.
+- **Graduate-entry courses are left out** (decided 2026-10-25). They need a
+  first degree, and this site is for school-leavers, the same reasoning as
+  dropping degrees that need Dutch. The Irish importers skip any title with
+  "graduate entry".
+- **A college or degree is listed once** (decided 2026-10-25). Amsterdam
+  University College appears only as `uva-auc`; its note says it is run jointly
+  by the UvA and VU Amsterdam. Leiden Political Science appears only as the
+  English-taught `lei-iro`; the other track is Dutch-taught. The search no
+  longer finds AUC under "VU" (an alias column, registry S01, would fix that).
+- **UvA's headline deadline is the general 1 May date** (decided 2026-10-25).
+  The 1 April date is only for EU/EEA students with a non-Dutch diploma who want
+  UvA housing, so it sits in the note ("Want UvA housing? Apply by 1 April 2027
+  instead.") rather than on the card's date. A nicer display of housing dates
+  would be part of application milestones (registry F03).
+- **The Google Sheet is not planned for now** (decided 2026-10-25). The site
+  reads the two CSV files in `data/`. The Sheet instructions in
+  MAINTENANCE.md describe how it would work if it is connected later.
+- **Jakub's data and choices win** (Leon, 2026-11-02, when merging upstream).
+  Where the fork's older fix and Jakub's cell disagreed, Jakub's cell stayed;
+  the fork's fix went in only where Jakub had not touched the cell. See
+  *Upstream merge* under State for the counts.
+- **The UK is shown** (Leon, 2026-11-02). This reverses the fork's earlier
+  "UK excluded" (post-Brexit, EU students pay international fees of roughly
+  £25,000–38,000, so it looked unrealistic for this cohort). Jakub researched
+  the UK, it is on the site (25 universities, 883 programmes), and the fee on
+  each card is honest about the cost. EU fees are still the only fees shown,
+  and for the UK the "EU fee" is the international fee EU students have paid
+  since August 2021 (Jakub's `fix-uk-2026-10-29` note, under State; Irish
+  citizens and settled status are the exceptions, which most UK cards say). The
+  country count is therefore 11, not the five the fork used to say.
 
 ## Country notes worth keeping
 
-- **Netherlands** admits on *subjects*, not totals — only 1 of 202 Dutch rows
-  has a points minimum, and that is correct, not missing data.
+- **Netherlands** admits on *subjects*, not totals — only 7 of 196 Dutch rows
+  have a points minimum, and that is correct, not missing data.
+- **The HPAT list goes stale each cycle.** `HPAT_CODES` in
+  `tools/lib/ireland.mjs` holds the CAO codes of the courses ACER lists on
+  hpat-ireland.acer.org (undergraduate Medicine only, checked 2026-10-25).
+  Re-check it every year before trusting an importer rerun. The same goes for
+  `TEST_IN_CUTOFF` and `TEST_UNVERIFIED` in `js/points.js` (D27, checked
+  2026-11-02): UL's added-points rules for 2027 may settle the UL codes.
+- **UCD Medicine (DN400) and UL Undergraduate Entry Medicine (LM301) are
+  hand-added rows** (2026-10-25). UCD's DN400 page has no IB requirements
+  block, so `import-ucd.mjs` skips it and a rerun would drop `ucd-medicine`;
+  both rows leave `ib_subjects` blank because neither page states an IB subject
+  list. Keep them when merging an importer run. `check.mjs` fails if a row for
+  any `HPAT_CODES` code goes missing, and `update-cao-points.mjs` keeps their
+  cutoffs current.
 - **Ireland** publishes a CAO cutoff per course and an official IB conversion,
-  which is why 542 of the 555 Irish rows have a number. It also issues **no
+  which is why 542 of the 548 Irish rows have a number. It also issues **no
   conditional offers** — decisions arrive mid-August.
 - **Where each Irish university hides its data**, since finding this again was
   most of the work: UCD's course list is drawn by JavaScript from an internal
@@ -755,7 +1198,8 @@ a per-country system.
 
 ```bash
 node tools/serve.mjs            # then open http://localhost:8765
-node tools/check.mjs            # 45 checks, must end "All checks passed"
+node tools/check.mjs            # must end "All checks passed"
+node tools/smoke.mjs            # real Chrome, phone + desktop; must end "Smoke test passed"
 node tools/check-contrast.mjs   # every text colour vs its real background
 node tools/make-snapshot.mjs    # rebuild data/fallback.json after data changes
 ```
@@ -769,7 +1213,14 @@ Adding `?v=N` to the page URL does not help, because the stylesheet is a separat
 request with its own cache entry. `serve.mjs` sends `no-store` on everything, so
 a reload always shows what is on disk. It is a development server only — no-store
 on every response would be wrong in production, and GitHub Pages sets its own
-sensible headers.
+sensible headers. It listens on this computer only (127.0.0.1) and refuses
+hidden paths such as `.git/`: the first version listened on every network
+interface, so anyone on the same Wi-Fi could download the repository (X02). To
+try the site on a phone, use the live site or a deliberate tunnel, not this.
+
+`smoke.mjs` opens the real page in an invisible Chrome with a temporary profile
+(never yours), clicks through it at phone and desktop widths, then deletes the
+profile; without Chrome it prints SKIP and changes nothing (L08).
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette
@@ -797,6 +1248,126 @@ parent pages.
 
 Never open the CSVs in Excel — see MAINTENANCE.md.
 
+**Speed (L09, closed 2026-11-02).** The target is under 150 ms from a filter change to
+the new rows on screen, on a laptop slowed four times. Measured 2026-10-28 on
+an M1 MacBook Air, headless Chrome 156, 1280 × 900, the real 1240 rows: untick
+Ireland so every row is redrawn, five warm-ups then 20 timed changes, before
+and after in alternating blocks. `update()` alone took a median 748 ms before
+and 600 ms after (every sample over 150 ms; the second animation frame after
+it, a ceiling on the first paint, 972 and 954 ms). Two fixes went in: the pane
+no longer forces a layout of all 1240 new rows by reading its scroll position
+after they are drawn, and `points.js` is preloaded, so the CSVs are requested
+one round trip sooner on a cold load. What is left is building and inserting
+1240 rows, which needs a different approach (drawing only the rows on screen)
+and its own plan. The harness rewrites app.js in flight to time it, so nothing
+is added to the site: `plans/finish-review/l09.mjs`.
+
+The October 28 visual revisions keep L09 open. A new paired run on the same
+1240 rows in headless Chrome 156 at 4× CPU (20 samples per revision) compared
+45907a1, before the filter changes, with the integrated revisions: synchronous
+medians 517 → 383 ms; second-frame medians 816 → 622 ms. Every sample missed
+150 ms. These are measurements, not a performance fix or final design approval;
+raw timings and environment are in `plans/design-round2/phase3-l09.json`.
+
+The October 31 fix is in, but L09 stays open: it met the strict target on one
+day and missed parts of it on another (below). A filter change draws only the first screenful of rows (at
+least 40) at once and adds the rest just after, so every row still ends up on
+the page. Opening a row, the wide-screen pick, keyboard focus, switching between
+narrow and wide, and printing all work as before. Printing first adds any rows
+still waiting.
+
+A follow-up on November 1 made two changes. Each batch of rows added after
+the first screen now stops after 8 ms, however slow the machine, instead of
+always adding 20 rows. And the first draw after a reload or Back draws every
+row again, as before, so a reload halfway down the list comes back to the same
+place (it had been landing near the top).
+
+Measured on November 1 on an M1 MacBook Air with headless Chrome 156. Settings:
+four times slower CPU, 20 timed changes per width, before and after in
+alternating blocks, each block run only when the machine was quiet. The
+numbers are the time until the new rows reach the screen (median / 95th
+percentile):
+- 1280 px: 127 / 153 ms in normal Chrome (one sample of 388 ms; the rest
+  under 150), and 126 / 134 ms with Chrome's AI features turned off. Before:
+  580 ms. A trace of the frames shows the first new screen at about 100 ms.
+- 390 px: 129 / 133 ms, and 127 / 141 ms with AI off. Before: 573 ms.
+- 1920 px: **157 / 176 ms, and 154 / 160 ms with AI off. This misses the
+  target.** Before: 625 ms.
+
+The same tests were run again on November 2, on the same laptop with the same
+scripts and settings, but plugged in (on November 1 it was on battery, late at
+night). Everything ran about 1.8 times faster, the old version too, so the
+laptop itself was faster that day; the code was the same. This time every
+case met the target, with no pause of 50 ms or more while the rest of the
+rows went in (80 changes):
+- 1280 px: 70 / 80 ms, and 68 / 73 ms with AI off. Before: 314 ms.
+- 1920 px: 90 / 96 ms, and 86 / 92 ms with AI off. Before: 348 ms.
+- Ticking Ireland (1,240 rows down to 548): 110-123 ms in normal Chrome and
+  109-133 ms with AI off. Before: 198-223 ms.
+The new version takes about a quarter of the old version's time on both days.
+Whether L09 passed therefore depended on how fast the laptop happened to be
+running. On November 2 Leon picked the yardstick: plugged in, four times
+slower CPU, a quiet machine, one confirming run. That run (November 2,
+afternoon, the same scripts, every block run only when the machine was quiet,
+on AC power throughout) measured the current code (d3d12ec) and passed every
+case, with no pause of 50 ms or more while the rest of the rows went in:
+- 1280 px: 73 ms, and 74 ms with AI off. Before: 350-356 ms.
+- 1920 px: 95 ms, and 97 ms with AI off. Before: 370-378 ms.
+- 390 px: 72 ms. Before: 343 ms.
+- Ticking Ireland: 121-138 ms in normal Chrome and 122-140 ms with AI off.
+  Before: 224-241 ms.
+- A reload halfway down the list still comes back to the same place (within
+  about 1%).
+**Re-measured 2026-11-03 on the 2,915 rows after the upstream merge** (same
+yardstick: AC power, 4× slower, quiet machine; before = the 1,240-row
+version). Unticking Ireland (548 → 2,915 rows) still passes: median 139 ms at
+1920 (pane open), 99 ms at 1280, 104 ms at 390; with AI off 111 and 86 ms.
+Ticking Ireland (2,915 → 548) did not: 514-540 ms, because removing 2,915 old
+rows at once took about 430 ms. The fix (park the old list, delete it in
+chunks) brings it to 133 ms at 1280 and 151 ms at 1920 (AI off 127 and 149 ms):
+1920 sits right at the limit. With AI off, 3 of 20 changes at 1280 and 6 of 20
+at 1920 had one 51-100 ms pause while the rows went in (the memory clean-up
+below; it was there before the fix too). An earlier battery run in Low Power
+Mode made the new code look four times slower; it was the battery, not the
+code. Scripts and raw numbers: `/tmp/l09-2915` (temporary).
+
+So L09 is closed. The slower-day results below are kept as known limits: they
+do not count against the yardstick, but they are where to look first if the
+list ever feels slow on a weak machine.
+
+Known limits (from the slower day):
+- **1920 px on the slower day was over 150 ms.** Almost all of the time goes on
+  removing the old rows from the page (about 85 ms at four times slower that
+  day). Every way of removing them costs the same. The ways that avoid it
+  either push that cost into a later pause of 94-272 ms, shift the page by
+  16-96 px when you are deep in the list, or reuse old rows. Reusing rows
+  risks showing an out-of-date points verdict, and the plan rejected it.
+  Fixing this, if the yardstick needs it, needs a new plan.
+- **Ticking a filter that removes many rows was well over 150 ms on the slower
+  day.** For example, ticking Ireland takes 1,240 rows down to 548. It took
+  about 280-320 ms in normal Chrome and 200-240 ms with AI off (before:
+  357-420 ms), because it removes 1,240 rows. The target was only ever set for
+  the other direction.
+- **Short pauses while the rest of the rows go in, on the slower day.** About
+  one change in ten had a pause of 54-96 ms (at four times slower). This is the
+  browser's memory clean-up of the removed rows, which smaller batches cannot
+  shorten. It still counts against the site.
+  Rarely, the frame right after the last rows go in took 60-130 ms.
+- **Chrome's own AI page reader** reads the whole page for 1.2-1.9 seconds
+  about a second after every change. Leon decided on October 31 that this
+  is Chrome's work and does not count against the site. It is still reported
+  here. It happens only when Chrome's AI features are on.
+
+Two small differences remain. When you change a filter at the very end of the
+list, the page settles at a slightly different spot than before (sometimes
+higher, sometimes lower). After pressing Down past the first screen, the list
+ends a little higher than before. Raw timings, traces and scripts are in
+`plans/l09-impl/` and `plans/l09-fix/`.
+
+To watch the motion, open the site with `serve.mjs` and turn on "Reduce
+motion" in the operating system: every effect must then happen at once. To
+check print, use the browser's print preview with a few rows open.
+
 ## The GLM re-check (2026-08-20), verified 2026-08-21
 
 A second model re-checked all 757 rows against official pages and left a report
@@ -814,7 +1385,7 @@ browser user-agent**, which is the trap already documented two sections up under
 "Where each Irish university hides its data". Anything built on that tier should
 be re-checked rather than believed.
 
-The UCD fee gap is real anyway, but for the other reason in job 2: the page
+The UCD fee gap is real anyway, but for the other reason in job 3: the page
 loads fine and simply publishes nothing where it promises tables.
 
 ### Confirmed against the official pages, and fixed
@@ -902,7 +1473,7 @@ EU numbers are therefore a year behind the non-EU one, and will rise.
 
 ### Still open
 
-- **UCD's fees**, 140 rows, for the reason in job 2 — the page publishes nothing.
+- **UCD's fees**, 140 rows, for the reason in job 3 — the page publishes nothing.
 - **VU Law in Society's deadline.** The programme is selective and its admissions
   page carries no date at all.
 - **Leiden Archaeology and Leiden University College deadlines**, above.

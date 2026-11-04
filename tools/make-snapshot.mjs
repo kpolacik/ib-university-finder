@@ -57,6 +57,7 @@ const snapshot = {
   },
   universities,
   programmes,
+  translations: csvToObjects(readFileSync(join(root, 'data/i18n/sk.csv'), 'utf8'), 'data/i18n/sk.csv').rows.map(({ __row, ...row }) => row),
 };
 
 writeFileSync(join(root, 'data/fallback.json'), `${JSON.stringify(snapshot, null, 2)}\n`);

@@ -1,97 +1,204 @@
-/* Mobile-first. Two breakpoints — 720px splits the paired inputs and the card
-   grid, 1080px turns the filter panel into a sticky rail — plus a dark palette
-   and a print stylesheet for the shortlist.
+/* IB University Finder: design tokens (the canonical :root; mockup.html
+   carries an identical copy).
+   Colour is the P2 system, "say it, shape it, then tint it". A colour may
+   appear only where a word and a shape already say the same thing, and only
+   for something the student can still act on.
+   Rules a non-coder can keep:
+   - Never put a hex value outside this block.
+   - A new state joins an existing group and uses that group's fill/ink/mark.
+     Never add another status hue.
+   - Identity colour is not status (redesign revisions, 2026-10-28): the
+     lavender masthead and the country badges are the only non-status tints,
+     and a badge always carries the country's name in words.
+   - Add every new text/background pair to PAIRS in tools/check-contrast.mjs.
+   Contrast below is WCAG 2 (relative luminance), recomputed by script
+   2026-10-26 after the polish pass (no hex changed; every pair still passes). Text needs 4.5:1, marks, borders and focus rings need 3:1. */
+:root{
+  color-scheme:light;                 /* light only (STATUS.md "The look of it") */
 
-   Design notes that are easy to undo by accident:
-   - One accent hue. Amber and red are states, not accents, and never compete.
-   - No pure black, no outer glows, no gradient text.
-   - Motion is transform/opacity only, and stops entirely under
-     prefers-reduced-motion.
-   - Numbers use tabular figures so points and fees line up column-wise when
-     you scan two cards side by side. */
+  /* ---------- Neutral: the page, the facts, and "nobody knows" ---------- */
+  --ground:#e8edf3;      /* page background behind panels. NOT for a cell fill: grey boxes on neutral cells are cut. */
+  --panel:#ffffff;       /* masthead, filter bar, list panel, pane, sheet, banners. */
+  --hover:#f2f5f9;       /* row hover and the open row on phone/tablet. NOT a status. */
+  --hairline:#d9e0e9;    /* row dividers and panel outlines only. 1.33:1 on panel: decorative,
+                            so NEVER the only edge of a control or of the unknown box. */
+  --edge:#76808e;        /* control borders, stale tag border. 4.00 panel / 3.40 ground / 3.36 accent-tint.
+                            NOT for text. */
+  --ink:#16202c;         /* titles, figures, body text, verified check, field-error text and the 2 px invalid-field
+                            border, "No official link" note rule, sample-row tag border. 16.44 panel / 13.97 ground / 15.04 hover /
+                            13.83 accent-tint / 13.71 fit / 11.90 cond / 9.57 time. */
+  --ink-2:#46515f;       /* secondary text: university, labels, "/ year", passed date. 8.07 panel / 6.85 ground /
+                            7.38 hover / 6.78 accent-tint / 6.73 fit / 5.84 cond / 4.70 time (lowest; keep ≥13px). */
+  --ink-3:#5d6877;       /* placeholder text and the unknown dash (dashed box, dashed ring). 5.66 panel /
+                            4.81 ground / 5.17 hover / 4.76 accent-tint. NOT for body copy. */
 
-:root {
-  /* Light only, declared so the browser does not render form controls,
-     scrollbars and the canvas dark when the OS is — which it does by
-     default, and which would fight a page that has no dark palette. */
-  color-scheme: light;
+  /* ---------- Interaction (blue): you can press it, it has focus, you picked it ----------
+     Never in a status. The selected row is ring + tint, so it cannot read as a verdict. */
+  --accent:#1f5bd0;      /* links, focus ring, primary button, active filter border, active sort arrow, selected-row
+                            ring (focus ring sits 6 px inside it, tint between). Text 6.06 panel / 5.15 ground /
+                            5.54 hover / 5.10 accent-tint. Focus ring on fills:
+                            5.05 fit / 4.39 cond / 3.53 time (all ≥3). */
+  --accent-press:#1745a3;/* hover/pressed primary button and links. White on it 8.69; as link text on panel 8.69. */
+  --accent-tint:#e3ecfb; /* selected row, active filter field. NOT a status fill. */
+  --on-accent:#ffffff;   /* text on accent (6.06) and on alarm (7.49). */
 
-  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  /* ---------- Fit (points column only): your points against this row ---------- */
+  --fit-fill:#d9f0e2;    /* "Within your points" cell, incl. Round-2-only and + HPAT. NOT on fee, deadline, verified. */
+  --fit-ink:#0f5e38;     /* verdict text on fit-fill 6.54; count-line figure on ground 6.66, panel 7.84,
+                            accent-tint 6.59. */
+  --fit-mark:#2a8553;    /* solid dot. 3.83 fit / 4.59 panel / 3.90 ground / 3.86 accent-tint. */
+  --cond-fill:#f7d982;   /* "Only with HL Maths 4+" cell. NOT the saved-copy banner (amber means "yes, if"). */
+  --cond-ink:#5a3a00;    /* 7.45 on cond-fill; count-line figure 8.74 ground / 10.29 panel. */
+  --cond-mark:#8f5a00;   /* half dot. 4.19 cond / 5.78 panel / 4.91 ground. */
 
-  /* A white page with content in tinted panels, rather than white cards on a
-     grey page. Neutrals are warm, so they sit under a serif without the blue
-     cast a cool grey gives it. */
-  --page: #ffffff;
-  --surface: #f7f6f3;
-  --surface-2: #efede7;
-  --ink: #14110f;
-  /* Both greys carry real text, so both clear 4.5:1 on every surface they land
-     on. Anything paler than --ink-faint is for rules only, never for words. */
-  --ink-soft: #4a4641;
-  --ink-faint: #5f5a54;
-  --line: #e6e2da;
-  --line-soft: #f0ede6;
+  /* ---------- Time (deadline column only): 60 days or fewer (URGENT_WITHIN_DAYS) ---------- */
+  --time-fill:#f6b98a;   /* urgent deadline cell. NOT for passed (passed is plain ink, struck). */
+  --time-ink:#612800;    /* "in 50 days" on time-fill 6.75. */
+  --time-mark:#9a4600;   /* Phosphor clock. 3.76 time / 6.46 panel. */
 
-  /* Brand accent. Used sparingly and deliberately NOT on a card: inside a card
-     the country tint does the colour work, and a third hue there would fight
-     it. Lives in the masthead, a checked filter, the active-filter count. */
-  --accent: #c2255c;
-  --accent-strong: #a61e4d;
-  --accent-soft: #fdeef3;
-  --accent-line: #f6d2de;
+  /* ---------- Alarm (red): the data itself is fake or missing. Never on a row cell. ---------- */
+  --alarm:#a3202f;       /* ONLY the sample-data banner fill (white text 7.49) and the failure-alert border (7.49 on panel).
+                            NOT field errors, notes, tags or anything on a row or card: those use ink. */
+  --alarm-ink:#86171d;   /* ONLY the failure-alert sentence. 9.75 on panel. */
 
-  /* Interactive text, kept separate from the brand accent on purpose: the
-     reference design brands in rose and links in blue, and a link painted the
-     brand colour stops reading as a link. */
-  --link: #1b5fc1;
+  /* ---------- Depth ---------- */
+  --scrim:rgb(22 32 44 / .45);   /* behind the phone filter sheet only. */
+  --shadow:0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22); /* the detail pane only: the page's one shadow. */
 
-  /* Country tints. The panel colour carries information rather than decoration
-     — this is the one idea taken from the reference that had to be adapted,
-     because 757 cards in arbitrary pastels would be noise. A card's heading and
-     its points number take the darker ink of its own tint. */
-  --tint-nl: #eaf0fb;
-  --tint-nl-ink: #14427d;
-  --tint-ie: #e7f1ea;
-  --tint-ie-ink: #1a5437;
-  --tint-cz: #f1edf8;
-  --tint-cz-ink: #4b2d7f;
-  --tint-it: #fcefe6;
-  --tint-it-ink: #8a3410;
-  --tint-dk: #e5f3f3;
-  --tint-dk-ink: #0e5a5e;
+  /* ---------- Identity (lavender): the masthead and country badges only. Never a status. ---------- */
+  --brand-fill:#ebe4f3;  /* masthead band. */
+  --brand-ink:#47345d;   /* masthead title, tagline and language buttons. 8.83 on brand-fill; panel on it 10.95. */
+  /* Country badges: one fill/ink pair per mapped country, and a neutral pair for any country not
+     mapped yet (it needs no code change). Every pair is in tools/check-contrast.mjs (all above 7:1). */
+  --cty-fill:#edf0f4; --cty-ink:#46515f;
+  --cty-dk-fill:#eee6f5; --cty-dk-ink:#523b72;
+  --cty-ie-fill:#f0e5ef; --cty-ie-ink:#5a4058;
+  --cty-it-fill:#f0e7f5; --cty-it-ink:#563d66;
+  --cty-nl-fill:#eae7f5; --cty-nl-ink:#4b426c;
+  --cty-cz-fill:#eee9ee; --cty-cz-ink:#4e4352;
+  /* Added with Jakub's six countries. Same muted, low-chroma family, nudged in hue so
+     neighbours in a list are told apart by more than the word. */
+  --cty-uk-fill:#e6edf5; --cty-uk-ink:#2f4d6b;
+  --cty-de-fill:#e6eef0; --cty-de-ink:#2c4f58;
+  --cty-at-fill:#f3e7ec; --cty-at-ink:#69384a;
+  --cty-se-fill:#e7eaf5; --cty-se-ink:#37467a;
+  --cty-fi-fill:#e4f0ee; --cty-fi-ink:#2a5650;
+  --cty-no-fill:#ecebf1; --cty-no-ink:#42485f;
 
-  /* The inset inside a tinted panel — white, because the panel is tinted. The
-     inverse of the old design, where a tinted block sat on a white card. */
-  --inset: #ffffff;
+  /* ---------- Flags: ONLY inside the Country filter options. Never on rows, cells or headings. ---------- */
+  --flag-white:#ffffff;
+  --flag-nl-red:#ae1c28; --flag-nl-blue:#21468b;
+  --flag-ie-green:#169b62; --flag-ie-orange:#ff883e;
+  --flag-it-green:#009246; --flag-it-red:#ce2b37;
+  --flag-dk-red:#c8102e;
+  --flag-cz-red:#d7141a; --flag-cz-blue:#11457e;
+  --flag-gb-blue:#012169; --flag-gb-red:#c8102e;
+  --flag-de-black:#000000; --flag-de-red:#dd0000; --flag-de-gold:#ffce00;
+  --flag-at-red:#c8102e;
+  --flag-se-blue:#006aa7; --flag-se-yellow:#fecc02;
+  --flag-fi-blue:#002f6c;
+  --flag-no-red:#ba0c2f; --flag-no-blue:#00205b;
 
-  /* states — amber and red stay semantic and never decorate */
-  --warn: #8a5a00;
-  --warn-soft: #fdf5e6;
-  --warn-line: #ecd9ae;
-  --danger: #9b1c1c;
-  --danger-soft: #fdeded;
-  --danger-line: #f2c8c8;
-  /* Dark enough to clear 4.5:1 on white — it carries the "N saved programmes"
-     text, not just the bookmark icon. See tools/check-contrast.mjs. */
-  --save: #956900;
-  --save-soft: #fdf6e4;
+  /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
+  --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --fs-12:.75rem;   /* labels, help, column header, stale tag */
+  --fs-13:.8125rem; /* university line, requirements line, verdicts, count line */
+  --fs-14:.875rem;  /* body, figures, desktop controls */
+  --fs-16:1rem;     /* row titles on phone, phone controls (16px stops iOS zoom) */
+  --fs-18:1.125rem; /* pane title only */
+  /* weights used: 400 body, 500 rare, 600 titles/figures/verdicts, 700 count total, headings */
 
-  /* Almost no shadow. The reference separates panels with tint and space, not
-     elevation; shadow is kept only for things that genuinely float. */
-  --shadow-sm: 0 1px 2px rgba(20, 17, 15, 0.03);
-  --shadow-md: 0 18px 40px -20px rgba(20, 17, 15, 0.18);
-  --shadow-rail: none;
+  /* ---------- Space (8-pt grid with a 4 px half step) and shape ---------- */
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
+  --r-panel:6px;    /* panels, tiles, sheet, banners */
+  --r-cell:4px;     /* cells, controls, buttons, tags */
+  --pane-w:380px;   /* desktop detail pane from 1200 px (redesign revisions; was 25rem from 1280) */
+  /* --gut (16 phone / 24 from 600), --ctl (control height 44 / 36) and --tap (small-button and link hit
+     height 44 / 28) are set on .page per breakpoint */
 
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
-  --r-xl: 26px;
+  /* ---------- Motion (none under prefers-reduced-motion) ---------- */
+  --t-fast:120ms;   /* hover/focus background, pane content fade */
+  --t-med:160ms;    /* chevron turn */
+  --t-slow:200ms;   /* row expand, filter sheet */
+  --ease-out:cubic-bezier(.2,.7,.3,1);      /* anything entering */
+  --ease-in-out:cubic-bezier(.45,0,.25,1);  /* anything moving between two states */
 
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 220ms;
+}
 
-  --shell-max: 78rem;
+
+/* IBM Plex Sans @ibm/plex-sans@1.1.0, latest stable checked 2026-10-26.
+   https://github.com/IBM/plex/releases/tag/%40ibm/plex-sans%401.1.0 */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Regular-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-SemiBold-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin1.woff2') format('woff2');
+  unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin2.woff2') format('woff2');
+  unicode-range: U+0100-0101, U+0104-0130, U+0132-0151, U+0154-017F, U+018F, U+0192, U+01A0-01A1, U+01AF-01B0, U+01FA-01FF, U+0218-021B, U+0237, U+0259, U+1E80-1E85, U+1E9E, U+20A1, U+20A4, U+20A6, U+20A8-20AA, U+20AD-20AE, U+20B1-20B2, U+20B4-20B5, U+20B8-20BA, U+20BD, U+20BF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/IBMPlexSans-Bold-Latin3.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+01CD-01DC, U+1EA0-1EF9, U+20AB;
 }
 
 * { box-sizing: border-box; }
@@ -106,19 +213,18 @@
 
 body {
   margin: 0;
-  padding: 0 1.25rem 4rem;
-  background: var(--page);
+  background: var(--ground);
   color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
+  font: 400 var(--fs-14)/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-.site-header, .site-footer, .banner, .shell {
-  max-width: var(--shell-max);
-  margin-inline: auto;
+.shell {
+  /* No top margin: the count line sits straight under the header band, as in
+     mockup C1; its own padding spaces it (Stage 5). */
+  margin: 0 auto;
+  padding-inline: var(--gut);
 }
 
 /* Every icon inherits its colour and sits on the text baseline. */
@@ -130,7 +236,7 @@ svg:not(.sprite) {
 }
 
 :focus-visible {
-  outline: 2px solid var(--link);
+  outline: 2.5px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -139,98 +245,70 @@ svg:not(.sprite) {
   position: absolute;
   left: -9999px;
   top: 0.5rem;
-  background: var(--surface);
+  background: var(--panel);
   color: var(--accent);
   padding: 0.6rem 1rem;
   border: 1px solid var(--accent);
-  border-radius: var(--r-md);
+  border-radius: var(--r-cell);
   font-weight: 600;
-  box-shadow: var(--shadow-md);
   z-index: 10;
 }
 .skip-link:focus { left: 1.25rem; }
 
-/* ------------------------------------------------------------- masthead */
-
-.site-header { padding: 2.25rem 0 1.25rem; }
-
-/* Asymmetric on purpose: title left, the running total right, nothing
-   centred. */
-.masthead {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.site-header h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.6rem);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.05;
-}
-/* The rose full stop, straight from the reference wordmark. Decorative, so it
-   is a pseudo-element and never reaches the accessibility tree. */
-.site-header h1::after { content: "."; color: var(--accent); }
-
-.tagline {
-  margin: 0.4rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.95rem;
-  max-width: 46ch;
-}
-
-.masthead-stat {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
+/* Read by a screen reader, not shown: the ", " between a title and its
+   degree, "selected" after a dropdown count, and what a link opens (A04, A05). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
+  border: 0;
 }
-.masthead-stat:empty { display: none; }
 
-.site-footer {
-  margin-top: 3.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
-  color: var(--ink-faint);
-  font-size: 0.85rem;
-}
-.site-footer p { margin: 0; max-width: 65ch; }
+/* Stage 1 page chrome; the old results layout stays until its stage. */
+.page{--gut:16px;--ctl:44px;--fs-ctl:16px;--tap:44px}
+.top{background:var(--panel);border-bottom:1px solid var(--hairline)}
+.mast{padding:14px var(--gut) 12px;background:var(--brand-fill);color:var(--brand-ink)}
+.mast-top{display:flex;align-items:flex-start;gap:12px}
+.mast-id{flex:1;min-width:0}
+.mast h1{margin:0;font-size:23px;font-weight:700;line-height:27px;letter-spacing:-.4px}
+.tagline{margin:0;display:none;font-size:15px;line-height:20px}
+.src{margin:4px 0 0;white-space:normal;font-size:12.5px;line-height:17px;color:var(--ink-2);max-width:100ch}
+.src b{color:var(--ink);font-weight:600}.stat,.src-more{display:none}
+.lang{display:flex;align-items:center;gap:2px;font-size:var(--fs-12);font-weight:600;color:var(--brand-ink)}
+.lang .ic{margin-right:4px}
+.lang button{min-width:32px;height:28px;padding:0 6px;border:1px solid var(--brand-ink);border-radius:var(--r-cell);background:transparent;cursor:pointer}
+.lang [aria-pressed=true]{background:var(--brand-ink);border-color:var(--brand-ink);color:var(--panel)}
+.lang [aria-disabled=true]{color:var(--ink-3);cursor:not-allowed}
+.bn{display:flex;gap:10px;align-items:flex-start;margin:12px var(--gut) 0;padding:10px 12px;border-radius:var(--r-panel);font-size:13.5px;line-height:19px}
+.bn-saved{background:var(--panel);border:1px solid var(--hairline);border-left:4px solid var(--ink-2)}
+.bn-sample{background:var(--alarm);color:var(--on-accent)}.bn-sample b{font-weight:700}
+.bn-fail{background:var(--panel);border:2px solid var(--alarm);align-items:center;flex-wrap:wrap}
+.bn-fail p{flex:1 1 16rem;color:var(--alarm-ink);font-weight:600}
+.imark{flex:none;display:inline-grid;place-items:center;width:18px;height:18px;margin-top:1px;border:1.5px solid var(--ink-2);border-radius:50%;font-size:11px;font-weight:700;color:var(--ink-2)}
+.foot{padding:16px var(--gut) 24px;font-size:var(--fs-12);color:var(--ink-2)}
 
-/* ------------------------------------------------------------- banners */
-
-.banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  margin: 0 auto 1.25rem;
-  padding: 0.85rem 1rem;
-  border-radius: var(--r-lg);
-  border: 1px solid var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--ink);
-  font-size: 0.9rem;
-  box-shadow: var(--shadow-sm);
+.bn p,.foot p{margin:0}
+.lang button{font:inherit;color:inherit}
+.lang .ic{width:16px;height:16px;fill:currentColor}
+.stat{font-variant-numeric:tabular-nums}
+.bn-saved{color:var(--ink-2)}
+.bn-saved a{color:var(--accent);text-decoration:underline}
+.bn-saved a:hover{color:var(--accent-press)}
+.bn-fail .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--ctl);padding:0 14px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font:inherit;font-size:var(--fs-14);font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap}
+.bn-fail .btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.bn-fail .btn-p:hover{background:var(--accent-press);color:var(--on-accent)}
+@media (min-width: 600px) {
+  .page{--gut:24px;--ctl:36px;--fs-ctl:14px;--tap:28px}
+  .mast h1{font-size:27px;line-height:32px;letter-spacing:-.6px}
+  .tagline,.stat,.src-more{display:inline}
+  .mast-id{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px}
 }
-.banner::before {
-  content: "";
-  flex: none;
-  width: 3px;
-  align-self: stretch;
-  border-radius: 999px;
-  background: var(--accent);
-}
-.banner-warn   { background: var(--warn-soft);   border-color: var(--warn-line);   color: var(--warn); }
-.banner-warn::before { background: var(--warn); }
-.banner-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); font-weight: 600; }
-.banner-danger::before { background: var(--danger); }
 
 /* ------------------------------------------------------------- buttons */
 
@@ -240,31 +318,31 @@ svg:not(.sprite) {
   justify-content: center;
   gap: 0.45rem;
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   padding: 0.5rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-cell);
+  background: var(--panel);
   color: var(--ink);
   cursor: pointer;
   box-shadow: none;
-  transition: border-color var(--dur) var(--ease),
-              color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              transform 120ms var(--ease),
-              box-shadow var(--dur) var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-out),
+              box-shadow var(--t-fast) var(--ease-out);
 }
-.button svg { color: var(--ink-faint); transition: color var(--dur) var(--ease); }
+.button svg { color: var(--ink-2); transition: color var(--t-fast) var(--ease-out); }
 .button:hover:not(:disabled) {
-  border-color: var(--accent-line);
+  border-color: var(--accent);
   color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent-tint);
 }
 .button:hover:not(:disabled) svg { color: var(--accent); }
 /* Tactile: the button gives under the press rather than just recolouring. */
 .button:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 .button:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
-.button-quiet { color: var(--ink-soft); box-shadow: none; background: transparent; }
+.button-quiet { color: var(--ink-2); box-shadow: none; background: transparent; }
 
 /* --------------------------------------------------------- app shell */
 
@@ -273,172 +351,143 @@ svg:not(.sprite) {
 
 /* ------------------------------------------------------------- filters */
 
-/* One warm panel across the top of the results. Search takes the slack; the
-   two number fields stay narrow; the three pick-lists sit together. It sticks
-   to the top of the window on wider screens so the filters stay in reach while
-   you scroll 700 cards — the job the old sidebar did. */
-.filterbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 0.9rem;
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.15rem;
-  background: var(--surface);
-  border-radius: var(--r-xl);
-}
-.field-search { flex: 1 1 18rem; }
-.field-number { flex: 0 0 7.5rem; }
-.field-maths { flex: 0 0 9rem; }
-.field-exam { flex: 0 0 14rem; }
-.filterbar-menus { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.filterbar #f-clear { align-self: flex-end; }
-
-/* A pick-list: a native <details>, so it opens from the keyboard with no
-   script. app.js adds only one-open-at-a-time and closing on an outside click
-   or Escape. */
-.dropdown { position: relative; }
-
-.dropdown-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  /* Same box as the text inputs beside it — padding, font size and line height
-     — so the row lines up exactly rather than being off by a pixel. */
-  padding: 0.55rem 0.85rem;
-  line-height: 1.55;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink);
-  font-size: 0.94rem;
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  white-space: nowrap;
-  transition: border-color var(--dur) var(--ease);
-}
-.dropdown-button::-webkit-details-marker { display: none; }
-.dropdown-button:hover { border-color: var(--accent-line); }
-.dropdown-button svg { color: var(--ink-faint); }
-.dropdown[open] > .dropdown-button { border-color: var(--accent); }
-/* A list that is narrowing the results says so even when it is closed. */
-.dropdown:has(.dropdown-count:not(:empty)) > .dropdown-button { border-color: var(--accent); }
-
-.dropdown-count {
-  min-width: 1.35rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.dropdown-count:empty { display: none; }
-
-.dropdown-panel {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  left: 0;
-  z-index: 20;
-  width: max-content;
-  min-width: 15rem;
-  max-width: min(22rem, calc(100vw - 2.5rem));
-  max-height: min(22rem, 60vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.35rem;
-  background: var(--inset);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
-}
-
-.options { display: grid; gap: 0.1rem; }
-
-.option {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: var(--r-sm);
-  font-size: 0.92rem;
-  cursor: pointer;
-  user-select: none;
-}
-.option:hover { background: var(--surface); }
-.option:has(input:checked) { font-weight: 500; }
-.option input { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
-
-.field { display: grid; gap: 0.4rem; margin: 0; padding: 0; border: 0; min-width: 0; }
-/* Direct children only. A filter chip is a <label> inside this fieldset, so an
-   unscoped `.field label` matches it and wins on specificity — which is exactly
-   what happened, and every chip rendered as an 11.5px uppercase micro-label
-   instead of readable sentence case. */
-.field > label, .field > legend, .sort-field label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-  padding: 0;
-}
-
-.field input, .field select, .sort-field select {
-  font: inherit;
-  font-size: 0.94rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink);
-  width: 100%;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
-}
-.field input::placeholder { color: var(--ink-faint); }
-.field input:hover, .field select:hover, .sort-field select:hover { border-color: var(--accent-line); }
-.field input:focus, .field select:focus, .sort-field select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.field input[type="number"] { font-variant-numeric: tabular-nums; }
-
-/* Search gets its icon inside the field. */
-.input-wrap { position: relative; display: grid; }
+/* One form under the masthead (spec §6.3). Below 600 px the bar is two rows,
+   Search + Filters and My points + HL Maths; the fee, the pick-lists
+   and Clear all live in .more-filters, which app.js moves into the sheet.
+   The band never sticks (A07). Classes follow the mockup (full/mockup.html);
+   .dropdown/.dropdown-panel/.options/.option are its .dd/.dd-panel/.opt. */
+.fbar{padding:0 var(--gut) 12px;display:grid;gap:8px;grid-template-columns:5.5rem minmax(0,1fr) auto;grid-template-areas:"q q more" "pts hl hl";align-items:end}
+/* Controls do not inherit the page font on their own. Zero specificity, so
+   every class rule below still wins. */
+:where(.fbar,.listp,.sheet-h,.sheet-b,.sheet-f,.status) :where(button,input,select,summary){font:inherit;color:inherit}
+.fld{display:grid;gap:4px;min-width:0;position:relative}
+.fld>label,.help{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px}
+.help{margin:0;font-weight:400}
+.filter-help{grid-column:1/-1;flex-basis:100%}
+.f-q>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.inp{width:100%;height:var(--ctl);margin:0;padding:0 10px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-ctl);color:var(--ink);font-variant-numeric:tabular-nums}
+.inp::placeholder{color:var(--ink-3)}
+.f-q{grid-area:q}.f-pts{grid-area:pts}.f-hl{grid-area:hl}.more{grid-area:more}
+.fbar .ic{width:16px;height:16px;fill:currentColor}
+.affix{position:relative;display:block}
 /* Centred with calc rather than translateY(-50%): a transform on an outer
    <svg> is ignored by some engines and the icon would sit off-centre. */
-.input-icon {
-  position: absolute;
-  left: 0.7rem;
-  top: calc(50% - 0.5em);
-  color: var(--ink-faint);
-  pointer-events: none;
-}
-.input-wrap input { padding-left: 2.15rem; }
+.affix>.ic{position:absolute;left:10px;top:calc(50% - 8px);color:var(--ink-2);pointer-events:none}
+.f-q .inp{padding-left:34px}
+.affix>.unit{position:absolute;right:10px;top:calc(50% - 8px);font-size:var(--fs-12);line-height:16px;color:var(--ink-2);pointer-events:none}
+.f-fee .inp,.f-budget .inp{padding-right:52px}
+.f-living .inp{padding-right:64px}
+.tick{display:flex;align-items:center;gap:8px;height:var(--ctl);font-size:var(--fs-14);font-weight:600;cursor:pointer;white-space:nowrap}
+.tick input,.option input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--accent)}
+/* Active: 2 px accent border and tint, label "· active". Padding drops by the extra
+   border pixel so the text does not move. */
+.is-set .inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
+.f-q.is-set .inp{padding-left:33px}
+.is-set:not(.f-pts)>label::after{content:attr(data-active-label);color:var(--accent)}
+/* Why My points or Max fee is not being applied (P05). Ink, never red. After
+   the set rule, so an invalid field always shows the ink border. */
+.inp[aria-invalid=true]{border:2px solid var(--ink);padding-left:9px}
+.err{margin:0;font-size:var(--fs-13);line-height:18px;font-weight:700;color:var(--ink)}
+.err:empty{display:none}
+/* Before app.js runs, the controls that belong in the phone sheet must not
+   flash in the bar. */
+.fbar .more-filters{display:none}
+/* .btn itself is defined further down (the detail footer), so these name it
+   too: at equal weight the later base rule would win and the quiet and small
+   buttons would draw as full bordered buttons. */
+.btn.btn-q{border-color:transparent;background:none;color:var(--accent);text-decoration:underline;text-underline-offset:3px;padding:0 8px}
+.btn.btn-q:hover{background:var(--hover)}
+.btn.btn-q:disabled{color:var(--ink-3);text-decoration:none;cursor:default}
+.btn.btn-s{height:var(--tap);padding:0 10px;font-size:var(--fs-13)}
+.btn.is-on{border:2px solid var(--accent);background:var(--accent-tint)}
 
+/* A pick-list: a native <details>, so it opens from the keyboard with no
+   script. app.js adds one-open-at-a-time and, for the floating panels in the
+   bar, closing on an outside click, on Tab out or on Escape.
+   The chevron is the sprite's i-chevron in a fixed 16 px box that turns as a
+   whole. It was a rotated CSS border shifted by translate percentages, which
+   sat about 2 px high and moved between open and closed (Phase 3 diagnosis). */
+.dropdown{position:relative}
+.dropdown>summary{list-style:none;position:relative;display:flex;align-items:center;gap:6px;padding-right:8px;cursor:pointer;white-space:nowrap;user-select:none}
+.dropdown>summary::-webkit-details-marker{display:none}
+.dd-chev{display:flex;flex:none;width:16px;height:16px;margin-left:auto;color:var(--ink-2);transition:transform var(--t-med) var(--ease-in-out)}
+.fbar .dd-chev .ic,.sheet .dd-chev .ic{width:16px;height:16px;fill:none}
+.dropdown[open]>summary{border-color:var(--accent)}
+.dropdown[open]>summary .dd-chev{transform:rotate(180deg)}
+/* A02: a 16rem panel never wider than the screen, and the last one opens
+   leftward, so none pushes the page sideways. */
+.dropdown-panel{position:absolute;top:100%;left:0;z-index:20;margin-top:6px;width:19rem;max-width:calc(100vw - 2 * var(--gut));max-height:18rem;overflow:auto;overscroll-behavior:contain;padding:6px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
+.dropdown:last-of-type .dropdown-panel,#dd-countries .dropdown-panel{left:auto;right:0}
+/* Options: 36 px on a fine pointer, 44 px on touch and in the phone sheet
+   (--tap is 44 below 600). A picked option is filled, not only ticked. */
+.options{display:grid;gap:2px}
+.dd-help{padding:4px 8px 8px}
+.option{display:flex;align-items:center;gap:10px;min-height:max(36px,var(--tap));padding:4px 8px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:18px;white-space:normal;cursor:pointer;user-select:none}
+.option:hover{background:var(--hover)}
+.option:has(input:checked){font-weight:600;background:var(--accent-tint);color:var(--accent)}
+/* Option search, only in a list of more than 12 (renderChips). It narrows the
+   options, never the programmes. */
+.opt-q{display:grid;gap:4px;padding:2px 2px 6px}
+.opt-q .inp{height:max(36px,var(--tap))}
+.opt-clear{justify-self:start;height:auto;min-height:max(28px,var(--tap))}
+.opt-none{margin:0;padding:6px 8px}
+/* Flags only here. Out-ranks the global 1em icon size (svg:not(.sprite)). */
+.dropdown svg.flag{width:21px;height:14px;border-radius:2px;outline:1px solid var(--hairline);vertical-align:middle}
+
+/* The phone sheet: a native <dialog> opened with showModal(). Its UA margins,
+   padding, border and size limits are reset, and it is shown only while open:
+   a display rule on .sheet itself would render the closed dialog (the same
+   trap as [hidden], STATUS.md). The header and footer keep their height; the
+   body scrolls. ::backdrop is the only scrim.
+   It slides up and the scrim fades (spec §8). display and overlay switch at
+   the end, so a closing sheet keeps its place on top until it is gone. A
+   browser without @starting-style or allow-discrete just opens and closes. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:90dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
+.sheet[open]{display:flex;flex-direction:column;transform:none}
+.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
+.sheet[open]::backdrop{opacity:1}
+@starting-style{.sheet[open]{transform:translateY(100%)}.sheet[open]::backdrop{opacity:0}}
+html:has(.sheet[open]){overflow:hidden}
+.sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
+.sheet-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
+.sheet-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 16px;display:grid;gap:16px;align-content:start}
+.sheet-b .more-filters{display:grid;gap:16px}
+/* In the sheet the pick-lists are inline accordions with 44 px rows. */
+.sheet-b .dropdown-panel{position:static;width:auto;max-width:none;max-height:none;overflow:visible}
+.sheet-b .copy{display:inline-flex;justify-self:start}
+.sheet-f{flex:none;display:flex;gap:8px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--hairline)}
+.sheet-f .btn-p{flex:1}
+
+/* Applied filters: one removable chip per value, on their own line under the
+   controls. They wrap rather than squeeze (a long subject name measured 345 px
+   in a 288 px phone sheet). 36 px targets, 44 px on touch and in the sheet. */
+#applied-filters{display:flex;flex-wrap:wrap;gap:8px;flex-basis:100%;min-width:0}
+.achip{display:inline-flex;align-items:center;gap:8px;min-height:max(36px,var(--tap));max-width:100%;padding:4px 12px;border:1px solid var(--accent);border-radius:999px;background:var(--accent-tint);color:var(--accent);font-size:var(--fs-13);font-weight:600;line-height:18px;text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.achip:hover{background:var(--panel)}
+.achip>[aria-hidden]{flex:none;font-size:var(--fs-16);line-height:1}
+
+/* Legacy pill tick, no longer in the markup (My list uses .btn); kept with
+   .button because tools/check.mjs pins their old transitions. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  background: var(--inset);
+  background: var(--panel);
   font-size: 0.85rem;
   cursor: pointer;
   user-select: none;
-  transition: border-color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              color var(--dur) var(--ease),
-              transform 120ms var(--ease);
+  transition: border-color var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-out);
 }
-.chip:hover { border-color: var(--accent-line); background: var(--surface-2); }
+.chip:hover { border-color: var(--accent); background: var(--hover); }
 .chip:active { transform: scale(0.97); }
 .chip:has(input:checked) {
-  background: var(--accent-soft);
+  background: var(--accent-tint);
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -448,485 +497,509 @@ svg:not(.sprite) {
 
 /* --------------------------------------------------- results + shortlist */
 
-.results-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin: 0 0 1rem;
-}
-.result-count {
-  font-weight: 600;
-  font-size: 1.05rem;
-  letter-spacing: -0.015em;
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-.sort-field { display: grid; gap: 0.3rem; min-width: 14rem; }
+/* The count line (spec §6.4). It bleeds to the screen edges so the stuck bar
+   is full width; its text keeps the page gutter. Below 600 px it sticks, and
+   once the 1 px mark above it has scrolled away app.js adds .is-stuck: panel
+   white, a hairline, and the short twin in place of the full sentence. The
+   sentence is clipped like .visually-hidden, never display:none, so it stays
+   the one live region. */
+.stuck-mark{height:1px}
+.status{position:sticky;top:0;z-index:4;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-inline:calc(-1 * var(--gut));padding:8px var(--gut);background:var(--ground)}
+.cshort{display:none}
+.status.is-stuck{padding:6px var(--gut);background:var(--panel);border-bottom:1px solid var(--hairline)}
+.is-stuck .cfull{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.is-stuck .cshort{display:block}
+.copy{display:none;margin-left:auto}
+.count{margin:0;font-size:var(--fs-13);line-height:18px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.count b{color:var(--ink);font-weight:700}
+.count .k{white-space:nowrap;font-weight:600}
+.k-fit{color:var(--fit-ink)}.k-cond{color:var(--cond-ink)}.k-unk{color:var(--ink-2)}
 
-.shortlist-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.8rem;
-  margin-bottom: 1.1rem;
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-lg);
-}
-.shortlist-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0 auto 0 0;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--save);
-  font-variant-numeric: tabular-nums;
-}
-.shortlist-icon { color: var(--save); }
-
-.results { display: grid; gap: 1rem; }
-
-/* ------------------------------------------------------------- cards */
-
-.card {
-  position: relative;
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 1.4rem 1.4rem 1.2rem;
-  /* A column, so the footer can be pushed to the bottom when the row's taller
-     card stretches this one. */
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
-
-  /* All 700-odd cards stay in the DOM — Ctrl+F still finds them — but the
-     browser skips layout and paint for the ones off screen. Measured: a filter
-     change went from 99ms of layout to 4ms. 630px is the median card height,
-     and "auto" lets the browser remember each card's real height afterwards,
-     so the scrollbar does not jump. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 630px;
-
-  /* Requirement strings are pasted from university pages and some are one long
-     unbroken run. Without this they set the card's min-width and blow out the
-     grid. */
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.card:hover { box-shadow: var(--shadow-md); }
-
-/* Country tints. The class comes from render.js off row.country, so a new
-   country needs a tint pair here and nothing else. A card with no country, or
-   one not listed, keeps the neutral --surface panel. */
-.c-netherlands { background: var(--tint-nl); }
-.c-netherlands .card-title,
-.c-netherlands .req-number { color: var(--tint-nl-ink); }
-.c-ireland { background: var(--tint-ie); }
-.c-ireland .card-title,
-.c-ireland .req-number { color: var(--tint-ie-ink); }
-.c-czechia { background: var(--tint-cz); }
-.c-czechia .card-title,
-.c-czechia .req-number { color: var(--tint-cz-ink); }
-.c-italy { background: var(--tint-it); }
-.c-italy .card-title,
-.c-italy .req-number { color: var(--tint-it-ink); }
-.c-denmark { background: var(--tint-dk); }
-.c-denmark .card-title,
-.c-denmark .req-number { color: var(--tint-dk-ink); }
-.card.is-past { opacity: 0.65; }
-.card.is-past:hover { opacity: 1; }
-
-/* A saved card is marked by a rule down its edge, not a coloured border that
-   would fight the hover state. */
-.card.is-starred { box-shadow: var(--shadow-md); }
-.card.is-starred::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 1.1rem;
-  bottom: 1.1rem;
-  width: 3px;
-  border-radius: 0 999px 999px 0;
-  background: var(--save);
+/* My list (js/shortlist.js): a panel under the count line. Outside the list
+   view it is one line, "3 saved · 2 shown"; in it, a second row of tools.
+   Blue only where you can press; the counts are ink. */
+.mylist{margin:0 0 12px;padding:8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
+:where(.mylist,.cmp) :where(button,input,select,summary){font:inherit;color:inherit}
+.ml-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.ml-h{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:var(--fs-14);font-weight:700;line-height:20px}
+.mylist .ic{width:16px;height:16px;fill:currentColor}
+.ml-count{margin:0;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ml-open{margin-left:auto}
+.ml-note{margin:6px 0 0;font-weight:600}
+.ml-origin{margin-top:6px}
+.ml-tools{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline)}
+.ml-group{flex:none;width:10rem}
+.ml-pop{position:relative}
+.ml-pop>summary{list-style:none;cursor:pointer;user-select:none}
+.ml-pop>summary::-webkit-details-marker{display:none}
+.ml-pop[open]>summary{border-color:var(--accent)}
+.ml-panel{position:absolute;top:100%;left:0;z-index:20;display:grid;gap:8px;margin-top:6px;width:22rem;max-width:calc(100vw - 2 * var(--gut));padding:10px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
+.ml-picks{margin:0;padding:0;border:0;min-width:0}
+.ml-picks legend{padding:0 0 4px}
+.ml-picks .options{max-height:16rem;overflow:auto;overscroll-behavior:contain}
+.ml-picks .option:has(input:disabled){color:var(--ink-3);cursor:default}
+.ml-panel .inp{font-size:var(--fs-13)}
+.ml-panel .btn{justify-self:start}
+@media (max-width: 599.98px) {
+  /* On a phone the panels open in place, full width, like the sheet's lists. */
+  .ml-pop[open]{flex-basis:100%}
+  .ml-panel{position:static;width:auto;max-width:none}
+  .ml-group{flex:1 1 10rem}
 }
 
-/* Only the first screenful animates in. Staggering 700 cards would queue
-   animations the reader will never see, and fights content-visibility. */
-@media (prefers-reduced-motion: no-preference) {
-  .results > .card:nth-child(-n+10) {
-    animation: card-in 380ms var(--ease) backwards;
+/* The row's save star: above the row's whole-row button (its ::after covers
+   the row), beside the title. The saved state is the filled symbol. */
+.r-main{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start}
+.r-main>.r-t,.r-main>.sub{grid-column:1}
+.r-main>.star{grid-column:2;grid-row:1/span 2}
+/* The list view's group heading, inside the group's first row (render.js). */
+.grp-h{margin:0;padding:8px 16px 6px;background:var(--hover);border-bottom:1px solid var(--hairline);font-size:var(--fs-13);font-weight:700;line-height:18px;color:var(--ink);font-variant-numeric:tabular-nums}
+.item.has-grp:first-child>.grp-h{border-radius:var(--r-panel) var(--r-panel) 0 0}
+
+/* Compare: 2 to 4 programmes side by side. Columns are programmes, rows are
+   facts; the fact names stay at the left while the columns scroll. */
+.cmp{margin:0 0 12px;min-width:0;scroll-margin-top:57px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel)}
+.cmp-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:8px 16px;border-bottom:1px solid var(--hairline)}
+.cmp-head h2{margin:0 auto 0 0;font-size:var(--fs-16);font-weight:700;line-height:24px}
+/* Positioned, so the hidden "opens in a new tab" text in an off-screen column
+   is clipped with it instead of widening the page (measured 404 px at 390). */
+.cmp-scroll{position:relative;overflow-x:auto;overscroll-behavior-x:contain}
+.cmp-t{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-14);line-height:20px;font-variant-numeric:tabular-nums}
+.cmp-t :where(th,td){padding:10px 12px;border-bottom:1px solid var(--hairline);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.cmp-t tbody tr:last-child>*{border-bottom:0}
+.cmp-t tbody th,.cmp-c{position:sticky;left:0;z-index:1;width:10rem;background:var(--panel);font-size:var(--fs-13);font-weight:600;line-height:18px;color:var(--ink-2)}
+.cmp-p{font-weight:700;color:var(--ink)}
+.cmp-n,.cmp-u{display:block}
+.cmp-u{font-size:var(--fs-13);font-weight:400;color:var(--ink-2)}
+.cmp-t p{margin:0}
+.cmp-t p+p{margin-top:2px}
+.cmp-t .verd{margin-top:4px}
+.cmp-same{margin:0;padding:8px 16px 12px}
+@media (max-width: 599.98px) {
+  /* Phones: two programmes at a time, swiped sideways, one snap per column.
+     The fact column (6.5rem) stays put, so each programme column is half of
+     what is left. */
+  .cmp-scroll{scroll-snap-type:x mandatory;scroll-padding-left:6.5rem}
+  /* A fixed layout whose width depends on the number of programmes (data-n):
+     the fact column is 6.5rem and the programme columns share the rest
+     equally, half the scroll box each, so every swipe lands on a column.
+     The percentages are of the scroll box, never the page. */
+  .cmp-t{table-layout:fixed;width:100%}
+  .cmp-t[data-n="3"]{width:calc(6.5rem + 3 * (100% - 6.5rem) / 2)}
+  .cmp-t[data-n="4"]{width:calc(6.5rem + 2 * (100% - 6.5rem))}
+  .cmp-t tbody th,.cmp-t .cmp-c{width:6.5rem;padding:8px}
+  .cmp-p,.cmp-t td{padding:8px;scroll-snap-align:start}
+}
+
+/* ------------------------------------------------------------ detail */
+
+/* Summary rows own containment; detail is rendered only when requested.
+   Redesign revisions (2026-10-28): identity first, then a labelled band of
+   points / deadline / fee, then the requirements across the full row width,
+   never clamped. The list panel is a size container: the facts move to the
+   right of the title, under sort headings, only once the LIST is at least
+   900 px wide, whether or not the pane is open. Below that the facts stack and
+   the Sort select replaces the headings, so exactly one sort control shows. */
+.results{list-style:none;margin:0;padding:0}
+.row :where(h3,p){margin:0}
+.listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);container-type:inline-size}
+.cols{display:none}
+.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
+.listp>.f-sort>label{white-space:nowrap}
+.listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
+.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
+.item+.item{border-top:1px solid var(--hairline)}
+.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main" "pts pts" "ddl fee" "req req";gap:8px;padding:12px}
+.row:hover{background:var(--hover)}
+.is-open>.row{background:var(--hover)}
+.r-main{grid-area:main;min-width:0;padding-right:28px}
+.r-t{font-size:var(--fs-16);font-weight:600;line-height:22px}
+.open{all:unset;cursor:pointer}
+.open::after{content:"";position:absolute;inset:0}
+.open:focus-visible::after{outline:2.5px solid var(--accent);outline-offset:-3px;border-radius:var(--r-cell)}
+.sub{margin-top:2px;font-size:var(--fs-14);line-height:20px;color:var(--ink-2)}
+.line{grid-area:req;font-size:var(--fs-14);line-height:20px;color:var(--ink)}
+.line b{color:var(--ink-2);font-weight:600}
+.line .ok{margin-left:8px}
+/* The country, in words, on a small tint (the tint only helps; it may repeat
+   once there are more countries than pairs). An unmapped country gets the
+   neutral pair with no code change. MAINTENANCE.md says how to add one. */
+.cc{display:inline-block;margin-left:6px;padding:0 6px;border-radius:var(--r-cell);background:var(--cty-fill);color:var(--cty-ink);font-size:var(--fs-12);font-weight:600;line-height:18px;white-space:nowrap}
+.cc[data-country=Denmark]{background:var(--cty-dk-fill);color:var(--cty-dk-ink)}
+.cc[data-country=Ireland]{background:var(--cty-ie-fill);color:var(--cty-ie-ink)}
+.cc[data-country=Italy]{background:var(--cty-it-fill);color:var(--cty-it-ink)}
+.cc[data-country=Netherlands]{background:var(--cty-nl-fill);color:var(--cty-nl-ink)}
+.cc[data-country=Czechia]{background:var(--cty-cz-fill);color:var(--cty-cz-ink)}
+.cc[data-country="United Kingdom"]{background:var(--cty-uk-fill);color:var(--cty-uk-ink)}
+.cc[data-country=Germany]{background:var(--cty-de-fill);color:var(--cty-de-ink)}
+.cc[data-country=Austria]{background:var(--cty-at-fill);color:var(--cty-at-ink)}
+.cc[data-country=Sweden]{background:var(--cty-se-fill);color:var(--cty-se-ink)}
+.cc[data-country=Finland]{background:var(--cty-fi-fill);color:var(--cty-fi-ink)}
+.cc[data-country=Norway]{background:var(--cty-no-fill);color:var(--cty-no-ink)}
+/* The row disclosure: i-chevron in a fixed 16 px box, centred on the title's
+   first 22 px line, turned whole when open. It was a rotated CSS border that
+   dropped 3 px when open (Phase 3 diagnosis). */
+.chev{position:absolute;top:15px;right:12px;display:flex;width:16px;height:16px;color:var(--ink-2);pointer-events:none}
+.row .chev .ic{width:16px;height:16px;fill:none}
+.is-open .chev{transform:rotate(180deg)}
+.deg{margin-left:6px;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+/* The hidden ", " between a title and its degree (A05). Clipped and absolute,
+   Chrome read it as a block of its own and named the row "Title , Degree".
+   Inline at zero size it reads "Title, Degree" and draws nothing. line-height
+   0 too: at font-size 0 the inherited 20 px leading made every title line 5 px
+   taller (measured 2026-10-28; title, degree and row heights now as before). */
+.open>.visually-hidden,.d-title>.visually-hidden{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;font-size:0;line-height:0}
+.row .ic{width:14px;height:14px;fill:currentColor;flex:none}
+.row .cell{gap:2px;padding:4px 8px;font-size:var(--fs-14);line-height:20px}
+.c-pts{grid-area:pts}.c-ddl{grid-area:ddl}.c-fee{grid-area:fee}
+.row .fig{font-size:var(--fs-14);line-height:20px}
+.row .verd{margin:0}
+.row .v-unk{padding:2.5px 6.5px}
+.pt{white-space:nowrap}
+.q{font-size:12.5px;color:var(--ink-2)}
+.r2{padding-left:17px;font-size:var(--fs-12);font-weight:600}
+.v-fit .r2{color:var(--fit-ink)}.v-cond .r2{color:var(--cond-ink)}
+.zf{display:block}.zf .dot{display:none}
+/* Motion (spec §8): rows and controls fade their background on hover/focus;
+   a slot grows its one grid row from 0fr to 1fr and fades in; the chevron
+   turns. app.js inserts a slot closed and opens it on the next frame, and only
+   for a direct toggle, so rebuilds and breakpoint moves stay instant. */
+.row,.btn,.inp,.option,.dropdown>summary{transition:background-color var(--t-fast) var(--ease-out)}
+.expand{display:grid;grid-template-rows:1fr;border-top:1px solid var(--hairline);transition:grid-template-rows var(--t-slow) var(--ease-out),opacity var(--t-slow) var(--ease-out)}
+.expand[data-state=closed]{grid-template-rows:0fr;opacity:0}
+.expand-inner{min-height:0;overflow:hidden}
+.expand-inner>.detail{border:0;border-radius:0}
+.chev{transition:transform var(--t-med) var(--ease-in-out)}
+.d-pts{display:grid;gap:2px}
+
+/* The mockup leans on a global margin/list reset this stylesheet does not
+   have. Scoped here, and at zero specificity (:where) so the component rules
+   below still win. */
+.detail :where(h2,h3,p,ul,dl,dd){margin:0;padding:0}
+.detail ul{list-style:none}
+
+/* Requirement strings are pasted from university pages and some are one long
+   unbroken run; without min-width and anywhere they widen the page.
+   Passed-deadline entries are not dimmed: 0.65 opacity took the old cards'
+   text below readable contrast (A01). The deadline cell says it in words. */
+.detail{display:grid;gap:16px;padding:12px 12px 16px;font-size:15px;line-height:22px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);min-width:0;overflow-wrap:anywhere}
+.d-head{display:grid;gap:2px}
+/* The title is first in the DOM, so heading navigation reads it first; the
+   place line is drawn above it. Nothing in the head is focusable. */
+.d-place{order:-1;font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
+.d-title{font-size:var(--fs-18);font-weight:700;line-height:24px}
+.d-title .deg{margin-left:6px;font-size:15px;font-weight:400;color:var(--ink-2)}
+
+/* Cells: plain text unless the cell carries a verdict (§6.6). */
+.d-cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.d-cells .c-pts{grid-column:1/-1}
+.cell{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:8px 10px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:20px}
+.lab{font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
+/* --ink-2 on the time fill is 4.70:1, so its text stays at least 13 px. */
+.v-time .lab{font-size:var(--fs-13)}
+.fig{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.fig small{font-size:12.5px;font-weight:400;color:var(--ink-2)}
+.verd{margin-top:4px;font-size:var(--fs-13);line-height:18px;font-weight:600}
+.verd.m{padding-left:17px;text-indent:-17px}
+.v-fit{background:var(--fit-fill)}.v-fit .verd{color:var(--fit-ink)}
+.v-cond{background:var(--cond-fill)}.v-cond .verd{color:var(--cond-ink)}
+.v-time{background:var(--time-fill)}.v-time .verd{color:var(--time-ink)}
+.v-time .ic{width:14px;height:14px;margin-right:4px;vertical-align:-2px;color:var(--time-mark)}
+/* Unknown is a dashed box, never a grey fill. Padding drops by the border. */
+.v-unk{border:1.5px dashed var(--ink-3);padding:6.5px 8.5px}
+.v-unk .verd,.v-unk .fig{color:var(--ink-2);font-weight:600}
+/* Passed is neutral: never red, never dimmed. */
+.v-past .verd,.v-past s{color:var(--ink-2)}
+.v-past s{font-weight:400}
+
+/* Marks: the shape says it without the colour. */
+.m::before{content:"";display:inline-block;width:11px;height:11px;margin-right:6px;border-radius:50%;vertical-align:-1px;box-sizing:border-box}
+.m-fit::before{background:var(--fit-mark)}
+.m-cond::before{border:2px solid var(--cond-mark);background:linear-gradient(90deg,var(--cond-mark) 50%,transparent 50%)}
+.m-unk::before{border:2px dashed var(--ink-3)}
+
+/* Points lines. The qualifier wraps; the number never breaks (at 320 px "≈ 39"
+   once went one digit per line, A02). The gap after it is a real space. */
+.plines{display:grid;gap:2px}
+.plines li{font-variant-numeric:tabular-nums}
+.plines b{font-weight:700;margin-right:0;white-space:nowrap}
+
+/* Requirements | Applying. */
+.two{display:grid;gap:16px}
+.d-sec>h3{margin-bottom:2px;font-size:var(--fs-14);font-weight:700}
+/* Labels above their text, one reading column (redesign revisions): long
+   admissions paragraphs no longer squeeze into a value column beside a label. */
+.kv{display:block;font-size:15px;line-height:22px}
+.kv dt{margin:0;padding:10px 0 2px;border-top:1px solid var(--hairline);font-size:var(--fs-13);font-weight:600;line-height:18px;color:var(--ink-2)}
+.kv dt:first-child{border-top:0;padding-top:4px}
+.kv dd{margin:0;padding:0 0 6px}
+.kv dd p+p{margin-top:4px}
+.kv-none{font-size:15px;line-height:22px}
+/* "Not published" / "Not checked yet": unknown is not "none" and must not
+   read like it. */
+.unk-t{display:inline-block;padding:0 6px;border:1.5px dashed var(--ink-3);border-radius:var(--r-cell);font-size:var(--fs-13);font-weight:600;line-height:20px;color:var(--ink-2)}
+.tag{display:inline-block;margin-left:4px;padding:0 5px;border:1px solid var(--edge);border-radius:var(--r-cell);font-size:var(--fs-12);line-height:16px;font-weight:600;color:var(--ink)}
+.tag-strong{border:2px solid var(--ink)}
+
+/* Notes, after the facts. Red and amber stay off the entry. */
+.notes{display:grid;gap:8px}
+.note{margin:0;padding-left:10px;border-left:3px solid var(--edge);font-size:13.5px;line-height:19px}
+.pnote{font-weight:600}
+.note-strong{border-left-color:var(--ink);font-weight:700}
+
+/* Footer: the official link, Student life, and who checked it. */
+.d-foot{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--ctl);padding:0 14px;border:1px solid var(--edge);border-radius:var(--r-cell);background:var(--panel);font-size:var(--fs-14);font-weight:600;color:var(--ink);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-p:hover{background:var(--accent-press);color:var(--on-accent)}
+/* --tap is 44 px on phone, so a thumb can hit it (notes S16). */
+.lnk{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap);color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.lnk:hover{color:var(--accent-press)}
+.detail .ic{width:16px;height:16px;flex:none;fill:currentColor}
+/* Wraps at 320 px: the date, the signer and the stale tag can be wider. */
+.ok{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0;max-width:100%;color:var(--ink);font-weight:600;white-space:normal}
+.detail .ok .ic{width:14px;height:14px}
+
+@media (min-width: 600px) {
+  /* Help spans its own row so the controls above stay aligned. .more-filters
+     stays a real box (no display:contents) and wraps inside itself. */
+  .f-q>label{position:static;width:auto;height:auto;overflow:visible;clip-path:none}
+  .fbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px}
+  .f-q{flex:1 1 16rem}.f-pts{flex:none;width:5.5rem}.f-hl{flex:none;width:11.5rem}
+  .fbar .more-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 8px;min-width:0}
+  /* Wide enough for the Slovak hints beside their units ("Akékoľvek €/rok",
+     "Podľa univerzity €/mesiac"); they were cut off at 8 and 10.5rem. */
+  .f-fee,.f-budget{flex:none;width:10rem}.f-living{flex:none;width:12.5rem}
+  .fbar .more{display:none}
+  .sheet,.sheet::backdrop{transition:none}
+  /* The count is static from 600 (the column header sticks instead). Every
+     stuck declaration is put back, in case .is-stuck is still on the bar. */
+  .status{position:static;padding:12px var(--gut) 8px}
+  .status.is-stuck{padding:12px var(--gut) 8px;background:var(--ground);border-bottom:0}
+  .is-stuck .cfull{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
+  .is-stuck .cshort{display:none}
+  .status .copy{display:inline-flex}
+  .item{contain-intrinsic-size:auto 200px}
+  /* Stacked facts on a tablet-width list: one band of three. */
+  .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee" "req req req";padding:14px 16px}
+  .chev{top:17px;right:16px}
+  /* The headings stick while the list scrolls. They show only from a 900 px
+     list (the @container rule below), so this is inert until then. */
+  .cols{position:sticky;top:0;z-index:3;padding:4px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-radius:var(--r-panel) var(--r-panel) 0 0;font-size:var(--fs-12);font-weight:600;color:var(--ink-2)}
+  .c1{display:flex;align-items:flex-start;gap:6px;padding-top:4px}
+  /* One sort mark per heading: a 14 x 14 SVG box, the same box active or not,
+     either direction (app.js swaps the symbol). It is centred on the first 16 px label
+     line, so it stays on the first line if a label
+     wraps. The active heading changes colour, never weight, so no label moves
+     when it becomes active (Phase 3 diagnosis: it jumped 14 px). */
+  .cols button{all:unset;display:inline-flex;align-items:flex-start;gap:4px;padding:4px 8px;border-radius:var(--r-cell);color:var(--ink-2);line-height:16px;cursor:pointer}
+  .c1 button{padding:0 6px;margin-top:-4px;padding-block:4px}
+  .cols button{transition:background-color var(--t-fast) var(--ease-out)}
+  .cols button:hover{background:var(--hover)}
+  .cols button:focus-visible{outline:2.5px solid var(--accent);outline-offset:0}
+  .cols .sm{width:14px;height:14px;margin-top:1px;flex:none;fill:currentColor}
+  .cols [aria-pressed=true]{color:var(--ink)}
+  .cols [aria-pressed=true] .sm{color:var(--accent)}
+  /* Right-aligned columns put the mark before the label, so the label's last
+     letter lines up with the end of the dates and fees under it. */
+  .cols .r{justify-self:end;flex-direction:row-reverse}
+  .detail{padding:16px 24px 20px}
+  .d-cells{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
+  .d-cells .c-pts{grid-column:auto}
+}
+
+/* Facts to the right only when the list itself is at least 900 px wide: the
+   title track keeps at least 320 px. Headings and rows share one template,
+   one gap and one inset, so a heading sits over its column at every width. A
+   16 px track holds the row chevron below 1200 px, where rows open in place. */
+@container (min-width: 900px) {
+  .listp>.f-sort{display:none}
+  .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px 16px;column-gap:12px;padding-inline:16px}
+  .cols{display:grid}
+  .row{grid-template-areas:"main pts ddl fee chev" "req req req req req";row-gap:6px;padding-block:12px;align-items:start}
+  .item{contain-intrinsic-size:auto 120px}
+  .r-main{padding-right:0}
+  .chev{position:static;grid-area:chev;margin-top:3px}
+  .row .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .row :is(.c-ddl,.c-fee){align-items:flex-end;text-align:right}
+}
+
+/* Uncapped title track: 494px / 51.5ch at 1440, 974px / 101.5ch at 1920
+   (Plex Sans 16px/600). Cap per spec §5 once it exceeds about 70ch. */
+.page{max-width:1440px;margin-inline:auto}
+/* The detail pane is the only surface with depth; it is --pane-w wide. */
+.pane,.goto{display:none}
+.pane-empty{padding:24px 20px;color:var(--ink-2)}
+/* A different pick fades its new content in (spec §8). The class is only on
+   freshly inserted content, so nothing is left to clean up. */
+.pane-body>.fade-in{transition:opacity var(--t-fast) var(--ease-out)}
+@starting-style{.pane-body>.fade-in{opacity:0}}
+.pane-empty b{display:block;color:var(--ink);margin-bottom:4px}
+
+@media (min-width: 1024px) {
+  .f-q{flex-basis:13rem}.f-hl{width:auto}.f-hl .help{white-space:nowrap}
+  /* The money help sits beside its three fields, level with the boxes, and
+     fills the rest of the line so the drop-downs still start a new one. */
+  #f-budget-help{flex:1 1 calc(100% - 32.5rem - 3 * 8px);min-width:0;margin-bottom:calc((var(--ctl) - 16px) / 2);padding-left:8px}
+}
+/* The pane from 1200 (redesign revisions; it was 1024): 380 px, so the list
+   keeps a readable title track. app.js uses the same query. */
+@media (min-width: 1200px) {
+  .split{display:grid;grid-template-columns:minmax(0,1fr) var(--pane-w);gap:16px;align-items:start}
+  .chev,.cols .chv{display:none}
+  /* The selection fill never fades, in or out; only hovering an unselected
+     row does. */
+  .row{transition:none}
+  .item:not(.is-sel)>.row:hover{transition:background-color var(--t-fast) var(--ease-out)}
+  .is-sel>.row{background:var(--accent-tint);box-shadow:inset 0 0 0 2px var(--accent)}
+  .is-sel .open:focus-visible::after{outline-offset:-6px}
+  .goto{display:block;position:absolute;left:-9999px;color:var(--accent);text-decoration:underline}
+  .goto:hover{color:var(--accent-press)}
+  .goto:focus{left:auto;right:12px;bottom:8px;z-index:2;padding:4px 8px;background:var(--panel)}
+  .pane{display:block;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);box-shadow:var(--shadow)}
+  .pane .detail{padding:16px 20px 20px;border:0;border-radius:0}
+  .pane .d-cells{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"pts pts" "ddl fee"}
+  .pane .d-cells .c-pts{grid-column:1/-1}
+  .r-main{padding-right:0}
+  /* No chevron track once rows no longer open in place. */
+  @container (min-width: 900px) {
+    .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px}
+    .row{grid-template-areas:"main pts ddl fee" "req req req req"}
   }
-  .results > .card:nth-child(2) { animation-delay: 40ms; }
-  .results > .card:nth-child(3) { animation-delay: 80ms; }
-  .results > .card:nth-child(4) { animation-delay: 120ms; }
-  .results > .card:nth-child(5) { animation-delay: 160ms; }
-  .results > .card:nth-child(6) { animation-delay: 200ms; }
-  .results > .card:nth-child(7) { animation-delay: 240ms; }
-  .results > .card:nth-child(8) { animation-delay: 280ms; }
-  .results > .card:nth-child(9) { animation-delay: 320ms; }
-  .results > .card:nth-child(10) { animation-delay: 360ms; }
-}
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
 }
 
-.card-head { display: flex; align-items: flex-start; gap: 0.65rem; }
-.card-titles { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
-.card-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.3rem;
-  font-weight: 600;
-  line-height: 1.22;
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-.degree {
-  margin-left: 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-faint);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 0.1rem 0.35rem;
-  vertical-align: 0.15em;
-  white-space: nowrap;
-}
-.card-uni { margin: 0; font-weight: 500; font-size: 0.92rem; color: var(--ink-soft); }
-.card-place { margin: 0; color: var(--ink-faint); font-size: 0.85rem; }
-
-/* The save control. An outline bookmark that fills when set — a state change
-   you can read at a glance without colour alone carrying it. */
-.star {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.35rem;
-  height: 2.35rem;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink-faint);
-  cursor: pointer;
-  transition: color var(--dur) var(--ease),
-              border-color var(--dur) var(--ease),
-              background-color var(--dur) var(--ease),
-              transform 120ms var(--ease);
-}
-.star svg { width: 1.2rem; height: 1.2rem; }
-.star:hover { color: var(--save); border-color: var(--save); background: var(--save-soft); }
-.star:active { transform: scale(0.92); }
-.star[aria-pressed="true"] {
-  color: var(--save);
-  border-color: var(--save);
-  background: var(--save-soft);
-}
-.star[aria-pressed="true"] svg { fill: currentColor; }
-
-/* The IB block is the differentiator, so it gets the visual weight. */
-.ib-block {
-  background: var(--inset);
-  border: 0;
-  border-radius: var(--r-lg);
-  padding: 0.9rem 1rem;
-  display: grid;
-  gap: 0.5rem;
-}
-.ib-label {
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--ink-faint);
-}
-/* Label / value rows. Labels stay narrow so the values line up. */
-.req {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 5.25rem minmax(0, 1fr);
-  gap: 0.4rem 0.75rem;
-  font-size: 0.88rem;
-}
-.req-label {
-  color: var(--ink-soft);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding-top: 0.35em;
-}
-.req-value { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; align-items: baseline; }
-
-.req-points { display: flex; align-items: baseline; gap: 0.35rem; }
-.req-number {
-  font-family: var(--font-display);
-  font-size: 2.1rem;
-  font-weight: 600;
-  line-height: 0.95;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.req-unit { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em; color: var(--ink-faint); text-transform: uppercase; }
-
-/* The absence of a requirement is useful but must not shout like a number. */
-.req-quiet { color: var(--ink-soft); }
-
-/* "Not checked" is not the same as "none" and must never read like it. */
-.req-unknown { color: var(--warn); font-weight: 600; }
-
-/* Each extra hurdle as its own chip, so three of them scan as three. The
-   admission route reads the same way: "Entrance exam" and "can be waived" are
-   two facts, not one sentence. */
-.req-tag, .req-lang, .req-admission {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.12rem 0.5rem;
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-.req-lang { color: var(--ink-soft); border-color: var(--line); }
-.req-admission { font-weight: 500; }
-
-.req-none { margin: 0; font-size: 0.88rem; font-weight: 500; color: var(--ink-soft); }
-
-.facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.35rem 0.85rem;
-  font-size: 0.875rem;
-}
-.facts dt { color: var(--ink-faint); }
-.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-.facts dd.past { color: var(--danger); font-weight: 600; }
-.facts dd.urgent { color: var(--warn); font-weight: 600; }
-.facts dd.unknown { color: var(--warn); }
-.facts .fact-source { color: var(--ink-faint); font-size: 0.8rem; }
-.facts dd.sub {
-  grid-column: 1 / -1;
-  color: var(--ink-faint);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  font-variant-numeric: normal;
-}
-.facts dt:empty { display: none; }
-
-.badge-urgent, .badge-past, .badge-stale, .badge-danger {
-  display: inline-block;
-  margin-left: 0.4rem;
-  border-radius: 999px;
-  padding: 0.05rem 0.45rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  vertical-align: 0.05em;
-}
-.badge-urgent, .badge-stale { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
-.badge-past, .badge-danger  { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line); }
-
-.note {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-md);
-  padding: 0.45rem 0.6rem;
-}
-
-.card-foot {
-  margin-top: auto;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 0.75rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1rem;
-  font-size: 0.8rem;
-}
-.verified { margin: 0; color: var(--ink-faint); }
-.official-link, .life-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.official-link { font-weight: 500; color: var(--link); }
-.official-link:hover { border-bottom-color: currentColor; }
-.life-link { color: var(--ink-soft); }
-.life-link:hover { color: var(--link); border-bottom-color: currentColor; }
+/* The save star on a row: an outline bookmark that fills when saved, a shape
+   change you can read without colour. 32 px, 44 on a phone (--tap). */
+.star{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:max(32px,var(--tap));height:max(32px,var(--tap));margin:-4px 0 0;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.row .star .ic{width:20px;height:20px;fill:none}
+.star:hover{background:var(--panel);color:var(--accent)}
+.star[aria-pressed="true"]{color:var(--accent)}
+.star[aria-pressed="true"] .ic{fill:currentColor}
+/* The detail's "Save to my list". */
+.save .ic{fill:none}
+.save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
+.save[aria-pressed="true"] .ic{fill:currentColor}
 
 /* ------------------------------------------------- loading + empty */
 
-.skeletons { display: grid; gap: 1rem; }
-.skeleton-card {
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 1.4rem;
-  display: grid;
-  gap: 0.7rem;
+.skeletons{display:grid}
+.sk-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;min-height:145px;border-top:1px solid var(--hairline)}
+.sk-row>span{display:block;border-radius:var(--r-cell);background:var(--hover);height:18px}
+.sk-row .sk-title{grid-column:1/-1;width:65%;height:20px}
+.sk-row .sk-sub{grid-column:1/-1;width:45%}
+.sk-row .sk-cell{height:28px}
+.empty{margin:12px 0;padding:20px 16px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);display:grid;gap:8px;justify-items:start}
+.empty :where(h2,p,ul){margin:0}
+.empty h2{font-size:var(--fs-16);font-weight:700}
+.empty ul{list-style:disc;padding-left:18px;color:var(--ink-2)}
+.issues{padding:12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13)}
+.issues summary{font-weight:600;cursor:pointer}
+.issues ul{list-style:disc;padding-left:18px;margin:6px 0;color:var(--ink-2)}
+@media (min-width: 600px) {
+  .sk-row{grid-template-columns:minmax(0,1fr) 10.5rem 6.75rem 6.75rem;min-height:75px}
+  .sk-row .sk-title{grid-column:1;grid-row:1;width:80%}
+  .sk-row .sk-sub{grid-column:1;grid-row:2;width:60%}
+  .sk-row .sk-cell{grid-row:1/3}
 }
-.sk {
-  display: block;
-  border-radius: var(--r-sm);
-  background: var(--line-soft);
-  position: relative;
-  overflow: hidden;
-}
-.sk-title { height: 1.15rem; width: 62%; }
-.sk-line { height: 0.8rem; width: 40%; }
-.sk-line.short { height: 0.75rem; width: 28%; }
-.sk-block { height: 4.5rem; width: 100%; border-radius: var(--r-lg); }
-
-@media (prefers-reduced-motion: no-preference) {
-  .sk::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-    animation: shimmer 1.4s infinite;
-  }
-}
-@keyframes shimmer { to { transform: translateX(100%); } }
-
-.empty-state {
-  display: grid;
-  justify-items: center;
-  gap: 0.2rem;
-  background: var(--surface);
-  border: 0;
-  border-radius: var(--r-xl);
-  padding: 3.25rem 1.5rem;
-  text-align: center;
-  color: var(--ink-soft);
-}
-.empty-icon {
-  width: 2rem;
-  height: 2rem;
-  color: var(--ink-faint);
-  margin-bottom: 0.5rem;
-}
-.empty-state p { margin: 0.15rem 0; max-width: 40ch; }
-.empty-state strong { font-family: var(--font-display); color: var(--ink); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
-
-.issues {
-  margin-top: 1.75rem;
-  font-size: 0.85rem;
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-lg);
-  padding: 0.7rem 1rem;
-}
-.issues summary { cursor: pointer; font-weight: 600; }
-.issues ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
-.issues li { margin-bottom: 0.25rem; }
 
 /* ------------------------------------------------------- wider screens */
 
-/* The serif masthead is generous by design, but on a phone it plus the
-   not-checked-yet warning pushed the first card 523px down an 812px screen.
-   Trimmed here only; the airy version returns at 720px. */
-@media (max-width: 719px) {
-  .site-header { padding: 1.35rem 0 0.9rem; }
-  .tagline { margin-top: 0.3rem; }
-}
-
-@media (min-width: 720px) {
-  .filterbar { position: sticky; top: 0.75rem; z-index: 10; box-shadow: 0 8px 24px -18px rgba(20, 17, 15, 0.35); }
-  /* minmax(0, 1fr), never plain 1fr: a bare 1fr refuses to shrink below its
-     content's min-width, and one long unbroken requirement string then pushes
-     the whole grid wider than the page. */
-  /* Stretch, not start: the two cards in a row take the height of the taller
-     one, so neighbours line up instead of ending at different heights. */
-  .results, .skeletons { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+/* Skip to results, Tab and the arrow keys land below whatever sticks: the
+   stuck count line below 600, the column header from 600 (A07). The arrow
+   keys also keep 8 px under a row. */
+/* measured 2026-10-27, fonts ready: the stuck count line is 31 px, 49 px at
+   320 when the short count wraps; 49 + 8 = 57 */
+#results,#results :is(li,a,button){scroll-margin-top:57px}
+#results>.item{scroll-margin-bottom:8px}
+@media (min-width: 600px) {
+  /* measured 2026-10-27: the sticky column header is 34.4 px, 51.8 px at 600
+     where its first label wraps; 52 + 8 = 60 */
+  #results,#results :is(li,a,button){scroll-margin-top:60px}
 }
 
 /* On a touch screen the controls grow to a 44px target. Hover styling is
    dropped too — on touch it sticks after a tap and reads as selected. */
 @media (pointer: coarse) {
+  .option,.achip,.opt-q .inp{min-height:44px}
   .star { width: 2.75rem; height: 2.75rem; }
   .chip { padding: 0.5rem 0.85rem; }
   .button { padding: 0.65rem 0.95rem; }
-  .card:hover { border-color: var(--line); box-shadow: var(--shadow-sm); }
-  .chip:hover { border-color: var(--line); background: var(--surface); }
+  .chip:hover { border-color: var(--edge); background: var(--panel); }
 }
 
 /* ------------------------------------------------- motion preferences */
 
+/* Instant, not 0.01ms: a near-zero transition still fires its events late and
+   still runs. The slot's exit is removed by app.js at once in this case. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  *, *::before, *::after, ::backdrop {
+    transition: none !important;
+    animation: none !important;
     scroll-behavior: auto !important;
   }
 }
 
 /* ------------------------------------------------------------- printing */
 
+/* A08: the list on screen, in its order, with every open slot in full; nothing
+   else is opened. Paper is A4-narrow (about 720-800 CSS px), under the 900 px
+   list query, so the stacked, labelled row is what prints. Ink on white: no fills, tints, rings or shadows, but
+   every verdict word, dashed unknown box, mark and struck date stays. */
 @media print {
-  body { background: #fff; color: #000; padding: 0; font-size: 11pt; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  body { background: none; color: var(--ink); padding: 0; font-size: 11pt; }
 
-  .filterbar, .results-bar, .shortlist-bar, .site-footer, .masthead-stat,
-  .issues, .skip-link, .star, .skeletons, .empty-icon { display: none; }
+  /* .listp>.f-sort, not .f-sort: the screen rule that shows the list's Sort
+     select under 900 px has that weight, and paper is under 900 px, so a
+     plain .f-sort lost and the select printed. */
+  .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
+  .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
+  .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
+  .split{display:block}
 
-  /* The "nobody has checked this" warning must survive onto paper — a printed
-     sheet has lost every other bit of context. */
-  .banner { border: 1px solid #000; color: #000; background: none; box-shadow: none; }
-  .banner::before { display: none; }
+  /* The sample warning must survive onto paper, in full: a printed sheet has
+     lost every other bit of context. The saved-copy and failure banners go. */
+  .bn { border: 1px solid var(--ink); color: var(--ink); background: none; box-shadow: none; }
+  .bn-sample { border-width: 2px; }
+  .src-more { display: inline; }
 
   .results { display: block; }
+  /* The country stays in words; its tint goes, like every other fill. */
+  .cc[data-country] { background: none; color: var(--ink); padding: 0; }
+  .listp, .row, .is-open>.row, .is-sel>.row, .cell, .detail { background: none; box-shadow: none; }
+  /* .cell out-ranks the screen's .v-fit .verd and friends, which come earlier. */
+  .open, .d-title, .cell .verd, .cell .r2, .cell .ic { color: var(--ink); }
+  /* The marks are the shape of the verdict; keep them when backgrounds are off. */
+  .m::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  /* Focus is a screen state; a focused row printed its blue ring. */
+  :focus-visible, .open:focus-visible::after { outline: none; }
 
-  .card {
-    /* The country tints are screen-only. On paper they would waste ink, and a
-       browser set to drop background colours would print them inconsistently,
-       so the card falls back to a plain ruled box. */
-    background: none;
-    border: 1px solid #999;
-    border-radius: 0;
-    box-shadow: none;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-bottom: 0.5rem;
-    opacity: 1;
-    animation: none;
-    /* Undo the on-screen skipping, or off-screen cards print blank. */
-    content-visibility: visible;
-  }
-  .card.is-starred::before { display: none; }
-  .ib-block { background: none; border: 1px solid #ccc; }
-  /* .card-title and .req-number take their colour from the country tint on
-     screen; on paper that colour has no panel behind it to relate to. */
-  .card-title, .req-number, .req-unit, .card-uni, .official-link, .ib-label { color: #000; }
+  /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
+     whole; a long open detail may run on to the next page. */
+  .item { content-visibility: visible; contain-intrinsic-size: none; }
+  .row { break-inside: avoid; page-break-inside: avoid; }
+  /* An open slot prints open, mid-animation or not; one that is closing goes. */
+  .expand { grid-template-rows: 1fr; opacity: 1; }
+  .expand-inner { overflow: visible; }
+  .expand[inert] { display: none; }
+  .kv dt, .kv dd, .note { break-inside: avoid; }
 
-  /* A printed link is useless without its address. */
-  .official-link::after {
+  /* A printed link is useless without its address, and the address must wrap. */
+  .d-foot .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
+  .d-foot .btn-p::after {
     content: " — " attr(href);
     font-weight: 400;
     font-size: 0.85em;
     word-break: break-all;
   }
-  .official-link svg, .life-link { display: none; }
+  .d-foot svg, .d-foot .lnk { display: none; }
 }
+
+/* One detail-level control and quiet notes keep source-language context local. */
+.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;margin-bottom:16px;cursor:pointer}
+.english-note{font-size:var(--fs-14);color:var(--ink-2);margin-top:12px}
+.data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+.data-original[hidden]{display:none}

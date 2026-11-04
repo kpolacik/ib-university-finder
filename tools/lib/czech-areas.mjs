@@ -5,14 +5,15 @@
 
 import { areasFor } from './ireland.mjs';
 
-const CZ = [
+export const CZ = Object.freeze([
   [/informati|informační|programov|počítač|kyber|softwar|umělá inteligence|datov|data analytics|data science/i, 'Computer Science'],
   [/inženýr|strojn|elektrotech|elektron|telekomunik|strojír|automatiz|polovodič|čip|stavebn|stavitel|technick|mechatron|robot|energet|kybernetik|mobilit|vozid|letad|pilot|dopravní/i, 'Engineering'],
   [/matemat|statisti|pojistn|algebr/i, 'Mathematics'],
   [/fyzik|astro|jadern|kvant/i, 'Physics'],
   [/chemi|biochem|toxikolog/i, 'Chemistry'],
   [/biolog|genet|mikrobio|ekolog|botanik|zoolog|bioinformat/i, 'Biology & Life Sciences'],
-  [/geograf|geolog|geotechnolog|životní\S* prostředí|přírodními zdroji|vědy o zemi|environment|zeměd|lesn|meteorolog|kartograf/i, 'Environmental Sciences'],
+  // The forestry stem must start a word: tělesná means physical, not forestry.
+  [/geograf|geolog|geotechnolog|životní\S* prostředí|přírodními zdroji|vědy o zemi|environment|zeměd|(?<!\p{L})lesn|meteorolog|kartograf/iu, 'Environmental Sciences'],
   [/lékař|léčiv|dentist|medic|zubní|stomatolog|farmac|ošetřov|porodní|fyzioterap|ergoterap|adiktolog|hygien|zdravot|nutri|radiolog|optometr|optik|záchran|laborator|ortopti/i, 'Medicine & Health'],
   [/psycholog/i, 'Psychology'],
   [/ekonom|financ|bankovnictv|pojišťovnictv|zdanění|daňov|hospodářstv/i, 'Economics'],
@@ -28,7 +29,7 @@ const CZ = [
   [/architekt|urbanis/i, 'Architecture'],
   [/vzdělávání|pedagog|učitel|vychovatel|andragog/i, 'Education'],
   [/sport|coach|fitness|tělesn|trenér|kinantrop|tělovýchov|regenerac/i, 'Sports Science'],
-];
+]);
 
 /** Up to three subject areas from a Czech title; an English title falls through to areasFor. */
 export function areasForCz(title) {
