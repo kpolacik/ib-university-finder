@@ -733,12 +733,12 @@ try {
   renderSourceLine(source, rows, { ...base, draftCount: 1 });
   check('source counts every loaded row, university and country with final punctuation',
     !source.hidden && source.children[0].textContent === '3 programmes · 2 universities · 2 countries.'
-      && source.children[0].className === 'stat' && source.textContent.includes('not a source of truth.')
+      && source.children[0].className === 'stat' && source.textContent.includes("Always check the university's official page before you apply.")
       && source.children[2].className === 'src-more'
-      && source.children[2].textContent === 'Check requirements, EU fees and deadlines on the official admissions page before applying.');
+      && source.children[2].textContent === 'Requirements, fees and deadlines can change.');
   renderSourceLine(source, rows.slice(0, 1), { ...base, draftCount: 1 });
   equal('one unchecked programme keeps the research warning with singular source counts', source.textContent,
-    '1 programme · 1 university · 1 country. This site is a starting point for research, not a source of truth. Check requirements, EU fees and deadlines on the official admissions page before applying.');
+    "1 programme · 1 university · 1 country. Always check the university's official page before you apply. Requirements, fees and deadlines can change.");
   renderSourceLine(source, rows, base);
   check('checked data hides and clears the source line', source.hidden && source.children.length === 0);
   for (const meta of [base, { ...base, draftCount: 3 }]) {
@@ -782,7 +782,7 @@ try {
     check(`snapshot plus issues${samples ? ' plus samples' : ''} keeps one neutral status and its link`,
       banner.children.length === (samples ? 2 : 1) && banner.children[0].className === 'bn bn-saved'
         && banner.children[0].textContent.includes('saved copy') && banner.children[0].textContent.includes('View data problems.')
-        && !banner.textContent.includes('starting point for research'));
+        && !banner.textContent.includes("Always check the university's official page"));
   }
   renderSourceBanner(banner, base);
   check('rerender removes obsolete banner children and hides the container', banner.hidden && banner.children.length === 0);
@@ -4565,8 +4565,8 @@ for (const text of [
   'Find European bachelor programmes by IB requirements.',
   'Try fewer words or check your spelling. Words can appear in any order: “Dublin computer” works. Typos are not corrected.',
   'Some problems hide a row; others leave a value unknown. Each message explains what happened.',
-  'Check requirements, EU fees and deadlines on the official admissions page before applying.',
-  'Students maintain this site, and details may change.',
+  "Always check the university's official page before you apply. Requirements, fees and deadlines can change.",
+  'Students maintain this site.',
   '>Export CSV', '>Clear my list', '>Data problems',
 ]) check(`static wording: ${text}`, indexHtml.includes(text));
 // Leon, 2026-11-02: the filter hints were too long. The search hint is gone

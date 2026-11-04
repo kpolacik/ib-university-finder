@@ -419,8 +419,9 @@ plans/backlog/wording.md.
 IB points, EU fee, subject area, IB subjects and language requirement consistently.
 Points help is visible on phones; shared help in the extra filters explains
 that unknown figures, fees and deadlines stay visible. Irish detail fees say
-"Student contribution + levy". The masthead still says "This site is a starting
-point for research, not a source of truth." Data prose, saved snapshots and CAO
+"Student contribution + levy". The masthead says "Always check the university's
+official page before you apply. Requirements, fees and deadlines can change." (Jakub, 2026-11-04;
+it used to call the site "a starting point for research, not a source of truth"). Data prose, saved snapshots and CAO
 marker sentences were left for after the upstream merge (done 2026-11-02, so they can be reworded now); Slovak remains disabled. See
 plans/backlog/wording.md for the translation queue.
 

@@ -859,8 +859,8 @@ export function renderSourceLine(node, rows, meta) {
   const countries = new Set(rows.map((r) => r.country).filter(Boolean)).size;
   node.append(
     el('b', 'stat', `${rows.length} ${t('programme_count', { count: rows.length })} · ${universities} ${t('university_count', { count: universities })} · ${countries} ${t('country_count', { count: countries })}.`),
-    t('this_site_is_a_starting_point_for_research_not_a_source_of_truth'),
-    el('span', 'src-more', t('check_requirements_eu_fees_and_deadlines_on_the_official_admissions')),
+    t('always_check_the_official_page_before_you_apply'),
+    el('span', 'src-more', t('requirements_fees_and_deadlines_can_change')),
   );
 }
 
