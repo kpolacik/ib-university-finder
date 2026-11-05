@@ -1157,6 +1157,12 @@ body.compact .filters-btn{opacity:1;visibility:visible;transform:none}
 .legend i{width:26px;height:16px;border-radius:4px;flex:none}
 .legend-fit{background:var(--fit-fill)}.legend-cond{background:var(--cond-fill)}.legend-time{background:var(--time-fill)}.legend-unknown{border:1.5px dashed var(--ink-3)}
 .mylist:not(.is-list):not(:has(.ml-note:not([hidden]),.ml-hint:not([hidden]),.ml-row>.cmp-cta:not([hidden]))){display:none}
+/* Batch 3 B1 (Leon, 2026-11-05, Q2): on a phone the main view shows this bar
+   only for a failure note; the header's "My list (n)" is the way in. The box
+   sat as a half-empty second row above the cards. From 600 px the rule above
+   still lets the Compare hint and button show it until Compare leaves the bar
+   (workstream A); then both rules say the same thing. */
+@media (max-width: 599.98px) {.mylist:not(.is-list):not(:has(.ml-note:not([hidden]))){display:none}}
 .toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:grid;gap:8px;justify-items:center;pointer-events:none;max-width:calc(100vw - 24px);width:max-content}
 .toast{pointer-events:auto;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:10px;font-size:14px;animation:toast-in 240ms var(--ease-out)}
 .toast button{border:0;background:transparent;color:var(--accent-tint);font-weight:600;cursor:pointer;min-height:24px}

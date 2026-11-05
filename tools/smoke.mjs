@@ -1510,6 +1510,36 @@ async function runBatch2B(base) {
         await page.ev('window.scrollTo(0,0)');
         const bar = await page.ev(`({display:getComputedStyle(${el('shortlist-bar')}).display,note:${el('ml-note')}.hidden})`);
         assert(bar.display==='none' && bar.note,'empty list bar visible');
+        if (width < 600) {
+          // Batch 3 B1 (Leon, Q2): on a phone the main view shows no My list box,
+          // so the hint and the button there are gone; Compare is reached inside
+          // My list through the header until workstream A replaces the picker.
+          const hiddenBar = `getComputedStyle(${el('shortlist-bar')}).display==='none' && ${el('ml-note')}.hidden`;
+          await page.click(`document.querySelector('#results button.star')`,'first save');
+          await page.ev(`window.scrollTo(0,0)`);
+          assert(await page.ev(hiddenBar),'phone main bar shows with one save');
+          await shot('main-1saved');
+          await page.click(`document.querySelectorAll('#results button.star')[1]`,'second save');
+          await page.ev(`window.scrollTo(0,0)`);
+          assert(await page.ev(hiddenBar),'phone main bar shows with two saves');
+          await page.click(el('header-list'),'header My list');
+          await page.waitFor(rendered('#ml-compare > summary'),5000,'picker in My list');
+          await page.click(`document.querySelector('#ml-compare > summary')`,'Compare picker');
+          await page.waitFor(`({ok:${el('ml-compare')}.open && document.querySelectorAll('#ml-picks input').length===2,why:'picker not open'})`,5000,'Compare picks');
+          for (const i of [0,1]) await page.click(`document.querySelectorAll('#ml-picks label')[${i}]`,`pick ${i+1}`);
+          await page.click(el('ml-compare-go'),'Compare 2');
+          await page.waitFor(`({ok:!${el('compare')}.hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===2,why:'two-column comparison missing'})`,5000,'Compare table');
+          assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'comparison overflows page');
+          await page.click(el('cmp-close'),'Close comparison');
+          await page.click(el('f-shortlist-only'),'Back to all programmes');
+          await page.click(`document.querySelectorAll('#results button.star')[2]`,'third save');
+          await page.ev('window.scrollTo(0,0)');
+          assert(await page.ev(hiddenBar),'phone main bar shows with three saves');
+          await page.click(el('header-list'),'header My list again');
+          await page.waitFor(rendered('#ml-compare > summary'),5000,'picker with three');
+          assert(await page.ev(`document.querySelector('#ml-compare > summary span').textContent===${JSON.stringify(text.r2_compare_n.replace('{count}','3'))}`),'wrong Compare (3)');
+          await shot('compare-3');
+        } else {
         await page.click(`document.querySelector('#results button.star')`,'first save');
         await page.ev(`window.scrollTo(0,0)`);
         await page.waitFor(rendered('#ml-compare-hint'),5000,'Compare hint');
@@ -1534,6 +1564,7 @@ async function runBatch2B(base) {
         await shot('compare-3');
         if (width===600) return;
         await page.click(el('f-shortlist-only'),'Open My list');
+        }
         await page.click(`document.querySelector('#ml-share > summary')`,'Share panel');
         await page.waitFor(rendered('#ml-share-help'),5000,'share help');
         assert(await page.ev(`${el('ml-share-help')}.textContent===${JSON.stringify(text.r2_share_help)}`),'wrong share help');
@@ -1571,7 +1602,9 @@ async function runBatch2B(base) {
         await page.ev(`localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,3).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
         await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'layout saves');
         assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'page overflows');
-        await page.waitFor(rendered('#ml-compare-open'),5000,'layout CTA');
+        // Batch 3 B1: a phone's main view has no My list box, so no CTA to wait for.
+        if(width>=600) await page.waitFor(rendered('#ml-compare-open'),5000,'layout CTA');
+        else assert(await page.ev(`getComputedStyle(document.querySelector('#shortlist-bar')).display==='none'`),'phone main bar shows');
         if(width>=600) assert(await page.ev(`(getComputedStyle(document.querySelector('.copy-long')).display==='none')===${width<1024}`),'wrong long-label breakpoint');
       });
     }finally{await page.close();}
@@ -1828,6 +1861,47 @@ async function runBatch3A(base) {
 
 async function runBatch3B(base) {
   watchdog.refresh();
+  const shots = '/tmp/ib-batch3-b';
+  await mkdir(shots, { recursive: true });
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'B3B page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'B3B reload');
+    return page;
+  };
+  // Saves the first n programmes of the main list, then reloads.
+  const seed = async (page, n) => {
+    await page.ev(`(()=>{const ids=[...document.querySelectorAll('#results>li.item')].slice(0,${n}).map(li=>li.dataset.id);localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(ids));window.__oldPage=true;location.reload()})()`);
+    await page.waitFor(ready, 15000, 'B3B seeded reload');
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+
+  // B1 (Leon, Q2): the phone main view had a half-empty My list box above the
+  // cards. Below the status row the list comes first now.
+  for (const width of [320, 390]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 844);
+    try {
+      await check(`${width}/${ui}`, 'B3B main top', 'with 3 saved, no My list box: the list follows the status row', async () => {
+        await seed(page, 3);
+        await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+        await settle(page);
+        const m = await page.ev(`(()=>{const status=document.querySelector('.stream>.status');const after=[];let on=false;
+          for(const n of document.querySelector('.stream').children){if(n===status){on=true;continue}if(!on)continue;
+            const s=getComputedStyle(n),r=n.getBoundingClientRect();if(s.display!=='none'&&r.height>0)after.push(n.id||n.className)}
+          return {after,bar:getComputedStyle(document.querySelector('#shortlist-bar')).display,saved:document.querySelector('#header-list-count').textContent,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(`${shots}/main-top-${width}-${ui}.png`, Buffer.from(data, 'base64'));
+        assert(m.saved === '3', `header count ${m.saved}`);
+        assert(m.bar === 'none', `My list box shows: ${m.bar}`);
+        // The count summary is the status row's own second line (aria-hidden copy).
+        const first = m.after.filter((n) => n !== 'count-summary' && n !== 'count count-summary')[0];
+        assert(first === 'split', `first after the status row: ${JSON.stringify(m.after)}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+      });
+    } finally { await page.close(); }
+  }
 }
 
 async function runBatch3C(base) {

@@ -6112,6 +6112,21 @@ check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText))
 section('Batch 3 · A');
 
 section('Batch 3 · B');
+// B1 (Leon, Q2): on a phone the main view's My list box was a half-empty
+// second row above the cards. The stub has no layout, so the state is checked
+// here and the computed display:none in smoke "B3B main top".
+check('B3B1 on a phone the main-view My list bar is hidden unless a failure note shows', (() => {
+  const phone = ruleAt(cssText, '.mylist:not(.is-list):not(:has(.ml-note:not([hidden])))', '(max-width: 599.98px)');
+  return /display:none/.test(phone);
+})());
+appCheck('B3B1 with 3 saved and no note the main-view bar carries no note (so the phone rule hides it); a failed save shows the note', ({ run, get, item, fire, context, ids: [a] }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  const bar = get('shortlist-bar');
+  if (bar.hidden || bar.classList.contains('is-list') || !get('ml-note').hidden) return false;
+  context.saveWorks = false;
+  fire(starOf(item(a)), 'click');
+  return !bar.hidden && !bar.classList.contains('is-list') && !get('ml-note').hidden && get('ml-note').textContent !== '';
+});
 
 section('Batch 3 · C');
 
