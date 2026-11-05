@@ -6838,5 +6838,58 @@ check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 
   && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
   && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
 
+section('Alignment · list, detail, Compare');
+// The 2026-11-05 alignment audit (list-detail and compare findings). Layout is
+// measured in Chrome (smoke runAlignListCompare); these pin the rules and the
+// one DOM change, so a later edit cannot quietly undo them.
+{
+  const block = cssText.slice(cssText.indexOf('.deg,.d-title .deg{'), cssText.indexOf('.r-main{grid-template-columns:minmax(0,1fr) auto auto;'));
+  check('AL degree: wraps inside itself as one unit, never nowrap past the pane or the row (Slovak long-cycle degree, 384 px)',
+    /\.deg,\.d-title \.deg\{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal\}/.test(block));
+  check('AL row labels start with the value text (the cell padding), the fee label ends with it',
+    /\.row \.cell \.lab\{padding-left:inherit\}\s*\.row \.c-fee \.lab\{padding-left:0;padding-right:inherit\}/.test(block));
+  check('AL row toggles centre on the title\'s first line, out-ranking the old -4 px margin',
+    /\.r-main>:is\(\.cmpi,\.star\)\{margin-top:calc\(var\(--fs-16\) \* 1\.35 \/ 2 - 22px\)\}/.test(block)
+    && /@media \(pointer:coarse\)\{\s*\.r-main>:is\(\.star,\.cmpi\):hover\{background:none\}/.test(block));
+  check('AL the last open row is clipped to the card corners; a sort heading is as wide as its label',
+    /#results>\.item:last-child>\.expand>\.expand-inner\{border-radius:0 0 calc\(var\(--r-panel\) - 1px\)/.test(block)
+    && /@container \(min-width: 800px\)\{\.cols>button\{justify-self:start\}\}/.test(block) && /\.expand-inner\{min-height:0;overflow:hidden\}/.test(cssText));
+  check('AL detail pair: labels break only between words; stacked below 450 px of footer (330 px in English); equal icons',
+    /\.d-foot\{container:dfoot \/ inline-size\}\s*\.d-actions \.btn\{overflow-wrap:normal\}\s*\.d-actions :is\(\.save,\.cmpb\) \.ic\{width:18px;height:18px\}/.test(block)
+    && /@container dfoot \(max-width: 449\.98px\)\{\.d-foot>\.d-actions\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(block)
+    && /@container dfoot \(min-width: 330px\)\{\.d-foot>\.d-actions:lang\(en\)\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/.test(block));
+  check('AL compare Save sits at the foot of every header cell, one width; columns keep room for it from 600 px',
+    /\.cmp-t th\.cmp-p\{padding-bottom:62px\}/.test(block) && /\.cmp-t th\.cmp-p \.cmp-save\{position:absolute;left:12px;bottom:10px;/.test(block)
+    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px\}\s*\}/.test(block));
+  check('AL compare "x": its own strip below 1024 px, 4 px from the cell edge so its focus ring is not clipped',
+    /@media \(max-width:1023\.98px\)\{\s*\.cmp \.cmp-t th\.cmp-p::before\{display:none\}\s*\.cmp-t th\.cmp-p\{padding-top:44px\}\s*\}/.test(block)
+    && /\.cmp-x\{position:absolute;top:4px;right:4px;/.test(cssText));
+  check('AL compare fact names are 6.5rem from 600 to 1023 px; one programme sizes its column to its facts',
+    /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\.cmp \.cmp-t tbody th,\.cmp \.cmp-t \.cmp-c\{width:6\.5rem;padding-inline:10px\}\}/.test(block)
+    && /@media \(min-width:600px\)\{\.cmp-t\[data-n="1"\]\{width:auto\}\}/.test(block));
+  check('AL compare: shared first baseline, the link wraps as text, 44 px Close and Browse, landing clear of what sticks',
+    /\.cmp \.cmp-t tbody th\{line-height:20px\}/.test(block) && /\.cmp-t \.lnk\{display:inline;min-height:0;/.test(block) && /\.cmp-t \.lnk-end\{white-space:nowrap\}/.test(block)
+    && /#cmp-close,#cmp-browse\{height:44px\}/.test(block) && /\.cmp\{scroll-margin-top:calc\(var\(--header-visible\) \+ 8px\)\}/.test(block)
+    && /@media \(max-width:599\.98px\)\{\.cmp\{scroll-margin-top:calc\(var\(--count-height\) \+ 8px\)\}\}/.test(block));
+  check('AL while Compare is open the list count is hidden; toast actions are one line and 44 px wide; print keeps no room for Save',
+    /\.stream:has\(>#compare:not\(\[hidden\]\)\) :is\(#result-count,\.status \.cshort\)\{visibility:hidden\}/.test(block)
+    && /\.toast button\{flex:none;min-width:44px;white-space:nowrap\}/.test(block)
+    && /@media print\{\.cmp \.cmp-t th\.cmp-p\{padding-block:10px\}\.cmp \.cmp-t \.lnk \.ic\{display:none\}\}/.test(block));
+  // The section must sit before Batch 3 · A, whose later rules it does not
+  // override by order: each override above wins by specificity instead.
+  check('AL the section sits just above Batch 3 · A', css.indexOf('/* Alignment fixes · list, detail, Compare */') > 0
+    && css.indexOf('/* Alignment fixes · list, detail, Compare */') < css.indexOf('/* Batch 3 · A: Compare */'));
+  const rows = [live.find((r) => r.officialUrl), live.filter((r) => r.officialUrl)[1]];
+  const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, compareMod.compareTable(rows, noFilters()), { onlyDifferences: false }); return div; });
+  const links = findAll(box, (n) => n.tagName === 'a' && n.classList.contains('lnk'));
+  check('AL compare link: the last word and its icon share a no-wrap span, before the hidden "opens in a new tab"; the text reads as before',
+    links.length === 2 && links.every((a) => {
+      const [text, end, hidden] = a.children;
+      return text === 'Official admissions ' && end.classList?.contains('lnk-end') && end.children[0] === 'page' && end.children[1]?.tagName === 'svg'
+        && hidden.classList?.contains('visually-hidden') && a.children.length === 3
+        && a.textContent.startsWith('Official admissions page');
+    }), JSON.stringify(links.map((a) => a.children.map((c) => typeof c === 'string' ? c : c.className))));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

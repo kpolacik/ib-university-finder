@@ -2559,6 +2559,321 @@ async function runBatch3C(base) {
   }
 }
 
+// --- Alignment fixes: list, detail, Compare ---------------------------------------
+// The 2026-11-05 alignment audit (list-detail and compare findings), measured in
+// Chrome: the long Slovak degree, the detail's Save/Compare labels, row labels and
+// toggles, the Compare header (Save on one line, "x" room, names that only break
+// when a word is wider than its column), heights, toasts and the printed link.
+async function runAlignListCompare(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-align-fix-a/smoke';
+  await mkdir(shots, { recursive: true });
+  console.log('Alignment (list, detail, Compare) Chrome version: ' + (await cdp.send('Browser.getVersion')).product);
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], saves = [], touch = false } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'alignment page');
+    if (touch) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'alignment reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const shot = async (page, name) => {
+    await settle(page);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  // Lines of an element's own text (visually hidden parts left out), and the
+  // places where a word continues on the next line: "porovnani|a". A break after
+  // a hyphen or slash is a real break opportunity, not a split word.
+  const TEXT = `window.__lines=(el)=>{const tops=new Set();const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while((n=w.nextNode())){if(n.parentElement.closest('.visually-hidden'))continue;const r=document.createRange();r.selectNodeContents(n);for(const b of r.getClientRects())if(b.width>0.5)tops.add(Math.round(b.top))}return tops.size};
+    window.__splits=(el)=>{const out=[];const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while((n=w.nextNode())){if(n.parentElement.closest('.visually-hidden'))continue;const s=n.textContent;let prev=null;for(let i=0;i<s.length;i++){if(/[\\s\\u2060]/.test(s[i])){prev=null;continue}const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);const b=r.getClientRects()[0];if(!b)continue;if(prev!==null&&b.top>prev+2&&!/[-\\/–]/.test(s[i-1])){let a=i,z=i;while(a>0&&!/\\s/.test(s[a-1]))a--;while(z<s.length&&!/\\s/.test(s[z]))z++;out.push({word:s.slice(a,z),at:i-a,node:n,el})}prev=b.top}}return out};
+    window.__wordWidth=(el,word)=>{const c=document.createElement('span');const s=getComputedStyle(el);c.style.cssText='position:absolute;visibility:hidden;white-space:nowrap;font:'+s.font+';letter-spacing:'+s.letterSpacing;c.textContent=word;document.body.append(c);const w=c.getBoundingClientRect().width;c.remove();return w};true`;
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const longCycle = data.filter((r) => r.degreeType === 'Long-cycle master');
+  const byLength = [...data].sort((a, b) => b.programme.length - a.programme.length || a.id.localeCompare(b.id));
+  // Four very different name lengths: the longest, two in between and a short one.
+  const mix = [byLength[0], byLength[Math.floor(byLength.length * 0.3)], byLength[Math.floor(byLength.length * 0.6)], byLength.find((r) => r.programme.length >= 7 && r.programme.length <= 9 && !r.programme.includes(' '))].map((r) => r.id);
+  const noOverflow = 'document.documentElement.scrollWidth<=innerWidth';
+
+  // 1. The long-cycle degree (findings L1, L5): it wraps inside the pane and the
+  // row instead of stretching or running off them.
+  assert(longCycle.length > 0, 'no long-cycle programmes in the data');
+  for (const [width, height] of [[1200, 900], [1280, 900], [1440, 900], [1920, 1080]]) {
+    const page = await open(`?ui=sk&q=${encodeURIComponent(longCycle[0].programme)}`, width, height);
+    try {
+      await check(`${width}/sk`, 'AL degree pane', 'a long Slovak degree wraps inside the pane; the pane never scrolls sideways', async () => {
+        await page.click(`document.querySelector('#results li[data-id="${longCycle[0].id}"] button.open')`, 'the long-cycle row');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-title .deg'),why:'pane not open'})`, 5000, 'pane');
+        const m = await page.ev(`(()=>{const p=document.querySelector('#pane'),d=p.querySelector('.d-title .deg'),r=d.getBoundingClientRect(),pr=p.getBoundingClientRect();return {sw:p.scrollWidth-p.clientWidth,right:r.right-pr.right,text:d.textContent}})()`);
+        assert(m.sw <= 0 && m.right <= 0 && m.text.length > 30, JSON.stringify(m));
+        if (width === 1280) await shot(page, 'degree-pane-1280-sk');
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}&q=Masaryk`, 320, 640);
+    try {
+      await check(`320/${ui}`, 'AL degree row', 'every long-cycle degree stays left of the row toggles and inside the card', async () => {
+        const m = await page.ev(`[...document.querySelectorAll('#results li.item')].filter(li=>${JSON.stringify(longCycle.map((r) => r.id))}.includes(li.dataset.id)).map(li=>{li.style.contentVisibility='visible';const d=li.querySelector('.deg').getBoundingClientRect(),c=li.querySelector('button.cmpi').getBoundingClientRect(),row=li.querySelector('.row').getBoundingClientRect();return {id:li.dataset.id,ok:d.right<=c.left+0.5&&d.right<=row.right}})`);
+        assert(m.length >= 2 && m.every((x) => x.ok), JSON.stringify(m));
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 2. The detail's Save and Compare (L2, L3, L9): each label on one line,
+  // never split inside a word, side by side when both fit, otherwise stacked;
+  // in both states; the two icons the same size.
+  const target = data.find((r) => r.officialUrl && r.programme.length > 30 && r.country === 'Netherlands') ?? data.find((r) => r.officialUrl);
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}&q=${encodeURIComponent(target.programme)}`, 390, 900);
+    try {
+      for (const width of [320, 360, 390, 430, 600, 1024, 1199, 1200, 1280, 1440, 1920]) {
+        await check(`${width}/${ui}`, 'AL detail pair', 'Save and Compare: one line each, no split words, side by side or stacked, both states, equal icons', async () => {
+          watchdog.refresh();
+          await page.key('Escape', 'Escape', 27);
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+          await page.waitFor(`({ok:innerWidth===${width}&&!document.querySelector('#results .expand:not([inert])')&&!document.querySelector('#pane .pane-body .d-actions'),why:'viewport or an open detail'})`, 5000, 'closed at this width');
+          const detail = width >= 1200 ? '#pane .pane-body' : `#results li[data-id="${target.id}"] .expand:not([inert])`;
+          await page.click(`document.querySelector('#results li[data-id="${target.id}"] button.open')`, 'the programme');
+          await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions button.cmpb'),why:'detail not open'})`, 5000, 'detail');
+          await settle(page);
+          for (const on of [false, true]) {
+            const pressed = await page.ev(`document.querySelector('${detail} button.save').getAttribute('aria-pressed')==='true'`);
+            if (pressed !== on) {
+              await page.click(`document.querySelector('${detail} button.save')`, 'Save');
+              await page.click(`document.querySelector('${detail} button.cmpb')`, 'Compare');
+              await page.waitFor(`({ok:document.querySelector('${detail} button.save').getAttribute('aria-pressed')==='${on}'&&document.querySelector('${detail} button.cmpb').getAttribute('aria-pressed')==='${on}',why:'state'})`, 5000, 'toggled');
+            }
+            await page.ev(TEXT);
+            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),[l,a,b]=[...g.children],o=g.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),ia=a.querySelector('.ic').getBoundingClientRect(),ib=b.querySelector('.ic').getBoundingClientRect();
+              return {lines:[__lines(a.querySelector('.save-t')),__lines(b.querySelector('.cmpb-w'))],splits:[l,a,b].flatMap(x=>__splits(x).map(s=>s.word)),
+                side:Math.abs(ra.top-rb.top)<1&&Math.abs(ra.width-rb.width)<=1,stacked:Math.abs(ra.left-rb.left)<1&&Math.abs(ra.width-o.width)<=1&&Math.abs(rb.width-o.width)<=1&&rb.top>=ra.bottom,
+                clip:[a,b].some(x=>x.scrollWidth>x.clientWidth+1),icons:[ia.width,ia.height,ib.width,ib.height],page:${noOverflow}}})()`);
+            assert(m.lines.every((n) => n === 1) && !m.splits.length && (m.side || m.stacked) && !m.clip && m.icons.every((n) => n === m.icons[0]) && m.page, `${on ? 'on' : 'off'} ${JSON.stringify(m)}`);
+          }
+          if ([320, 390, 1280, 1440].includes(width)) await shot(page, `detail-pair-${width}-${ui}`);
+        });
+      }
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 3. Rows (L6, L10, L12, L13, L8): labels start where their values start,
+  // the toggles centre on the title's first line, the last open row keeps the
+  // card's corners, a sort heading's hover is its label, and a tap leaves no
+  // hover box on touch.
+  for (const [width, height] of [[320, 700], [390, 844], [700, 900], [1280, 900]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}&country=Ireland`, width, height);
+    try {
+      await check(`${width}/${ui}`, 'AL row labels and toggles', 'labels line up with their values (left, fee right); Compare and Save centre on the title\'s first line', async () => {
+        const m = await page.ev(`(()=>{const tr=(e)=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect()};const out={labels:[],toggles:[]};
+          for(const li of [...document.querySelectorAll('#results li.item')].slice(0,40)){li.style.contentVisibility='visible';
+            for(const c of li.querySelectorAll('.row .cell')){const l=c.querySelector(':scope>.lab'),v=c.querySelector(':scope>.fig')||c.querySelector(':scope>.verd');if(!l||!v||getComputedStyle(l).display==='none'||l.getClientRects().length===0)continue;const a=tr(l),b=tr(v);if(!a.width)continue;out.labels.push(c.classList.contains('c-fee')?Math.round((a.right-b.right)*10)/10:Math.round((a.left-b.left)*10)/10)}
+            const t=li.querySelector('.r-t .open'),r=document.createRange();r.selectNodeContents(t);const first=r.getClientRects()[0];const mid=first.top+first.height/2;
+            for(const b of li.querySelectorAll('.r-main>:is(.cmpi,.star)')){const x=b.getBoundingClientRect();out.toggles.push(Math.round((x.top+x.height/2-mid)*10)/10)}}
+          return out})()`);
+        assert(m.toggles.length >= 20 && m.toggles.every((d) => Math.abs(d) <= 1.5), 'toggles ' + JSON.stringify(m.toggles));
+        if (width < 800) assert(m.labels.length >= 30 && m.labels.every((d) => Math.abs(d) <= 1), 'labels ' + JSON.stringify(m.labels));
+        if (width === 390 || width === 700) await shot(page, `rows-${width}-${ui}`);
+      });
+      if (width === 1280) await check(`${width}/${ui}`, 'AL sort heading', 'a sort heading\'s hover area is its label and mark, not the whole column', async () => {
+        const m = await page.ev(`[...document.querySelectorAll('.cols>button')].map(b=>{const kids=[...b.children].filter(k=>k.getClientRects().length&&!k.classList.contains('visually-hidden'));const s=getComputedStyle(b);const inner=kids.reduce((w,k)=>w+k.getBoundingClientRect().width,0)+parseFloat(s.columnGap||0)*(kids.length-1)+parseFloat(s.paddingLeft)+parseFloat(s.paddingRight);return Math.round(b.getBoundingClientRect().width-inner)})`);
+        assert(m.length === 3 && m.every((d) => d <= 2), JSON.stringify(m));
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+    watchdog.refresh();
+  }
+  {
+    const page = await open('?ui=en&q=Nanobiology', 390, 844);
+    try {
+      await check(390, 'AL last row corners', 'the last row, open, keeps the card\'s rounded bottom corners', async () => {
+        await page.waitFor(`({ok:document.querySelectorAll('#results li.item').length>=1&&document.querySelectorAll('#results li.item').length<=8,why:document.querySelectorAll('#results li.item').length+' rows'})`, 5000, 'a short list');
+        await page.click(`[...document.querySelectorAll('#results li.item')].at(-1).querySelector('button.open')`, 'the last row');
+        await page.waitFor(`({ok:!!document.querySelector('#results>li.item:last-child>.expand>.expand-inner'),why:'not open'})`, 5000, 'open');
+        await settle(page);
+        const m = await page.ev(`(()=>{const s=getComputedStyle(document.querySelector('#results>li.item:last-child>.expand>.expand-inner'));return {r:[s.borderBottomLeftRadius,s.borderBottomRightRadius],o:s.overflow}})()`);
+        assert(m.r.every((r) => parseFloat(r) >= 10) && m.o === 'hidden', JSON.stringify(m));
+        await page.ev(`document.querySelector('#results>li.item:last-child').scrollIntoView({block:'end'})`);
+        await shot(page, 'last-row-open-390');
+      });
+    } finally { await page.close(); }
+  }
+  {
+    const page = await open('?ui=en', 390, 844, { touch: true });
+    try {
+      await check('390/touch', 'AL touch hover', 'after a tap, Compare and Save keep no white hover box; pressed stays blue', async () => {
+        assert(await page.ev(`matchMedia('(pointer:coarse)').matches`), 'touch emulation did not give pointer:coarse');
+        for (const sel of ['button.cmpi', 'button.star']) {
+          await page.click(`document.querySelector('#results li.item ${sel}')`, sel);
+          await page.waitFor(`({ok:document.querySelector('#results li.item ${sel}').getAttribute('aria-pressed')==='true',why:'not pressed'})`, 5000, 'pressed');
+          await settle(page);
+          const m = await page.ev(`(()=>{const b=document.querySelector('#results li.item ${sel}'),s=getComputedStyle(b);return {hover:b.matches(':hover'),bg:s.backgroundColor,color:s.color,accent:getComputedStyle(document.querySelector('.cmpi[aria-pressed=true],.star[aria-pressed=true]')).color}})()`);
+          assert(m.bg === 'rgba(0, 0, 0, 0)' && m.color === m.accent, JSON.stringify(m));
+        }
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 4. Compare (C1–C5, C9, C10–C14): Saves on one line at the foot of the
+  // header, one width for Save and Saved, room for the last "x"'s focus ring, a
+  // name split only when a word is wider than its column, the fact names 6.5rem
+  // below 1024 px, one button height, a shared first baseline, and the link's
+  // icon beside its last word.
+  for (const [width, height] of [[320, 844], [360, 800], [390, 844], [600, 900], [700, 900], [844, 390], [1024, 900], [1280, 900], [1440, 900]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, height, { compare: mix, touch: width < 600 || height <= 500 });
+    try {
+      await check(`${width}x${height}/${ui}`, 'AL compare header', 'Saves share one line and one width, in both states; names split only words wider than the column; "x" has 4 px of room; 44 px buttons; link icon on its last word', async () => {
+        watchdog.refresh();
+        await page.ev(`(getComputedStyle(document.querySelector('#header-compare')).display!=='none'?document.querySelector('#header-compare'):document.querySelector('#cmp-tray-open')).click()`);
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&document.querySelectorAll('th.cmp-p').length===4,why:'compare not open'})`, 5000, 'compare');
+        await settle(page);
+        await page.ev(TEXT);
+        const measure = `(()=>{const box=document.querySelector('.cmp-scroll'),bx=box.getBoundingClientRect();const ths=[...document.querySelectorAll('th.cmp-p')];
+          const cols=ths.map(th=>{const t=th.getBoundingClientRect(),s=th.querySelector('.cmp-save'),r=s.getBoundingClientRect(),x=th.querySelector('.cmp-x .ic').getBoundingClientRect(),cs=getComputedStyle(th);
+            const content=th.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+            const needless=[...__splits(th.querySelector('.cmp-n')),...__splits(th.querySelector('.cmp-u'))].filter(p=>__wordWidth(p.el,p.word)<=content-0.5).map(p=>p.word);
+            const textRects=[th.querySelector('.cmp-n'),th.querySelector('.cmp-u')].flatMap(e=>{const g=document.createRange();g.selectNodeContents(e);return [...g.getClientRects()]});
+            const xOverText=textRects.some(q=>q.left<x.right&&x.left<q.right&&q.top<x.bottom&&x.top<q.bottom);
+            return {top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
+          const last=document.querySelectorAll('.cmp-x');const lx=last[last.length-1].getBoundingClientRect();
+          const links=[...document.querySelectorAll('.cmp-t a.lnk')].map(a=>{const ic=a.querySelector('svg').getBoundingClientRect();const r=document.createRange();r.selectNodeContents(a.querySelector('.lnk-end').firstChild);const rs=[...r.getClientRects()];const lastLine=rs[rs.length-1];return Math.abs((ic.top+ic.height/2)-(lastLine.top+lastLine.height/2))<=6&&ic.left>=lastLine.right-0.5&&ic.left-lastLine.right<=8});
+          const th=document.querySelector('.cmp-t tbody th'),td=th.nextElementSibling.querySelector('p');const a=document.createRange();a.selectNodeContents(th);const b=document.createRange();b.selectNodeContents(td);
+          const linkRow=document.querySelector('.cmp-t tr[data-fact=link]');const lt=document.createRange();lt.selectNodeContents(linkRow.querySelector('th'));const ll=document.createRange();ll.selectNodeContents(linkRow.querySelector('a.lnk').firstChild);
+          return {cols,label:th.getBoundingClientRect().width,base:Math.abs(a.getClientRects()[0].bottom-b.getClientRects()[0].bottom),linkBase:Math.abs(lt.getClientRects()[0].bottom-ll.getClientRects()[0].bottom),links,
+            room:{right:bx.right-lx.right,top:lx.top-bx.top},heights:[...document.querySelectorAll('#cmp-close,.cmp-save')].map(e=>e.getBoundingClientRect().height),page:${noOverflow}}})()`;
+        await page.ev(`(()=>{const b=document.querySelector('.cmp-scroll');b.scrollLeft=b.scrollWidth})()`);
+        await settle(page);
+        // Dictionary hyphenation ("Überset-zen") is a real break; with it off,
+        // a word that still splits was split by the layout, which is only
+        // allowed when the word is wider than its column.
+        const m = await page.ev(`(()=>{const s=document.createElement('style');s.id='al-nohyph';s.textContent='.cmp-t th.cmp-p :is(.cmp-n,.cmp-u){hyphens:manual!important}';document.head.append(s);try{return ${measure}}finally{s.remove()}})()`);
+        const tops = new Set(m.cols.map((c) => c.top)), belows = new Set(m.cols.map((c) => c.below)), widths = new Set(m.cols.map((c) => c.w));
+        assert(tops.size === 1 && belows.size === 1 && m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save row ' + JSON.stringify(m.cols));
+        assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));
+        assert(m.room.right >= 4 && m.room.top >= 4, 'x room ' + JSON.stringify(m.room));
+        assert(m.heights.every((h) => h === 44), 'heights ' + JSON.stringify(m.heights));
+        assert(m.base <= 1.5 && m.linkBase <= 1.5 && m.links.every(Boolean), 'baselines/link ' + JSON.stringify([m.base, m.linkBase, m.links]));
+        if (width < 1024) assert(m.label <= 6.5 * 16 + 20 + 0.5, 'label column ' + m.label);
+        assert(m.page, 'the page scrolls sideways');
+        // Saving changes the word, never the width.
+        await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
+        const before = await page.ev(`Math.round(document.querySelector('th.cmp-p .cmp-save').getBoundingClientRect().width*10)/10`);
+        await page.click(`document.querySelector('th.cmp-p .cmp-save')`, 'the first Save');
+        await page.waitFor(`({ok:document.querySelector('th.cmp-p .cmp-save').getAttribute('aria-pressed')==='true',why:'not saved'})`, 5000, 'saved');
+        await settle(page);
+        const after = await page.ev(`(()=>{const s=document.querySelector('th.cmp-p .cmp-save');return {w:Math.round(s.getBoundingClientRect().width*10)/10,clip:s.scrollWidth>s.clientWidth+1}})()`);
+        assert(widths.size === 1 && after.w === before && !after.clip, `Save ${[...widths]} → Saved ${JSON.stringify(after)}`);
+        if ([320, 390, 700, 1280].includes(width)) { await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`); await shot(page, `compare-${width}-${ui}`); }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const [width, ui] of [[1280, 'en'], [1440, 'sk'], [700, 'en']]) {
+    const page = await open(`?ui=${ui}`, width, 900, { compare: mix.slice(0, 1) });
+    try {
+      await check(`${width}/${ui}`, 'AL compare one', 'one programme: the column is as wide as its facts, so the "x" stays within 60 px of the name; 44 px buttons', async () => {
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:document.querySelectorAll('th.cmp-p').length===1,why:'not open'})`, 5000, 'compare');
+        await settle(page);
+        const m = await page.ev(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector('th.cmp-p .cmp-n'));const right=Math.max(...[...r.getClientRects()].map(q=>q.right));const x=document.querySelector('th.cmp-p .cmp-x .ic').getBoundingClientRect();return {gap:Math.round(x.left-right),close:document.querySelector('#cmp-close').getBoundingClientRect().height}})()`);
+        assert(m.gap <= 60 && m.close === 44, JSON.stringify(m));
+      });
+      await check(`${width}/${ui}`, 'AL compare empty', 'Browse programmes is 44 px, like Close', async () => {
+        await page.click(`document.querySelector('#cmp-body .cmp-x')`, 'x');
+        await page.waitFor(`({ok:!document.querySelector('#cmp-empty').hidden,why:'not empty'})`, 5000, 'empty');
+        assert(await page.ev(`document.querySelector('#cmp-browse').getBoundingClientRect().height===44&&document.querySelector('#cmp-close').getBoundingClientRect().height===44`), 'heights');
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 5. Toasts (C6, C7), the count while comparing (C15) and where Compare
+  // lands when it opens (C14).
+  for (const [width, height] of [[320, 640], [390, 844], [844, 390]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, height, { compare: mix, saves: mix.slice(0, 2), touch: true });
+    try {
+      await check(`${width}x${height}/${ui}`, 'AL toasts', 'toast actions stay on one line and are at least 44 x 44 ("Open compare", "Späť")', async () => {
+        await page.click(`[...document.querySelectorAll('#results li.item')].find(li=>!${JSON.stringify(mix)}.includes(li.dataset.id)).querySelector('button.cmpi')`, 'a fifth programme');
+        await page.waitFor(`({ok:!!document.querySelector('#toasts .toast button'),why:'no toast'})`, 5000, 'the limit toast');
+        await settle(page);
+        await page.ev(TEXT);
+        const full = await page.ev(`(()=>{const b=document.querySelector('#toasts .toast button'),r=b.getBoundingClientRect();return {w:r.width,h:r.height,lines:__lines(b)}})()`);
+        assert(full.w >= 44 && full.h >= 44 && full.lines === 1, 'full ' + JSON.stringify(full));
+        await page.click(`document.querySelector('#toasts .toast button')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare');
+        await page.click(`document.querySelector('#cmp-body .cmp-x')`, 'x');
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast button')?.textContent===${JSON.stringify(ui === 'sk' ? 'Späť' : 'Undo')},why:'no undo'})`, 5000, 'undo toast');
+        await settle(page);
+        const undo = await page.ev(`(()=>{const r=document.querySelector('#toasts .toast button').getBoundingClientRect();return {w:r.width,h:r.height}})()`);
+        assert(undo.w >= 44 && undo.h >= 44, 'undo ' + JSON.stringify(undo));
+        if (width === 390) await shot(page, `toast-undo-390-${ui}`);
+      });
+      if (height > 500) await check(`${width}/${ui}`, 'AL count while comparing', 'Compare opened from My list hides the list\'s count line; closing shows it again', async () => {
+        await page.ev(`!document.querySelector('#compare').hidden&&document.querySelector('#cmp-close').click()`);
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:!!document.querySelector('.mylist.is-list'),why:'not in My list'})`, 5000, 'My list');
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare');
+        const shown = `(()=>{const c=document.querySelector('#result-count');return c.checkVisibility({visibilityProperty:true})})()`;
+        assert(await page.ev(`!${shown} && /2/.test(document.querySelector('#result-count').textContent)`), 'the count still shows');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:${shown},why:'count hidden after closing'})`, 5000, 'count back');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const [width, height] of [[390, 844], [1280, 900]]) {
+    const page = await open('?ui=en', width, height, { compare: mix, touch: width < 600 });
+    try {
+      await check(`${width}`, 'AL compare lands', 'opened from far down the list, Compare\'s rounded top edge is never under what sticks above it (8 px below it)', async () => {
+        await page.ev('window.scrollTo(0, 4000)');
+        await page.waitFor(`({ok:scrollY>3000,why:'scrollY '+scrollY})`, 5000, 'scrolled');
+        await page.ev(`(getComputedStyle(document.querySelector('#header-compare')).display!=='none'?document.querySelector('#header-compare'):document.querySelector('#cmp-tray-open')).click()`);
+        await page.waitFor(`(()=>{const a=document.querySelector('#compare').getBoundingClientRect().top;const s=window.__lastTop;window.__lastTop=a;return {ok:s===a,why:'moving'}})()`, 5000, 'scroll settled');
+        const m = await page.ev(`(()=>{const c=document.querySelector('#compare').getBoundingClientRect();const st=document.querySelector('.status');const stuck=${width < 600 ? `st.getBoundingClientRect().bottom` : `document.querySelector('.hd').getBoundingClientRect().bottom`};const hit=document.elementFromPoint(c.left+14,c.top+2);return {gap:c.top-stuck,isStuck:st.classList.contains('is-stuck'),corner:!!hit&&document.querySelector('#compare').contains(hit)}})()`);
+        // Phones: the count row sits right above it in the flow (gap 0) or is stuck over the page (gap 8).
+        assert(m.corner && (width < 600 ? (m.isStuck ? m.gap >= 7 && m.gap <= 9 : m.gap >= -0.5 && m.gap <= 9) : m.gap >= 7 && m.gap <= 9), JSON.stringify(m));
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 6. Print of an open Compare (setup-footer finding 3): the link's words are
+  // never split; its address follows them.
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 794, 1100, { compare: mix });
+    try {
+      await check(`print/${ui}`, 'AL print compare link', 'printed Compare: "Official admissions page" never splits inside a word and no space is kept for Save', async () => {
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'closed'})`, 5000, 'compare');
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          await settle(page);
+          await page.ev(TEXT);
+          const m = await page.ev(`(()=>({splits:[...document.querySelectorAll('.cmp-t a.lnk')].flatMap(a=>{const s=__splits(a);return s.filter(p=>p.node===a.firstChild).map(p=>p.word)}),pad:getComputedStyle(document.querySelector('th.cmp-p')).paddingBottom,icon:[...document.querySelectorAll('.cmp-t a.lnk svg')].some(s=>s.getClientRects().length)}))()`);
+          assert(!m.splits.length && m.pad === '10px' && !m.icon, JSON.stringify(m));
+          const { cssContentSize } = await page.send('Page.getLayoutMetrics');
+          const { data: png } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: 794, height: Math.min(4000, cssContentSize.height), scale: 1 } });
+          await writeFile(`${shots}/print-compare-${ui}.png`, Buffer.from(png, 'base64'));
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+      });
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -2586,7 +2901,8 @@ async function main() {
     await runBatch2Followup(base);
     await runBatch3A(base);
     await runBatch3B(base);
-    await runBatch3C(base); }
+    await runBatch3C(base);
+    await runAlignListCompare(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
