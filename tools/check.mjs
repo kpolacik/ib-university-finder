@@ -185,6 +185,15 @@ const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPan
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
 const compareMod = await import(new URL('../js/compare.js', import.meta.url));
+// Batch 3 · A: the compare set, its own list apart from the saves.
+const compareSetMod = await import(new URL('../js/compare-set.js', import.meta.url));
+// A stand-in localStorage for the compare set: blocked throws on any access,
+// full throws on writes only (a quota or a private-browsing write).
+function fakeStorage(entries = {}) {
+  return { data: { ...entries }, blocked: false, full: false,
+    getItem(key) { if (this.blocked) throw new Error('SecurityError'); return this.data[key] ?? null; },
+    setItem(key, value) { if (this.blocked || this.full) throw new Error('QuotaExceededError'); this.data[key] = String(value); } };
+}
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -3174,7 +3183,7 @@ function parseHtml(source) {
 // start() runs for real up to its never-ending data load, so every handler and
 // the initial filter placement are the app's own. 600 and 1024 are separate
 // media objects (R4); media/flip still drive only 1024, as in Stage 4.
-function paneAppHarness(test, { boot = false } = {}) {
+function paneAppHarness(test, { boot = false, compare = null } = {}) {
   const originalGlobal = globalThis.document;
   globalThis.document = stubDocument;
   const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners',
@@ -3248,13 +3257,19 @@ function paneAppHarness(test, { boot = false } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; }, wireCompactHeader() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
-      ...shortlistMod, ...compareMod, saveShortlist: (set) => {
+      ...shortlistMod, ...compareMod, ...compareSetMod,
+      // The real compare-set functions on context.compareStorage, a stand-in
+      // localStorage a test can block, fill or change as a second tab would.
+      readStoredCompare: () => compareSetMod.readStoredCompare(context.compareStorage),
+      saveCompare: (ids) => compareSetMod.saveCompare(ids, context.compareStorage),
+      loadCompare: () => compareSetMod.loadCompare(context.compareStorage),
+      saveShortlist: (set) => {
         context.savedLists = [...(context.savedLists ?? []), [...set]];
         const works = context.saveWorks ?? true;
         if (works && context.stored) context.stored = [...set];
@@ -3268,6 +3283,7 @@ function paneAppHarness(test, { boot = false } = {}) {
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
+    context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(code, context);
     const run = (code) => runInNewContext(code, context);
@@ -6110,6 +6126,91 @@ check('F2 Slovak living-costs placeholder is "Podľa školy" (smoke F2 measures 
 check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText));
 
 section('Batch 3 · A');
+// Compare is its own set of up to four programmes, apart from My list (Leon,
+// 2026-11-05). js/compare-set.js holds it; app.js keeps it in step.
+{
+  const { toggleIn, restoreAt, normalizeCompare, readStoredCompare, saveCompare, loadCompare, COMPARE_KEY } = compareSetMod;
+  const known = new Set(['a', 'b', 'c', 'd', 'e']);
+  equal('A1 toggleIn: add, add last, remove, re-add goes last',
+    [toggleIn([], 'a', known), toggleIn(['a'], 'b', known), toggleIn(['a', 'b'], 'a', known), toggleIn(['b'], 'a', known)],
+    [{ ids: ['a'], result: 'added' }, { ids: ['a', 'b'], result: 'added' }, { ids: ['b'], result: 'removed' }, { ids: ['b', 'a'], result: 'added' }]);
+  equal('A1 toggleIn: a fifth is refused and the set is unchanged; one in the set still comes out',
+    [toggleIn(['a', 'b', 'c', 'd'], 'e', known), toggleIn(['a', 'b', 'c', 'd'], 'c', known)],
+    [{ ids: ['a', 'b', 'c', 'd'], result: 'full' }, { ids: ['a', 'b', 'd'], result: 'removed' }]);
+  equal('A1 toggleIn: ids no longer in the data do not count toward four',
+    toggleIn(['gone', 'a', 'b', 'c'], 'd', known), { ids: ['gone', 'a', 'b', 'c', 'd'], result: 'added' });
+  equal('A1 restoreAt: back at its old index; refused when full; already there is unchanged, never doubled or moved',
+    [restoreAt(['a', 'c'], 'b', 1, known), restoreAt(['a', 'b', 'c', 'd'], 'e', 0, known), restoreAt(['b', 'a'], 'a', 0, known), restoreAt(['a'], 'b', 9, known)],
+    [{ ids: ['a', 'b', 'c'], result: 'restored' }, { ids: ['a', 'b', 'c', 'd'], result: 'full' }, { ids: ['b', 'a'], result: 'restored' }, { ids: ['a', 'b'], result: 'restored' }]);
+  equal('A1 normalizeCompare: duplicates go, the first four known stay in order, unknown ids are kept, a reappearing fifth is dropped',
+    [normalizeCompare(['a', 'a', 'b'], known), normalizeCompare(['a', 'x', 'b', 'c', 'd', 'e'], known), normalizeCompare(['x', 'a', 'b', 'c', 'd'], new Set([...known, 'x']))],
+    [['a', 'b'], ['a', 'x', 'b', 'c', 'd'], ['x', 'a', 'b', 'c']]);
+  const store = (text) => fakeStorage(text === undefined ? {} : { [COMPARE_KEY]: text });
+  const blocked = Object.assign(fakeStorage(), { blocked: true });
+  equal('A1 storage reads: missing, corrupt, not a list and blocked',
+    [readStoredCompare(store()), readStoredCompare(store('{oops')), readStoredCompare(store('{"a":1}')), readStoredCompare(blocked), loadCompare(blocked)],
+    [[], [], [], null, []]);
+  equal('A1 storage reads keep string ids once each, in stored order', readStoredCompare(store('["b",1,"a","b",null]')), ['b', 'a']);
+  const full = Object.assign(fakeStorage(), { full: true }), ok = fakeStorage();
+  check('A1 saveCompare reports a failed write and writes JSON otherwise',
+    saveCompare(['a'], full) === false && saveCompare(['a', 'b'], ok) === true && ok.data[COMPARE_KEY] === '["a","b"]');
+  check('A1 the compare key is its own, never the saves\' key', COMPARE_KEY === 'ib-university-finder:compare:v1' && COMPARE_KEY !== shortlistMod.SHORTLIST_KEY);
+}
+const cmpStored = (context) => JSON.parse(context.compareStorage.data[compareSetMod.COMPARE_KEY] ?? 'null');
+const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.stringify(id)}, knownIds()))`);
+appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
+  cmpToggle(run, a);
+  // A second tab adds c before this tab hears of it.
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([a, c]);
+  cmpToggle(run, b);
+  if (JSON.stringify(cmpStored(context)) !== JSON.stringify([a, c, b]) || run('compareIds.join()') !== [a, c, b].join()) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([c]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  if (run('compareIds.join()') !== c) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([b, c]);
+  fireWindow('storage', { key: 'something-else' });
+  if (run('compareIds.join()') !== c) return false;
+  // Storage cleared in another tab: key null refreshes both sets, even when the saves cannot be read.
+  context.compareStorage.data = {};
+  fireWindow('storage', { key: null });
+  return run('compareIds.length') === 0;
+});
+appCheck('A1 a failed write keeps this tab\'s edits: later changes go on its own copy, not on what storage still holds', ({ run, context, ids: [a, b, c] }) => {
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([c]);
+  context.compareStorage.full = true;
+  cmpToggle(run, a);
+  if (run('compareFailed') !== true || run('compareIds.join()') !== [c, a].join()) return false;
+  cmpToggle(run, b);
+  return run('compareIds.join()') === [c, a, b].join() && cmpStored(context).join() === c;
+});
+appCheck('A1 saves, unsaves, Clear my list and Clear all never change the compare set', ({ run, get, item, fire, ids: [a, b] }) => {
+  cmpToggle(run, a); cmpToggle(run, b);
+  fire(item(a).querySelector('button.star'), 'click');
+  fire(item(a).querySelector('button.star'), 'click');
+  fire(item(b).querySelector('button.star'), 'click');
+  if (run('compareIds.join()') !== [a, b].join()) return false;
+  run("state.search = 'x'; update(); clearAll();");
+  const confirm = globalThis.window;
+  run('window.confirm = () => true;');
+  fire(get('clear-shortlist'), 'click');
+  return confirm === globalThis.window && run('shortlist.size') === 0 && run('compareIds.join()') === [a, b].join();
+});
+{
+  // The harness's fixture: live[0], sdu-mma and the first Trinity row.
+  const [fa, fc] = [live[0].id, live.find((r) => r.id.startsWith('tcd-')).id];
+  for (const [name, search] of [['a bare address', ''], ['?ui=sk', '?ui=sk'], ['a filter address', '?country=Ireland&points=36'], ['a shared ?list=', `?list=${fa}`]]) {
+    await asyncAppCheck(`A1 ${name} restores the compare set on its own: filters, saved preferences and links are untouched`, async ({ run, context, settle, advance }) => {
+      const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+      context.location.search = search;
+      run('applyUrlFields();');
+      context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle(); advance(500);
+      return run('compareIds.join()') === [fc, 'gone', fa].join() && run('shownCompare().join()') === [fc, fa].join()
+        && !(context.prefWrites ?? []).length && run('state.shortlistOnly') === search.startsWith('?list=')
+        && urls.every((u) => !u.includes(fc) && !/compare|cmp/.test(u)) && !run('shareLink()').includes(fc)
+        && cmpStored(context).join() === [fc, 'gone', fa, fc].join();
+    }, { boot: true, compare: [fc, 'gone', fa, fc] });
+  }
+}
 
 section('Batch 3 · B');
 

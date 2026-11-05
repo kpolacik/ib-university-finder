@@ -14,6 +14,7 @@ import {
   groupRows, groupHeadings, addressQuery,
 } from './shortlist.js';
 import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js';
+import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
   setSaved, renderCompare,
@@ -156,6 +157,10 @@ let comparePicks = [];
 let compareOpen = false;
 let onlyDifferences = false;
 let picksKey = null;
+// The compare set (js/compare-set.js): up to four programme ids in the order
+// they were added, apart from the saves. compareFailed: the last write failed.
+let compareIds = loadCompare();
+let compareFailed = false;
 // One line after a shared list was saved ("3 programmes added to your list.").
 let sharedNote = null;
 let allRows = [];
@@ -305,6 +310,8 @@ async function start() {
     syncSort();
 
     facets = buildFacets(allRows);
+    // Only in memory: the next change writes the tidied set (compare-set.js).
+    compareIds = normalizeCompare(compareIds, knownIds());
     applyUrlLists();
     // An incoming share link opens its own list view, never the saves (S03).
     shared = readSharedList(location.search, new Set(allRows.map((row) => row.id)));
@@ -648,11 +655,22 @@ function changeShortlist(change) {
   saveFailed = !saveShortlist(shortlist);
 }
 
-// Another tab changed the saves: take its list, then bring the stars and
-// counts here up to date. The list view is drawn again, as it would be for
-// any change made from outside it. Other keys are not ours.
+// Another tab changed the saves or the compare set: take its copy, then bring
+// the buttons and counts here up to date. key null (storage cleared) is both.
+// The list view is drawn again, as it would be for any change made from
+// outside it. Other keys are not ours.
 function onStorage(event) {
-  if (event.key !== SHORTLIST_KEY && event.key !== null) return;
+  if (event.key === null || event.key === COMPARE_KEY) {
+    const stored = readStoredCompare();
+    if (stored) {
+      compareIds = normalizeCompare(stored, knownIds());
+      if (loaded) syncCompareControls();
+    }
+  }
+  if (event.key === null || event.key === SHORTLIST_KEY) savesFromStorage();
+}
+
+function savesFromStorage() {
   const stored = readStoredShortlist();
   if (!stored) return;
   shortlist.clear();
@@ -662,6 +680,37 @@ function onStorage(event) {
   for (const button of document.querySelectorAll('[data-save-id]')) setSaved(button, shortlist.has(button.getAttribute('data-save-id')));
   renderCounts(currentlyShown);
   if (selectedId === null) drawPane();
+}
+
+// The ids of every programme in the data, worked out once per load.
+let knownRows = null;
+let knownSet = new Set();
+function knownIds() {
+  if (knownRows !== allRows) { knownRows = allRows; knownSet = new Set(allRows.map((row) => row.id)); }
+  return knownSet;
+}
+
+// The compare ids that are in the data, in the order they were added.
+function shownCompare() {
+  const known = knownIds();
+  return compareIds.filter((id) => known.has(id));
+}
+
+// One change to the compare set as it is stored now, then written; the same
+// rule as changeShortlist, so another tab's add survives this tab's. A refused
+// fifth writes nothing. Returns toggleIn's or restoreAt's result.
+function changeCompare(change) {
+  const stored = compareFailed ? null : readStoredCompare();
+  if (stored) compareIds = normalizeCompare(stored, knownIds());
+  const { ids, result } = change(compareIds);
+  if (result === 'full') return result;
+  compareIds = ids;
+  compareFailed = !saveCompare(compareIds);
+  return result;
+}
+
+// Brings everything that shows the compare set up to date, in place.
+function syncCompareControls() {
 }
 
 // The list view's ids, counts and Compare picks from the saves as they are

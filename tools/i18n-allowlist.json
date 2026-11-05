@@ -239,7 +239,9 @@
       "ml-compare-hint",
       "ml-compare-open",
       "r2_copied_",
-      "summary span"
+      "summary span",
+      "./compare-set.js",
+      "full"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -983,6 +985,15 @@
       "ob-faq",
       "smooth",
       "summary"
+    ],
+    "js/compare-set.js": [
+      "./compare.js",
+      "added",
+      "full",
+      "ib-university-finder:compare:v1",
+      "removed",
+      "restored",
+      "string"
     ]
   },
   "hardExceptions": [
