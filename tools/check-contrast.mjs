@@ -32,7 +32,9 @@ const css = readFileSync(join(root, 'css/styles.css'), 'utf8');
 // `min` defaults to 4.5. It drops to 3 only where WCAG allows it: text at or
 // above 24px (or 18.66px bold), and graphical objects such as an icon.
 const CANONICAL_PAIRS = [
+  ["--accent-tint", "--ink", "Toast action on ink", 4.5],
   ["--edge", "--panel", ".lang button; input/select/dropdown borders ; .note rule, .tag border, .btn border (stage 2)", 3.0],
+  ["--edge-soft", "--panel", "Switch track while OFF and slider thumb while UNSET (WCAG 1.4.11; the mockup's #c4cdd8 was 1.61:1)", 3.0],
   ["--edge", "--ground", "Ground-side control edge: .status .copy (Copy link) border on the count line", 3.0],
   ["--edge", "--accent-tint", "Edge on the active tint: .is-sel .row .tag border; .is-set .inp before its 2 px accent border", 3.0],
   ["--ink", "--panel", ".mast h1, .src b, controls, .row, .empty h2, .issues summary; .detail text, .pnote, .note-strong rule, .tag-strong border (stage 2)", 4.5],
@@ -138,6 +140,7 @@ const CANONICAL = {
   "--hover": "#f2f5f9",
   "--hairline": "#d9e0e9",
   "--edge": "#76808e",
+  "--edge-soft": "#8b95a2",
   "--ink": "#16202c",
   "--ink-2": "#46515f",
   "--ink-3": "#5d6877",
@@ -157,6 +160,10 @@ const CANONICAL = {
   "--alarm": "#a3202f",
   "--alarm-ink": "#86171d",
   "--scrim": "rgb(22 32 44 / .45)",
+  "--thumb-shadow": "0 1px 3px rgb(22 32 44 / .22)",
+  "--pop-shadow": "0 1px 2px rgb(22 32 44 / .08),0 12px 32px -10px rgb(22 32 44 / .28)",
+  "--dialog-shadow": "0 24px 64px -16px rgb(22 32 44 / .4)",
+  "--spring-snappy": "linear(0,.012,.049,.107,.185,.278,.383,.493,.601,.702,.791,.865,.924,.967,.995,1.013,1.019,1.016,1.009,1.003,1)",
   "--shadow": "0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22)",
   "--brand-fill": "#ebe4f3",
   "--brand-ink": "#47345d",
@@ -217,13 +224,13 @@ const CANONICAL = {
   "--s-4": "16px",
   "--s-5": "24px",
   "--s-6": "32px",
-  "--r-panel": "6px",
+  "--r-panel": "12px",
   "--r-cell": "4px",
-  "--pane-w": "380px",
+  "--pane-w": "clamp(300px,26vw,380px)",
   "--t-fast": "120ms",
   "--t-med": "160ms",
   "--t-slow": "200ms",
-  "--ease-out": "cubic-bezier(.2,.7,.3,1)",
+  "--ease-out": "cubic-bezier(.22,1,.36,1)",
   "--ease-in-out": "cubic-bezier(.45,0,.25,1)"
 };
 const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');

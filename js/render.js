@@ -1,4 +1,4 @@
-import { t, dateFormatter, dataParts, facetLabel, getLanguage } from './i18n.js';
+import { t, dateFormatter, dataParts, facetLabel, getLanguage, formatCount } from './i18n.js';
 // Everything that touches the DOM.
 //
 // Values are written with textContent, never innerHTML: the data comes from a
@@ -7,7 +7,7 @@ import { t, dateFormatter, dataParts, facetLabel, getLanguage } from './i18n.js'
 
 import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
-import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
+import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
 // The detail's wording for the exam, the countdown, money and the yearly
@@ -41,7 +41,7 @@ export function appendRows(container, rows, { state, shortlist = new Set(), wide
 // Keep the aside and its fallback heading connected while its detail is rebuilt.
 // saved: whether the programme is in the student's list, for the detail's
 // "Save to my list" button; left out, there is no button.
-export function renderPane({ pane, heading, body }, row, shown, state, { saved } = {}) {
+export function renderPane({ pane, heading, body }, row, shown, state, { saved, savedCount = 0 } = {}) {
   let content;
   const mode = !row ? 'empty' : shown ? 'content' : 'hidden';
   if (mode === 'content') {
@@ -58,6 +58,7 @@ export function renderPane({ pane, heading, body }, row, shown, state, { saved }
       ? t('change_your_filters_or_choose_another_programme')
       : t('its_details_appear_here_use_the_up_and_down_arrow_keys_to_move_throu')));
   }
+  if (!row) content = filterOverview(state, savedCount);
   heading.hidden = false;
   pane.setAttribute('aria-labelledby', 'pane-h');
   body.replaceChildren(content);
@@ -66,6 +67,37 @@ export function renderPane({ pane, heading, body }, row, shown, state, { saved }
     heading.hidden = true;
   }
   return mode;
+}
+
+function filterOverview(state, savedCount) {
+  const box = el('div', 'filter-overview');
+  if (activeFilterCount(state)) {
+    box.append(el('h2', '', t('r2_pane_for')));
+    const facts = el('dl', 'overview-kv');
+    const add = (label, value) => { if (value !== null && value !== '') facts.append(el('dt', '', t(label)), el('dd', '', value)); };
+    add('my_ib_points_2', state.myIbPoints);
+    if (state.hlMaths) add('hl_maths_4', t('r2_plus25'));
+    add('search_2', state.search.trim());
+    for (const [field, label] of [['subjectAreas','subject_area'], ['countries','country'], ['languages','language'], ['cities','city'], ['degreeTypes','degree_type']]) {
+      add(label, [...state[field]].map((value) => field === 'subjectAreas' || field === 'degreeTypes' ? dataValue(field === 'subjectAreas' ? 'subject_area' : 'degree_type', value).textContent : facetLabel(value)).join(', '));
+    }
+    add('my_maths_2', state.myMaths);
+    add('entrance_exam', state.exam ? EXAM_OPTIONS[state.exam] : null);
+    add('deadline', state.deadlineWindow !== 'any' ? DEADLINE_WINDOWS[state.deadlineWindow] : null);
+    add('max_eu_fee', state.maxTuition === null ? null : money.format(state.maxTuition));
+    add('max_yearly_cost_2', state.maxBudget === null ? null : money.format(state.maxBudget));
+    add('my_living_costs', state.myLiving === null ? null : money.format(state.myLiving));
+    box.append(facts);
+  } else box.append(el('h2', '', t('r2_pane_heading')), el('p', '', t('r2_pane_pick')));
+  const edit = el('button', 'btn btn-a', t('r2_edit')); edit.type = 'button'; edit.setAttribute('data-edit', '');
+  const list = el('button', 'btn btn-q', t('r2_pane_list', { count: savedCount })); list.type = 'button'; list.setAttribute('data-open-list', '');
+  if (activeFilterCount(state)) { const actions = el('div', 'overview-actions'); actions.append(edit, list); box.append(actions); }
+  box.append(el('h3', '', t('r2_legend')));
+  const legend = el('div', 'legend');
+  for (const [type, key] of [['fit','within_your_ib_points'], ['cond','only_with_hl_maths_4'], ['time','r2_legend_time'], ['unknown','r2_legend_unknown']]) {
+    const line = el('div'), mark = el('i', `legend-${type}`); mark.setAttribute('aria-hidden', 'true'); line.append(mark, document.createTextNode(t(key))); legend.append(line);
+  }
+  box.append(legend); return box;
 }
 
 // The full entry for one programme (design spec §6.7). The pane has the full
@@ -98,7 +130,9 @@ export function renderDetail(row, state, { slot = false, saved } = {}) {
       row.degreeType && row.degreeType !== '?' ? '' : t('degree_type_unknown'));
     if (row.degreeType && row.degreeType !== '?') degree.append(dataValue('degree_type', row.degreeType));
     if (title.lang) degree.lang = 'en';
-    title.append(el('span', 'visually-hidden', ', '), degree);
+    // Only the comma is hidden. A trailing space in the zero-size span collapsed
+    // the visible one after it ("DesignBcA.", review round 2).
+    title.append(el('span', 'visually-hidden', ','), document.createTextNode(' '), degree);
     // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
     const city = row.cityUnknown ? t('city_not_published') : (!row.city || row.city === '?' ? t('city_unknown') : row.city);
     const place = [city, facetLabel(row.country)].filter(Boolean).join(', ');
@@ -208,7 +242,7 @@ function renderRow(row, state, wide, shortlist, headings) {
   if (title.lang) degree.lang = 'en';
   degree.id = `degree-${row.id}`;
   title.setAttribute('aria-describedby', degree.id);
-  heading.append(title, el('span', 'visually-hidden', ', '), degree);
+  heading.append(title, document.createTextNode(' '), degree);
   const sub = el('p', 'sub');
   const city = row.cityUnknown ? t('city_not_published') : (!row.city || row.city === '?' ? t('city_unknown') : row.city);
   sub.append(el('span', 'uc', [row.university, city].filter(Boolean).join(' · ')));
@@ -276,28 +310,24 @@ function rowPointsCell(row, state) {
   const bucket = pointsBucket(row, state);
   let fill = 'v-none';
   let verdict = '';
-  if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.verdict];
+  if (short.unknown) [fill, verdict] = ['v-unk', t('not_published')];
   else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? t('within_your_ib_points_then_hpat') : t('within_your_ib_points')];
   else if (bucket === 'maths') [fill, verdict] = ['v-cond', t('only_with_hl_maths_4')];
   else if (bucket === 'unknown') [fill, verdict] = ['v-unk', t('cutoff_may_include_test_marks')];
   cell.classList.add(fill);
-  if (verdict) cell.append(el('span', `verd m m-${fill.slice(2)}`, verdict));
   if (short.parts.length) {
     const fig = el('span', 'fig');
     short.parts.forEach((part, i) => {
       if (i) fig.append(document.createTextNode(' · '));
-      const pt = el('span', 'pt');
-      if (part.figure !== null) pt.append(document.createTextNode(`${part.figure} `));
+      const pt = el('span', row.pointsKind === 'cutoff' ? 'pt cutoff' : 'pt');
+      if (part.figure !== null) pt.append(document.createTextNode(`${part.figure}${!verdict || short.parts.length > 1 || String(part.figure).startsWith('≈') ? ' ' : ''}`));
       const label = row.rankedWithHpat && bucket === 'within' ? t('minimum') : part.label;
-      pt.append(el('small', '', label));
+      if (!verdict || short.parts.length > 1 || String(part.figure).startsWith('≈')) pt.append(el('small', '', label));
       fig.append(pt);
     });
     cell.append(fig);
-  } else if (short.unknown.reason) {
-    const fig = el('span', 'fig');
-    fig.append(el('small', '', short.unknown.reason));
-    cell.append(fig);
   }
+  if (verdict) cell.append(el('span', 'verd', verdict));
   if (short.after && !verdict) cell.append(el('span', 'q', short.after));
   if (roundTwoOnly(row, state)) cell.append(el('span', 'r2', t('round_2_cutoff_only')));
   return cell;
@@ -318,11 +348,17 @@ export function renderSlot(row, state, { saved } = {}) {
 
 // The count is the one live region: identical text must leave its nodes alone.
 export function renderCount(node, lead, parts) {
-  const text = [lead, ...parts.map((p) => p.text)].join(' · ');
+  const text = [...(lead ? [lead] : []), ...parts.map((p) => p.text)].join(' · ');
   if (node.textContent === text) return false;
-  node.replaceChildren(el('b', '', lead));
+  const number = lead.match(/^[\d\s,\u00a0\u202f]+/)?.[0].trimEnd() ?? '';
+  node.replaceChildren();
+  if (lead) node.append(el('span', 'count-lead'));
+  if (lead) node.lastChild.append(el('b', '', number), document.createTextNode(lead.slice(number.length)));
   for (const part of parts) {
-    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, part.text));
+    // In a span so a phone can drop it: each verdict sits on its own line there,
+    // and a line must not end in a dangling "·" (review round 2).
+    if (lead || part !== parts[0]) node.append(el('span', 'sep', ' · '));
+    node.append(el('span', `k k-${part.kind} m m-${part.kind}`, part.text));
   }
   return true;
 }
@@ -331,14 +367,9 @@ export function renderCount(node, lead, parts) {
 // with its mark ("1130 of 1240 programmes · 410 · 41 · 679"). The node is
 // aria-hidden; the full sentence stays the live region. Every
 // pointsSummaryParts text starts with its count.
-export function renderCountShort(node, lead, parts) {
-  const numbers = parts.map((p) => p.text.match(/^\d+/)?.[0] ?? p.text);
-  const text = [lead, ...numbers].join(' · ');
-  if (node.textContent === text) return false;
-  node.replaceChildren(el('b', '', lead));
-  parts.forEach((part, i) => {
-    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, numbers[i]));
-  });
+export function renderCountShort(node, lead) {
+  if (node.textContent === lead) return false;
+  node.textContent = lead;
   return true;
 }
 
@@ -351,7 +382,12 @@ function deadlineCell(row, { compact = false } = {}) {
     return cell;
   }
   const date = (compact ? shortDate : longDate).format(row.deadline);
-  if (row.deadlinePassed) {
+  if (compact) {
+    const fig = el('span', 'fig');
+    if (row.deadlinePassed) { cell.classList.add('v-past'); fig.append(el('s', '', date)); }
+    else { fig.textContent = date; if (row.isUrgent) cell.classList.add('v-time'); }
+    cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : t(row.daysUntilDeadline === 1 ? 'r2_day' : 'r2_days', { count: row.daysUntilDeadline })));
+  } else if (row.deadlinePassed) {
     // Neutral, never red and never dimmed: it is still a fact worth reading.
     cell.classList.add('v-past');
     const fig = el('span', 'fig');
@@ -373,7 +409,9 @@ function deadlineCell(row, { compact = false } = {}) {
 // Max yearly cost set, the verdict on the year (budgetFit, the filter's own test).
 function feeCell(row, { compact = false, state = null } = {}) {
   const cell = el(compact ? 'p' : 'div', 'cell c-fee');
-  cell.append(el('span', 'lab', t('eu_fee')));
+  // The compact row has no "/ year" on the figure, so where the column headings
+  // are hidden its label has to say it (review round 2).
+  cell.append(el('span', 'lab', t(compact ? 'r2_fee_heading' : 'eu_fee')));
   const cost = yearlyCost(row, state?.myLiving ?? null);
   const fit = budgetFit(cost, state?.maxBudget ?? null);
   if (fit === 'maybe') {
@@ -392,7 +430,8 @@ function feeCell(row, { compact = false, state = null } = {}) {
     zero.append(el('span', 'dot', '· '), document.createTextNode(t('no_tuition_fee')));
     fig.append(document.createTextNode(`${money.format(0)} `), zero);
   } else {
-    fig.append(document.createTextNode(`${money.format(row.tuitionEu)} `), el('small', '', t('year')));
+    fig.append(document.createTextNode(money.format(row.tuitionEu)));
+    if (!compact) fig.append(document.createTextNode(' '), el('small', '', t('year')));
   }
   cell.append(fig);
   // The Irish figure is the Free Fees student contribution plus levy, not the
@@ -773,7 +812,7 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
 // pill-shaped chips until the filters moved into a bar above the results.)
 // flags maps a value to a sprite symbol (the Country list only). The flag is
 // aria-hidden, so the option is still named by the country alone.
-export function renderChips(container, values, selected, onToggle, { flags, field } = {}) {
+export function renderChips(container, values, selected, onToggle, { flags, field, counts, forceSearch = false } = {}) {
   const options = values.map((value) => {
     const label = el('label', 'option');
     const input = document.createElement('input');
@@ -784,13 +823,16 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     label.append(input);
     if (flags?.[value]) label.append(icon(flags[value], 'flag'));
     label.append(field ? dataValue(field, value) : el('span', '', facetLabel(value)));
+    if (counts) { const count = el('span', 'option-count', counts.get(value) ?? 0); count.setAttribute('aria-hidden', 'true'); label.append(count); }
     return label;
   });
   container.replaceChildren();
-  if (values.length > 12) {
-    const searchLabel = el('label', 'help opt-q', t('search_options', { value1: container.parentElement.getAttribute('aria-label').toLowerCase() }));
+  if (forceSearch || values.length > 12) {
+    const searchLabel = el('label', 'help opt-q');
     const search = el('input', 'inp');
     search.type = 'search';
+    search.placeholder = t('search_options', { value1: container.parentElement.getAttribute('aria-label').toLowerCase() });
+    search.setAttribute('aria-label', search.placeholder);
     const clear = el('button', 'btn btn-q opt-clear', t('clear_the_search'));
     clear.type = 'button';
     clear.hidden = true;
@@ -799,7 +841,7 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     searchLabel.append(search);
     const filter = () => {
       const query = foldAccents(search.value.trim()).toLowerCase();
-      options.forEach((option, i) => { option.hidden = !foldAccents(`${values[i]} ${field ? dataParts(field, values[i], 'sk').map((part) => part.text).join(' ') : ''}`).toLowerCase().includes(query); });
+      options.forEach((option, i) => { option.hidden = !foldAccents(`${values[i]} ${facetLabel(values[i])} ${field ? dataParts(field, values[i], 'sk').map((part) => part.text).join(' ') : ''}`).toLowerCase().includes(query); });
       empty.hidden = options.some((option) => !option.hidden);
       clear.hidden = !query;
     };
@@ -858,9 +900,9 @@ export function renderSourceLine(node, rows, meta) {
   const universities = new Set(rows.map((r) => r.university)).size;
   const countries = new Set(rows.map((r) => r.country).filter(Boolean)).size;
   node.append(
-    el('b', 'stat', `${rows.length} ${t('programme_count', { count: rows.length })} · ${universities} ${t('university_count', { count: universities })} · ${countries} ${t('country_count', { count: countries })}.`),
-    t('always_check_the_official_page_before_you_apply'),
-    el('span', 'src-more', t('requirements_fees_and_deadlines_can_change')),
+    el('span', 'stat', `${formatCount(rows.length)} ${t('programme_count', { count: rows.length })} · ${formatCount(universities)} ${t('university_count', { count: universities })} · ${formatCount(countries)} ${t('country_count', { count: countries })}.`),
+    ' ',
+    el('span', '', t('r2_footer_data')),
   );
 }
 
@@ -968,7 +1010,10 @@ function detailOriginals(article, id, state) {
     sync();
   });
   sync();
-  article.insertBefore(button, article.firstChild);
+  // Under the title, never above it: at the top of the pane the button sat
+  // beneath the × close (review round 2).
+  const head = article.querySelector('.d-head');
+  if (head) head.after(button); else article.insertBefore(button, article.firstChild);
 }
 
 function personalLiving(cost, universityLiving) {

@@ -339,14 +339,14 @@ export const SORTS = {
   get deadline() { return t('deadline_soonest_first'); },
   get tuition() { return t('eu_fee_lowest_first'); },
   get points() { return t('ib_points_lowest_first'); },
-  get name() { return t('university_a_to_z'); },
+  get name() { return t('r2_programme_asc'); },
 };
 
 export const REVERSE_SORTS = {
   get deadline() { return t('deadline_latest_first'); },
   get tuition() { return t('eu_fee_highest_first'); },
   get points() { return t('ib_points_highest_first'); },
-  get name() { return t('university_z_to_a'); },
+  get name() { return t('r2_programme_desc'); },
 };
 
 // The entrance-exam filter's choices; "Any" is null.
@@ -373,7 +373,7 @@ const COMPARATORS = {
   },
   tuition: numericNullsLast('tuitionEu'),
   points: numericNullsLast('ibPointsMin'),
-  name: (a, b, direction) => byName(a, b) * direction,
+  name: (a, b, direction) => a.programme.localeCompare(b.programme) * direction,
 };
 
 // Unknowns stay last even when the known values are reversed.

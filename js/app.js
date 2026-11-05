@@ -1,4 +1,7 @@
-import { t, initLanguage, setLanguage, getLanguage, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
+import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
+import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader } from './round2.js';
+import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
 import { loadData, applyToday } from './data.js';
@@ -58,6 +61,7 @@ const dom = {
   sort: document.getElementById('f-sort'),
   count: document.getElementById('result-count'),
   countShort: document.querySelector('.cshort'),
+  countSummary: document.getElementById('count-summary'),
   stuckMark: document.querySelector('.stuck-mark'),
   copy: document.getElementById('f-copy'),
   more: document.getElementById('f-more'),
@@ -125,6 +129,13 @@ const shortlist = loadShortlist();
 // is open, else null; it is kept apart from the saves, which change only on
 // "Save these to my list". None of these go in the address except `list`.
 let shared = null;
+let restored = null;
+let preferencesDirty = false;
+const editedFacets = new Set();
+const persistPreferences = debounce(() => {
+  if (!loaded || !preferencesDirty) return;
+  writeSaved(storedFilters(state, facets)); preferencesDirty = false;
+}, 300);
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
 let groupBy = 'deadline';
@@ -248,7 +259,20 @@ async function start() {
   applyUrlFields();
   syncSort();
   wireInputs();
+  wireRound2(dom);
+  wireCompactHeader(dom);
+  for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
+    const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
+    const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
+    if (fields.includes(event.target) || (event.target.type === 'checkbox' && boxes.some((box) => box.contains(event.target)))) {
+      preferencesDirty = true; persistPreferences();
+    }
+  });
   dom.results.addEventListener('click', toggleRow);
+  document.getElementById('pane-close').addEventListener('click', () => {
+    const id = selectedId; clearSelection(); selectedId = null; drawPane();
+    dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
+  });
   // The pane's "Save to my list".
   dom.pane.addEventListener('click', (event) => {
     const save = event.target.closest('button[data-save-id]');
@@ -290,6 +314,12 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
+      apply(answers) {
+        for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
+        fillFields(state); drawChips(); preferencesDirty = true; update();
+      },
+    });
   } catch (err) {
     showTotalFailure(err);
   } finally {
@@ -303,7 +333,16 @@ async function start() {
 // data loads overwrites them and wins; readFields() picks up whichever is
 // there. The sort is set now so the menu is built with it.
 function applyUrlFields() {
-  const fromUrl = paramsToState(location.search);
+  restored = restoration(location.search, readSaved(), readDismissed());
+  const fromUrl = restored.state;
+  for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
+  fillFields(fromUrl);
+  state.sort = fromUrl.sort;
+  state.dir = fromUrl.dir;
+}
+
+function fillFields(fromUrl) {
+  dom.points.value = dom.tuition.value = dom.budget.value = dom.living.value = '';
   dom.search.value = fromUrl.search;
   if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
   dom.maths.checked = fromUrl.hlMaths;
@@ -313,19 +352,17 @@ function applyUrlFields() {
   dom.deadline.value = fromUrl.deadlineWindow;
   dom.myMaths.value = fromUrl.myMaths ?? '';
   dom.exam.value = fromUrl.exam ?? '';
-  state.sort = fromUrl.sort;
-  state.dir = fromUrl.dir;
 }
 
 // Subjects, countries and languages can only be checked against the data,
 // so they wait for it; a value not in the data is dropped.
 function applyUrlLists() {
+  if (restored?.source === 'saved') { validateLoadedFacets(state, facets); return; }
   const fromUrl = paramsToState(location.search, facets);
-  fromUrl.subjectAreas.forEach((v) => state.subjectAreas.add(v));
-  fromUrl.countries.forEach((v) => state.countries.add(v));
-  fromUrl.languages.forEach((v) => state.languages.add(v));
-  fromUrl.degreeTypes.forEach((v) => state.degreeTypes.add(v));
-  fromUrl.cities.forEach((v) => state.cities.add(v));
+  for (const key of FACET_FIELDS) {
+    if (editedFacets.has(key)) continue;
+    state[key].clear(); for (const value of fromUrl[key]) state[key].add(value);
+  }
 }
 
 // replaceState, not pushState: one history entry per keystroke would make the
@@ -408,15 +445,21 @@ function openIssuesFromLink(event) {
 }
 
 function drawChips() {
-  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area' });
-  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS });
-  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
-  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type' });
-  renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities));
+  const counts = (field) => {
+    const out = new Map();
+    for (const row of allRows) for (const value of new Set(Array.isArray(row[field]) ? row[field] : [row[field]])) out.set(value, (out.get(value) ?? 0) + 1);
+    return out;
+  };
+  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area', counts: counts('subjectAreas') });
+  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') });
+  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages), { counts: counts('languages') });
+  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type', counts: counts('degreeType') });
+  renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities), { counts: counts('city') });
 }
 
 function toggle(set) {
   return (value, checked) => {
+    for (const key of FACET_FIELDS) if (state[key] === set) editedFacets.add(key);
     if (checked) set.add(value); else set.delete(value);
     update();
   };
@@ -514,8 +557,12 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
-      state.dir = state.sort === key && state.dir === 'asc' ? 'desc' : 'asc';
-      state.sort = key;
+      if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
+        state.sort = 'deadline'; state.dir = 'asc';
+      } else {
+        state.dir = state.sort === key && state.dir === 'asc' ? 'desc' : 'asc';
+        state.sort = key;
+      }
       syncSort();
       update();
     });
@@ -572,6 +619,13 @@ function onToggleStar(id) {
   for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, starred);
   syncListToSaves();
   renderCounts(currentlyShown);
+  if (selectedId === null) drawPane();
+  showToast(t(starred ? 'r2_saved' : 'r2_removed'), t('r2_undo'), () => {
+    changeShortlist((set) => { if (starred) set.delete(id); else set.add(id); });
+    for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, !starred);
+    syncListToSaves(); renderCounts(currentlyShown); if (selectedId === null) drawPane();
+    document.querySelector(`.row [data-save-id="${id}"]`)?.focus({ preventScroll: true });
+  });
   return starred;
 }
 
@@ -603,6 +657,7 @@ function onStorage(event) {
   if (state.shortlistOnly) { update(); return; }
   for (const button of document.querySelectorAll('[data-save-id]')) setSaved(button, shortlist.has(button.getAttribute('data-save-id')));
   renderCounts(currentlyShown);
+  if (selectedId === null) drawPane();
 }
 
 // The list view's ids, counts and Compare picks from the saves as they are
@@ -774,6 +829,8 @@ function closeCompare(returnFocus) {
 }
 
 function clearAll() {
+  preferencesDirty = false; writeSaved(null);
+  for (const key of FACET_FIELDS) editedFacets.add(key);
   state.search = '';
   state.maxTuition = null;
   state.maxBudget = null;
@@ -816,6 +873,7 @@ function clearAllFrom(button) {
 
 function update() {
   if (!loaded) return;
+  if (preferencesDirty) persistPreferences();
   // Rebuilt rows while printing would take the paper's layout. Run it after.
   if (printing) { updateAfterPrint = true; return; }
   settleSlots();
@@ -1159,7 +1217,7 @@ function drawPane({ fade = false, scroll } = {}) {
   const current = scroll ?? dom.pane.scrollTop;
   const row = allRows.find((row) => row.id === selectedId) ?? null;
   const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state,
-    { saved: row ? shortlist.has(row.id) : undefined });
+    { saved: row ? shortlist.has(row.id) : undefined, savedCount: shortlist.size });
   if (fade && changed && mode === 'content') dom.paneBody.children[0].classList.add('fade-in');
   paneId = selectedId;
   // Same pick keeps its place, clamped to the new content; a new pick starts
@@ -1254,7 +1312,7 @@ function forgetFocus(event) {
 }
 
 function isFilterControl(node) {
-  return !!node && node !== document.body && (dom.form.contains(node) || dom.sheet.contains(node) || node === dom.copy);
+  return !!node && node !== document.body && (dom.form.contains(node) || dom.sheet.contains(node) || node === dom.copy || node === dom.more);
 }
 
 function crossWide() {
@@ -1319,7 +1377,7 @@ function placeFilters() {
   };
   if (bar) {
     put(dom.form, dom.moreFilters);
-    put(dom.moreFilters, dom.clear);
+    put(dom.status, dom.clear, dom.copy.parentElement === dom.status ? dom.copy : null);
     put(dom.status, dom.copy);
   } else {
     put(dom.sheetBody, dom.copy);
@@ -1418,9 +1476,10 @@ async function copyLink() {
   } catch {
     copied = false;
   }
-  dom.copy.textContent = copied ? t('link_copied') : t('copy_failed_use_the_address_bar');
+  showToast(copied ? t('link_copied') : t('copy_failed_use_the_address_bar'));
+  dom.copy.querySelector('span').textContent = copied ? t('link_copied') : t('copy_failed_use_the_address_bar');
   clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => { dom.copy.textContent = t('copy_link'); }, 2000);
+  copyTimer = setTimeout(() => { dom.copy.querySelector('span').textContent = t('copy_link'); }, 2000);
 }
 
 function syncSort() {
@@ -1429,9 +1488,10 @@ function syncSort() {
     const key = button.dataset.sort;
     const active = key === state.sort;
     const current = active && state.dir === 'desc' ? REVERSE_SORTS[key] : SORTS[key];
-    const next = active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
+    const next = active && state.dir === 'desc' && key !== 'deadline' ? t('r2_default_order')
+      : active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
     button.setAttribute('aria-pressed', String(active));
-    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? t('university_z_a') : t('university_a_z');
+    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? t('r2_programme_desc') : t('r2_programme_asc');
     button.querySelector('.visually-hidden').textContent = active
       ? t('sorted_activate_to_sort', { value1: current, value2: next }) : t('sort', { value1: next });
     // One mark box per heading, always present; only its symbol changes, so no
@@ -1463,6 +1523,7 @@ function drawAppliedChips() {
 }
 
 function removeChip(key) {
+  preferencesDirty = true;
   const before = [...dom.applied.children];
   const at = before.findIndex((button) => button.getAttribute('data-chip') === key);
   const inSheet = dom.sheet.open && dom.sheet.contains(dom.applied);
@@ -1490,14 +1551,17 @@ function renderCounts(shown) {
 
   // Whole phrases, not "X of Y" + a plural noun: after "z" Slovak needs the
   // genitive ("2 z 3 uložených programov"), which no stand-alone noun form gives.
-  const lead = state.shortlistOnly
+  const rawLead = state.shortlistOnly
     ? t(shared ? 'count_of_link' : 'count_of_saved', { shown, count: listTotal })
     : active === 0
       ? `${shown} ${plural(shown)}`
       : t('count_of_all', { shown, count: allRows.length });
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
+  const lead = rawLead.replace(/\d+/g, (value) => formatCount(Number(value)));
   renderCount(dom.count, lead, currentSummary);
+  renderCount(dom.countSummary, '', currentSummary);
+  dom.countSummary.hidden = currentSummary.length === 0;
   renderCountShort(dom.countShort, lead, currentSummary);
 
   // Each pick-list button shows how many of its values are ticked, so a closed
@@ -1517,7 +1581,7 @@ function renderCounts(shown) {
   dom.more.classList.toggle('is-on', inSheet > 0);
   // index.html starts it disabled as "Loading programmes…": until the first
   // count there is no number to show.
-  dom.sheetShow.textContent = t('show', { value1: shown, value2: plural(shown) });
+  dom.sheetShow.textContent = t('show', { value1: formatCount(shown), value2: plural(shown) });
   dom.sheetShow.disabled = false;
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
@@ -1532,6 +1596,7 @@ function renderCounts(shown) {
   }
 
   renderListBar();
+  syncRound2(dom, state, active, shortlist.size);
 }
 
 // The My list bar. Outside the list view: "3 saved · 2 shown", and "Show all
@@ -1594,7 +1659,7 @@ function renderListBar() {
 // The "set" look on a field whose value is in force: valid, so fee 0 counts and
 // an invalid number does not.
 function markSet(input, set) {
-  input.closest('.fld').classList.toggle('is-set', set);
+  (input.closest('.fld') || input.closest('.dropdown')).classList.toggle('is-set', set);
 }
 
 function showCount(box, number, n) {
@@ -1681,7 +1746,14 @@ function wireDropdowns() {
     // In the open sheet Escape belongs to the dialog: it closes the sheet.
     if (event.key !== 'Escape' || dom.sheet.open) return;
     const open = dom.dropdowns.find((d) => d.open);
-    if (!open) return;
+    if (!open) {
+      if (!selectedId || document.querySelector('dialog[open]')) return;
+      const item = selectedItem();
+      if (wideQuery.matches) { selectedId = null; decorateSelection(); drawPane(); }
+      else if (item) closeRow(item);
+      item?.querySelector('button.open')?.focus({ preventScroll: true });
+      return;
+    }
     // Focus goes back to the button only from inside the list. Escape in
     // Search used to pull focus away to a dropdown button (A06).
     const wasInside = open.contains(document.activeElement);

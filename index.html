@@ -27,6 +27,9 @@
      held the CSV requests back by one round trip (measured 2026-10-28). -->
 <link rel="modulepreload" href="js/points.js">
 <link rel="modulepreload" href="js/render.js">
+<link rel="modulepreload" href="js/round2.js">
+<link rel="modulepreload" href="js/saved-state.js">
+<link rel="modulepreload" href="js/onboarding.js">
 <link rel="modulepreload" href="js/shortlist.js">
 <link rel="modulepreload" href="js/subjects.js">
 </head>
@@ -82,7 +85,10 @@
   </symbol>
   <!-- Phosphor Regular arrow-square-out, @phosphor-icons/core 2.1.1, MIT. -->
   <!-- Phosphor Regular arrows-down-up, MIT, @phosphor-icons/core 2.1.1. -->
-  <symbol id="i-sort" viewBox="0 0 256 256"><path d="M117.66,170.34a8,8,0,0,1,0,11.32l-32,32a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,11.32-11.32L72,188.69V48a8,8,0,0,1,16,0V188.69l18.34-18.35A8,8,0,0,1,117.66,170.34Zm96-96-32-32a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L168,67.31V208a8,8,0,0,0,16,0V67.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12m0-12L6 18" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="m10 14 4-4m-5-2 2-2a4 4 0 0 1 6 6l-2 2m-6-4-2 2a4 4 0 0 0 6 6l2-2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+<symbol id="i-sort" viewBox="0 0 256 256"><path d="M117.66,170.34a8,8,0,0,1,0,11.32l-32,32a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,11.32-11.32L72,188.69V48a8,8,0,0,1,16,0V188.69l18.34-18.35A8,8,0,0,1,117.66,170.34Zm96-96-32-32a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L168,67.31V208a8,8,0,0,0,16,0V67.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
   <symbol id="i-ext" viewBox="0 0 256 256"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></symbol>
   <!-- Phosphor Regular check-circle, @phosphor-icons/core 2.1.1, MIT. -->
   <symbol id="i-check" viewBox="0 0 256 256"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
@@ -109,168 +115,112 @@
 
 <a href="#results" class="skip-link" data-i18n="skip_to_results">Skip to results</a>
 
-<header class="top">
-  <div class="mast">
-    <div class="mast-top">
-      <div class="mast-id">
-        <h1 data-i18n="ib_university_finder">IB University Finder</h1>
-        <p class="tagline" data-i18n="find_european_bachelor_programmes_by_ib_requirements">Find European bachelor programmes by IB requirements.</p>
-      </div>
+<div id="top-marker" aria-hidden="true"></div>
+<header class="hd">
+  <div class="hd-in">
+    <div class="slot">
+      <a class="mark" href="#top-marker"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB</span><h1 data-i18n="r2_wordmark">University Finder</h1></a>
+      <button class="btn filters-btn" id="compact-filters" type="button" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span><span id="compact-count" class="badge">0</span></button>
+    </div>
+    <div class="fld f-q search">
+      <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-search" data-i18n="search_2">Search</label>
+      <span class="affix">
+        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+        <input class="inp" type="search" id="f-search" name="search" form="filter-form" placeholder="Programme, university or city" data-i18n-attr="placeholder:r2_searchph"><kbd aria-hidden="true">/</kbd>
+      </span>
+    </div>
+    <div class="hd-right"><button class="btn" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button>
       <div class="lang" role="group" aria-label="Site language" data-i18n-attr="aria-label:site_language">
         <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
-        <button type="button" aria-pressed="true" data-language="en" lang="en"><span data-i18n="en">EN</span><span class="visually-hidden" data-i18n="english"> (English)</span></button>
         <button type="button" aria-pressed="false" data-language="sk" lang="sk"><span data-i18n="sk">SK</span><span class="visually-hidden" data-i18n="slovak"> (Slovak)</span></button>
-      </div>
-    </div>
-    <p class="src" id="source-line" hidden></p>
+        <button type="button" aria-pressed="true" data-language="en" lang="en"><span data-i18n="en">EN</span><span class="visually-hidden" data-i18n="english"> (English)</span></button>
+      </div></div>
   </div>
-
+</header>
+<div class="fslot">
   <!-- One form, one copy of each control. Below 600 px app.js moves
        .more-filters, Clear all and Copy link into the Filters sheet and back
        (placeFilters), so ids, values and open lists survive with no syncing.
        The pick-lists are native <details>, so they open from the keyboard with
        no script; app.js adds one-open-at-a-time and the closers. The band
        (masthead and filters) never sticks (A07). -->
-  <form class="fbar" id="filter-form" autocomplete="off" aria-label="Filters" data-i18n-attr="aria-label:filters_2">
-    <div class="fld f-q">
-      <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-search" data-i18n="search_2">Search</label>
-      <span class="affix">
-        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
-        <input class="inp" type="search" id="f-search" name="search" placeholder="UvA, TCD, law, Dublin" data-i18n-attr="placeholder:uva_tcd_law_dublin">
-      </span>
-    </div>
-
-    <button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span></button>
-
-    <div class="fld f-pts">
+  <form class="fbar" id="filter-form" autocomplete="off" aria-label="Filters" data-i18n-attr="aria-label:filters_2"><div class="more-filters"><div class="frow"><div class="fld f-pts chipbox pts">
       <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-points" data-i18n="my_ib_points_2">My IB points</label>
-      <input class="inp" type="number" id="f-points" name="points" min="24" max="45" step="1"
+      <button type="button" class="step" data-points-step="-1" data-i18n-attr="aria-label:r2_less" aria-label="One point less">−</button><input class="inp" type="number" id="f-points" name="points" min="24" max="45" step="1"
              inputmode="numeric" placeholder="e.g. 36"
              aria-describedby="f-points-help f-points-error" data-i18n-attr="placeholder:e_g_36">
+      <button type="button" class="step" data-points-step="1" data-i18n-attr="aria-label:r2_more" aria-label="One point more">+</button><button type="button" class="info" aria-expanded="false" aria-controls="f-points-help" aria-label="About My IB points" data-i18n-attr="aria-label:r2_about_points">ⓘ</button>
       <p class="err" id="f-points-error" aria-live="polite"></p>
-    </div>
-
-    <!-- Changes labels and the count, never which programmes are shown. The
-         help is visible and named by aria-describedby, not a tooltip (S08). -->
-    <div class="fld f-hl">
-      <p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p>
-      <label class="tick"><input type="checkbox" id="f-maths" name="maths" aria-describedby="f-maths-help"> <span data-i18n="hl_maths_4">HL Maths 4+</span></label>
-    </div>
-
-    <p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p>
-
-    <div class="more-filters">
-      <div class="fld f-fee">
+    </div><div class="fld f-hl chipbox"><label class="switch"><input type="checkbox" id="f-maths" name="maths" aria-describedby="f-maths-help"><span data-i18n="hl_maths_4">HL Maths 4+</span><small class="aside" data-i18n="r2_plus25">+25 on Irish courses</small></label><button type="button" class="info" aria-expanded="false" aria-controls="f-maths-help" aria-label="About HL Maths 4+" data-i18n-attr="aria-label:r2_about_hl">ⓘ</button></div><div class="fld maths-control"><select class="inp" id="f-mymaths" aria-label="My maths" data-i18n-attr="aria-label:my_maths_2" aria-describedby="f-unknown-help">
+            <option value="" data-i18n="r2_any_maths">Any maths</option>
+            <option value="AA HL" data-i18n="aa_hl">AA HL</option>
+            <option value="AA SL" data-i18n="aa_sl">AA SL</option>
+            <option value="AI HL" data-i18n="ai_hl">AI HL</option>
+            <option value="AI SL" data-i18n="ai_sl">AI SL</option>
+          </select><div class="seg" id="maths-seg" role="group" aria-label="My maths" data-i18n-attr="aria-label:my_maths_2"><button type="button" data-maths="" aria-pressed="true" data-i18n="r2_any_maths">Any maths</button><button type="button" data-maths="AA HL" aria-pressed="false" data-i18n="r2_aa_hl">AA HL</button><button type="button" data-maths="AA SL" aria-pressed="false" data-i18n="r2_aa_sl">AA SL</button><button type="button" data-maths="AI HL" aria-pressed="false" data-i18n="r2_ai_hl">AI HL</button><button type="button" data-maths="AI SL" aria-pressed="false" data-i18n="r2_ai_sl">AI SL</button></div></div><details class="dropdown budget-facet" id="dd-budget"><summary class="inp"><span data-i18n="r2_budget">Budget</span><span id="budget-value"></span><span class="dd-chev" aria-hidden="true"><svg class="ic"><use href="#i-chevron"/></svg></span></summary><div class="dropdown-panel budget-panel"><div class="budget"><div class="fld f-fee">
         <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-tuition" data-i18n="max_eu_fee">Max EU fee</label>
         <span class="affix">
           <input class="inp" type="number" id="f-tuition" name="tuition" min="0" step="1"
-                 inputmode="numeric" placeholder="Any"
-                 aria-describedby="f-unknown-help f-tuition-error" data-i18n-attr="placeholder:any">
+                 inputmode="numeric" placeholder="No limit"
+                 aria-describedby="f-unknown-help f-tuition-error" data-i18n-attr="placeholder:r2_no_limit">
           <span class="unit" data-i18n="year_3">&euro;/year</span>
         </span>
         <p class="err" id="f-tuition-error" aria-live="polite"></p>
-      </div>
-
-      <!-- The year: EU fee + 12 months' living (js/cost.js). Max yearly cost
-           hides a programme only when its lowest estimate is over; My living
-           costs replaces every university's estimate in those totals. -->
-      <div class="fld f-budget">
-        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-budget" data-i18n="max_yearly_cost_2">Max yearly cost</label>
+      <input type="range" data-number="f-tuition" min="0" max="20000" step="500" value="20000" aria-label="Max EU fee" data-i18n-attr="aria-label:max_eu_fee"></div><div class="fld f-budget">
+        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-budget" data-i18n="r2_max_year">Max yearly cost (fee + living)</label>
         <span class="affix">
           <input class="inp" type="number" id="f-budget" name="budget" min="0" step="1"
-                 inputmode="numeric" placeholder="Any"
-                 aria-describedby="f-budget-help f-unknown-help f-budget-error" data-i18n-attr="placeholder:any">
+                 inputmode="numeric" placeholder="No limit"
+                 aria-describedby="f-budget-help f-unknown-help f-budget-error" data-i18n-attr="placeholder:r2_no_limit">
           <span class="unit" data-i18n="year_3">&euro;/year</span>
         </span>
         <p class="err" id="f-budget-error" aria-live="polite"></p>
-      </div>
-      <div class="fld f-living">
+      <input type="range" data-number="f-budget" min="0" max="40000" step="500" value="40000" aria-label="Max yearly cost" data-i18n-attr="aria-label:max_yearly_cost_2"></div><div class="fld f-living">
         <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-living" data-i18n="my_living_costs">My living costs</label>
         <span class="affix">
           <input class="inp" type="number" id="f-living" name="living" min="0" step="1"
                  inputmode="numeric" placeholder="University's"
                  aria-describedby="f-living-error" data-i18n-attr="placeholder:university_s">
-          <span class="unit" data-i18n="month_2">&euro;/month</span>
+          <span class="unit" data-i18n="r2_per_month">€/month</span>
         </span>
         <p class="err" id="f-living-error" aria-live="polite"></p>
-      </div>
-      <p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p>
-
-      <!-- One named group for all eight pick filters, so they wrap as one row
-           (two groups broke 3 + 5 between 768 and 1024 px). -->
-      <div class="more-filters" role="group" aria-label="Subject area, country, language, deadline, maths, entrance exam, degree type and city" data-i18n-attr="aria-label:pick_filters">
-        <!-- Each count reads "Subject area · 2" on screen and "Subject area 2
-             selected" to a screen reader: the dot is aria-hidden and " selected"
-             is hidden text (A06). -->
-        <details class="dropdown" id="dd-subjects">
+      <input type="range" data-number="f-living" min="0" max="2000" step="50" value="0" aria-label="My living costs" data-i18n-attr="aria-label:my_living_costs"></div></div></div></details></div><div class="frow facets-row"><details class="dropdown" id="dd-subjects">
           <summary class="inp"><span data-i18n="subject_area">Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="Subject area" data-i18n-attr="aria-label:subject_area">
             <div class="options" id="f-subjects"></div>
           </div>
-        </details>
-        <details class="dropdown" id="dd-countries">
+        </details><details class="dropdown" id="dd-countries">
           <summary class="inp"><span data-i18n="country">Country</span><span class="dropdown-count" id="dd-countries-count" hidden><span aria-hidden="true">· </span><span id="dd-countries-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="Country" data-i18n-attr="aria-label:country">
             <div class="options" id="f-countries"></div>
           </div>
-        </details>
-        <details class="dropdown" id="dd-languages">
+        </details><details class="dropdown" id="dd-languages">
           <summary class="inp"><span data-i18n="language">Language</span><span class="dropdown-count" id="dd-languages-count" hidden><span aria-hidden="true">· </span><span id="dd-languages-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="Language" aria-describedby="f-languages-help" data-i18n-attr="aria-label:language">
             <p class="help dd-help" id="f-languages-help" data-i18n="degrees_taught_in_czech_at_public_universities_are_free_whatever_you">Degrees taught in Czech at public universities are free, whatever your nationality. Each university sets its own language requirement; check the official page.</p>
             <div class="options" id="f-languages"></div>
           </div>
-        </details>
-        <div class="fld">
-          <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-deadline" data-i18n="deadline">Deadline</label>
-          <select class="inp" id="f-deadline" aria-describedby="f-unknown-help">
-            <option value="any" data-i18n="any_date">Any date</option>
-            <option value="open" data-i18n="not_passed_yet">Not passed yet</option>
-            <option value="30" data-i18n="within_30_days">Within 30 days</option>
-            <option value="60" data-i18n="within_60_days">Within 60 days</option>
-          </select>
-        </div>
-        <!-- Jakub's two filters (upstream 2026-10-26/27). A programme whose maths
-             or exam nobody has checked is never hidden; the card says so. -->
-        <div class="fld">
-          <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-mymaths" data-i18n="my_maths_2">My maths</label>
-          <select class="inp" id="f-mymaths" aria-describedby="f-unknown-help">
-            <option value="" data-i18n="any_course">Any course</option>
-            <option value="AA HL" data-i18n="aa_hl">AA HL</option>
-            <option value="AA SL" data-i18n="aa_sl">AA SL</option>
-            <option value="AI HL" data-i18n="ai_hl">AI HL</option>
-            <option value="AI SL" data-i18n="ai_sl">AI SL</option>
-          </select>
-        </div>
-        <div class="fld">
-          <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-exam" data-i18n="entrance_exam">Entrance exam</label>
-          <select class="inp" id="f-exam" aria-describedby="f-unknown-help">
-            <option value="" data-i18n="any">Any</option>
-            <option value="none" data-i18n="no_exam">No exam</option>
-            <option value="skippable" data-i18n="none_or_skippable">None or skippable</option>
-          </select>
-        </div>
-        <details class="dropdown" id="dd-degrees">
-          <summary class="inp"><span data-i18n="degree_type">Degree type</span><span class="dropdown-count" id="dd-degrees-count" hidden><span aria-hidden="true">· </span><span id="dd-degrees-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
-          <div class="dropdown-panel" role="group" aria-label="Degree type" data-i18n-attr="aria-label:degree_type">
-            <div class="options" id="f-degrees"></div>
-          </div>
-        </details>
-        <details class="dropdown" id="dd-cities">
+        </details><details class="dropdown" id="dd-cities">
           <summary class="inp"><span data-i18n="city">City</span><span class="dropdown-count" id="dd-cities-count" hidden><span aria-hidden="true">· </span><span id="dd-cities-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="City" data-i18n-attr="aria-label:city">
             <div class="options" id="f-cities"></div>
           </div>
-        </details>
-      </div>
-
-      <div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div>
-
-      <button type="button" id="f-clear" class="btn btn-q clear" data-i18n="clear_all_2">Clear all</button>
-      <p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p>
-    </div>
-  </form>
-</header>
+        </details><details class="dropdown" id="dd-degrees">
+          <summary class="inp"><span data-i18n="degree_type">Degree type</span><span class="dropdown-count" id="dd-degrees-count" hidden><span aria-hidden="true">· </span><span id="dd-degrees-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
+          <div class="dropdown-panel" role="group" aria-label="Degree type" data-i18n-attr="aria-label:degree_type">
+            <div class="options" id="f-degrees"></div>
+          </div>
+        </details><details class="dropdown scalar-facet" id="dd-deadline"><summary class="inp"><span data-i18n="deadline">Deadline</span><span class="scalar-count"></span><span class="dd-chev" aria-hidden="true"><svg class="ic"><use href="#i-chevron"/></svg></span></summary><div class="dropdown-panel"><select class="inp" id="f-deadline" aria-label="Deadline" data-i18n-attr="aria-label:deadline" aria-describedby="f-unknown-help">
+            <option value="any" data-i18n="any_date">Any date</option>
+            <option value="open" data-i18n="not_passed_yet">Not passed yet</option>
+            <option value="30" data-i18n="within_30_days">Within 30 days</option>
+            <option value="60" data-i18n="within_60_days">Within 60 days</option>
+          </select></div></details><details class="dropdown scalar-facet" id="dd-exam"><summary class="inp"><span data-i18n="entrance_exam">Entrance exam</span><span class="scalar-count"></span><span class="dd-chev" aria-hidden="true"><svg class="ic"><use href="#i-chevron"/></svg></span></summary><div class="dropdown-panel"><select class="inp" id="f-exam" aria-label="Entrance exam" data-i18n-attr="aria-label:entrance_exam" aria-describedby="f-unknown-help">
+            <option value="" data-i18n="any">Any</option>
+            <option value="none" data-i18n="no_exam">No exam</option>
+            <option value="skippable" data-i18n="none_or_skippable">None or skippable</option>
+          </select></div></details></div><p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p><p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p><p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p><p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p><button type="button" class="btn btn-a sheet-edit" data-edit data-i18n="r2_edit">Edit my answers</button><div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div></div></form>
+</div>
 
 <div id="source-banner" hidden></div>
 
@@ -286,8 +236,10 @@
     <div class="status">
       <p class="count cfull" id="result-count" aria-live="polite"></p>
       <p class="count cshort" aria-hidden="true"></p>
-      <button type="button" id="f-copy" class="btn btn-s copy" data-i18n="copy_link">Copy link</button>
+<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span></button><button type="button" class="btn btn-a edit-answers" data-edit data-i18n="r2_edit">Edit my answers</button><button type="button" id="f-clear" class="btn btn-q clear" data-i18n="clear_all_2">Clear all</button>      <button type="button" id="f-copy" class="btn btn-s copy"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg><span data-i18n="copy_link">Copy link</span></button>
     </div>
+
+    <p class="count count-summary" id="count-summary" aria-hidden="true"></p>
 
     <!-- My list (js/shortlist.js): the saved programmes, kept in this browser.
          Outside the list view it says how many are saved and how many the
@@ -369,10 +321,10 @@
           <select class="inp" id="f-sort"></select>
         </div>
         <div class="cols" role="group" aria-label="Sort programmes" data-i18n-attr="aria-label:sort_programmes">
-          <span class="c1"><span data-i18n="programme_2">Programme</span> <button type="button" data-sort="name" aria-pressed="false"><span class="sort-label" data-i18n="university_a_z">University A–Z</span><span class="visually-hidden" data-i18n="sort_university_a_to_z">, sort University — A to Z.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>
+          <span class="c1"><button type="button" data-sort="name" aria-pressed="false"><span data-i18n="programme_2">Programme</span><span class="sort-label" hidden data-i18n="university_a_z">University A–Z</span><span class="visually-hidden" data-i18n="sort_university_a_to_z">, sort University — A to Z.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>
           <button type="button" data-sort="points" aria-pressed="false"><span data-i18n="ib_points">IB points</span><span class="visually-hidden" data-i18n="sort_ib_points_lowest_first">, sort IB points — lowest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
-          <button type="button" data-sort="deadline" class="r" aria-pressed="true"><span data-i18n="deadline">Deadline</span><span class="visually-hidden" data-i18n="sorted_deadline_soonest_first_activate_to_sort_deadline_latest_first">, sorted Deadline — soonest first. Activate to sort Deadline — latest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
-          <button type="button" data-sort="tuition" class="r" aria-pressed="false"><span data-i18n="eu_fee">EU fee</span><span class="visually-hidden" data-i18n="sort_eu_fee_lowest_first">, sort EU fee — lowest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
+          <button type="button" data-sort="deadline" aria-pressed="true"><span data-i18n="deadline">Deadline</span><span class="visually-hidden" data-i18n="sorted_deadline_soonest_first_activate_to_sort_deadline_latest_first">, sorted Deadline — soonest first. Activate to sort Deadline — latest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
+          <button type="button" data-sort="tuition" class="r" aria-pressed="false"><span data-i18n="r2_fee_heading">EU fee / year</span><span class="visually-hidden" data-i18n="sort_eu_fee_lowest_first">, sort EU fee — lowest first.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button>
           <span class="chv" aria-hidden="true"></span>
         </div>
         <div class="skeletons" id="loading" aria-hidden="true">
@@ -404,7 +356,7 @@
     </section>
     <aside class="pane" id="pane" tabindex="-1" aria-labelledby="pane-h">
       <h2 class="visually-hidden" id="pane-h" data-i18n="programme_details">Programme details</h2>
-      <div class="pane-body">
+      <button type="button" class="btn pane-close" id="pane-close" aria-label="Close details" data-i18n-attr="aria-label:r2_close_details"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button><div class="pane-body">
         <div class="pane-empty"><b data-i18n="choose_a_programme">Choose a programme</b><span data-i18n="its_details_appear_here_use_the_up_and_down_arrow_keys_to_move_throu">Its details appear here. Use the Up and Down arrow keys to move through the list.</span></div>
       </div>
     </aside>
@@ -420,7 +372,7 @@
 <dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">
   <div class="sheet-h">
     <h2 id="sheet-h" tabindex="-1" data-i18n="filters_2">Filters</h2>
-    <button type="button" id="sheet-done" class="btn btn-q" data-i18n="done">Done</button>
+    <button type="button" id="sheet-done" class="btn btn-q" aria-label="Close filters" data-i18n-attr="aria-label:r2_close_filters"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
   <div class="sheet-b"></div>
   <div class="sheet-f">
@@ -429,13 +381,10 @@
   </div>
 </dialog>
 
-<footer class="foot">
-  <p data-i18n="always_check_the_official_page_footer">
-    Always check the university's official page before you apply. Requirements, fees and deadlines can change.
-    Students maintain this site.
-  </p>
-</footer>
+<footer class="foot"><div><h2><span data-i18n="r2_footer_h">Check before you apply</span></h2><p><span data-i18n="r2_footer_p">Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.</span></p><p class="src" id="source-line" hidden></p></div><div class="faq"><details><summary><span data-i18n="r2_faq_cao">How are Irish CAO points turned into IB points?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_cao_a">Irish courses list last year’s CAO cutoff, not a minimum. We convert it with the CAO’s IB table; a cutoff from 601 to 625 assumes the 25 HL Maths bonus points.</span></div></details><details><summary><span data-i18n="r2_faq_unknown">What does “Not published” mean?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_unknown_a">The university does not publish a figure. The programme stays in your results, because unknown never hides a programme.</span></div></details><details><summary><span data-i18n="r2_faq_source">Where does the data come from?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_source_a">Every row comes from the university’s official page. Rows nobody has checked by hand yet are marked.</span></div></details></div></footer>
 
+<dialog class="ob" id="onboarding" aria-labelledby="ob-title"></dialog>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>

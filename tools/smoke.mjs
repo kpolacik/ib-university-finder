@@ -264,7 +264,9 @@ function connect(url) {
 // A fresh tab per scenario, so nothing (the address bar's filters, an open
 // sheet) leaks from one width to the next.
 async function openPage(base, width, height, { block = [] } = {}) {
-  const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
+  // Each scenario gets its own storage; ordinary tabs share saved filters.
+  const { browserContextId } = await cdp.send('Target.createBrowserContext');
+  const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
   const send = (method, params, ms) => cdp.send(method, params, sessionId, ms);
   const errors = [];
@@ -361,6 +363,7 @@ async function openPage(base, width, height, { block = [] } = {}) {
   const close = async () => {
     off();
     await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
+    await cdp.send('Target.disposeBrowserContext', { browserContextId }, undefined, 5000).catch(() => {});
   };
   const screenshot = async (path) => {
     const { cssContentSize } = await send('Page.getLayoutMetrics');
@@ -368,7 +371,7 @@ async function openPage(base, width, height, { block = [] } = {}) {
       clip: { x: 0, y: 0, width, height: Math.min(6000, cssContentSize.height), scale: 1 } });
     await writeFile(path, Buffer.from(data, 'base64'));
   };
-  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot };
+  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
 }
 
 // --- Reporting ----------------------------------------------------------------
@@ -398,7 +401,7 @@ const assert = (ok, why) => { if (!ok) throw new Error(why); };
 
 // The count line's lead: "1240 programmes" or "52 of 1240 programmes". The
 // points summary that may follow sits outside the <b>.
-const COUNT = `document.querySelector('#result-count b')?.textContent ?? ''`;
+const COUNT = `(document.querySelector('#result-count .count-lead')?.textContent ?? '').replace(/[,\\u00a0\\u202f]/g,'')`;
 const countIs = (text) => `(() => { const t = ${COUNT}; return { ok: t === ${JSON.stringify(text)}, why: 'count reads "' + t + '"' }; })()`;
 const narrowed = (total) => `(() => {
   const t = ${COUNT};
@@ -433,6 +436,7 @@ async function runWidth(base, width, height, want) {
     })()`, 15_000, 'the list');
   });
   if (booted) anyBooted = true;
+  if (await page.ev(`Boolean(document.querySelector('#onboarding[open]'))`)) await page.click(`document.querySelector('#onboarding .skipwrap button')`, 'Skip setup');
 
   await check(at, 'A2', 'data comes from the CSVs, not the saved copy or samples', async () => {
     const why = await page.ev(`(() => {
@@ -473,6 +477,7 @@ async function runWidth(base, width, height, want) {
 
   await check(at, 'A12', 'no errors in the browser console', async () => {
     assert(page.errors.length === 0, page.errors.map((e) => e.text).join(' | '));
+    assert(await page.ev(`document.querySelector('.hd').getBoundingClientRect().width===innerWidth`),'white header does not span the viewport');
   });
   await page.close();
 }
@@ -505,6 +510,7 @@ async function interactions(page, at, want) {
   });
 
   await check(at, 'A7', 'points filter narrows the list', async () => {
+    if (phone) await page.click(`document.querySelector('#f-more')`, 'Filters for points');
     await page.click(`document.querySelector('#f-points')`, 'the points box');
     await page.type('24');
     await page.waitFor(narrowed(T), 10_000, 'a narrowed count');
@@ -514,12 +520,15 @@ async function interactions(page, at, want) {
     await page.waitFor(countIs(`${T} programmes`), 10_000, 'the full count after clearing');
   });
 
+  if (phone) await page.click(`document.querySelector('#sheet-done')`, 'Done after points');
+
   // Max yearly cost and My living costs (js/cost.js). In the bar from 600 px;
   // on a phone they sit in the sheet, which A10 already proves opens. A budget
   // of €1 leaves only rows whose cost is unknown, each saying so; My living
   // costs 0 then brings back the rows with no fee (fee + 12 × 0 ≤ 1).
   if (!phone) {
     await check(at, 'A13', 'Max yearly cost keeps unknowns, My living costs replaces the estimate', async () => {
+      await page.click(`document.querySelector('#dd-budget summary')`, 'the Budget panel');
       await page.click(`document.querySelector('#f-budget')`, 'the Max yearly cost box');
       await page.type('1');
       const { n: unknownOnly } = await page.waitFor(narrowed(T), 10_000, 'a narrowed count');
@@ -531,6 +540,8 @@ async function interactions(page, at, want) {
       await page.waitFor(`(() => { const r = ${narrowed(T)}; return { ok: r.ok && r.n > ${unknownOnly}, why: r.why }; })()`, 10_000, 'more rows with My living costs 0');
       const mine = await page.ev(`document.querySelector('#results .c-fee .liv')?.textContent ?? ''`);
       assert(mine === 'Living: your €0/mo', `the first row's living line reads "${mine}"`);
+      await page.key('Escape', 'Escape', 27);
+      assert(await page.ev(`!document.querySelector('#dd-budget').open`), 'Budget must close before the status actions');
       await page.click(`document.querySelector('#f-clear')`, 'Clear all');
       await page.waitFor(countIs(`${T} programmes`), 10_000, 'the full count after Clear all');
     });
@@ -637,7 +648,7 @@ async function interactions(page, at, want) {
       const [a, b] = [await rowId(0), await rowId(1)];
       // Every width shares one throwaway profile, so saves left by an earlier
       // width would start these stars pressed.
-      assert(await page.ev(`localStorage.length === 0`), 'saves left over from an earlier check');
+      assert(await page.ev(`!localStorage.getItem('ib-university-finder:shortlist:v1')`), 'saves left over from an earlier check');
       const openRows = `document.querySelectorAll('#results li.item.is-open').length`;
       const openBefore = await page.ev(openRows);
       try {
@@ -647,7 +658,7 @@ async function interactions(page, at, want) {
       }
       await page.waitFor(`({ ok: document.querySelector('#shortlist-count-text').textContent === '2 saved · 2 shown', why: document.querySelector('#shortlist-count-text').textContent })`, 5000, '"2 saved · 2 shown"');
       assert(await page.ev(openRows) === openBefore, 'a star click opened or closed a row');
-      await page.click(`document.querySelector('#f-shortlist-only')`, 'Open my list');
+      await page.click(`document.querySelector('#header-list')`, 'Open my list');
       await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === 2, why: n + ' rows in the list' }; })()`, 10_000, 'two saved rows');
       await page.click(`document.querySelector('#ml-compare summary')`, 'Compare');
       for (const id of [a, b]) await page.click(`document.querySelector('#ml-picks input[value=' + JSON.stringify(${JSON.stringify('')} + ${JSON.stringify(id)}) + ']').closest('label')`, `the pick ${id}`);
@@ -784,6 +795,265 @@ async function runI18n(base) {
   }
 }
 
+async function runRound2(base) {
+  for (const width of [1280, 390]) {
+    const page = await openPage(`${base}?ui=en&sort=deadline`, width, width === 390 ? 844 : 900);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+    const navigate = async (query = '?ui=en') => {
+      await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+${JSON.stringify(query)}`);
+      await page.waitFor(ready, 15000, 'the reloaded page');
+    };
+    const edit = async () => {
+      if (width < 600) {
+        await page.click(`document.querySelector('#f-more')`, 'Filters to edit answers');
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+      } else await page.click(`document.querySelector('.status [data-edit]')`, 'Edit my answers');
+      await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`,5000,'setup');
+    };
+    const next = () => page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next onboarding step');
+    try {
+      await page.waitFor(ready,15000,'round 2 boot');
+      await check(width,'R2A','first visit, quarter progress, draft Skip/Escape and dismissal',async()=>{
+        await page.ev('localStorage.clear()'); await navigate();
+        assert(await page.ev(`document.querySelector('#onboarding').open && document.querySelector('.ob-bar').hidden && document.activeElement.id==='ob-title'`),'welcome or initial focus/progress incorrect');
+        assert(await page.ev(`getComputedStyle(document.querySelector('.ob-foot>.btn-p')).fontFamily.includes('IBM Plex Sans') && getComputedStyle(document.querySelector('#f-search')).fontFamily.includes('IBM Plex Sans')`),'controls do not use Plex');
+        await next();
+        assert(await page.ev(`document.querySelector('#ob-points').value==='' && document.querySelector('.ob-bar i').style.transform==='scaleX(0.25)'`),'points not blank or progress not 25%');
+        await page.click(`document.querySelector('#ob-points')`,'draft points'); await page.type('36');
+        assert(await page.ev(`document.querySelector('#f-points').value===''`),'draft changed the live filter');
+        await page.ev(`document.querySelector('#dd-budget').open=true`);
+        await page.key('Escape','Escape',27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='' && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && !localStorage.getItem('ibuf.filters.v1')`),'Escape applied or stored draft');
+        await navigate();
+        assert(await page.ev(`!document.querySelector('#onboarding').open`),'dismissed setup reopened');
+      });
+      await check(width,'R2B','answers apply once, typed budget exceeds slider, saved filters restore, URL wins without overwriting',async()=>{
+        await edit(); await next();
+        await page.click(`document.querySelector('#ob-points')`,'predicted points'); await page.type('38'); await next();
+        assert(await page.ev(`document.querySelector('.ob-bar i').style.transform==='scaleX(0.5)'`),'step 3 not 50%');
+        await page.ev(`document.querySelector('.ob-body').scrollTop=100000`);
+        await next();
+        assert(await page.ev(`document.querySelector('.ob-body').scrollTop===0 && document.activeElement.id==='ob-title'`),'new step heading scrolled out of view');
+        assert(await page.ev(`document.querySelector('.ob-bar i').style.transform==='scaleX(0.75)' && document.querySelectorAll('#onboarding .flag').length===11`),'countries or progress incorrect');
+        await page.click(`[...document.querySelectorAll('#onboarding .chip')].find(n=>n.textContent==='Ireland')`,'Ireland');
+        await next();
+        assert(await page.ev(`document.querySelector('#ob-budget').value==='' && document.querySelector('.ob-bar i').style.transform==='scaleX(1)'`),'budget not blank or progress not 100%');
+        await page.click(`document.querySelector('#ob-budget')`,'yearly budget'); await page.type('50000');
+        assert(await page.ev(`document.querySelector('#ob-budget').value==='50000' && document.querySelector('#ob-range').value==='40000'`),'slider capped typed amount');
+        await next();
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='38' && document.querySelector('#f-budget').value==='50000' && localStorage.getItem('ibuf.onboarding.v1')==='completed' && document.activeElement.getAttribute('aria-labelledby')==='results-h'`),'answers not applied or focus wrong');
+        await page.waitFor(`({ok:JSON.parse(localStorage.getItem('ibuf.filters.v1'))?.filters.myIbPoints===38,why:'answers not persisted'})`,5000,'debounced answers');
+        await navigate();
+        assert(await page.ev(`document.querySelector('#f-points').value==='38' && document.querySelector('#f-budget').value==='50000' && document.querySelector('#f-countries input[value=Ireland]').checked`),'saved filters did not restore');
+        await navigate('?ui=en&points=24');
+        assert(await page.ev(`document.querySelector('#f-points').value==='24' && document.querySelector('#f-budget').value==='' && JSON.parse(localStorage.getItem('ibuf.filters.v1')).filters.myIbPoints===38`),'URL merged with or overwrote saved filters');
+        await page.ev(`document.querySelector('#f-points').value='37';document.querySelector('#f-points').dispatchEvent(new Event('input',{bubbles:true}))`);
+        await page.waitFor(`({ok:JSON.parse(localStorage.getItem('ibuf.filters.v1')).filters.myIbPoints===37,why:'explicit edit not saved'})`,5000,'saved explicit edit');
+        await page.ev(`document.querySelector('#f-clear').click()`);
+        assert(await page.ev(`!localStorage.getItem('ibuf.filters.v1') && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Clear all removed onboarding state or retained filters');
+      });
+      await check(width,'R2C','help, inner Escape, focus return, custom zero budget and no overflow',async()=>{
+        if(width<600){
+          await page.click(`document.querySelector('#f-more')`,'phone Filters');
+          assert(await page.ev(`getComputedStyle(document.querySelector('#f-mymaths')).display!=='none' && document.querySelector('.mark').getBoundingClientRect().height>=44 && document.querySelector('.mark').getBoundingClientRect().width>=44`),'phone maths select or header touch target missing');
+          assert(await page.ev(`getComputedStyle(document.querySelector('#results .c-pts .lab')).display!=='none'`),'unknown points lost their phone metric label');
+        }
+        await page.click(`document.querySelector('.info[aria-controls="f-maths-help"]')`,'HL Maths help');
+        await page.ev(`document.querySelector('#dd-budget').open=true`);
+        await page.key('Escape','Escape',27);
+        assert(await page.ev(`!document.querySelector('#dd-budget').open && document.querySelector('.info[aria-controls="f-maths-help"]').getAttribute('aria-expanded')==='true'`),'Escape closed help along with panel');
+        await page.key('Escape','Escape',27);
+        assert(await page.ev(`document.querySelector('.info[aria-controls="f-maths-help"]').getAttribute('aria-expanded')==='false' && document.activeElement.classList.contains('info')`),'help did not close/return focus');
+        if(width<600){
+          assert(await page.ev(`document.querySelector('#filter-sheet').open`),'inner Escape closed sheet');
+          await page.key('Escape','Escape',27);
+          assert(await page.ev(`!document.querySelector('#filter-sheet').open && document.activeElement.id==='f-more'`),'sheet Escape/focus failed');
+        }
+        assert(await page.ev(`document.documentElement.scrollWidth===innerWidth`),'horizontal overflow');
+        assert(page.errors.length===0,page.errors.map(e=>e.text).join(' | '));
+      });
+      if(width>=600)await check(width,'R2F','every open facet and Budget panel stays within the viewport',async()=>{
+        await page.ev(`window.scrollTo(0,0)`);
+        for(const id of ['dd-subjects','dd-countries','dd-languages','dd-cities','dd-degrees','dd-deadline','dd-exam','dd-budget']){
+          await page.click(`document.querySelector('#${id} summary')`,id);
+          await page.waitFor(`(()=>{const panel=document.querySelector('#${id} .dropdown-panel'),r=panel.getBoundingClientRect();return {ok:document.querySelector('#${id}').open && !panel.getAnimations().some(a=>a.playState==='running') && r.left>=0 && r.right<=innerWidth && r.bottom<=innerHeight,why:JSON.stringify({left:r.left,right:r.right,bottom:r.bottom})};})()`,5000,`${id} settled inside viewport`);
+          await page.key('Escape','Escape',27);
+        }
+      });
+      await check(width,'R2G','reduced motion is instant; invalid answers block Next; Skip discards both points and budget',async()=>{
+        await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+        try {
+          await edit();
+          assert(await page.ev(`getComputedStyle(document.querySelector('#onboarding')).transitionDuration==='0s' && getComputedStyle(document.querySelector('.ob-step')).animationName==='none'`),'setup still animates');
+          await next();
+          await page.ev(`{const input=document.querySelector('#ob-points');input.value='23';input.dispatchEvent(new Event('input',{bubbles:true}))}`);
+          assert(await page.ev(`document.querySelector('.ob-foot>.btn-p').disabled && document.querySelector('#ob-points').getAttribute('aria-invalid')==='true'`),'invalid points accepted');
+          await page.click(`document.querySelector('.skipwrap button')`,'Skip invalid points');
+          await edit(); for(let i=0;i<4;i++)await next();
+          await page.ev(`{const input=document.querySelector('#ob-budget');input.value='-1';input.dispatchEvent(new Event('input',{bubbles:true}))}`);
+          assert(await page.ev(`document.querySelector('.ob-foot>.btn-p').disabled`),'negative budget accepted');
+          await page.ev(`{const slider=document.querySelector('#ob-range');slider.value='0';slider.dispatchEvent(new Event('input',{bubbles:true}))}`);
+          assert(await page.ev(`!document.querySelector('.ob-foot>.btn-p').disabled && document.querySelector('#ob-budget').value==='0' && document.querySelector('#ob-range').classList.contains('set')`),'zero slider budget refused');
+          await page.click(`document.querySelector('.skipwrap button')`,'Skip draft zero budget');
+          assert(await page.ev(`document.querySelector('#f-points').value==='' && document.querySelector('#f-budget').value==='' && !localStorage.getItem('ibuf.filters.v1')`),'Skip committed draft');
+        } finally {
+          await page.ev(`if(document.querySelector('#onboarding').open)document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
+          await page.send('Emulation.setEmulatedMedia',{features:[]});
+        }
+      });
+      await check(width,'R2H','blocked localStorage is caught for preference and onboarding access',async()=>{
+        assert(await page.ev(`(async()=>{const mod=await import('./js/onboarding.js'),descriptor=Object.getOwnPropertyDescriptor(window,'localStorage');try{Object.defineProperty(window,'localStorage',{configurable:true,get(){throw new Error('storage blocked')}});return mod.readSaved()===null && mod.readDismissed()===false && mod.writeSaved(null)===undefined && mod.writeSaved({version:1,filters:{}})===undefined;}finally{Object.defineProperty(window,'localStorage',descriptor)}})()`),'storage exception escaped');
+      });
+      if(width>=600)await check(width,'R2I','200% layout keeps long SK controls and facet panels inside the viewport; non-scrolling lists have no fade',async()=>{
+        await page.send('Emulation.setDeviceMetricsOverride',{width:640,height:450,deviceScaleFactor:1,mobile:false});
+        try {
+          await page.ev(`document.querySelector('[data-language=sk]').click();window.scrollTo(0,0)`);
+          await page.waitFor(`(()=>{const w=innerWidth,sw=document.documentElement.scrollWidth,display=getComputedStyle(document.querySelector('#f-mymaths')).display;return {ok:w===640 && sw===w && display!=='none',why:JSON.stringify({w,sw,display,dialogs:[...document.querySelectorAll('dialog[open]')].map(n=>n.id)})}})()`,5000,'zoomed controls');
+          await page.click(`document.querySelector('#dd-languages summary')`,'zoomed language panel');
+          await page.waitFor(`(()=>{const box=document.querySelector('#f-languages');return {ok:box.classList.contains('at-end')===(box.scrollTop+box.clientHeight>=box.scrollHeight-4),why:'fade cue disagrees with scroll extent'}})()`,5000,'fade cue');
+          // Settled, as R2F: the height cap is set by the toggle event, which comes after the click.
+          await page.waitFor(`(()=>{const panel=document.querySelector('#dd-languages .dropdown-panel'),r=panel.getBoundingClientRect();return {ok:document.querySelector('#dd-languages').open && !panel.getAnimations().some(a=>a.playState==='running') && r.left>=0 && r.right<=innerWidth && r.bottom<=innerHeight,why:'zoomed facet escapes viewport: '+JSON.stringify({left:r.left,right:r.right,bottom:r.bottom})};})()`,5000,'zoomed facet inside viewport');
+          await page.key('Escape','Escape',27);
+        } finally {
+          await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+          await page.ev(`document.querySelector('[data-language=en]').click()`);
+        }
+      });
+      if(width>=600)await check(width,'R2D','compact header keeps its slot, focused controls stay still and short viewports do not stick',async()=>{
+        await page.ev(`document.activeElement.blur();window.scrollTo(0,700)`);
+        await page.waitFor(`({ok:document.body.classList.contains('compact'),why:'header not compact'})`,5000,'compact header');
+        const size=await page.ev(`({h:document.querySelector('.hd').offsetHeight,x:document.querySelector('#f-search').getBoundingClientRect().left})`);
+        assert(size.h===56,'compact header changed layout height');
+        assert(await page.ev(`getComputedStyle(document.querySelector('.hd')).transform==='none' && getComputedStyle(document.querySelector('.hd-in')).transform==='none' && getComputedStyle(document.body).getPropertyValue('--header-visible')==='56px' && document.querySelector('.hd').getBoundingClientRect().bottom===56`),'compact header translated or offset shrank');
+        await page.ev(`window.scrollTo(0,0)`); await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'not expanded at top'})`,5000,'expanded header');
+        assert(await page.ev(`document.querySelector('#f-search').getBoundingClientRect().left===${size.x}`),'search moved sideways');
+        await page.ev(`document.querySelector('#f-search').focus();window.scrollTo(0,700)`);
+        assert(await page.ev(`!document.body.classList.contains('compact')`),'focused header control moved');
+        await page.ev(`document.activeElement.blur();window.scrollTo(0,0)`);
+        await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:500,deviceScaleFactor:1,mobile:false});
+        assert(await page.ev(`getComputedStyle(document.querySelector('.hd')).position!=='sticky'`),'short viewport header sticks');
+        await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+      });
+      if(width>=600)await check(width,'R2E','full-dataset country widening and narrowing settle before another change',async()=>{
+        await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
+        const settled = (count) => `({ok:document.querySelectorAll('#results>li.item').length===${count} && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
+        await page.waitFor(settled(2915),10000,'all rows before country change');
+        const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
+        for(let i=0;i<2;i++){
+          await page.ev(`${ireland}.click()`);
+          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && document.querySelectorAll('#results>li.item').length===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
+          await page.ev(`${ireland}.click()`);
+          await page.waitFor(settled(2915),10000,'settled full catalogue');
+        }
+        // L09 timing is a separate paired run: AC power, quiet machine, 4x CPU.
+      });
+    } finally { await page.ev('localStorage.clear()').catch(()=>{}); await page.close(); }
+  }
+}
+
+// Design round 2, review round 2: what only a real layout can show.
+async function runReview2(base) {
+  const open = async (query, width, height) => {
+    const page = await openPage(`${base}${query}`, width, height);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+    await page.waitFor(ready, 15000, 'the page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'the reloaded page');
+    return page;
+  };
+  const box = (selector) => `document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect()`;
+  let page = await open('?ui=sk&country=Ireland&points=36', 1280, 900);
+  try {
+    await check(1280, 'R3A', 'a real mouse click puts focus in the facet search, every time', async () => {
+      for (const id of ['dd-subjects', 'dd-subjects', 'dd-cities']) {
+        await page.ev(`document.querySelector('#${id}').open=false;document.activeElement.blur()`);
+        await page.click(`document.querySelector('#${id} summary')`, id);
+        await page.waitFor(`({ok:document.querySelector('#${id}').contains(document.activeElement) && document.activeElement.type==='search',why:String(document.activeElement.tagName)})`, 3000, `${id} search focus`);
+      }
+      await page.key('Escape', 'Escape', 27);
+    });
+    await check(1280, 'R3B', 'Deadline and Entrance exam are 40 px radios that drive their hidden select', async () => {
+      for (const [id, select, value, any] of [['dd-deadline', 'f-deadline', '30', 'any'], ['dd-exam', 'f-exam', 'none', '']]) {
+        await page.click(`document.querySelector('#${id} summary')`, id);
+        assert(await page.ev(`(()=>{const rows=[...document.querySelectorAll('#${id} .options .option')];return rows.length>2 && rows.every(n=>n.offsetHeight>=40) && rows.every(n=>n.querySelector('input[type=radio]')) && getComputedStyle(document.querySelector('#${select}')).display==='none'})()`), `${id} radio rows`);
+        await page.click(`document.querySelector('#${id} input[value="${value}"]')`, `${id} radio`);
+        await page.waitFor(`({ok:document.querySelector('#${select}').value===${JSON.stringify(value)} && document.querySelector('#${id}').classList.contains('is-set'),why:'select not driven'})`, 3000, `${select} value`);
+        await page.click(`document.querySelector('#${id} .pop-f .btn')`, `${id} clear`);
+        await page.waitFor(`({ok:document.querySelector('#${select}').value===${JSON.stringify(any)} && document.querySelector('#${id} input[value="${any}"]').checked && !document.querySelector('#${id}').classList.contains('is-set'),why:'radio not repainted from the select'})`, 3000, `${select} cleared`);
+        await page.key('Escape', 'Escape', 27);
+      }
+    });
+    await check(1280, 'R3C', 'headings sit over the values; the status row is 36 px and Edit is semibold', async () => {
+      await page.ev(`window.scrollTo(0,0)`);
+      const m = await page.ev(`(()=>{const left=(s)=>${"document.querySelector(s).getBoundingClientRect().left"},right=(s)=>document.querySelector(s).getBoundingClientRect().right;return {hp:left('.cols [data-sort=points] span'),vp:left('.row .v-fit .fig'),hd:left('.cols [data-sort=deadline] span'),vd:left('.row .c-ddl:not(.v-unk) .fig'),hf:right('.cols [data-sort=tuition] span'),vf:right('.row .c-fee:not(.v-unk) .fig'),copy:document.querySelector('#f-copy').getBoundingClientRect().height,weight:getComputedStyle(document.querySelector('.status .edit-answers')).fontWeight}})()`);
+      assert(Math.abs(m.hp - m.vp) < 2 && Math.abs(m.hd - m.vd) < 2 && Math.abs(m.hf - m.vf) < 2, `headings off: ${JSON.stringify(m)}`);
+      assert(m.copy === 36 && m.weight === '600', `status row: ${JSON.stringify(m)}`);
+    });
+    await check(1280, 'R3D', 'the pane title keeps its space and its × covers nothing, in Slovak', async () => {
+      await page.click(`document.querySelectorAll('#results .row .open')[1]`, 'a row');
+      await page.waitFor(`({ok:!!document.querySelector('.pane .detail-originals') && !document.querySelector('#pane-close').hidden,why:'no translated pick'})`, 5000, 'the picked pane');
+      const m = await page.ev(`(()=>{const a=${box('.pane .detail-originals')},b=${box('#pane-close')},title=document.querySelector('.pane .d-title'),range=document.createRange();range.selectNodeContents(title);const degree=title.querySelector('.deg,.unk-t').getBoundingClientRect(),first=range.getClientRects()[0];return {text:title.textContent,overlap:a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom,space:degree.top>first.bottom-2||degree.left-first.right}})()`);
+      assert(!m.overlap, '× overlaps the originals button');
+      assert(/, \S/.test(m.text), `title text ${m.text}`);
+      assert(m.space === true || m.space >= 3, `no visible space before the degree: ${m.space}`);
+      await page.click(`document.querySelector('#pane-close')`, 'pane close');
+    });
+    await check(1280, 'R3E', 'a points error is a popover: it moves nothing and is on top', async () => {
+      const before = await page.ev(`${box('#dd-subjects')}.top`);
+      await page.ev(`{const p=document.querySelector('#f-points');p.value='99';p.dispatchEvent(new Event('input',{bubbles:true}))}`);
+      await page.waitFor(`({ok:document.querySelector('.chipbox .err').textContent!=='',why:'no error'})`, 3000, 'the points error');
+      const m = await page.ev(`(()=>{const e=document.querySelector('.chipbox .err'),s=getComputedStyle(e),r=e.getBoundingClientRect();return {top:${box('#dd-subjects')}.top,position:s.position,shadow:s.boxShadow,hit:e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})()`);
+      assert(m.top === before && m.position === 'absolute' && m.shadow !== 'none' && m.hit, JSON.stringify(m));
+    });
+  } finally { await page.close(); }
+  for (const [lang, query] of [['sk', '&country=Ireland&points=36'], ['en', '&country=Ireland&points=36'], ['en', ''], ['sk', '']]) {
+    page = await open(`?ui=${lang}${query}`, 320, 640);
+    try {
+      await check(320, 'R3F', `${lang}${query ? ' filtered' : ''}: no cell overflows or breaks inside a word, and the search placeholder fits`, async () => {
+        const m = await page.ev(`(()=>{const bad=[];for(const row of [...document.querySelectorAll('#results .row')].slice(0,40)){const rr=row.getBoundingClientRect();for(const cell of row.querySelectorAll('.cell')){const r=cell.getBoundingClientRect();const fig=cell.querySelector('.fig,.verd')?.getBoundingClientRect();if(r.left<rr.left-1||r.right>rr.right+1||cell.scrollWidth>cell.clientWidth+1||(fig&&(fig.left<r.left-1||fig.right>r.right+1)))bad.push(cell.className+':'+cell.textContent);if(getComputedStyle(cell).overflowWrap!=='normal')bad.push('wrap:'+cell.className)}}
+          const input=document.querySelector('#f-search'),s=getComputedStyle(input),ctx=document.createElement('canvas').getContext('2d');ctx.font=s.font;return {bad:bad.slice(0,5),sw:document.documentElement.scrollWidth,need:ctx.measureText(input.placeholder).width,room:input.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)}})()`);
+        assert(m.sw === 320, `page is ${m.sw} wide`);
+        assert(m.bad.length === 0, m.bad.join(' | '));
+        assert(m.need <= m.room, `placeholder needs ${m.need}, has ${m.room}`);
+      });
+    } finally { await page.close(); }
+  }
+  // A touch screen at any width: 44 px, measured rather than read from the CSS.
+  for (const [width, height] of [[1280, 900], [800, 1000], [390, 844]]) {
+    page = await open('?ui=sk&country=Ireland&points=36', width, height);
+    try {
+      await check(width, 'R3G', 'on a touch screen controls, onboarding and the pane close are at least 44 px', async () => {
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+        assert(await page.ev(`matchMedia('(pointer:coarse)').matches`), 'touch emulation did not give pointer:coarse');
+        // offsetHeight, the layout size: panels and the dialog scale in, which a rect would measure.
+        const small = (selector) => page.ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].filter(n=>n.offsetWidth&&n.offsetHeight<44).map(n=>(n.id||n.className)+':'+n.offsetHeight)`);
+        if (width < 600) await page.ev(`document.querySelector('#f-more').click()`);
+        const bar = await small('.chipbox,.seg button,.dropdown>summary,.info,.step,.maths-control>select,.hd .btn,.hd .lang button,.search .inp');
+        assert(bar.length === 0, `filter controls: ${bar}`);
+        await page.ev(`document.querySelector('#dd-budget').open=true`);
+        const budget = await small('.budget .inp,.budget input[type=range],.pop-f .btn');
+        assert(budget.length === 0, `budget: ${budget}`);
+        await page.ev(`document.querySelector('#dd-budget').open=false`);
+        if (width >= 1200) {
+          await page.ev(`document.querySelectorAll('#results .row .open')[1].click()`);
+          await page.waitFor(`({ok:!document.querySelector('#pane-close').hidden,why:'no pick'})`, 5000, 'the pick');
+          assert(await page.ev(`(()=>{const r=${box('#pane-close')};return r.width>=44&&r.height>=44})()`), 'pane close under 44 px');
+          await page.ev(`document.querySelector('#pane-close').click()`);
+        }
+        await page.ev(`document.querySelector('[data-edit]:not(.sheet-edit)')?.offsetParent ? document.querySelector('[data-edit]:not(.sheet-edit)').click() : document.querySelector('.sheet-edit').click()`);
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+        for (let i = 0; i < 5; i++) {
+          const ob = await small('#onboarding .ob-step.on .chip,#onboarding .ob-foot .btn,#onboarding .ob-step.on .big-pts .btn,#onboarding .ob-step.on .rng-top .inp,#onboarding .ob-step.on input[type=range]');
+          assert(ob.length === 0, `onboarding step ${i + 1}: ${ob}`);
+          if (i < 4) await page.ev(`document.querySelector('.ob-foot>.btn-p').click()`);
+        }
+        assert(await page.ev(`document.documentElement.scrollWidth===innerWidth`), 'horizontal overflow');
+      });
+    } finally { await page.close(); }
+  }
+}
+
 // --- Main -----------------------------------------------------------------------
 
 async function main() {
@@ -806,7 +1076,7 @@ async function main() {
   for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
   // A page that never started at any width would only spend another 30 s
   // failing the same way here.
-  if (anyBooted) { await runFallback(base, want); await runI18n(base); }
+  if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
