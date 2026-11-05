@@ -2940,9 +2940,13 @@ for (let i = 0; i < cssRules.length; i++) {
 // the gallery-only rules and the mockup's scrim node stay out.
 // Redesign revisions: the one deliberate @container is the list's 900 px
 // query (on .listp); any other container query or container is still a copy.
-const containerQueriesOk = (source) => (source.match(/@container[^{]*/g) ?? []).every((q) => q.trim() === '@container (min-width: 800px)')
-  && (source.match(/container(?:-type)?\s*:/g) ?? []).length === 1 && /\.listp\{[^}]*container-type:inline-size/.test(source);
-check('CSS contains no copied mockup gallery, container or scrim rules; the only container query is the list at 900 px',
+// Alignment fixes (2026-11-05): the detail footer is a second, named container,
+// so the Save/Compare pair can stack when the detail is too narrow for both
+// labels; its queries name it and nothing else may be a container.
+const containerQueriesOk = (source) => (source.match(/@container[^{]*/g) ?? []).every((q) => q.trim() === '@container (min-width: 800px)' || /^@container dfoot \((?:max|min)-width: [\d.]+px\)$/.test(q.trim()))
+  && (source.match(/container(?:-type)?\s*:/g) ?? []).length === 2 && /\.listp\{[^}]*container-type:inline-size/.test(source)
+  && /\.d-foot\{container:dfoot \/ inline-size\}/.test(source);
+check('CSS contains no copied mockup gallery, container or scrim rules; the only container queries are the list at 900 px and the detail footer',
   !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])|\.scrim(?![\w-])/.test(cssRules)
     && containerQueriesOk(cssRules) && !containerQueriesOk(cssRules + '@container (min-width: 1024px){.row{gap:0}}')
     && !containerQueriesOk(cssRules + '.app{container-type:inline-size}'));

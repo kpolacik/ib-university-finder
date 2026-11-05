@@ -1641,22 +1641,25 @@ async function runBatch2C(base) {
         await page.ev(`document.querySelector('[data-language="${ui}"]').click();window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
         // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
-        // Compare are an equal pair under it at every width, the pane included.
-        await check(width, 'R4H', 'detail: official link full width, then Save and Compare as an equal pair (' + ui + ')', async () => {
+        // Compare are an equal pair under it, the pane included. Since the
+        // alignment fixes the pair stacks when its labels do not fit side by side.
+        await check(width, 'R4H', 'detail: official link full width, then Save and Compare as an equal pair, side by side or stacked (' + ui + ')', async () => {
           await page.click(`document.querySelector('#results>li.item button.open')`, 'first programme');
           await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions'),why:'detail not open'})`, 5000, 'detail actions');
           const m = await page.ev(`(()=>{
             const group=document.querySelector('${detail} .d-actions'), outer=group.getBoundingClientRect();
             const buttons=[...group.children], [link,a,b]=buttons.map(n=>n.getBoundingClientRect());
             const side=Math.abs(a.top-b.top)<1;
-            return {full:Math.abs(link.width-outer.width),below:a.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,
+            // Alignment fixes: a detail too narrow for both labels stacks the pair, full width.
+            const stacked=Math.abs(a.left-b.left)<1&&Math.abs(a.width-outer.width)<=1&&b.top>=a.bottom;
+            return {full:Math.abs(link.width-outer.width),below:a.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
               gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:buttons.some(n=>n.scrollWidth>n.clientWidth+1),
               order:buttons.length===3&&buttons[0].matches('a.btn-p')&&buttons[1].matches('button.save')&&buttons[2].matches('button.cmpb'),
               separate:!group.querySelector('.lnk,.ok,.tag'),
               pageOverflow:document.documentElement.scrollWidth>innerWidth};
           })()`);
           assert(m.order && m.separate && m.full <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
-          assert(m.side && m.heights <= 1 && m.gap >= 8 && m.gap <= 12 && m.below >= 8 && m.below <= 12, JSON.stringify(m));
+          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12) && m.below >= 8 && m.below <= 12, JSON.stringify(m));
           if ([390, 800, 1400].includes(width)) {
             await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
           }

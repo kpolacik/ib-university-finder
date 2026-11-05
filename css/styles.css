@@ -1470,6 +1470,42 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Print keeps the official link as a plain left-aligned line, as before C1. */
 @media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
 
+/* Alignment fixes · list, detail, Compare */
+/* The alignment audit of 2026-11-05 (list-detail and compare findings). Each
+   rule here has a smoke measurement in runAlignListCompare. */
+/* A degree keeps its words together but wraps inside itself once it is wider
+   than the line. "Jednostupňové magisterské štúdium (dlhý cyklus)" is 384 px on
+   one line: nowrap stretched the pane past its edge and ran off a 320 px row. */
+.deg,.d-title .deg{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal}
+/* A label above a tile starts where the tile's text starts, not at the tile's
+   edge: the value sits inside the cell padding (4, 6 or 10 px), so plain cells
+   had their label hanging out to the left and tinted ones did not. */
+.row .cell .lab{padding-left:inherit}
+.row .c-fee .lab{padding-left:0;padding-right:inherit}
+/* Compare and Save centre on the title's first line (16 px x 1.35), not 8 px
+   below it. */
+.r-main>:is(.cmpi,.star){margin-top:calc(var(--fs-16) * 1.35 / 2 - 22px)}
+/* A tap leaves no hover box behind on a touch screen; the pressed colour stays. */
+@media (pointer:coarse){
+ .r-main>:is(.star,.cmpi):hover{background:none}
+ .r-main>:is(.star,.cmpi):not([aria-pressed="true"]):hover{color:var(--ink-2)}
+}
+/* The last open row's details follow the card's rounded corners. */
+#results>.item:last-child>.expand>.expand-inner{border-radius:0 0 calc(var(--r-panel) - 1px) calc(var(--r-panel) - 1px)}
+/* A sort heading's hover and press area is its label, not the whole column. */
+@container (min-width: 800px){.cols>button{justify-self:start}}
+
+/* The detail's Save and Compare: one line each, or stacked. Labels break only
+   between words (.detail's overflow-wrap:anywhere broke "porovnani/a"). The
+   pair stacks when the detail is too narrow for both labels side by side:
+   the Slovak labels need about 450 px, the English ones about 330 (measured
+   in Chrome); any other language takes the Slovak width. */
+.d-foot{container:dfoot / inline-size}
+.d-actions .btn{overflow-wrap:normal}
+.d-actions :is(.save,.cmpb) .ic{width:18px;height:18px}
+@container dfoot (max-width: 449.98px){.d-foot>.d-actions{grid-template-columns:minmax(0,1fr)}}
+@container dfoot (min-width: 330px){.d-foot>.d-actions:lang(en){grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer
    place: title | compare | save. Both keep the required 44 px target,
