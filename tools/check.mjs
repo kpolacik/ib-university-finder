@@ -3504,24 +3504,26 @@ check('country options get an aria-hidden flag between the tick and the name; an
 const kids = (n) => n.children.filter((c) => typeof c !== 'string');
 appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
   run('facets = buildFacets(allRows); drawChips();');
+  // Batch 2 B1 moves the copy help and live status alongside the unchanged controls.
+  const help = get('f-copy-help'), feedback = get('f-copy-status');
   const more = tree.querySelector('.more-filters'), clear = get('f-clear'), copy = get('f-copy'), show = get('sheet-show');
   const sheetB = tree.querySelector('.sheet-b'), sheetF = tree.querySelector('.sheet-f'), form = get('filter-form'), status = tree.querySelector('.status');
-  const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy].join() && kids(sheetB)[1] === copy
+  const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy, help, feedback].join() && kids(sheetB)[1] === copy
     && clear.parent === sheetF && clear.nextElementSibling === show;
-  const wideOk = () => more.parent === form && kids(form).at(-1) === more && clear.parent === status && kids(status).at(-1) === copy;
+  const wideOk = () => more.parent === form && kids(form).at(-1) === more && clear.parent === status && kids(status).slice(-3).join() === [copy, help, feedback].join();
   if (!narrowOk()) return false;
   const box = get('dd-countries'), tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox');
   box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
   stubDocument.moved = (n) => { moves++; hook(n); };
   flip600(true);
-  if (!wideOk() || moves !== 3) return false;
+  if (!wideOk() || moves !== 5) return false;
   flip600(true); run('placeFilters();');
-  if (moves !== 3) return false;
+  if (moves !== 5) return false;
   // A fresh placement (page load at 600 or wider) finds every node in place:
   // nothing moves, so a control focused before the script ran keeps focus.
   get('f-tuition').focus(); run('appliedBar = null; placeFilters();');
-  if (moves !== 3 || stubDocument.activeElement !== get('f-tuition')) return false;
+  if (moves !== 5 || stubDocument.activeElement !== get('f-tuition')) return false;
   for (let i = 0; i < 10; i++) { flip600(i % 2 === 0 ? false : true); if (!(i % 2 === 0 ? narrowOk() : wideOk())) return false; }
   return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition:desc'
     && get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox') === tick && tree.querySelectorAll('.more-filters').filter((n) => n.parent === form || n.parent === sheetB).length === 1
@@ -3657,22 +3659,30 @@ appCheck('actual stuck count: only while narrow with the sentinel above the view
   flip600(true); mark.rect = { top: 900, bottom: 901 }; flip600(false);
   return !stuck();
 });
-await asyncAppCheck('actual Copy link: success, rejection and no clipboard change only its own text for 2 s; a second click restarts the timer', async ({ get, fire, advance, settle, clipboard, context }) => {
-  const copy = get('f-copy');
+// Copy feedback now describes the snapshot; changing the button label hid the
+// result behind the phone modal and made the desktop action change width.
+await asyncAppCheck("Copy link writes the state's address and a state-based toast; failure never says copied", async ({ get, fire, settle, clipboard, context, run }) => {
+  context.location.origin = 'http://localhost:8765';
+  context.toastMessages = [];
+  context.showToast = (message) => context.toastMessages.push(message);
+  const copy = get('f-copy'), label = copy.textContent;
   fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Link copied' || clipboard.written.at(-1) !== context.location.href) return false;
-  advance(1999); if (copy.textContent !== 'Link copied') return false;
-  advance(1); if (copy.textContent !== 'Copy link') return false;
-  fire(copy, 'click'); await settle(); advance(1500); fire(copy, 'click'); await settle(); advance(1500);
-  if (copy.textContent !== 'Link copied') return false;
-  advance(500); if (copy.textContent !== 'Copy link') return false;
+  if (clipboard.written.at(-1) !== 'http://localhost:8765/' || context.toastMessages.at(-1) !== t('r2_copied_none')) return false;
+  run("state.countries.add('Ireland'); dom.points.value = '36';");
+  fire(copy, 'click'); await settle();
+  if (context.toastMessages.at(-1) !== t('r2_copied_filters_points')) return false;
+  run("state.countries.clear(); dom.points.value = ''; state.sort = 'name';");
+  fire(copy, 'click'); await settle();
+  if (!clipboard.written.at(-1).includes('?sort=name') || context.toastMessages.at(-1) !== t('r2_copied_sort')) return false;
+  get('f-search').value = 'biology'; fire(get('f-search'), 'input');
+  fire(copy, 'click'); await settle();
+  if (!clipboard.written.at(-1).includes('q=biology')) return false;
+  context.location.hash = '#top-marker';
   clipboard.mode = 'reject'; fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Copy failed: use the address bar') return false;
-  advance(2000); if (copy.textContent !== 'Copy link') return false;
+  if (context.toastMessages.at(-1) !== t('r2_copy_failed_desktop')) return false;
   context.navigator.clipboard = undefined; fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Copy failed: use the address bar') return false;
-  advance(2000);
-  return copy.textContent === 'Copy link' && copy.getAttribute('aria-live') === null;
+  return context.toastMessages.at(-1) === t('r2_copy_failed_desktop') && copy.textContent === label
+    && copy.querySelector('.copy-long').textContent === t('r2_copy_filters_link');
 });
 appCheck('actual arrows scroll the new pick after selecting it: nearest when it fits under the sticky header, start when taller; focus never scrolls', ({ run, flip, get, html, context }) => {
   flip(true);
@@ -5735,7 +5745,159 @@ section('Batch 2 · A');
 // batch 2 · A checks go here
 
 section('Batch 2 · B');
-// batch 2 · B checks go here
+const { linkContents } = filtersMod;
+check('B1 link contents covers all nine states, HL Maths and descending sort', (() => {
+  const plain = createFilterState();
+  const points = { ...plain, myIbPoints: 36 };
+  const filtered = { ...plain, hlMaths: true };
+  return linkContents(plain) === 'none' && linkContents({ ...plain, sort: 'name' }) === 'sort'
+    && linkContents({ ...plain, dir: 'desc' }) === 'sort'
+    && linkContents(points) === 'points' && linkContents(filtered) === 'filters'
+    && linkContents({ ...filtered, myIbPoints: 36 }) === 'filters_points'
+    && linkContents(plain, { shared: true }) === 'shared'
+    && linkContents(points, { shared: true }) === 'shared_points'
+    && linkContents(filtered, { shared: true }) === 'shared_filters'
+    && linkContents({ ...filtered, myIbPoints: 36 }, { shared: true }) === 'shared_filters_points';
+})());
+check('B1 bare and ui-only links restore recipient filters; sort links use URL defaults', (() => {
+  const stored = { version: 1, filters: { countries: ['Ireland'] } };
+  return ['', '?ui=sk'].every((q) => {
+    const r = savedState.restoration(q, stored);
+    return r.source === 'saved' && r.state.countries.has('Ireland');
+  }) && (() => { const r = savedState.restoration('?sort=name', stored); return r.source === 'url' && !r.state.countries.size; })();
+})());
+await asyncAppCheck('B1 each of the nine actual copy results describes its URL, without a hash', async ({run,get,fire,settle,context,clipboard}) => {
+  context.location.origin = 'http://localhost:8765'; context.location.hash = '#top-marker';
+  const messages = []; context.showToast = message => messages.push(message);
+  for (const [kind, shared, points, filters, sort] of [
+    ['none',false,false,false,false],['sort',false,false,false,true],
+    ['filters',false,false,true,false],['points',false,true,false,false],['filters_points',false,true,true,false],
+    ['shared',true,false,false,false],['shared_filters',true,false,true,false],
+    ['shared_points',true,true,false,false],['shared_filters_points',true,true,true,false]
+  ]) {
+    context.copyCase = {shared,points,filters,sort};
+    run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {ids:[fixture[0].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
+    fire(get('f-copy'),'click'); await settle();
+    const url = clipboard.written.at(-1);
+    if(messages.at(-1)!==t('r2_copied_'+kind) || url.includes('#') || /[?&]list=/.test(url)!==shared || /[?&]points=/.test(url)!==points || /[?&]q=/.test(url)!==filters) return false;
+  }
+  return messages.length===9;
+});
+await asyncAppCheck('B1 pending copies keep their snapshot, including language, success and rejection', async ({ run, get, fire, settle, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  for (const reject of [false, true]) {
+    run("state.countries = new Set(['Ireland']); dom.points.value = ''; dom.search.value = ''; switchLanguage('en');");
+    let done; let url;
+    context.navigator.clipboard = { writeText(value) { url = value; return new Promise((resolve, fail) => { done = reject ? fail : resolve; }); } };
+    fire(get('f-copy'), 'click');
+    run("dom.points.value = '36'; dom.search.value = 'law'; switchLanguage('sk');");
+    done(); await settle();
+    if (!url.includes('country=Ireland') || /points=|q=|#/.test(url) || messages.at(-1) !== UI.en[reject ? 'r2_copy_failed_desktop' : 'r2_copied_filters']) return false;
+  }
+  return true;
+});
+await asyncAppCheck('B1 sheet status repeats once and clears on every close route, language change and widening', async ({ run, get, fire, settle, flushFrame, advance, flip600, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  const sheet = get('filter-sheet'), status = get('f-copy-status');
+  for (const close of ['done', 'apply', 'escape', 'backdrop', 'language', 'widen']) {
+    flip600(false); fire(get('f-more'), 'click');
+    for (let i = 0; i < 2; i++) {
+      fire(get('f-copy'), 'click'); await settle();
+      if (status.textContent !== '') return false;
+      flushFrame(); if (status.textContent !== t('r2_copied_none') || messages.length) return false;
+    }
+    if (close === 'done') fire(get('sheet-done'), 'click');
+    if (close === 'apply') fire(get('sheet-show'), 'click');
+    if (close === 'escape') { sheet.close(); }
+    if (close === 'backdrop') fire(sheet, 'click', { clientX: -10, clientY: -10 });
+    if (close === 'language') run("switchLanguage('sk');");
+    if (close === 'widen') flip600(true);
+    advance(0); flushFrame();
+    if (status.textContent !== '' || sheet.open) return false;
+    run("switchLanguage('en');");
+  }
+  fire(get('f-more'), 'click');
+  let done; context.navigator.clipboard = { writeText: () => new Promise((resolve) => { done = resolve; }) };
+  fire(get('f-copy'), 'click'); fire(get('sheet-done'), 'click'); advance(0); done(); await settle(); flushFrame();
+  return status.textContent === '' && messages.length === 1 && messages[0] === t('r2_copied_none');
+});
+await asyncAppCheck('B1 sheet missing clipboard and rejection show only the sheet failure', async ({ run, get, fire, settle, flushFrame, clipboard, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  fire(get('f-more'), 'click');
+  for (const api of [clipboard, undefined]) {
+    clipboard.mode = 'reject'; context.navigator.clipboard = api;
+    fire(get('f-copy'), 'click'); await settle(); flushFrame();
+    if (get('f-copy-status').textContent !== t('r2_copy_failed_sheet')) return false;
+  }
+  return messages.length === 0;
+});
+await asyncAppCheck('B1 list share uses EN and SK plurals, points opt-in, failure selection and pending snapshots', async ({ run, get, fire, settle, context }) => {
+  const messages = []; context.showToast = (message) => messages.push(message);
+  get('ml-share-url').select = () => { context.linkSelected = true; };
+  run('allRows = live.slice(0, 5);');
+  const button = get('ml-share-copy'), label = button.textContent;
+  for (const ui of ['en', 'sk']) for (const count of [1, 2, 3, 4, 5]) for (const points of [false, true]) {
+    context.n = count; context.ui = ui; context.points = points;
+    run("switchLanguage(ui); shortlist.clear(); allRows.slice(0,n).forEach(r => shortlist.add(r.id)); dom.points.value = '36'; readFields(); dom.sharePoints.checked = points; update();");
+    fire(button, 'click'); await settle();
+    if (messages.at(-1) !== t(count === 1 ? (points ? 'r2_list_copied_points_one' : 'r2_list_copied_one') : (points ? 'r2_list_copied_points' : 'r2_list_copied'), { count })) return false;
+  }
+  run("switchLanguage('en'); shortlist.clear(); allRows.slice(0,3).forEach(r => shortlist.add(r.id)); dom.sharePoints.checked = true;");
+  let done; let url;
+  context.navigator.clipboard = { writeText(value) { url = value; return new Promise((resolve) => { done = resolve; }); } };
+  fire(button, 'click');
+  run('shortlist.clear(); dom.sharePoints.checked = false;'); done(); await settle();
+  if (!url.includes('points=36') || messages.at(-1) !== t('r2_list_copied_points', { count: 3 })) return false;
+  context.navigator.clipboard = undefined; fire(button, 'click'); await settle();
+  return context.linkSelected && messages.at(-1) === t('r2_copy_failed_list') && button.textContent === label;
+});
+appCheck('B1 shared help and copy names stay truthful in EN and SK', ({ run, get, ids: [a] }) => {
+  // The shared harness strips translation attributes for legacy source checks.
+  const original = parseHtml(read('index.html'));
+  for (const id of ['f-copy', 'ml-share-help']) for (const attr of ['data-i18n', 'data-i18n-attr']) {
+    const value = original.querySelector('#' + id).getAttribute(attr);
+    if (value) get(id).setAttribute(attr, value);
+  }
+  for (const cls of ['copy-long', 'copy-short']) get('f-copy').querySelector('.' + cls).setAttribute('data-i18n', original.querySelector('.' + cls).getAttribute('data-i18n'));
+  for (const language of ['en', 'sk']) {
+    run(`switchLanguage('${language}'); shared = null; renderListBar();`);
+    if (get('f-copy-help').textContent !== t('r2_copy_help')) return false;
+    run(`shared = { ids: ['${a}'], unknown: [] }; state.shortlistOnly = true; update();`);
+    if (get('f-copy-help').textContent !== t('r2_copy_help_shared')) return false;
+    const name = get('f-copy').getAttribute('aria-label');
+    if (!name.includes(get('f-copy').querySelector('.copy-long').textContent)
+      || !name.toLowerCase().includes(t('copy_link').toLowerCase()) || get('ml-share-help').textContent !== t('r2_share_help')) return false;
+  }
+  return true;
+});
+appCheck('B2 one save hints, two pre-tick through the CTA, five do not, shared never hints', ({ run, get, fire, context }) => {
+  run('allRows = live.slice(0,5); shortlist.add(allRows[0].id); update();');
+  if (get('ml-compare-hint').hidden || !get('ml-compare-open').hidden || !get('ml-note').hidden) return false;
+  run('shortlist.add(allRows[1].id); update();');
+  if (!get('ml-compare-hint').hidden || get('ml-compare-open').textContent !== 'Compare (2)') return false;
+  fire(get('ml-compare-open'), 'click');
+  if (!run('state.shortlistOnly') || !get('ml-compare').open || run('comparePicks.length') !== 2
+    || get('ml-compare-go').textContent !== 'Compare 2' || stubDocument.activeElement !== get('ml-picks').querySelector('input')) return false;
+  run("state.shortlistOnly = false; comparePicks = []; allRows.forEach(r => shortlist.add(r.id)); update();");
+  if (get('ml-compare-open').textContent !== 'Compare (5)') return false;
+  fire(get('ml-compare-open'), 'click');
+  if (run('comparePicks.length') !== 0) return false;
+  return true;
+});
+appCheck('B2 Slovak Compare labels and hint, shared hint exclusion', ({ run, get }) => {
+  get('ml-compare-hint').setAttribute('data-i18n', parseHtml(read('index.html')).querySelector('#ml-compare-hint').getAttribute('data-i18n'));
+  run("switchLanguage('sk'); shortlist.add(fixture[0].id); update();");
+  if (get('ml-compare-hint').textContent !== t('r2_compare_hint') || get('ml-compare-hint').hidden) return false;
+  run('shortlist.add(fixture[1].id); update();');
+  if (get('ml-compare-open').textContent !== 'Porovnať (2)') return false;
+  run('shared = { ids: [fixture[0].id], unknown: [] }; state.shortlistOnly = true; update();');
+  return get('ml-compare-hint').hidden;
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+
 
 section('Batch 2 · C');
 // batch 2 · C checks go here

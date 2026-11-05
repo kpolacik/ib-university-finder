@@ -236,7 +236,9 @@
     <div class="status">
       <p class="count cfull" id="result-count" aria-live="polite"></p>
       <p class="count cshort" aria-hidden="true"></p>
-<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span></button><button type="button" class="btn btn-a edit-answers" data-edit data-i18n="r2_edit">Edit my answers</button><button type="button" id="f-clear" class="btn btn-q clear" data-i18n="clear_all_2">Clear all</button>      <button type="button" id="f-copy" class="btn btn-s copy"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg><span data-i18n="copy_link">Copy link</span></button>
+<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span></button><button type="button" class="btn btn-a edit-answers" data-edit data-i18n="r2_edit">Edit my answers</button><button type="button" id="f-clear" class="btn btn-q clear" data-i18n="clear_all_2">Clear all</button>      <button type="button" id="f-copy" class="btn btn-s copy" aria-label="Copy link to these filters" data-i18n-attr="aria-label:r2_copy_filters_link" aria-describedby="f-copy-help"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg><span class="copy-long" data-i18n="r2_copy_filters_link">Copy link to these filters</span><span class="copy-short" data-i18n="copy_link" aria-hidden="true">Copy link</span></button>
+      <p class="help copy-help" id="f-copy-help" data-i18n="r2_copy_help">Opens this page with your filters, search and sort. Includes your IB points if you entered them. Doesn't include your saved programmes.</p>
+      <p class="copy-status" id="f-copy-status" role="status" aria-live="polite"></p>
     </div>
 
     <p class="count count-summary" id="count-summary" aria-hidden="true"></p>
@@ -250,6 +252,8 @@
       <div class="ml-row">
         <h2 class="ml-h" id="ml-h"><svg class="ic" aria-hidden="true"><use href="#i-bookmark-fill"/></svg><span id="ml-title" data-i18n="my_list">My list</span></h2>
         <p class="ml-count" id="shortlist-count"><span id="shortlist-count-text"></span></p>
+        <p class="help ml-hint" id="ml-compare-hint" hidden data-i18n="r2_compare_hint">Save 2 or more programmes to compare up to 4.</p>
+        <button type="button" id="ml-compare-open" class="btn btn-s cmp-cta" hidden></button>
         <button type="button" id="ml-show-all" class="btn btn-q" hidden data-i18n="show_all_saves">Show all saves</button>
         <button type="button" id="ml-save-shared" class="btn btn-p btn-s" hidden data-i18n="save_these_to_my_list">Save these to my list</button>
         <button type="button" id="f-shortlist-only" class="btn btn-s ml-open" data-i18n="open_my_list">Open my list</button>
@@ -266,7 +270,7 @@
           </select>
         </div>
         <details class="ml-pop" id="ml-compare">
-          <summary class="btn btn-s"><span data-i18n="compare_2">Compare</span></summary>
+          <summary class="btn btn-s cmp-cta"><span></span></summary>
           <div class="ml-panel">
             <fieldset class="ml-picks">
               <legend class="help" data-i18n="pick_2_to_4_programmes">Pick 2 to 4 programmes</legend>
@@ -278,7 +282,7 @@
         <details class="ml-pop" id="ml-share">
           <summary class="btn btn-s"><span data-i18n="share">Share</span></summary>
           <div class="ml-panel">
-            <p class="help" id="ml-share-help" data-i18n="the_link_lists_your_saved_programmes_and_nothing_else">The link lists your saved programmes and nothing else.</p>
+            <p class="help" id="ml-share-help" data-i18n="r2_share_help">The link opens your saved programmes. Your filters and search stay private.</p>
             <label class="tick"><input type="checkbox" id="ml-share-points" aria-describedby="ml-share-points-help"> <span data-i18n="include_my_ib_points">Include my IB points</span></label>
             <p class="help" id="ml-share-points-help"></p>
             <label class="help" for="ml-share-url" data-i18n="link_to_your_list">Link to your list</label>

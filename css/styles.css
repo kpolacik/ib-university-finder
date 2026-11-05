@@ -1160,7 +1160,7 @@ body.compact .filters-btn{opacity:1;visibility:visible;transform:none}
 .legend div{display:flex;gap:10px;align-items:center}
 .legend i{width:26px;height:16px;border-radius:4px;flex:none}
 .legend-fit{background:var(--fit-fill)}.legend-cond{background:var(--cond-fill)}.legend-time{background:var(--time-fill)}.legend-unknown{border:1.5px dashed var(--ink-3)}
-.mylist:not(.is-list):not(:has(.ml-note:not([hidden]))){display:none}
+.mylist:not(.is-list):not(:has(.ml-note:not([hidden]),.ml-hint:not([hidden]),.ml-row>.cmp-cta:not([hidden]))){display:none}
 .toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:grid;gap:8px;justify-items:center;pointer-events:none;max-width:calc(100vw - 24px);width:max-content}
 .toast{pointer-events:auto;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:10px;font-size:14px;animation:toast-in 240ms var(--ease-out)}
 .toast button{border:0;background:transparent;color:var(--accent-tint);font-weight:600;cursor:pointer;min-height:24px}
@@ -1399,6 +1399,19 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 2 · A: header and filter bar */
 
 /* Batch 2 · B: share and My list */
+.copy-short{display:none}
+.copy-help{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.copy-status{display:none}
+.sheet-b .copy-long{display:inline}
+.sheet-b .copy-short{display:none}
+/* The sheet already has a 16px grid gap; leave 5px under the copy action and help. */
+.sheet-b .copy-help{position:static;width:auto;height:auto;margin:-11px 0 0;overflow:visible;clip-path:none;white-space:normal}
+.sheet-b .copy-status:not(:empty){display:block;margin:-11px 0 0;font-size:var(--fs-13);color:var(--ink-2)}
+.ml-hint{flex:1 1 16rem;margin:0}
+.cmp-cta{color:var(--accent);border-color:var(--accent);font-weight:600}
+@media(min-width:600px) and (max-width:1023.98px){.status .copy-long{display:none}.status .copy-short{display:inline}}
+@media(max-width:599.98px),(pointer:coarse){.cmp-cta{min-height:44px}}
+
 
 /* Batch 2 · C: detail */
 

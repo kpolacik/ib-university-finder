@@ -232,7 +232,14 @@
       "en-IE",
       "pane-close",
       "sk-SK",
-      "degreeType"
+      "degreeType",
+      "data-i18n",
+      "f-copy-help",
+      "f-copy-status",
+      "ml-compare-hint",
+      "ml-compare-open",
+      "r2_copied_",
+      "summary span"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -417,7 +424,11 @@
       "unk",
       "unknown",
       "within",
-      "yes"
+      "yes",
+      "_filters",
+      "_points",
+      "filters_points",
+      "shared"
     ],
     "js/points.js": [
       "./i18n.js",
