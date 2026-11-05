@@ -5478,7 +5478,8 @@ check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px,
   !cssRules.includes('(max-width:1199px)') && cssRules.includes('.frow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}')
   && cssRules.includes('.fbar .more-filters{gap:8px}') && !cssRules.includes('.frow{gap:6px}')
   && cssRules.includes('.pts input.inp{width:68px;') && !cssRules.includes('.pts input.inp{width:64px}')
-  && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules));
+  && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules)
+  && cssRules.includes('#budget-value:empty{display:none}'));
 section('Review round 2 regressions');
 check('the facet panel is not still hidden when its toggle event focuses the search',
   cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')

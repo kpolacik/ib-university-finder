@@ -1245,7 +1245,7 @@ async function runBatch2A(base) {
     };
     const landed = () => page.ev(`({search:location.search,hash:location.hash,mark:document.activeElement===document.querySelector('.mark'),stayed:window.__stayed===true,list:document.querySelectorAll('#results .row').length})`);
     const expectLanded = async () => {
-      await page.waitFor(`({ok:scrollY===0,why:'scrollY '+scrollY})`, 5000, 'the top of the page');
+      await page.waitFor(`({ok:scrollY===0,why:'scrollY '+scrollY+' active '+document.activeElement.className})`, 5000, 'the top of the page');
       const m = await landed();
       assert(m.search === before && m.hash === '' && m.mark && m.stayed && m.list > 0, JSON.stringify(m));
     };
@@ -1257,6 +1257,8 @@ async function runBatch2A(base) {
     await check(1280, 'R4B', 'Enter on the logo does the same; reduced motion is instant', async () => {
       await page.ev(`window.scrollTo({top:120,behavior:'instant'});document.querySelector('.mark').focus()`);
       await settle(page);
+      // Batch 2 A review: the Enter case once failed on timing. Start only from a known position.
+      await page.waitFor(`({ok:scrollY===120&&!document.body.classList.contains('compact')&&document.activeElement===document.querySelector('.mark'),why:'y '+scrollY})`, 2000, 'start position');
       await page.key('Enter', 'Enter', 13, [], '\r');
       await expectLanded();
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
