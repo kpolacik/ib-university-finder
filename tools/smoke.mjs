@@ -1342,8 +1342,13 @@ async function runBatch2A(base) {
       }
     } finally { await page.close(); }
   }
+  const noteNow = `(()=>{const note=document.querySelector('#f-deadline-open-note'),r=note.getBoundingClientRect(),s=getComputedStyle(note),label=document.querySelector('#dd-deadline input[value=open]').closest('.option'),text=label.querySelector('span').getBoundingClientRect(),panel=document.querySelector('#dd-deadline .dropdown-panel').getBoundingClientRect(),range=document.createRange(),sheet=document.querySelector('#filter-sheet .sheet-b');range.selectNodeContents(note);
+    const tops=new Set([...range.getClientRects()].map((b)=>Math.round(b.top)));
+    return {text:note.textContent,visible:r.height>0&&s.display!=='none'&&s.visibility!=='hidden',below:r.top>=label.getBoundingClientRect().bottom-1,indent:Math.abs(range.getBoundingClientRect().left-text.left),fits:r.left>=panel.left&&r.right<=panel.right,lines:tops.size,
+      rows:[...document.querySelectorAll('#dd-deadline .option')].map((n)=>n.offsetHeight),described:[...document.querySelectorAll('#dd-deadline input[aria-describedby],#dd-exam input[aria-describedby]')].map((n)=>n.value),sw:document.documentElement.scrollWidth,w:innerWidth,sheet:sheet&&sheet.scrollWidth-sheet.clientWidth}})()`;
   page = await open('?ui=en', 1280, 900);
   try {
+    await page.send('Accessibility.enable');
     for (const lang of ['en', 'sk']) {
       await language(page, lang);
       for (const width of [1024, 1200, 1280, 1440]) {
@@ -1387,6 +1392,39 @@ async function runBatch2A(base) {
           assert(m.lead === '15px' && m.edit === '15px' && m.weight === '600', JSON.stringify(m));
         });
       }
+    }
+    await resize(page, 1280, 900);
+    await language(page, 'en');
+    await check(1280, 'R4E', 'the Deadline note sits under "Not passed yet" and describes only that radio', async () => {
+      await page.click(`document.querySelector('#dd-deadline summary')`, 'Deadline');
+      await page.waitFor(`(()=>{const p=document.querySelector('#dd-deadline .dropdown-panel'),r=p.getBoundingClientRect();return {ok:document.querySelector('#dd-deadline').open&&!p.getAnimations().some((a)=>a.playState==='running')&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,why:JSON.stringify([r.left,r.right,r.bottom])}})()`, 5000, 'the Deadline panel inside the viewport');
+      const m = await page.ev(noteNow);
+      assert(m.visible && m.below && m.indent <= 1 && m.fits, JSON.stringify(m));
+      assert(m.rows.every((h) => h >= 40), `radio rows ${m.rows}`);
+      assert(m.described.join() === 'open', `described: ${m.described}`);
+      const radio = await axNode(page, '#dd-deadline input[value=open]');
+      assert(radio.description?.value === m.text && radio.name?.value === 'Not passed yet', `radio reads "${radio.name?.value}" / "${radio.description?.value}"`);
+      await page.key('Escape', 'Escape', 27);
+    });
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      await resize(page, 390, 844);
+      await check(390, 'R4E', `the Deadline note in the phone sheet (${lang}) wraps with no sideways scroll`, async () => {
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 5000, 'the sheet');
+        await page.click(`document.querySelector('#dd-deadline summary')`, 'Deadline');
+        await page.waitFor(`({ok:document.querySelector('#dd-deadline').open && document.querySelector('#f-deadline-open-note').getBoundingClientRect().height>0,why:'not open'})`, 5000, 'the Deadline rows');
+        // The sheet's rows open with a height animation; measure the settled layout.
+        await page.waitFor(`({ok:!document.querySelector('#dd-deadline').getAnimations({subtree:true}).some((a)=>a.playState==='running'),why:'still opening'})`, 5000, 'the rows to settle');
+        const m = await page.ev(noteNow);
+        assert(m.visible && m.below && m.indent <= 1 && m.fits, JSON.stringify(m));
+        assert(m.rows.every((h) => h >= 44), `radio rows ${m.rows}`);
+        assert(m.lines >= 2, `the note is on ${m.lines} line(s)`);
+        assert(m.sw === m.w && m.sheet === 0, `sideways: ${JSON.stringify(m)}`);
+        await page.ev(`document.querySelector('#dd-deadline').open=false`);
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet open'})`, 5000, 'the sheet to close');
+      });
     }
   } finally { await page.close(); }
 }

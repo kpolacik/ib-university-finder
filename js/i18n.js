@@ -546,6 +546,7 @@ export const UI = {
 
     // batch 2 · A
     "r2_home_label": "University Finder, back to top",
+    "r2_deadline_open_note": "Uses the recorded deadline dates. Programmes with no recorded date stay in the list.",
 
     // batch 2 · B
 
@@ -1100,6 +1101,7 @@ export const UI = {
 
     // batch 2 · A
     "r2_home_label": "University Finder, späť na začiatok",
+    "r2_deadline_open_note": "Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.",
 
     // batch 2 · B
 

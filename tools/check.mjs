@@ -5784,6 +5784,62 @@ check('a modified or middle click on the logo keeps the browser\'s own behaviour
     return click.prevented === false && click.scrolls.length === 0;
   }));
 
+// ChromeNode's dataset is a read-only copy; the real radio builder writes to it.
+class WiredNode extends ChromeNode {
+  get dataset() {
+    return new Proxy({}, { get: (_, name) => this.getAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`) ?? undefined,
+      set: (_, name, value) => { this.setAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, value); return true; } });
+  }
+}
+const noteCheck = (() => {
+  const page = new WiredNode('div');
+  const make = (id, className = '') => { const n = new WiredNode('div'); n.id = id; n.className = className; page.append(n); return n; };
+  const select = (id, options) => {
+    const n = make(id); n.setAttribute('aria-label', id); n.setAttribute('aria-describedby', 'f-unknown-help'); n.setAttribute('data-i18n-attr', 'aria-label:deadline');
+    n.options = options.map(([value, i18n]) => ({ value, dataset: { i18n } }));
+    return n;
+  };
+  for (const id of ['header-list', 'f-budget-help']) make(id);
+  make('', 'budget-panel');
+  const fakeDocument = { documentElement: {}, querySelectorAll: (s) => page.querySelectorAll(s), querySelector: (s) => page.querySelector(s),
+    getElementById: (id) => page.querySelector(`#${id}`), createElement: (tag) => new WiredNode(tag), addEventListener() {} };
+  const dom = { search: make('f-search'), points: make('f-points'), myMaths: make('f-mymaths'), dropdowns: [], sheet: make('filter-sheet'),
+    deadline: select('f-deadline', [['any', 'any_date'], ['open', 'not_passed_yet'], ['30', 'within_30_days'], ['60', 'within_60_days']]),
+    exam: select('f-exam', [['', 'any'], ['none', 'no_exam'], ['skippable', 'none_or_skippable']]),
+    subjects: make('f-subjects'), countries: make('f-countries'), languages: make('f-languages'), degrees: make('f-degrees'), cities: make('f-cities') };
+  return withGlobals({ document: fakeDocument, window: { addEventListener() {} }, innerWidth: 1280, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) }, () => {
+    realRound2.wireRound2(dom);
+    const note = page.querySelector('#f-deadline-open-note'), openRadio = page.querySelectorAll('input').find((n) => n.value === 'open');
+    const result = { described: page.querySelectorAll('input').filter((n) => n.getAttribute('aria-describedby')).map((n) => `${n.name}=${n.value}`),
+      points: openRadio.getAttribute('aria-describedby') === note.id, tag: note.tagName, beside: note.previousElementSibling === openRadio.parent && !openRadio.parent.contains(note), en: note.textContent };
+    i18n.setLanguage('sk', { setItem() {} });
+    try { i18n.applyLanguage(fakeDocument); result.sk = note.textContent; } finally { i18n.initLanguage('', { getItem: () => 'en' }); }
+    return result;
+  });
+})();
+equal('the Deadline note describes only "Not passed yet", beside its label so the name stays short, and follows the language', noteCheck, {
+  described: ['f-deadline-radio=open'], points: true, tag: 'small', beside: true,
+  en: 'Uses the recorded deadline dates. Programmes with no recorded date stay in the list.',
+  sk: 'Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.' });
+// Through the real parser, so "unknown" is what a blank or ? cell really becomes.
+appCheck('"Not passed yet" follows recorded dates, as its note says: unknown and future stay, a past date goes even with rolling admission in its notes', ({ run, get, fire, drain, context }) => {
+  context.deadlineRows = sheetsModule.readSheets(lintSheets().universities, lintCsv(lintProgHeader, [
+    { ...lintProg, programme_id: 'd-blank', application_deadline: '' },
+    { ...lintProg, programme_id: 'd-unknown', application_deadline: '?' },
+    { ...lintProg, programme_id: 'd-future', application_deadline: '2099-01-15' },
+    { ...lintProg, programme_id: 'd-past', application_deadline: '2020-01-15' },
+    { ...lintProg, programme_id: 'd-rolling', application_deadline: '2020-01-15', deadline_notes: 'Rolling admission: applications stay open until places are full.' },
+  ]), new Date()).programmes;
+  run('allRows = deadlineRows; sourceMeta = { issues: [] }; facets = buildFacets(allRows); drawChips(); update();');
+  drain();
+  const shown = () => get('results').children.map((n) => n.dataset.id).sort().join();
+  const any = shown();
+  get('f-deadline').value = 'open'; fire(get('f-deadline'), 'change'); drain();
+  const open = shown();
+  get('f-deadline').value = 'any'; fire(get('f-deadline'), 'change'); drain();
+  return any === 'd-blank,d-future,d-past,d-rolling,d-unknown' && open === 'd-blank,d-future,d-unknown' && shown() === any;
+});
+
 section('Batch 2 · B');
 // batch 2 · B checks go here
 

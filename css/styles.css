@@ -1437,6 +1437,10 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .status .count .count-lead,.status .btn{font-size:15px;line-height:20px}
 @media (max-width:599.98px){.status.is-stuck .cfull{min-height:0}}
 
+/* The Deadline note, indented to the radio's text: 8 px row padding, the 16 px
+   radio and its 10 px gap (item 11). */
+.opt-note{display:block;padding:0 8px 6px 34px;font-size:var(--fs-12);font-weight:400;line-height:16px;color:var(--ink-2)}
+
 /* Batch 2 · B: share and My list */
 
 /* Batch 2 · C: detail */
