@@ -6094,5 +6094,14 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
   }
 }
 
+section('Batch 2 follow-up');
+// At 600–700 px the compact Filters button (87–120 px) sat in the 36/44 px logo
+// slot, so Search covered it ("Fil…", right part unclickable). It shows its icon
+// alone there, filling the slot; the label stays for screen readers and the count
+// moves to the corner. smoke.mjs measures it in Chrome.
+check('F1 compact Filters at 600–700 px is icon-only, fills the slot, label kept for screen readers, count on the corner',
+  /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.filters-btn\{width:100%;padding:0\}\s*\.filters-btn>span:not\(\.badge\)\{[^}]*clip-path:inset\(50%\)[^}]*\}\s*\.filters-btn>\.badge\{position:absolute;[^}]*\}/.test(cssText)
+  && /<button class="btn filters-btn" id="compact-filters"[^>]*><svg class="ic" aria-hidden="true">[^]*?<span data-i18n="filters_2">Filters<\/span><span id="compact-count" class="badge">/.test(read('index.html')));
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

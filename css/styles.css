@@ -1409,6 +1409,18 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .slot{width:44px}
  .mark{width:44px;justify-content:center}
 }
+/* At 600–700 px the slot is only as wide as the logo, but the labelled compact
+   Filters button is 87–120 px, so Search covered it and cut it to "Fil…" with its
+   right part unclickable. Widening the slot only while compact would make Search
+   jump sideways, and widening it for good would cost Search about 90 px, so the
+   button shows its icon alone here, filling the slot (44 px on touch). "Filters"
+   stays in its accessible name, and the count sits on the corner, still clear of
+   Search across the 16 px gap. */
+@media (min-width:600px) and (max-width:700px){
+ .filters-btn{width:100%;padding:0}
+ .filters-btn>span:not(.badge){position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .filters-btn>.badge{position:absolute;top:-4px;right:-8px}
+}
 /* Below 700 px the wordmark does not fit, but it is the page's only h1. It was
    display:none, which took the heading out of the accessibility tree, so it is
    clipped instead: no space taken, still read and still reachable (item 2). */

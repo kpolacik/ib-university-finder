@@ -1705,6 +1705,81 @@ async function runBatch2C(base) {
   }
 }
 
+// --- Batch 2 follow-up ----------------------------------------------------------
+// F1: at 600–700 px the compact Filters button was wider than the logo slot, so
+// Search covered it ("Fil…", right part unclickable).
+async function runBatch2Followup(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-batch2-followup';
+  await mkdir(shots, { recursive: true });
+  const open = async (query, width, height) => {
+    const page = await openPage(base + query, width, height);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+    await page.waitFor(ready, 15000, 'follow-up page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'follow-up reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
+
+  // Two filters set, so the count badge shows: the widest the button gets.
+  let page = await open('?ui=sk&country=Ireland&points=36', 700, 800);
+  try {
+    await page.send('Accessibility.enable');
+    for (const lang of ['sk', 'en']) {
+      await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+      await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
+      for (const coarse of [false, true]) {
+        for (const width of [600, 650, 700]) {
+          const pointer = coarse ? 'touch' : 'mouse';
+          await check(width, 'F1', `compact Filters (${lang}, ${pointer}): icon button fills the slot, fully clickable, Search does not move`, async () => {
+            await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
+            await page.send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: coarse });
+            await page.waitFor(`({ok:innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, `width ${width}`);
+            const searchBox = `(()=>{const q=document.querySelector('#f-search').getBoundingClientRect();return [q.left,q.width]})()`;
+            await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
+            await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'still compact'})`, 3000, 'not compact');
+            await settle(page);
+            const before = await page.ev(searchBox);
+            await page.ev(`scrollTo({top:1400,behavior:'instant'})`);
+            await page.waitFor(`({ok:document.body.classList.contains('compact'),why:'not compact'})`, 3000, 'compact');
+            await settle(page);
+            const m = await page.ev(`(()=>{${hits}const b=document.querySelector('#compact-filters'),k=b.getBoundingClientRect(),badge=document.querySelector('#compact-count'),g=badge.getBoundingClientRect(),q=document.querySelector('#f-search').getBoundingClientRect(),label=b.querySelector('[data-i18n=filters_2]').getBoundingClientRect(),icon=b.querySelector('svg').getBoundingClientRect();
+              const d=Math.ceil(parseFloat(getComputedStyle(b).borderTopLeftRadius)*(1-Math.SQRT1_2))+1;
+              const corners=[[k.left+d,k.top+d],[k.right-d,k.top+d],[k.left+d,k.bottom-d],[k.right-d,k.bottom-d],[(k.left+k.right)/2,(k.top+k.bottom)/2]].map(([x,y])=>document.elementFromPoint(x,y));
+              return {btn:[k.left,k.width,k.height],slot:document.querySelector('.slot').getBoundingClientRect().width,over:hits(k,q),badgeOver:hits(g,q),badgeShown:!badge.hidden&&g.width>0,badgeInside:g.top>=0&&g.left>=0,badgeText:badge.textContent,
+                missed:corners.filter(n=>!b.contains(n)).map(n=>n&&(n.id||n.className)),label:[label.width,label.height],iconCut:icon.width<16||icon.left<k.left||icon.right>k.right||icon.top<k.top||icon.bottom>k.bottom,search:[q.left,q.width],h:document.querySelector('.hd').offsetHeight,sw:document.documentElement.scrollWidth,w:innerWidth}})()`);
+            // Corners are probed just inside the rounded border: Chrome hit-tests the
+            // rounded shape, so 1 px in from an 8 px radius corner is outside the button.
+            const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#compact-filters')` });
+            const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+            const name = nodes[0]?.name?.value || '';
+            if (width !== 650) {
+              // The clip is in page coordinates, and the sticky header is at scrollY.
+              const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: await page.ev('scrollY'), width, height: 72, scale: 2 } });
+              await writeFile(`${shots}/compact-${width}-${lang}-${pointer}.png`, Buffer.from(data, 'base64'));
+            }
+            assert(!m.over && !m.badgeOver, `Filters collides with Search: ${JSON.stringify(m)}`);
+            assert(m.missed.length === 0, `Filters covered at a corner by ${m.missed}`);
+            assert(Math.abs(m.btn[1] - m.slot) <= 0.5 && m.btn[1] >= (coarse ? 44 : 36) && m.btn[2] >= (coarse ? 44 : 36), `button ${m.btn} in a ${m.slot} slot`);
+            assert(m.badgeShown && m.badgeInside && m.badgeText === '2', `count badge: ${JSON.stringify(m)}`);
+            // The label is hidden on purpose, not cut: it stays the button's name.
+            // (The badge sticks out over the corner by design, so scrollWidth is no test.)
+            assert(m.label[0] <= 1 && m.label[1] <= 1 && !m.iconCut, `label shows or icon cut: ${JSON.stringify(m)}`);
+            assert(name.includes(lang === 'sk' ? 'Filtre' : 'Filters') && name.includes('2'), `accessible name "${name}"`);
+            assert(Math.abs(m.search[0] - before[0]) < 0.5 && Math.abs(m.search[1] - before[1]) < 0.5, `Search moved: ${before} → ${m.search}`);
+            assert(m.search[1] >= 200, `Search only ${m.search[1]} wide`);
+            assert(m.h === 56, `header ${m.h}`);
+            assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          });
+        }
+      }
+    }
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  } finally { await page.close(); }
+}
+
 // --- Main -----------------------------------------------------------------------
 
 async function main() {
@@ -1730,7 +1805,8 @@ async function main() {
   if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
     await runBatch2A(base);
     await runBatch2B(base);
-    await runBatch2C(base); }
+    await runBatch2C(base);
+    await runBatch2Followup(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
