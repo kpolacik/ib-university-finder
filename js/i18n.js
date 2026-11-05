@@ -579,6 +579,7 @@ export const UI = {
     // batch 3 · A
 
     // batch 3 · B
+    "r3_list_empty_hint": "Use the bookmark next to any programme to save it here. Your list stays in this browser.",
 
     // batch 3 · C
   },
@@ -1164,6 +1165,7 @@ export const UI = {
     // batch 3 · A
 
     // batch 3 · B
+    "r3_list_empty_hint": "Program sem uložíš záložkou vedľa neho. Tvoj zoznam zostane v tomto prehliadači.",
 
     // batch 3 · C
   }

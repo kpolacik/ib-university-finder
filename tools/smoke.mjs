@@ -1966,6 +1966,69 @@ async function runBatch3B(base) {
       });
     } finally { await page.close(); }
   }
+
+  // B3 (Leon, 2026-11-05): an empty My list did nothing when clicked.
+  for (const width of [390, 1280]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, width < 600 ? 844 : 900);
+    try {
+      await check(`${width}/${ui}`, 'B3B empty list', 'a real click on My list (0) shows the empty state; its button goes back', async () => {
+        const { UI } = await import('../js/i18n.js');
+        assert(await page.ev(`document.querySelector('#header-list-count').textContent==='0'`), 'not 0 saved');
+        await page.click(`document.querySelector('#header-list')`, 'My list (0)');
+        await page.waitFor(`({ok:!document.querySelector('#empty-state').hidden && document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'no empty list view'})`, 5000, 'the empty list view');
+        await settle(page);
+        const m = await page.ev(`(()=>{const v=(s)=>{const n=document.querySelector(s);return n&&getComputedStyle(n).display!=='none'&&n.getBoundingClientRect().height>0};
+          return {title:document.querySelector('#empty-title').textContent,hint:document.querySelector('#empty-hint').textContent,back:v('#empty-back'),tools:v('#ml-tools'),tips:v('#empty-tips'),clear:v('#empty-clear'),
+            pressed:document.querySelector('#header-list').getAttribute('aria-pressed'),sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(`${shots}/empty-list-${width}-${ui}.png`, Buffer.from(data, 'base64'));
+        assert(m.title === UI[ui].your_list_is_empty && m.hint === UI[ui].r3_list_empty_hint, `texts: ${JSON.stringify(m)}`);
+        assert(m.back && !m.tools && !m.tips && !m.clear && m.pressed === 'true', `empty view: ${JSON.stringify(m)}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        await page.click(`document.querySelector('#empty-back')`, 'Back to all programmes');
+        await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list') && document.querySelector('#empty-state').hidden && document.activeElement===document.querySelector('#header-list'),why:'not back, or focus on '+(document.activeElement?.id||document.activeElement?.tagName)})`, 5000, 'the main list with focus on My list');
+      });
+    } finally { await page.close(); }
+  }
+
+  // Screenshots for review: 320, 375, 768 and 1280 px, EN and SK; the main
+  // view with 3 saved, My list with 1 saved, and the empty My list.
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 375, 844);
+    try {
+      const snap = async (name, width) => {
+        await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+        await settle(page);
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(`${shots}/review-${width}-${ui}-${name}.png`, Buffer.from(data, 'base64'));
+        return page.ev('document.documentElement.scrollWidth-innerWidth');
+      };
+      await check(ui, 'B3B shots', 'review screenshots at 320, 375, 768 and 1280 px with no page overflow', async () => {
+        const over = [];
+        const view = async (list) => {
+          const on = await page.ev(`document.querySelector('#shortlist-bar').classList.contains('is-list')`);
+          if (on !== list) await page.ev(`document.querySelector('#header-list').click()`);
+          await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list')===${list},why:'view'})`, 5000, 'the view');
+        };
+        const each = async (name, list) => {
+          for (const width of [320, 375, 768, 1280]) {
+            await resize(page, width, width < 600 ? 844 : 900);
+            await view(list);
+            const sw = await snap(name, width);
+            if (sw) over.push(`${name} ${width}: ${sw}`);
+          }
+        };
+        await each('empty-list', true);
+        await view(false);
+        await seed(page, 1);
+        await each('list-1saved', true);
+        await view(false);
+        await seed(page, 3);
+        await each('main-3saved', false);
+        assert(over.length === 0, over.join(' | '));
+      });
+    } finally { await page.close(); }
+  }
 }
 
 async function runBatch3C(base) {

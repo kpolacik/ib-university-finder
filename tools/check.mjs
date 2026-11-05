@@ -4698,7 +4698,8 @@ equal('fee sorting uses EU fee in both directions',
   [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
 for (const [key, text] of [
   ['your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave', 'Your browser could not save your list. It may be lost when you leave this page.'],
-  ['no_programmes_are_saved_here', 'No programmes are saved here.'],
+  // Batch 3 B3: the empty My list's hint says how to save (was 'no_programmes_are_saved_here').
+  ['r3_list_empty_hint', 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'],
   ['no_programmes_are_available', 'No programmes are available.'],
   ['no_programmes_match_your_filters', 'No programmes match your filters.'],
   ['search', 'Search: {value1}'], ['my_ib_points', 'My IB points: {value1}'],
@@ -5151,25 +5152,23 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
 });
-appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts and Compare drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
+// Batch 3 B3 rewrote this check: Compare no longer follows the saves (A adds
+// its own check), and the last unsave leaves an empty list view instead of
+// silently closing it (Leon, 2026-11-05: an empty My list did nothing).
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts drop it at once; the last unsave leaves an empty list view', ({ run, get, item, fire, ids: [a, b, c] }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');
   fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  for (const box of boxes.filter((x) => x.value !== c)) { box.checked = true; fire(box, 'change'); }
-  if (get('ml-compare-go').textContent !== 'Compare 2') return false;
   const star = starOf(item(a)); star.focus();
   fire(star, 'click');
-  // Before any redraw: the row stays, the counts and the picker do not.
-  const picks = get('ml-picks').querySelectorAll('input');
+  // Before any redraw: the row stays, the counts do not.
   if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false'
-    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')
-    || picks.map((x) => x.value).sort().join() !== [b, c].sort().join() || run('comparePicks.join()') !== b
-    || !get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare') return false;
+    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')) return false;
   fire(starOf(item(b)), 'click');
-  if (!get('ml-compare').hidden || get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
+  if (get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
   fire(starOf(item(c)), 'click');
   run('update();');
-  return run('state.shortlistOnly') === false && get('results').children.length === 3;
+  return run('state.shortlistOnly') === true && get('results').children.length === 0 && !get('empty-state').hidden
+    && get('empty-title').textContent === 'Your list is empty.' && !get('empty-back').hidden && get('ml-tools').hidden;
 });
 appCheck('two tabs: each save or unsave goes on the list as stored now, so the other tab’s changes survive; its storage events update this tab', ({ run, get, item, fire, fireWindow, context, ids: [a, b, c] }) => {
   // This tab loaded with a saved; a second tab has since saved c.
@@ -6153,6 +6152,57 @@ check('B3B2 the back chevron shows only in the list view, pointing left; the tra
     // The old quiet-text Clear rules are gone (they made it look like an empty cell).
     && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
 })());
+// B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
+// turned an empty list view straight off. The header button is wired in
+// round2.js, which the harness stubs, so the real wireRound2 runs here.
+appCheck('B3B3 with 0 saves the real header My list opens an empty list view that says how to save (EN, SK); its button goes back with focus on the header', ({ run, get, fire }) => {
+  const header = get('header-list');
+  // The stand-in nodes lack prepend, which wireRound2 uses before it wires the
+  // header, and click(), which its handler calls; lent for this check only.
+  const hadPrepend = Object.hasOwn(ChromeNode.prototype, 'prepend');
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadPrepend) ChromeNode.prototype.prepend = function (node) { this.append(node); };
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try {
+    withGlobals({ window: { addEventListener() {} }, innerWidth: 390, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) },
+      () => realRound2.wireRound2(run('dom')));
+  } catch { /* Only the header listener (attached early) is needed; later stand-in gaps are not this check's subject. */ } finally {
+    if (!hadPrepend) delete ChromeNode.prototype.prepend;
+  }
+  try { return emptyListFlow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function emptyListFlow() {
+  if (run('shortlist.size') !== 0 || run('state.shortlistOnly') !== false) return false;
+  fire(header, 'click');
+  const texts = () => [get('empty-title').textContent, get('empty-hint').textContent, get('empty-back').textContent];
+  if (run('state.shortlistOnly') !== true || get('empty-state').hidden || get('empty-back').hidden
+    || JSON.stringify(texts()) !== JSON.stringify([UI.en.your_list_is_empty, UI.en.r3_list_empty_hint, UI.en.back_to_all_programmes])
+    || !get('empty-clear').hidden || !get('empty-tips').hidden || get('shortlist-bar').hidden || !get('shortlist-bar').classList.contains('is-list')
+    || !get('ml-tools').hidden || !get('ml-origin').hidden || !get('ml-show-all').hidden || get('shortlist-count-text').textContent !== '0 saved') return false;
+  try {
+    run("switchLanguage('sk')");
+    if (JSON.stringify(texts()) !== JSON.stringify([UI.sk.your_list_is_empty, UI.sk.r3_list_empty_hint, UI.sk.back_to_all_programmes])) return false;
+  } finally { run("switchLanguage('en')"); }
+  fire(get('empty-back'), 'click');
+  return run('state.shortlistOnly') === false && stubDocument.activeElement === header && get('empty-state').hidden
+    && get('results').children.length === 3;
+  }
+});
+appCheck('B3B3 Clear my list still returns to all programmes', ({ run, get, fire, context }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  context.window.confirm = () => true;
+  fire(get('clear-shortlist'), 'click');
+  return run('shortlist.size') === 0 && run('state.shortlistOnly') === false && get('empty-state').hidden;
+});
+await asyncAppCheck('B3B3 a shared link whose programmes have all gone keeps its own message, with no back button in the empty state', async ({ run, get, context, settle }) => {
+  context.location.search = '?list=ghost';
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('empty-title').textContent === 'None of the programmes in this link are listed any more.'
+    && get('empty-hint').textContent === UI.en.close_the_shared_list_to_see_every_programme && get('empty-back').hidden;
+}, { boot: true });
+check('B3B3 the empty-list hint exists in EN and SK',
+  UI.en.r3_list_empty_hint === 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'
+  && UI.sk.r3_list_empty_hint === 'Program sem uložíš záložkou vedľa neho. Tvoj zoznam zostane v tomto prehliadači.');
 
 section('Batch 3 · C');
 
