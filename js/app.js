@@ -17,7 +17,7 @@ import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
-  setSaved, renderCompare,
+  setSaved, setInCompare, renderCompare,
 } from './render.js';
 
 const dom = {
@@ -281,10 +281,12 @@ async function start() {
     const id = selectedId; clearSelection(); selectedId = null; drawPane();
     dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
   });
-  // The pane's "Save to my list".
+  // The pane's "Save to my list" and compare button.
   dom.pane.addEventListener('click', (event) => {
     const save = event.target.closest('button[data-save-id]');
     if (save) onToggleStar(save.getAttribute('data-save-id'));
+    const compare = event.target.closest('button[data-compare-id]');
+    if (compare) onToggleCompare(compare.getAttribute('data-compare-id'));
   });
   dom.results.addEventListener('keydown', rowKeydown);
   wideQuery.addEventListener('change', crossWide);
@@ -709,8 +711,17 @@ function changeCompare(change) {
   return result;
 }
 
+// A compare toggle on a row, its slot or the pane: in or out of the set.
+function onToggleCompare(id) {
+  const result = changeCompare((ids) => toggleIn(ids, id, knownIds()));
+  syncCompareControls();
+  return result;
+}
+
 // Brings everything that shows the compare set up to date, in place.
 function syncCompareControls() {
+  const inSet = new Set(compareIds);
+  for (const button of document.querySelectorAll('[data-compare-id]')) setInCompare(button, inSet.has(button.getAttribute('data-compare-id')));
 }
 
 // The list view's ids, counts and Compare picks from the saves as they are
@@ -1004,7 +1015,7 @@ function update() {
   currentSummary = pointsSummaryParts(rows, state);
 
   retireList();
-  renderRows(dom.results, rows.slice(0, first), { state, shortlist, wide: wideQuery.matches, headings: listHeadings });
+  renderRows(dom.results, rows.slice(0, first), { state, shortlist, compare: new Set(compareIds), wide: wideQuery.matches, headings: listHeadings });
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
   if (appliedWide) {
@@ -1054,7 +1065,7 @@ function appendSlice(pending, count) {
   pending.next += rows.length;
   // The list's applied mode, not the query: a flipped query whose change event
   // has not run yet is crossWide's job.
-  arrive(appendRows(dom.results, rows, { state, shortlist, wide: appliedWide, headings: listHeadings }));
+  arrive(appendRows(dom.results, rows, { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings }));
 }
 
 function stopRows(pending) {
@@ -1144,7 +1155,7 @@ function openRow(item, row, { animate = false } = {}) {
     slot.inert = false;
     slot.setAttribute('data-state', 'open');
   } else {
-    slot = renderSlot(row, state, { saved: shortlist.has(row.id) });
+    slot = renderSlot(row, state, { saved: shortlist.has(row.id), inCompare: compareIds.includes(row.id) });
     if (move) slot.setAttribute('data-state', 'closed');
     item.append(slot);
     if (move) {
@@ -1230,6 +1241,12 @@ function toggleRow(event) {
     onToggleStar(save.getAttribute('data-save-id'));
     return;
   }
+  // The compare toggle (row or slot) never opens the row either.
+  const compare = event.target.closest('button[data-compare-id]');
+  if (compare) {
+    onToggleCompare(compare.getAttribute('data-compare-id'));
+    return;
+  }
   const goto = event.target.closest('a.goto');
   if (goto) {
     if (event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -1294,7 +1311,7 @@ function drawPane({ fade = false, scroll } = {}) {
   const current = scroll ?? dom.pane.scrollTop;
   const row = allRows.find((row) => row.id === selectedId) ?? null;
   const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state,
-    { saved: row ? shortlist.has(row.id) : undefined, savedCount: shortlist.size });
+    { saved: row ? shortlist.has(row.id) : undefined, inCompare: row ? compareIds.includes(row.id) : undefined, savedCount: shortlist.size });
   if (fade && changed && mode === 'content') dom.paneBody.children[0].classList.add('fade-in');
   paneId = selectedId;
   // Same pick keeps its place, clamped to the new content; a new pick starts

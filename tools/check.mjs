@@ -180,7 +180,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -2659,16 +2659,17 @@ check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-c
 check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
   (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
 // The save star came back on 2026-11-03 (Leon): the rows now take the saved
-// ids and the list view's group headings.
-check('renderRows keeps its call contract: saved ids for the star, group headings',
-  /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
+// ids and the list view's group headings. Batch 3 · A: and the compare set,
+// for the compare toggle beside the star.
+check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
+  /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
+    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, compare: new Set\(compareIds\), wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
-  /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
-    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
+  /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
+    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, compare: new Set\(compareIds\), wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -3281,7 +3282,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
@@ -6051,10 +6052,12 @@ check('C1 print resets the detail actions to a plain left-aligned link',
 {
   const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
     lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
-  const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false }));
+  // Batch 3 · A: the detail also carries the compare button (Leon's compare
+  // icon on every programme), so the actions are official, save, compare.
+  const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false, inCompare: false }));
   const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0];
-  equal('C1 actions contain official then save', actions.children.map((n) => [n.tagName, n.className]),
-    [['a', 'btn btn-p'], ['button', 'btn save']]);
+  equal('C1 actions contain official, then save, then compare', actions.children.map((n) => [n.tagName, n.className]),
+    [['a', 'btn btn-p'], ['button', 'btn save'], ['button', 'btn cmpb']]);
   check('C1 Student life and provenance stay outside actions',
     actions.parent === foot && byClass(foot, 'lnk')[0]?.parent === foot && byClass(foot, 'ok')[0]?.parent === foot);
   const solo = withStubDocument(() => renderDetail({ ...row, officialUrl: null }, noFilters(), { saved: false }));
@@ -6158,6 +6161,67 @@ section('Batch 3 · A');
 }
 const cmpStored = (context) => JSON.parse(context.compareStorage.data[compareSetMod.COMPARE_KEY] ?? 'null');
 const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.stringify(id)}, knownIds()))`);
+{
+  const rows = live.slice(0, 3);
+  const make = (lang) => { i18n.initLanguage('', { getItem: () => lang }); return withStubDocument(() => { const ul = new ChromeNode('ul'); renderRows(ul, rows, { state: noFilters(), compare: new Set([rows[0].id]) }); return ul; }); };
+  for (const lang of ['en', 'sk']) {
+    const ul = make(lang);
+    const toggles = ul.children.map((li) => li.querySelector('button.cmpi'));
+    const main = ul.children[0].querySelector('.r-main');
+    const kids = main.children.filter((n) => typeof n !== 'string');
+    const name = toggles[0].querySelector('.visually-hidden').textContent;
+    check(`A2 rows: the compare toggle is pressed with the filled-pan symbol only for a programme in Compare, and comes before the star (${lang})`,
+      toggles[0].getAttribute('aria-pressed') === 'true' && toggles[0].querySelector('use').getAttribute('href') === '#i-compare-on'
+      && toggles[1].getAttribute('aria-pressed') === 'false' && toggles[1].querySelector('use').getAttribute('href') === '#i-compare'
+      && toggles.every((b, i) => b.type === 'button' && b.getAttribute('data-compare-id') === rows[i].id && !b.disabled)
+      && kids.indexOf(toggles[0]) === kids.length - 2 && kids.at(-1).classList.contains('star'));
+    check(`A2 rows: the toggle is named by the programme and its university (${lang})`,
+      name === t('r3_cmp_add_label', { programme: rows[0].programme, university: rows[0].university })
+      && name.includes(rows[0].programme) && name.includes(rows[0].university) && name.startsWith(lang === 'sk' ? 'Pridať' : 'Add'));
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
+  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null }, noFilters(), { saved: true, inCompare: true }));
+  const pair = byClass(solo, 'd-actions')[0].children;
+  check('A2 detail without an official link: Save and Compare are the pair, Compare says "In compare" with its symbol',
+    pair.length === 2 && pair[0].classList.contains('save') && pair[1].classList.contains('cmpb') && pair[1].getAttribute('aria-pressed') === 'true'
+    && pair[1].querySelector('.cmpb-w').textContent === 'In compare' && pair[1].querySelector('use').getAttribute('href') === '#i-compare-on'
+    && pair[1].textContent.endsWith(`: ${rows[0].programme}, ${rows[0].university}`));
+  const none = withStubDocument(() => renderDetail(rows[0], noFilters()));
+  check('A2 a detail drawn without inCompare has no compare button (the print and CSV paths)', !byClass(none, 'cmpb').length);
+  check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
+    /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)
+    && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)
+    && /<symbol id="i-compare" /.test(indexHtml) && /<symbol id="i-compare-on" /.test(indexHtml));
+}
+const cmpOf = (node) => node.querySelector('button[data-compare-id]');
+appCheck('A2 a compare click toggles the row, its open slot and the pane together, and never opens or selects a row', ({ run, get, click, flip, item, fire, pane, ids: [a, b] }) => {
+  click(b);
+  const before = [run('selectedId'), run('[...openIds].join()')].join('|');
+  fire(cmpOf(item(a)), 'click');
+  if ([run('selectedId'), run('[...openIds].join()')].join('|') !== before || item(a).querySelector('.expand')) return false;
+  if (cmpOf(item(a)).getAttribute('aria-pressed') !== 'true' || run('compareIds.join()') !== a) return false;
+  const slotButton = item(b).querySelector('.expand button.cmpb');
+  if (!slotButton || slotButton.getAttribute('aria-pressed') !== 'false') return false;
+  fire(slotButton, 'click');
+  if (cmpOf(item(b)).getAttribute('aria-pressed') !== 'true' || slotButton.querySelector('.cmpb-w').textContent !== 'In compare' || run('selectedId') !== b) return false;
+  flip(true);
+  const paneButton = pane.querySelector('button.cmpb');
+  if (!paneButton || paneButton.getAttribute('aria-pressed') !== 'true') return false;
+  fire(paneButton, 'click');
+  return cmpOf(item(b)).getAttribute('aria-pressed') === 'false' && cmpOf(item(b)).querySelector('use').getAttribute('href') === '#i-compare'
+    && paneButton.getAttribute('aria-pressed') === 'false' && run('compareIds.join()') === a && run('selectedId') === b;
+});
+appCheck('A2 programmes already in Compare draw pressed: a slot opened later, the pane, and rows that arrive after the first screen', ({ run, get, click, flip, item, pane, drain, context }) => {
+  const late = context.live[70].id, early = context.live[1].id;
+  run(`allRows = live.slice(0, 120); compareIds = [${JSON.stringify(late)}, ${JSON.stringify(early)}]; update();`);
+  if (item(late)) return false;
+  drain();
+  if (cmpOf(item(late))?.getAttribute('aria-pressed') !== 'true' || cmpOf(item(context.live[2].id)).getAttribute('aria-pressed') !== 'false') return false;
+  click(early);
+  if (item(early).querySelector('.expand button.cmpb')?.getAttribute('aria-pressed') !== 'true') return false;
+  flip(true);
+  return pane.querySelector('button.cmpb')?.getAttribute('aria-pressed') === 'true';
+});
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.

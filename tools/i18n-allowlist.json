@@ -241,7 +241,10 @@
       "r2_copied_",
       "summary span",
       "./compare-set.js",
-      "full"
+      "full",
+      "[data-compare-id]",
+      "button[data-compare-id]",
+      "data-compare-id"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -688,7 +691,16 @@
       "sep",
       "d-actions",
       "Czechia",
-      "dd-note"
+      "dd-note",
+      "#i-compare",
+      "#i-compare-on",
+      ".cmpb-w",
+      "btn cmpb",
+      "cmpb-w",
+      "cmpi",
+      "data-compare-id",
+      "i-compare",
+      "i-compare-on"
     ],
     "js/shortlist.js": [
       "./cost.js",

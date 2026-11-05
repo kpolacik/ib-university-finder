@@ -1483,6 +1483,23 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
 
 /* Batch 3 · A: Compare */
+/* The row's compare toggle sits beside the save star, which keeps its outer
+   place: title | compare | save. Same box as the star (32 px, 44 on touch),
+   above the row's whole-row button. On is the filled-pan symbol plus accent. */
+.r-main{grid-template-columns:minmax(0,1fr) auto auto;column-gap:4px}
+.r-main>.cmpi{grid-column:2;grid-row:1/span 2}
+.r-main>.star{grid-column:3}
+.cmpi{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:max(32px,var(--tap));height:max(32px,var(--tap));margin:-4px 0 0;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.cmpi .ic{width:20px;height:20px}
+.cmpi:hover{background:var(--panel);color:var(--accent)}
+.cmpi[aria-pressed="true"]{color:var(--accent)}
+@media (pointer:coarse){.cmpi{width:2.75rem;height:2.75rem}}
+/* The detail: the official link across the top, then Save and Compare as an
+   equal pair (Leon, 2026-11-05). Without a link, the pair is the first row. */
+.d-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+.d-actions>a.btn-p{grid-column:1/-1}
+.cmpb .ic{width:18px;height:18px}
+.cmpb[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
 
 /* Batch 3 · B: My list */
 

@@ -23,29 +23,31 @@ const shortDate = dateFormatter({
 });
 
 // shortlist: the saved programme ids (js/shortlist.js), for each row's save
-// star. headings: programme_id → group heading, put above that row in the
+// star. compare: the ids in Compare (js/compare-set.js), for its toggle.
+// headings: programme_id → group heading, put above that row in the
 // list view (groupHeadings in js/shortlist.js); empty outside it.
-export function renderRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
-  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide, shortlist, headings)));
+export function renderRows(container, rows, { state, shortlist = new Set(), compare = new Set(), wide = false, headings = new Map() }) {
+  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide, shortlist, headings, compare)));
 }
 
 // The rest of a long list, a slice at a time after the first screen is drawn
 // (L09). The same rows renderRows builds; the items are returned so app.js can
 // open a slot or mark the selection on a row that arrives late.
-export function appendRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
-  const items = rows.map((row) => renderRow(row, state, wide, shortlist, headings));
+export function appendRows(container, rows, { state, shortlist = new Set(), compare = new Set(), wide = false, headings = new Map() }) {
+  const items = rows.map((row) => renderRow(row, state, wide, shortlist, headings, compare));
   container.append(...items);
   return items;
 }
 
 // Keep the aside and its fallback heading connected while its detail is rebuilt.
 // saved: whether the programme is in the student's list, for the detail's
-// "Save to my list" button; left out, there is no button.
-export function renderPane({ pane, heading, body }, row, shown, state, { saved, savedCount = 0 } = {}) {
+// "Save to my list" button; left out, there is no button. inCompare: the
+// same for its compare button.
+export function renderPane({ pane, heading, body }, row, shown, state, { saved, inCompare, savedCount = 0 } = {}) {
   let content;
   const mode = !row ? 'empty' : shown ? 'content' : 'hidden';
   if (mode === 'content') {
-    content = renderDetail(row, state, { saved });
+    content = renderDetail(row, state, { saved, inCompare });
   } else {
     content = el('div', 'pane-empty');
     const lead = el('b');
@@ -102,7 +104,7 @@ function filterOverview(state, savedCount) {
 
 // The full entry for one programme (design spec §6.7). The pane has the full
 // head and cells; the slot keeps the full points lines and other facts.
-export function renderDetail(row, state, { slot = false, saved } = {}) {
+export function renderDetail(row, state, { slot = false, saved, inCompare } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
@@ -163,7 +165,7 @@ export function renderDetail(row, state, { slot = false, saved } = {}) {
   const said = notes(row, state, pointsSays);
   if (said) article.append(said);
 
-  const foot = footer(row, saved);
+  const foot = footer(row, saved, inCompare);
   if (foot) article.append(foot);
   detailOriginals(article, row.id, state);
   return article;
@@ -215,7 +217,7 @@ function pointsList(row) {
   return list;
 }
 
-function renderRow(row, state, wide, shortlist, headings) {
+function renderRow(row, state, wide, shortlist, headings, compare) {
   const item = el('li', 'item');
   item.setAttribute('data-id', row.id);
   // The list view's group heading ("March 2027 · 2") sits inside the group's
@@ -264,7 +266,7 @@ function renderRow(row, state, wide, shortlist, headings) {
     sub.append(document.createTextNode(' · '), identity);
   }
   if (row.isSample) sub.append(el('span', 'tag tag-strong', t('invented_sample_row_not_real_data')));
-  main.append(heading, sub, starButton(row, shortlist.has(row.id)));
+  main.append(heading, sub, compareToggle(row, compare.has(row.id)), starButton(row, shortlist.has(row.id)));
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
   chevron.append(icon('i-chevron', 'ic'));
@@ -333,7 +335,7 @@ function rowPointsCell(row, state) {
   return cell;
 }
 
-export function renderSlot(row, state, { saved } = {}) {
+export function renderSlot(row, state, { saved, inCompare } = {}) {
   const slot = el('div', 'expand');
   slot.id = `x-${row.id}`;
   slot.setAttribute('role', 'region');
@@ -341,7 +343,7 @@ export function renderSlot(row, state, { saved } = {}) {
   // The slot opens by animating its one grid row from 0fr to 1fr (spec §8).
   // That needs a single child that may shrink below its content and clips it.
   const inner = el('div', 'expand-inner');
-  inner.append(renderDetail(row, state, { slot: true, saved }));
+  inner.append(renderDetail(row, state, { slot: true, saved, inCompare }));
   slot.append(inner);
   return slot;
 }
@@ -656,7 +658,7 @@ function notes(row, state, pointsSays) {
   return box.childElementCount ? box : null;
 }
 
-function footer(row, saved) {
+function footer(row, saved, inCompare) {
   const foot = el('footer', 'd-foot');
   const actions = el('div', 'd-actions');
 
@@ -670,6 +672,7 @@ function footer(row, saved) {
       t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' })));
   }
   if (typeof saved === 'boolean') actions.append(saveButton(row, saved));
+  if (typeof inCompare === 'boolean') actions.append(compareButton(row, inCompare));
   if (actions.childElementCount) foot.append(actions);
   if (row.studentLifeUrl) {
     foot.append(externalLink('lnk', t('student_life'), row.studentLifeUrl));
@@ -759,6 +762,42 @@ export function setSaved(button, saved) {
   if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
   const words = button.querySelector('.save-t');
   if (words) words.textContent = saved ? t('saved_to_my_list') : t('save_to_my_list_2');
+}
+
+// Batch 3 · A. The row's compare toggle, beside the save star and built the
+// same way: a stable name, aria-pressed, and a different symbol when on (an
+// outline scale, then one with filled pans), never colour alone, for the same
+// content-visibility reason. app.js finds every one by data-compare-id.
+function compareToggle(row, on) {
+  const button = el('button', 'cmpi');
+  button.type = 'button';
+  button.setAttribute('data-compare-id', row.id);
+  button.append(icon(on ? 'i-compare-on' : 'i-compare', 'ic'),
+    el('span', 'visually-hidden', t('r3_cmp_add_label', { programme: row.programme, university: row.university })));
+  button.setAttribute('aria-pressed', String(on));
+  return button;
+}
+
+// The detail's compare button, paired with Save: "Add to compare", then
+// "In compare".
+function compareButton(row, on) {
+  const button = el('button', 'btn cmpb');
+  button.type = 'button';
+  button.setAttribute('data-compare-id', row.id);
+  button.append(icon(on ? 'i-compare-on' : 'i-compare', 'ic'), el('span', 'cmpb-w'),
+    el('span', 'visually-hidden', `: ${row.programme}, ${row.university}`));
+  setInCompare(button, on);
+  return button;
+}
+
+// Brings one compare toggle (row or detail) to the set, in place.
+export function setInCompare(button, on) {
+  button.setAttribute('aria-pressed', String(on));
+  const use = button.querySelector('use');
+  const mark = on ? '#i-compare-on' : '#i-compare';
+  if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
+  const words = button.querySelector('.cmpb-w');
+  if (words) words.textContent = t(on ? 'r3_cmp_in' : 'r3_cmp_add');
 }
 
 // The compare table: one column per programme, one row per fact
