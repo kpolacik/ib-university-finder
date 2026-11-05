@@ -5731,5 +5731,14 @@ appCheck('switching the interface language never touches the teaching-language f
 i18n.initLanguage('', { getItem: () => 'en' });
 // END i18n checks
 
+section('Batch 2 · A');
+// batch 2 · A checks go here
+
+section('Batch 2 · B');
+// batch 2 · B checks go here
+
+section('Batch 2 · C');
+// batch 2 · C checks go here
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

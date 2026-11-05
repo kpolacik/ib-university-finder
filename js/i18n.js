@@ -542,7 +542,13 @@ export const UI = {
       "other": "{count} data problems"
     },
     "same_name_entry": "Same-name entry {entry} of {count} · compare official pages",
-    "unclassified": "Unclassified"
+    "unclassified": "Unclassified",
+
+    // batch 2 · A
+
+    // batch 2 · B
+
+    // batch 2 · C
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1089,7 +1095,13 @@ export const UI = {
       "other": "{count} problémov v dátach"
     },
     "same_name_entry": "Záznam s rovnakým názvom {entry} z {count} · porovnaj oficiálne stránky",
-    "unclassified": "Nezaradené"
+    "unclassified": "Nezaradené",
+
+    // batch 2 · A
+
+    // batch 2 · B
+
+    // batch 2 · C
   }
 };
 

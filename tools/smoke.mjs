@@ -1143,6 +1143,11 @@ async function runReview2(base) {
   }
 }
 
+// Batch 2 workstreams (plans/design-round2/batch2-plan.md); each fills only its own.
+async function runBatch2A(base) {}
+async function runBatch2B(base) {}
+async function runBatch2C(base) {}
+
 // --- Main -----------------------------------------------------------------------
 
 async function main() {
@@ -1165,7 +1170,10 @@ async function main() {
   for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
   // A page that never started at any width would only spend another 30 s
   // failing the same way here.
-  if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base); }
+  if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    await runBatch2A(base);
+    await runBatch2B(base);
+    await runBatch2C(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

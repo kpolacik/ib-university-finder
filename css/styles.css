@@ -1396,6 +1396,12 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .row .c-fee.v-unk{flex:none;width:max-content;margin-left:auto}
  .listp>.f-sort>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 }
+/* Batch 2 · A: header and filter bar */
+
+/* Batch 2 · B: share and My list */
+
+/* Batch 2 · C: detail */
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and
