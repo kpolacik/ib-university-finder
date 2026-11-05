@@ -422,3 +422,13 @@ export function buildFacets(rows) {
     cities: sorted(cities),
   };
 }
+
+// Describe exactly the filter state serialized into a copied link.
+export function linkContents(state, { shared = false } = {}) {
+  const points = state.myIbPoints !== null;
+  const filters = activeFilterCount(state) - Number(points) > 0;
+  if (shared) return `shared${filters ? '_filters' : ''}${points ? '_points' : ''}`;
+  if (filters) return points ? 'filters_points' : 'filters';
+  if (points) return 'points';
+  return state.sort !== DEFAULT_SORT || state.dir !== 'asc' ? 'sort' : 'none';
+}

@@ -7,7 +7,7 @@ import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, 
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
-  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket,
+  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket, linkContents,
 } from './filters.js';
 import {
   loadShortlist, saveShortlist, readStoredShortlist, SHORTLIST_KEY, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
@@ -64,6 +64,9 @@ const dom = {
   countSummary: document.getElementById('count-summary'),
   stuckMark: document.querySelector('.stuck-mark'),
   copy: document.getElementById('f-copy'),
+  copyHelp: document.getElementById('f-copy-help'),
+  copyStatus: document.getElementById('f-copy-status'),
+  copyStatusFrame: null,
   more: document.getElementById('f-more'),
   moreFilters: document.querySelector('.more-filters'),
   sheet: document.getElementById('filter-sheet'),
@@ -104,6 +107,8 @@ const dom = {
   listOrigin: document.getElementById('ml-origin'),
   groupBy: document.getElementById('ml-group'),
   comparePicker: document.getElementById('ml-compare'),
+  compareHint: document.getElementById('ml-compare-hint'),
+  compareOpen: document.getElementById('ml-compare-open'),
   comparePicks: document.getElementById('ml-picks'),
   compareGo: document.getElementById('ml-compare-go'),
   share: document.getElementById('ml-share'),
@@ -151,7 +156,6 @@ let comparePicks = [];
 let compareOpen = false;
 let onlyDifferences = false;
 let picksKey = null;
-let shareTimer;
 // One line after a shared list was saved ("3 programmes added to your list.").
 let sharedNote = null;
 let allRows = [];
@@ -186,7 +190,6 @@ let appliedBar = null;
 let filterFocus = null;
 let returnFocusOnClose = true;
 let sentinelAbove = false;
-let copyTimer;
 // L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
 // almost all of them are off screen. update() now draws enough rows to fill the
 // window at once and appends the rest in slices just after the first paint.
@@ -376,8 +379,9 @@ function switchLanguage(language) {
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
   applyLanguage();
-  clearTimeout(copyTimer);
-  clearTimeout(shareTimer);
+  closeSheet();
+  cancelAnimationFrame(dom.copyStatusFrame);
+  dom.copyStatus.textContent = '';
   if (loaded) {
     renderSourceBanner(dom.banner, sourceMeta);
     renderSourceLine(dom.sourceLine, allRows, sourceMeta);
@@ -707,6 +711,17 @@ function wireList() {
     sharedNote = t('added_list_count', { count: added });
     renderCounts(currentlyShown);
   });
+  dom.compareOpen.addEventListener('click', () => {
+    state.shortlistOnly = true;
+    listAll = false;
+    update();
+    dom.comparePicker.open = true;
+    if (listIds.length >= MIN_COMPARE && listIds.length <= MAX_COMPARE && comparePicks.length === 0) {
+      comparePicks = [...listIds];
+      syncPicks();
+    }
+    dom.comparePicks.querySelector('input')?.focus();
+  });
   dom.groupBy.addEventListener('change', () => {
     groupBy = dom.groupBy.value;
     update();
@@ -754,19 +769,28 @@ function syncShare() {
   dom.shareUrl.value = shareLink();
 }
 
-// Like Copy link: the button says what happened for 2 s.
+// Keep the result tied to the link at the click, even if the list changes meanwhile.
 async function copyShareLink() {
   syncShare();
-  let copied = false;
+  const url = dom.shareUrl.value;
+  const known = new Set(allRows.map((row) => row.id));
+  const ids = [...shortlist].filter((id) => known.has(id));
+  const count = ids.length;
+  const withPoints = dom.sharePoints.checked && state.myIbPoints !== null;
+  const success = t(count === 1
+    ? (withPoints ? 'r2_list_copied_points_one' : 'r2_list_copied_one')
+    : (withPoints ? 'r2_list_copied_points' : 'r2_list_copied'), { count });
+  const failure = t('r2_copy_failed_list');
   try {
-    await navigator.clipboard.writeText(dom.shareUrl.value);
-    copied = true;
+    await navigator.clipboard.writeText(url);
   } catch {
-    copied = false;
+    // Select the link that failed, even if the list changed while copying.
+    dom.shareUrl.value = url;
+    dom.shareUrl.select();
+    showToast(failure);
+    return;
   }
-  dom.shareCopy.textContent = copied ? t('link_copied') : t('copy_failed_select_the_link_and_copy_it');
-  clearTimeout(shareTimer);
-  shareTimer = setTimeout(() => { dom.shareCopy.textContent = t('copy_share_link'); }, 2000);
+  showToast(success);
 }
 
 // The compare picker lists every programme in the list view (filters do not
@@ -1375,16 +1399,24 @@ function placeFilters() {
   if (moved) target = bar ? was : dom.more;
   // Widening from the sheet or the Filters button, which both disappear.
   else if (bar && was && (dom.sheet.contains(was) || was === dom.more)) target = dom.tuition;
-  if (bar) closeSheet(false);
+  if (bar) {
+    closeSheet(false);
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatus.textContent = '';
+  }
   const put = (parent, node, before = null) => {
     if (node.parentElement !== parent || node.nextElementSibling !== before) parent.insertBefore(node, before);
   };
   if (bar) {
     put(dom.form, dom.moreFilters);
     put(dom.status, dom.clear, dom.copy.parentElement === dom.status ? dom.copy : null);
-    put(dom.status, dom.copy);
+    put(dom.status, dom.copy, dom.copyHelp.parentElement === dom.status ? dom.copyHelp : null);
+    put(dom.status, dom.copyHelp, dom.copyStatus.parentElement === dom.status ? dom.copyStatus : null);
+    put(dom.status, dom.copyStatus);
   } else {
-    put(dom.sheetBody, dom.copy);
+    put(dom.sheetBody, dom.copy, dom.copyHelp.parentElement === dom.sheetBody ? dom.copyHelp : null);
+    put(dom.sheetBody, dom.copyHelp, dom.copyStatus.parentElement === dom.sheetBody ? dom.copyStatus : null);
+    put(dom.sheetBody, dom.copyStatus);
     put(dom.sheetBody, dom.moreFilters, dom.copy);
     put(dom.sheetFoot, dom.clear, dom.sheetShow);
   }
@@ -1431,6 +1463,8 @@ function wireSheet() {
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeSheet();
   });
   dom.sheet.addEventListener('close', () => {
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatus.textContent = '';
     // A close queued before a quick reopen must not undo the reopen.
     if (dom.sheet.open) return;
     dom.more.setAttribute('aria-expanded', 'false');
@@ -1470,20 +1504,34 @@ function syncStuck() {
   dom.status.classList.toggle('is-stuck', sentinelAbove && !barQuery.matches);
 }
 
-// Copies the address, which already holds the filters (S03). The button's own
-// text says what happened for 2 s; the count stays the only live region.
+// Flush typed fields, then snapshot the address and its description together.
+// A modal sheet owns its live feedback; otherwise the toast announces the result.
 async function copyLink() {
-  let copied = false;
+  const before = stateToParams(state);
+  readFields();
+  if (stateToParams(state) !== before) update();
+  else keepAddress();
+  const params = stateToParams(state);
+  const kind = linkContents(state, { shared: Boolean(shared) });
+  const query = languageQuery(addressQuery(params, shared));
+  const url = location.origin + location.pathname + (query ? `?${query}` : '');
+  const inSheet = dom.sheet.open && dom.sheet.contains(dom.copy);
+  const success = t(`r2_copied_${kind}`);
+  const failSheet = t('r2_copy_failed_sheet'), failDesktop = t('r2_copy_failed_desktop');
+  let message = success;
   try {
-    await navigator.clipboard.writeText(location.href);
-    copied = true;
+    await navigator.clipboard.writeText(url);
   } catch {
-    copied = false;
+    // Texts in the click's language; which one is chosen when the copy settles: if the sheet closed meanwhile, "close
+    // Filters first" would be wrong (batch 2 B review).
+    const stillInSheet = inSheet && dom.sheet.open && dom.sheet.contains(dom.copy);
+    message = stillInSheet ? failSheet : failDesktop;
   }
-  showToast(copied ? t('link_copied') : t('copy_failed_use_the_address_bar'));
-  dom.copy.querySelector('span').textContent = copied ? t('link_copied') : t('copy_failed_use_the_address_bar');
-  clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => { dom.copy.querySelector('span').textContent = t('copy_link'); }, 2000);
+  if (inSheet && dom.sheet.open && dom.sheet.contains(dom.copy)) {
+    dom.copyStatus.textContent = '';
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatusFrame = requestAnimationFrame(() => { dom.copyStatus.textContent = message; });
+  } else showToast(message);
 }
 
 function syncSort() {
@@ -1614,6 +1662,14 @@ function renderListBar() {
   dom.shortlistBar.hidden = mode === 'main' && saved === 0 && !saveFailed;
   dom.shortlistBar.classList.toggle('is-list', mode !== 'main');
   dom.listTitle.textContent = mode === 'shared' ? t('shared_list') : t('my_list');
+  const n = mode === 'main' ? saved : listIds.length;
+  dom.compareHint.hidden = mode === 'shared' || n !== 1;
+  dom.compareOpen.hidden = mode !== 'main' || n < MIN_COMPARE;
+  dom.compareOpen.textContent = t('r2_compare_n', { count: n });
+  dom.comparePicker.querySelector('summary span').textContent = t('r2_compare_n', { count: n });
+  const helpKey = shared ? 'r2_copy_help_shared' : 'r2_copy_help';
+  dom.copyHelp.setAttribute('data-i18n', helpKey);
+  dom.copyHelp.textContent = t(helpKey);
 
   let total, shown;
   if (mode === 'main') {

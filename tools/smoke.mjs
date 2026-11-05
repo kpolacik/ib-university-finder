@@ -1430,7 +1430,171 @@ async function runBatch2A(base) {
     }
   } finally { await page.close(); }
 }
-async function runBatch2B(base) {}
+async function runBatch2B(base) {
+  watchdog.refresh();
+  const { UI } = await import('../js/i18n.js');
+  const shots = '/tmp/ib-batch2-b';
+  await mkdir(shots, { recursive: true });
+  // Measure every ancestor too: a visible child in a display:none bar is unusable.
+  const rendered = (selector) => `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return {why:'missing element'};
+    for (let n = el; n; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.display === 'none' || s.visibility === 'hidden') return {why:'hidden ancestor '+n.className};
+    }
+    const r = el.getBoundingClientRect();
+    return {ok:r.width>0 && r.height>0 && r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight,why:JSON.stringify(r)};
+  })()`;
+  for (const width of [390, 600, 1280, 1400]) for (const ui of ['en', 'sk']) {
+    const page = await openPage(`${base}?ui=${ui}&country=Ireland&points=36`, width, width < 600 ? 844 : 1000);
+    const text = UI[ui];
+    const el = (id) => `document.querySelector('#${id}')`;
+    const shot = async (name) => {
+      if (width !== 390 && width !== 1400) return;
+      await page.waitFor(`({ok:document.getAnimations().every(a=>a.playState==='finished'),why:'motion still running'})`,5000,'settled screenshot');
+      const {data} = await page.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+      await writeFile(`${shots}/${width}-${ui}-${name}.png`, Buffer.from(data, 'base64'));
+    };
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page not ready'})`;
+    const navigate = async (query) => {
+      await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base + query)}`);
+      await page.waitFor(ready, 15000, 'B navigation');
+    };
+    try {
+      await page.waitFor(ready,15000,'B boot');
+      const info = await page.send('Target.getTargetInfo');
+      await cdp.send('Browser.grantPermissions', {origin:new URL(base).origin, browserContextId:info.targetInfo.browserContextId, permissions:['clipboardReadWrite','clipboardSanitizedWrite']});
+      if (await page.ev(`document.querySelector('#onboarding').open`)) await page.click(`document.querySelector('#onboarding .skipwrap button')`,'Skip setup');
+      await check(`${width}/${ui}`, 'R4F', 'Copy link reports the captured filters and points once, in the sheet on phones', async () => {
+        if (width < 600) await page.click(el('f-more'),'Filters');
+        const initial = await page.ev(`${el('f-copy')}.textContent`);
+        await page.ev(`window.__copyEvents=[];new MutationObserver(records=>{for(const r of records)window.__copyEvents.push({added:[...r.addedNodes].map(n=>n.textContent),removed:[...r.removedNodes].map(n=>n.textContent)})}).observe(document.querySelector('${width < 600 ? '#f-copy-status' : '#toasts'}'),{childList:true,subtree:true});`);
+        const result = width < 600 ? '#f-copy-status' : '#toasts .toast';
+        for (let i=0;i<2;i++) {
+          await page.click(el('f-copy'),'Copy link');
+          await page.waitFor(`({ok:document.querySelector('${result}')?.textContent===${JSON.stringify(text.r2_copied_filters_points)} && window.__copyEvents.filter(e=>e.added.includes(${JSON.stringify(text.r2_copied_filters_points)})).length===${i+1},why:'copy result missing'})`,5000,'copy feedback');
+          const m = await page.ev(`(async()=>({url:await navigator.clipboard.readText(),want:location.href.split('#')[0],label:${el('f-copy')}.textContent,toasts:document.querySelectorAll('#toasts .toast').length,events:window.__copyEvents}))()`);
+          assert(m.url===m.want && m.label===initial, `address or label mismatch ${JSON.stringify(m)}`);
+          assert(m.toasts === (width < 600 ? 0 : 1), 'duplicate toast or toast behind modal');
+          if (i===1) assert(m.events.filter(e=>e.added.some(t=>t===text.r2_copied_filters_points)).length===2 && m.events.some(e=>e.removed.includes(text.r2_copied_filters_points)), `repeat not announced ${JSON.stringify(m.events)}`);
+        }
+        await page.waitFor(rendered(result),5000,'visible feedback');
+        const labels = await page.ev(`(()=>{const b=${el('f-copy')},long=b.querySelector('.copy-long'),short=b.querySelector('.copy-short');return {name:b.getAttribute('aria-label'),visible:getComputedStyle(long).display==='none'?short.textContent:long.textContent,height:b.getBoundingClientRect().height,help:getComputedStyle(${el('f-copy-help')}).clipPath}})()`);
+        assert(labels.name.includes(labels.visible), 'accessible name misses visible label');
+        if (width>=1024) assert(labels.visible===text.r2_copy_filters_link && labels.height===36,'desktop label or height changed');
+        else if (width>=600) assert(labels.visible===text.copy_link,'tablet label is not short');
+        else {
+          await page.waitFor(rendered('#f-copy-help'),5000,'sheet copy help');
+          assert(labels.visible===text.r2_copy_filters_link && labels.help==='none','sheet label/help hidden');
+        }
+        await shot('copy-feedback');
+        if (width < 600) {
+          await page.key('Escape','Escape',27);
+          await page.waitFor(`({ok:!${el('filter-sheet')}.open && ${el('f-copy-status')}.textContent==='',why:'Escape left status'})`,5000,'Escape clears');
+          await page.click(el('f-more'),'Filters again'); await page.click(el('f-copy'),'Copy in sheet');
+          await page.waitFor(`({ok:!!${el('f-copy-status')}.textContent,why:'status empty'})`,5000,'copy status');
+          // The sheet is bottom-aligned; this point lies on its real backdrop.
+          for (const type of ['mousePressed','mouseReleased']) await page.send('Input.dispatchMouseEvent',{type,x:4,y:4,button:'left',clickCount:1});
+          await page.waitFor(`({ok:!${el('filter-sheet')}.open && ${el('f-copy-status')}.textContent==='',why:'backdrop left status'})`,5000,'backdrop clears');
+          await page.click(el('f-more'),'Filters before widening'); await page.click(el('f-copy'),'Copy before widening');
+          await page.waitFor(`({ok:!!${el('f-copy-status')}.textContent,why:'status empty'})`,5000,'copy before widening');
+          await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
+          await page.waitFor(`({ok:!${el('filter-sheet')}.open && ${el('f-copy-status')}.textContent==='' && ${el('f-copy')}.parentElement.classList.contains('status'),why:'widening left sheet status'})`,5000,'widening clears');
+          await page.send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:false});
+        }
+      });
+      await check(`${width}/${ui}`, 'R4G', 'Compare hint and CTA render with no note, real click pre-ticks, table fits', async () => {
+        await page.ev(`localStorage.removeItem('ib-university-finder:shortlist:v1');localStorage.removeItem('ibuf.filters.v1')`);
+        await navigate(`?ui=${ui}&sort=deadline`);
+        await page.ev('window.scrollTo(0,0)');
+        const bar = await page.ev(`({display:getComputedStyle(${el('shortlist-bar')}).display,note:${el('ml-note')}.hidden})`);
+        assert(bar.display==='none' && bar.note,'empty list bar visible');
+        await page.click(`document.querySelector('#results button.star')`,'first save');
+        await page.ev(`window.scrollTo(0,0)`);
+        await page.waitFor(rendered('#ml-compare-hint'),5000,'Compare hint');
+        assert(await page.ev(`${el('ml-compare-hint')}.textContent===${JSON.stringify(text.r2_compare_hint)} && ${el('ml-note')}.hidden && getComputedStyle(${el('shortlist-bar')}).display!=='none'`),'hint or parent hidden');
+        await shot('compare-hint-1');
+        await page.click(`document.querySelectorAll('#results button.star')[1]`,'second save');
+        await page.ev(`window.scrollTo(0,0)`);
+        await page.waitFor(rendered('#ml-compare-open'),5000,'Compare CTA');
+        const cta = await page.ev(`(()=>{const b=${el('ml-compare-open')},r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {text:b.textContent,hit:hit===b||b.contains(hit),note:${el('ml-note')}.hidden}})()`);
+        assert(cta.hit && cta.note && cta.text===text.r2_compare_n.replace('{count}','2'),'CTA covered or wrong count');
+        await page.click(el('ml-compare-open'),'Compare (2)');
+        await page.waitFor(`({ok:${el('ml-compare')}.open && document.querySelectorAll('#ml-picks input:checked').length===2 && document.activeElement===document.querySelector('#ml-picks input'),why:'picker not open, ticked or focused'})`,5000,'Compare picks');
+        await page.click(el('ml-compare-go'),'Compare 2');
+        await page.waitFor(`({ok:!${el('compare')}.hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===2,why:'two-column comparison missing'})`,5000,'Compare table');
+        assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'comparison overflows page');
+        await page.click(el('cmp-close'),'Close comparison');
+        await page.click(el('f-shortlist-only'),'Back to all programmes');
+        await page.click(`document.querySelectorAll('#results button.star')[2]`,'third save');
+        await page.ev('window.scrollTo(0,0)');
+        await page.waitFor(rendered('#ml-compare-open'),5000,'Compare (3)');
+        assert(await page.ev(`${el('ml-compare-open')}.textContent===${JSON.stringify(text.r2_compare_n.replace('{count}','3'))}`),'wrong Compare (3)');
+        await shot('compare-3');
+        if (width===600) return;
+        await page.click(el('f-shortlist-only'),'Open My list');
+        await page.click(`document.querySelector('#ml-share > summary')`,'Share panel');
+        await page.waitFor(rendered('#ml-share-help'),5000,'share help');
+        assert(await page.ev(`${el('ml-share-help')}.textContent===${JSON.stringify(text.r2_share_help)}`),'wrong share help');
+        await shot('share-panel');
+        await page.click(el('ml-share-copy'),'Copy share link');
+        const plural = text.r2_list_copied.few.replace('{count}','3');
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast')?.textContent===${JSON.stringify(plural)},why:'share result missing'})`,5000,'share result');
+        assert(await page.ev(`(async()=>{const u=await navigator.clipboard.readText();return /[?]list=/.test(u)&&!/[?&](q|country|ui|points)=/.test(u)})()`),'share link includes private state');
+        assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'My list overflows');
+      });
+      if (width===1280 && ui==='en') await check(width,'R4F recipient','bare copied link preserves the recipient’s stored filters', async () => {
+        // A second page gets its own browser storage, like a different recipient.
+        await page.ev("localStorage.setItem('ibuf.onboarding.v1','dismissed')");
+        await navigate('');
+        await page.click(el('f-copy'),'Copy a link without filters');
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast')?.textContent===${JSON.stringify(UI.en.r2_copied_none)},why:'no-filter result missing'})`,5000,'no-filter feedback');
+        const copied=await page.ev('navigator.clipboard.readText()');
+        assert(copied===base,'the no-filter copy is not bare');
+        const recipient=await openPage(`${base}?sort=deadline`,1280,900);
+        try {
+          await recipient.waitFor(ready,15000,'recipient boot');
+          await recipient.ev(`localStorage.setItem('ibuf.filters.v1',JSON.stringify({version:1,filters:{countries:['Ireland']}}));window.__oldPage=true;location.href=${JSON.stringify(copied)}`);
+          await recipient.waitFor(ready,15000,'recipient bare URL');
+          assert(await recipient.ev(`document.querySelector('#f-countries input[value=Ireland]').checked && new URLSearchParams(location.search).get('country')==='Ireland'`),'bare URL did not restore recipient filters');
+        } finally {await recipient.close();}
+      });
+    } finally { await page.close(); }
+  }
+  // The narrowest accepted layout and the long/short label boundary.
+  for (const [width,ui] of [[320,'sk'],[800,'en'],[800,'sk'],[1024,'en'],[1024,'sk']]) {
+    const page=await openPage(`${base}?ui=${ui}&sort=deadline`,width,900);
+    try {
+      await check(`${width}/${ui}`,'R4F layout','copy label and Compare toolbar fit without horizontal scrolling',async()=>{
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'layout boot');
+        await page.ev(`localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,3).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'layout saves');
+        assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'page overflows');
+        await page.waitFor(rendered('#ml-compare-open'),5000,'layout CTA');
+        if(width>=600) assert(await page.ev(`(getComputedStyle(document.querySelector('.copy-long')).display==='none')===${width<1024}`),'wrong long-label breakpoint');
+      });
+    }finally{await page.close();}
+  }
+  // Pre-existing at the base commit: left-aligned Share overflowed at 600px.
+  // One save hides Compare, so exercise both toolbar arrangements in both locales.
+  for (const width of [600,800]) for (const ui of ['en','sk']) {
+    const page = await openPage(`${base}?ui=${ui}&sort=deadline`,width,1000);
+    try {
+      await check(`${width}/${ui}`,'R4F Share gutter','Share stays within the 16 px gutter with 1 and 3 saves',async()=>{
+        for (const count of [1,3]) {
+          await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'loading'})`,15000,'Share gutter boot');
+          await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,${count}).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
+          await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'Share gutter saves');
+          await page.click(`document.querySelector('#f-shortlist-only')`,'My list for Share gutter');
+          await page.click(`document.querySelector('#ml-share>summary')`,'Share for gutter check');
+          await page.waitFor(`(()=>{const panel=document.querySelector('#ml-share>.ml-panel'),summary=document.querySelector('#ml-share>summary'),r=panel.getBoundingClientRect(),s=summary.getBoundingClientRect();return {ok:r.width>0&&r.left>=16&&r.right<=innerWidth-16&&r.top>=s.bottom&&document.documentElement.scrollWidth===innerWidth,why:JSON.stringify({panel:r.toJSON(),summary:s.toJSON(),viewport:innerWidth})}})()`,5000,'Share within its gutters');
+        }
+      });
+    }finally{await page.close();}
+  }
+
+}
 async function runBatch2C(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-batch2-c-detail';
