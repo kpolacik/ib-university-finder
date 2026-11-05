@@ -642,7 +642,7 @@ async function interactions(page, at, want) {
   // My list (2026-11-03): real clicks on the row stars, the list view,
   // Compare and a share link opened in the same tab. Phone and desktop.
   if (at === 1280 || at === 390) {
-    await check(at, 'A14', 'save two stars, open my list, compare them, and open the share link', async () => {
+    await check(at, 'A14', 'save two stars, open my list, compare two programmes, and open the share link', async () => {
       const rowId = (i) => page.ev(`document.querySelectorAll('#results > li.item')[${i}].dataset.id`);
       const star = (id) => `document.querySelector('#results li.item[data-id=' + JSON.stringify(${JSON.stringify(id)}) + '] button.star')`;
       const [a, b] = [await rowId(0), await rowId(1)];
@@ -660,9 +660,14 @@ async function interactions(page, at, want) {
       assert(await page.ev(openRows) === openBefore, 'a star click opened or closed a row');
       await page.click(`document.querySelector('#header-list')`, 'Open my list');
       await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === 2, why: n + ' rows in the list' }; })()`, 10_000, 'two saved rows');
-      await page.click(`document.querySelector('#ml-compare summary')`, 'Compare');
-      for (const id of [a, b]) await page.click(`document.querySelector('#ml-picks input[value=' + JSON.stringify(${JSON.stringify('')} + ${JSON.stringify(id)}) + ']').closest('label')`, `the pick ${id}`);
-      await page.click(`document.querySelector('#ml-compare-go')`, 'Compare 2');
+      // Batch 3 · A: Compare is its own set, added with each row's scale toggle
+      // and opened from the header (desktop) or the bottom tray (phones).
+      const scale = (id) => `document.querySelector('#results li.item[data-id=' + JSON.stringify(${JSON.stringify('')} + ${JSON.stringify(id)}) + '] button.cmpi')`;
+      for (const id of [a, b]) {
+        await page.click(scale(id), `the compare toggle on ${id}`);
+        await page.waitFor(`({ ok: ${scale(id)}.getAttribute('aria-pressed') === 'true', why: 'compare toggle not pressed' })`, 5000, 'a pressed compare toggle');
+      }
+      await page.click(at < 600 ? `document.querySelector('#cmp-tray-open')` : `document.querySelector('#header-compare')`, 'Open compare');
       await page.waitFor(`(() => {
         const heads = [...document.querySelectorAll('#cmp-body th[scope=col]')];
         if (heads.length !== 2) return { why: heads.length + ' columns' };
@@ -1504,36 +1509,19 @@ async function runBatch2B(base) {
           await page.send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:false});
         }
       });
-      await check(`${width}/${ui}`, 'R4G', 'Compare hint and CTA render with no note, real click pre-ticks, table fits', async () => {
+      // Batch 3 · A: the Compare hint, the Compare (n) button and the picker are
+      // gone (Compare is its own set); the saves and Share below still run here.
+      await check(`${width}/${ui}`, 'R4G', 'saves leave the empty bar hidden, then My list and Share copy the list', async () => {
         await page.ev(`localStorage.removeItem('ib-university-finder:shortlist:v1');localStorage.removeItem('ibuf.filters.v1')`);
         await navigate(`?ui=${ui}&sort=deadline`);
         await page.ev('window.scrollTo(0,0)');
         const bar = await page.ev(`({display:getComputedStyle(${el('shortlist-bar')}).display,note:${el('ml-note')}.hidden})`);
         assert(bar.display==='none' && bar.note,'empty list bar visible');
-        await page.click(`document.querySelector('#results button.star')`,'first save');
-        await page.ev(`window.scrollTo(0,0)`);
-        await page.waitFor(rendered('#ml-compare-hint'),5000,'Compare hint');
-        assert(await page.ev(`${el('ml-compare-hint')}.textContent===${JSON.stringify(text.r2_compare_hint)} && ${el('ml-note')}.hidden && getComputedStyle(${el('shortlist-bar')}).display!=='none'`),'hint or parent hidden');
-        await shot('compare-hint-1');
-        await page.click(`document.querySelectorAll('#results button.star')[1]`,'second save');
-        await page.ev(`window.scrollTo(0,0)`);
-        await page.waitFor(rendered('#ml-compare-open'),5000,'Compare CTA');
-        const cta = await page.ev(`(()=>{const b=${el('ml-compare-open')},r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {text:b.textContent,hit:hit===b||b.contains(hit),note:${el('ml-note')}.hidden}})()`);
-        assert(cta.hit && cta.note && cta.text===text.r2_compare_n.replace('{count}','2'),'CTA covered or wrong count');
-        await page.click(el('ml-compare-open'),'Compare (2)');
-        await page.waitFor(`({ok:${el('ml-compare')}.open && document.querySelectorAll('#ml-picks input:checked').length===2 && document.activeElement===document.querySelector('#ml-picks input'),why:'picker not open, ticked or focused'})`,5000,'Compare picks');
-        await page.click(el('ml-compare-go'),'Compare 2');
-        await page.waitFor(`({ok:!${el('compare')}.hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===2,why:'two-column comparison missing'})`,5000,'Compare table');
-        assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'comparison overflows page');
-        await page.click(el('cmp-close'),'Close comparison');
-        await page.click(el('f-shortlist-only'),'Back to all programmes');
-        await page.click(`document.querySelectorAll('#results button.star')[2]`,'third save');
+        for (const i of [0, 1, 2]) await page.click(`document.querySelectorAll('#results button.star')[${i}]`,`save ${i + 1}`);
         await page.ev('window.scrollTo(0,0)');
-        await page.waitFor(rendered('#ml-compare-open'),5000,'Compare (3)');
-        assert(await page.ev(`${el('ml-compare-open')}.textContent===${JSON.stringify(text.r2_compare_n.replace('{count}','3'))}`),'wrong Compare (3)');
-        await shot('compare-3');
+        await page.waitFor(`({ok:${el('header-list-count')}.textContent==='3',why:'header count '+${el('header-list-count')}.textContent})`,5000,'three saves');
         if (width===600) return;
-        await page.click(el('f-shortlist-only'),'Open My list');
+        await page.click(el('header-list'),'Open My list');
         await page.click(`document.querySelector('#ml-share > summary')`,'Share panel');
         await page.waitFor(rendered('#ml-share-help'),5000,'share help');
         assert(await page.ev(`${el('ml-share-help')}.textContent===${JSON.stringify(text.r2_share_help)}`),'wrong share help');
@@ -1566,12 +1554,11 @@ async function runBatch2B(base) {
   for (const [width,ui] of [[320,'sk'],[800,'en'],[800,'sk'],[1024,'en'],[1024,'sk']]) {
     const page=await openPage(`${base}?ui=${ui}&sort=deadline`,width,900);
     try {
-      await check(`${width}/${ui}`,'R4F layout','copy label and Compare toolbar fit without horizontal scrolling',async()=>{
+      await check(`${width}/${ui}`,'R4F layout','copy label fits and nothing scrolls sideways with three saves',async()=>{
         await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'layout boot');
         await page.ev(`localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,3).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
         await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'layout saves');
         assert(await page.ev('document.documentElement.scrollWidth===innerWidth'),'page overflows');
-        await page.waitFor(rendered('#ml-compare-open'),5000,'layout CTA');
         if(width>=600) assert(await page.ev(`(getComputedStyle(document.querySelector('.copy-long')).display==='none')===${width<1024}`),'wrong long-label breakpoint');
       });
     }finally{await page.close();}
@@ -1586,7 +1573,9 @@ async function runBatch2B(base) {
           await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'loading'})`,15000,'Share gutter boot');
           await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,${count}).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
           await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'Share gutter saves');
-          await page.click(`document.querySelector('#f-shortlist-only')`,'My list for Share gutter');
+          // Batch 3 · A: the main view no longer shows the My list bar (its Compare
+          // hint and button are gone), so My list opens from the header.
+          await page.click(`document.querySelector('#header-list')`,'My list for Share gutter');
           await page.click(`document.querySelector('#ml-share>summary')`,'Share for gutter check');
           await page.waitFor(`(()=>{const panel=document.querySelector('#ml-share>.ml-panel'),summary=document.querySelector('#ml-share>summary'),r=panel.getBoundingClientRect(),s=summary.getBoundingClientRect();return {ok:r.width>0&&r.left>=16&&r.right<=innerWidth-16&&r.top>=s.bottom&&document.documentElement.scrollWidth===innerWidth,why:JSON.stringify({panel:r.toJSON(),summary:s.toJSON(),viewport:innerWidth})}})()`,5000,'Share within its gutters');
         }
@@ -1628,23 +1617,23 @@ async function runBatch2C(base) {
         await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
         await page.ev(`document.querySelector('[data-language="${ui}"]').click();window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
-        await check(width, 'R4H', 'detail actions have equal widths and even gaps (' + ui + ')', async () => {
+        // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
+        // Compare are an equal pair under it at every width, the pane included.
+        await check(width, 'R4H', 'detail: official link full width, then Save and Compare as an equal pair (' + ui + ')', async () => {
           await page.click(`document.querySelector('#results>li.item button.open')`, 'first programme');
           await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions'),why:'detail not open'})`, 5000, 'detail actions');
           const m = await page.ev(`(()=>{
-            const group=document.querySelector('${detail} .d-actions');
-            const buttons=[...group.children], boxes=buttons.map(n=>n.getBoundingClientRect());
-            const [a,b]=boxes, side=Math.abs(a.top-b.top)<1;
-            return {widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,
-              gap:side?b.left-a.right:b.top-a.bottom,aligned:Math.abs(a.left-b.left),
-              minHeight:Math.min(a.height,b.height),overflow:buttons.some(n=>n.scrollWidth>n.clientWidth+1),
-              order:buttons[0].matches('a.btn-p')&&buttons[1].matches('button.save'),
+            const group=document.querySelector('${detail} .d-actions'), outer=group.getBoundingClientRect();
+            const buttons=[...group.children], [link,a,b]=buttons.map(n=>n.getBoundingClientRect());
+            const side=Math.abs(a.top-b.top)<1;
+            return {full:Math.abs(link.width-outer.width),below:a.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,
+              gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:buttons.some(n=>n.scrollWidth>n.clientWidth+1),
+              order:buttons.length===3&&buttons[0].matches('a.btn-p')&&buttons[1].matches('button.save')&&buttons[2].matches('button.cmpb'),
               separate:!group.querySelector('.lnk,.ok,.tag'),
               pageOverflow:document.documentElement.scrollWidth>innerWidth};
           })()`);
-          assert(m.order && m.separate && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
-          assert(m.gap >= 8 && m.gap <= 12 && (m.side ? m.heights <= 1 : m.aligned <= 1), JSON.stringify(m));
-          if (width >= 1200) assert(!m.side, 'pane actions must stack');
+          assert(m.order && m.separate && m.full <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
+          assert(m.side && m.heights <= 1 && m.gap >= 8 && m.gap <= 12 && m.below >= 8 && m.below <= 12, JSON.stringify(m));
           if ([390, 800, 1400].includes(width)) {
             await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
           }
@@ -1822,8 +1811,328 @@ async function runBatch2Followup(base) {
 // --- Batch 3 -------------------------------------------------------------------
 // One function per workstream (plans/design-round2/batch3-plan.md); each starts
 // with watchdog.refresh() because the whole run shares one 120 s watchdog.
+// A: Compare as its own set (Leon, 2026-11-05): the toggle on every row, the
+// header button and the phone tray, the view at 0 to 4, and the phone cue for
+// columns off to the side. Screenshots go to /tmp/ib-batch3-a.
 async function runBatch3A(base) {
   watchdog.refresh();
+  const { UI } = await import('../js/i18n.js');
+  const shots = '/tmp/ib-batch3-a';
+  await mkdir(shots, { recursive: true });
+  console.log('Batch 3 A Chrome version: ' + (await cdp.send('Browser.getVersion')).product);
+  const KEY = 'ib-university-finder:compare:v1';
+  const say = (ui, key, vars = {}) => {
+    let value = UI[ui][key];
+    if (typeof value === 'object') value = value[vars.count === 1 ? 'one' : vars.count >= 2 && vars.count <= 4 ? 'few' : 'other'] || value.other;
+    return value.replace(/\{(\w+)\}/g, (_, name) => String(vars[name]));
+  };
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  // Each page is a fresh browser profile: its own saves and compare set.
+  const open = async (query, width, height, compare = []) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'batch 3 A page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(KEY)},${JSON.stringify(JSON.stringify(compare))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'batch 3 A reload');
+    return page;
+  };
+  const resize = async (page, width, height) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===${width}&&innerHeight===${height},why:'viewport '+innerWidth+'x'+innerHeight})`, 3000, 'viewport');
+  };
+  const frames = (page) => page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  const shot = async (page, name) => {
+    await frames(page);
+    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  const shown = (selector) => `(()=>{const n=document.querySelector(${JSON.stringify(selector)});if(!n)return false;for(let e=n;e;e=e.parentElement){const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden')return false}const r=n.getBoundingClientRect();return r.width>0&&r.height>0})()`;
+  const noOverflow = 'document.documentElement.scrollWidth<=innerWidth';
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const longest = [...data].sort((a, b) => b.programme.length - a.programme.length || b.university.length - a.university.length)[0];
+  const four = [...data].sort((a, b) => b.programme.length - a.programme.length).slice(0, 4).map((r) => r.id);
+  const rowOf = (id) => `document.querySelector('#results li.item[data-id="${id}"]')`;
+
+  // 1. The row toggle beside the star, on the longest title in the data.
+  for (const [width, height] of [[1280, 900], [390, 844], [320, 640]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}&q=${encodeURIComponent(longest.programme)}`, width, height);
+    try {
+      await check(`${width}/${ui}`, 'B3A row toggle', 'compare and save are separate 44 px (32 px with a mouse) targets beside the title; a click adds without opening the row', async () => {
+        await page.waitFor(`({ok:!!${rowOf(longest.id)},why:'row missing'})`, 10000, 'the longest row');
+        const m = await page.ev(`(()=>{
+          const li=${rowOf(longest.id)}; li.scrollIntoView({block:'center'});
+          const c=li.querySelector('button.cmpi'), s=li.querySelector('button.star'), t=li.querySelector('.r-t');
+          const rc=c.getBoundingClientRect(), rs=s.getBoundingClientRect(), rt=t.getBoundingClientRect();
+          const hit=(b,r)=>{const h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return h===b||b.contains(h)};
+          const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
+          return {c:[rc.width,rc.height],s:[rs.width,rs.height],hitC:hit(c,rc),hitS:hit(s,rs),cs:overlap(rc,rs),tc:overlap(rt,rc),ts:overlap(rt,rs),
+            order:rc.right<=rs.left+0.5,overflow:document.documentElement.scrollWidth-innerWidth,name:c.textContent};
+        })()`);
+        const min = width < 600 ? 44 : 32;
+        assert([...m.c, ...m.s].every((n) => n >= min - 0.5) && m.hitC && m.hitS && !m.cs && !m.tc && !m.ts && m.order && m.overflow <= 0, JSON.stringify(m));
+        assert(m.name === say(ui, 'r3_cmp_add_label', { programme: longest.programme, university: longest.university }), 'name: ' + m.name);
+        if (width !== 320) await shot(page, `row-toggle-${width}-${ui}`);
+        await page.click(`${rowOf(longest.id)}.querySelector('button.cmpi')`, 'the compare toggle');
+        await page.waitFor(`({ok:${rowOf(longest.id)}.querySelector('button.cmpi').getAttribute('aria-pressed')==='true' && JSON.parse(localStorage.getItem(${JSON.stringify(KEY)})).includes(${JSON.stringify(longest.id)}),why:'not added'})`, 5000, 'added to compare');
+        assert(await page.ev(`!${rowOf(longest.id)}.querySelector('.expand') && !document.querySelector('#results li.is-sel') && ${rowOf(longest.id)}.querySelector('button.cmpi use').getAttribute('href')==='#i-compare-on'`), 'the click opened or selected the row');
+        if (width !== 320) await shot(page, `row-toggle-on-${width}-${ui}`);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 2. The header button: from 600 px, tall enough for the sticky header.
+  for (const width of [600, 700, 1023, 1024, 1280]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 900, four.slice(0, 2));
+    try {
+      await check(`${width}/${ui}`, 'B3A header compare', 'beside My list, clear of Search and the language switch, compact and not; the only compare entry', async () => {
+        for (const compact of [false, true]) {
+          await page.ev(`window.scrollTo(0,${compact ? 2000 : 0})`);
+          await page.waitFor(`({ok:document.body.classList.contains('compact')===${compact},why:'compact '+document.body.classList.contains('compact')})`, 5000, 'header state');
+          await frames(page);
+          const m = await page.ev(`(()=>{
+            const r=(s)=>document.querySelector(s).getBoundingClientRect();
+            const hc=r('#header-compare'), hl=r('#header-list'), q=r('.hd .search'), lang=r('.hd .lang'), badge=r('#header-compare-count');
+            const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
+            return {pairs:[overlap(hc,hl),overlap(hc,q),overlap(hc,lang),overlap(hl,q),overlap(hl,lang)],search:q.width,
+              badge:badge.left>=hc.left-0.5&&badge.right<=hc.right+0.5&&badge.top>=hc.top-0.5&&badge.bottom<=hc.bottom+0.5&&badge.right<=innerWidth,
+              header:${shown('#header-compare')},tray:${shown('#cmp-tray')},overflow:document.documentElement.scrollWidth-innerWidth,count:document.querySelector('#header-compare-count').textContent};
+          })()`);
+          assert(!m.pairs.some(Boolean) && m.search >= 160 && m.badge && m.header && !m.tray && m.overflow <= 0 && m.count === '2', JSON.stringify(m));
+        }
+        const { root: doc } = await page.send('DOM.getDocument', { depth: 0 });
+        const { nodeId } = await page.send('DOM.querySelector', { nodeId: doc.nodeId, selector: '#header-compare' });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+        const name = nodes[0]?.name?.value ?? '';
+        assert(name.includes(ui === 'sk' ? 'Porovnať' : 'Compare') && name.includes('2'), 'accessible name: ' + name);
+        if (width === 1280 || width === 700) { await page.ev('window.scrollTo(0,0)'); await shot(page, `header-${width}-${ui}`); }
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 3. The tray: phones and short windows only, from one programme.
+  for (const [width, height, uis] of [[320, 640, ['en', 'sk']], [390, 844, ['en', 'sk']], [599, 900, ['en', 'sk']], [844, 390, ['en', 'sk']], [1280, 500, ['en']]]) for (const ui of uis) {
+    const page = await open(`?ui=${ui}`, width, height);
+    try {
+      await check(`${width}x${height}/${ui}`, 'B3A tray', 'none at 0; from 1 to 4 it shows its count and a 44 px Open inside the window, and is the only compare entry', async () => {
+        assert(await page.ev(`!${shown('#cmp-tray')} && !${shown('#header-compare')} && !document.body.classList.contains('has-tray')`), 'an entry shows at 0');
+        for (let n = 1; n <= 4; n++) {
+          await page.click(`document.querySelectorAll('#results button.cmpi')[${n - 1}]`, `compare toggle ${n}`);
+          const want = say(ui, 'r3_tray_text', { count: n });
+          await page.waitFor(`({ok:document.querySelector('#cmp-tray-text').textContent===${JSON.stringify(want)} && ${shown('#cmp-tray')},why:document.querySelector('#cmp-tray-text').textContent})`, 5000, `tray ${n}`);
+          await frames(page);
+          const m = await page.ev(`(()=>{
+            const t=document.querySelector('#cmp-tray-text'), b=document.querySelector('#cmp-tray-open'), tray=document.querySelector('#cmp-tray');
+            const rt=t.getBoundingClientRect(), rb=b.getBoundingClientRect(), r=tray.getBoundingClientRect();
+            const inside=(x)=>x.left>=0&&x.right<=innerWidth&&x.top>=0&&x.bottom<=innerHeight+0.5;
+            return {inside:inside(rt)&&inside(rb),button:rb.height,clipped:t.scrollWidth>t.clientWidth+1,header:${shown('#header-compare')},
+              pad:parseFloat(getComputedStyle(document.body).paddingBottom),tray:r.height,overflow:document.documentElement.scrollWidth-innerWidth};
+          })()`);
+          assert(m.inside && m.button >= 44 && !m.clipped && !m.header && Math.abs(m.pad - m.tray) <= 1 && m.overflow <= 0, JSON.stringify(m));
+        }
+        await shot(page, `tray-${width}x${height}-${ui}`);
+        if (width === 1280) {
+          // Wide and short: the tray and the pane, whose end stays above it.
+          await page.click(`document.querySelector('#results button.open')`, 'a programme for the pane');
+          // Scrolled, so the pane sticks; at the top it runs on below the window anyway.
+          await page.ev('window.scrollTo(0,1500)');
+          await frames(page);
+          const p = await page.ev(`({pane:document.querySelector('#pane').getBoundingClientRect().bottom,tray:document.querySelector('#cmp-tray').getBoundingClientRect().top})`);
+          assert(p.pane <= p.tray + 0.5, 'the pane ends under the tray ' + JSON.stringify(p));
+        }
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 4. The tray never hides focus, a toast or the end of the page; typing and
+  // print hide it; crossing 600 wide or 500 tall keeps focus where it is.
+  for (const [width, height, ui] of [[390, 844, 'en'], [320, 568, 'sk']]) {
+    const short = data.filter((r) => r.country === longest.country).slice(0, 1)[0];
+    const page = await open(`?ui=${ui}&q=${encodeURIComponent(longest.programme)}`, width, height, four.slice(0, 3));
+    try {
+      await check(`${width}x${height}/${ui}`, 'B3A tray focus', 'Tab through the last card keeps every focus above the tray, the toast sits above it and the footer clears it', async () => {
+        await page.waitFor(`({ok:${shown('#cmp-tray')},why:'no tray'})`, 5000, 'tray with three');
+        await page.click(`document.querySelector('#results li.item:last-child button.star')`, 'save for a toast');
+        await page.waitFor(`({ok:!!document.querySelector('#toasts .toast'),why:'no toast'})`, 5000, 'toast');
+        await frames(page);
+        const toast = await page.ev(`({toast:document.querySelector('#toasts .toast').getBoundingClientRect().bottom,tray:document.querySelector('#cmp-tray').getBoundingClientRect().top})`);
+        assert(toast.toast <= toast.tray + 0.5, 'toast under the tray ' + JSON.stringify(toast));
+        await page.ev(`document.querySelector('#results li.item:last-child button.open').focus()`);
+        const seen = [];
+        for (let i = 0; i < 6; i++) {
+          await page.key('Tab', 'Tab', 9);
+          await frames(page);
+          const f = await page.ev(`(()=>{const a=document.activeElement,r=a.getBoundingClientRect(),t=document.querySelector('#cmp-tray');
+            return {what:a.tagName+'.'+a.className+'#'+a.id,inTray:t.contains(a),bottom:r.bottom,height:r.height,top:t.hidden?Infinity:t.getBoundingClientRect().top}})()`);
+          seen.push(f.what);
+          if (f.inTray || !f.height) continue;
+          assert(f.bottom <= f.top + 0.5, `focus on ${f.what} is under the tray: ${JSON.stringify(f)}`);
+        }
+        await page.ev('window.scrollTo(0,document.documentElement.scrollHeight)');
+        await frames(page);
+        const end = await page.ev(`({card:document.querySelector('#results li.item:last-child').getBoundingClientRect().bottom,foot:document.querySelector('.foot').getBoundingClientRect().bottom,tray:document.querySelector('#cmp-tray').getBoundingClientRect().top})`);
+        assert(end.card <= end.tray + 0.5 && end.foot <= end.tray + 0.5, 'the end of the page is under the tray ' + JSON.stringify(end));
+        await shot(page, `tray-end-${width}-${ui}`);
+      });
+      await check(`${width}x${height}/${ui}`, 'B3A tray typing', 'focusing Search hides the tray and its space; leaving it brings both back', async () => {
+        await page.ev(`window.scrollTo(0,0);document.querySelector('#f-search').focus()`);
+        await page.waitFor(`({ok:!${shown('#cmp-tray')} && !document.body.classList.contains('has-tray') && getComputedStyle(document.body).paddingBottom==='0px',why:'tray still there'})`, 3000, 'tray hidden while typing');
+        await page.ev('document.activeElement.blur()');
+        await page.waitFor(`({ok:${shown('#cmp-tray')} && document.body.classList.contains('has-tray'),why:'tray not back'})`, 3000, 'tray back');
+      });
+      if (width === 390) await check(`${width}/${ui}`, 'B3A tray crossings', 'across 599/600 wide and 500/501 tall the entry swaps between tray and header and focus stays put', async () => {
+        await page.ev(`document.querySelector('#results button.cmpi').focus()`);
+        for (const [w, h, tray] of [[599, 900, true], [600, 900, false], [600, 500, true], [600, 501, false], [390, 844, true]]) {
+          await resize(page, w, h);
+          await page.waitFor(`({ok:${shown('#cmp-tray')}===${tray} && ${shown('#header-compare')}===${!tray} && document.activeElement===document.querySelector('#results button.cmpi'),why:JSON.stringify({tray:${shown('#cmp-tray')},header:${shown('#header-compare')},focus:document.activeElement.className})})`, 3000, `${w}x${h}`);
+        }
+      });
+      if (width === 390) await check(`${width}/${ui}`, 'B3A tray print', 'in print there is no tray and no space for it; an open comparison prints its facts and official links', async () => {
+        await page.ev(`document.querySelector('#cmp-tray-open').click()`);
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 3000, 'compare open');
+        await page.ev(`document.querySelector('#cmp-close').click()`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          const m = await page.ev(`({tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom,scroll:getComputedStyle(document.documentElement).scrollPaddingBottom})`);
+          assert(m.tray === 'none' && m.pad === '0px' && (m.scroll === '0px' || m.scroll === 'auto'), JSON.stringify(m));
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        await page.ev(`document.querySelector('#cmp-tray-open').click()`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          const m = await page.ev(`(()=>{const link=document.querySelector('#cmp-body a.lnk');
+            return {compare:getComputedStyle(document.querySelector('#compare')).display,list:getComputedStyle(document.querySelector('.split')).display,
+              link:getComputedStyle(link).display,after:getComputedStyle(link,'::after').content,facts:document.querySelectorAll('#cmp-body tr[data-fact]').length,
+              tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom}})()`);
+          assert(m.compare !== 'none' && m.list === 'none' && m.link !== 'none' && m.after.includes('http') && m.facts >= 9 && m.tray === 'none' && m.pad === '0px', JSON.stringify(m));
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        await page.ev(`document.querySelector('#cmp-close').click()`);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 5. The view at 0, 1, 2 and 3 on desktop, the fifth add, and a focused Undo
+  // toast that survives a second toast (keyboard only).
+  {
+    const page = await open('?ui=en', 1280, 900);
+    try {
+      await check(1280, 'B3A view counts', 'the header opens an empty state at 0 and one column with a prompt at 1; Close returns focus to the header button', async () => {
+        await page.click(`document.querySelector('#header-compare')`, 'Compare (0)');
+        await page.waitFor(`({ok:${shown('#cmp-empty')} && document.activeElement.id==='cmp-h' && !${shown('.split')},why:'no empty state'})`, 5000, 'empty compare');
+        await shot(page, 'compare-0-1280-en');
+        await page.click(`document.querySelector('#cmp-browse')`, 'Browse programmes');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden && document.activeElement.id==='header-compare',why:document.activeElement.id})`, 5000, 'back to the list');
+        await page.click(`document.querySelector('#results button.cmpi')`, 'add one');
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast')?.textContent.startsWith(${JSON.stringify(say('en', 'r3_cmp_added', { count: 1 }))}),why:'no add toast'})`, 5000, 'the add toast');
+        await page.click(`document.querySelector('#header-compare')`, 'Compare (1)');
+        await page.waitFor(`({ok:${shown('#cmp-one')} && document.querySelectorAll('#cmp-body th[scope=col]').length===1 && !${shown('#cmp-diff-label')},why:'not one column'})`, 5000, 'one column');
+        await shot(page, 'compare-1-1280-en');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden && document.activeElement.id==='header-compare',why:document.activeElement.id})`, 5000, 'focus back on the header');
+      });
+      await check(1280, 'B3A fifth', 'a fifth add is refused, never disabled; the toast\'s Open compare opens four columns', async () => {
+        for (let i = 1; i < 5; i++) await page.click(`document.querySelectorAll('#results button.cmpi')[${i}]`, `compare toggle ${i + 1}`);
+        const fifth = `document.querySelectorAll('#results button.cmpi')[4]`;
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast')?.textContent.startsWith(${JSON.stringify(say('en', 'r3_cmp_full'))}),why:document.querySelector('#toasts')?.textContent})`, 5000, 'the limit toast');
+        assert(await page.ev(`${fifth}.getAttribute('aria-pressed')==='false' && !${fifth}.disabled && !${fifth}.hasAttribute('aria-disabled') && JSON.parse(localStorage.getItem(${JSON.stringify(KEY)})).length===4`), 'the fifth was added or disabled');
+        await page.click(`document.querySelector('#toasts .toast button')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===4,why:'not four columns'})`, 5000, 'four columns');
+        await shot(page, 'compare-4-1280-en');
+      });
+      await check(1280, 'B3A keyboard undo', 'Enter on an "x" moves focus to the next column\'s "x"; a second toast leaves the focused Undo in place, and that Undo restores its own programme', async () => {
+        const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
+        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[2]}"]'),why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'focus on the next x');
+        await page.ev(`document.querySelector('#toasts .toast button').focus()`);
+        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').click()`);
+        await page.waitFor(`({ok:document.querySelectorAll('#toasts .toast').length===2,why:document.querySelectorAll('#toasts .toast').length+' toasts'})`, 5000, 'two toasts');
+        assert(await page.ev(`document.activeElement===document.querySelector('#toasts .toast button')`), 'the focused Undo lost focus');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()===${JSON.stringify([ids[1], ids[2], ids[3]].join())} && document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()+' / '+document.activeElement.outerHTML.slice(0,60)})`, 5000, 'its own programme back, focused');
+      });
+      await check(1280, 'B3A redraw focus', 'saving in a column keeps its focus; another tab dropping the focused column moves focus to the next "x"; a language switch keeps both and the sideways scroll', async () => {
+        const save = `document.querySelector('#cmp-body th [data-save-id]')`;
+        await page.ev(`${save}.focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:${save}.getAttribute('aria-pressed')==='true' && document.activeElement===${save} && document.querySelector('#shortlist-bar').hidden,why:'save lost focus or bar shown'})`, 5000, 'saved in place');
+        const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
+        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').focus();localStorage.setItem(${JSON.stringify(KEY)},${JSON.stringify(JSON.stringify(ids.slice(1)))});dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(KEY)}}))`);
+        await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus on the next x');
+        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]') && document.querySelector('#cmp-h').textContent===${JSON.stringify(say('sk', 'r3_cmp_heading', { count: ids.length - 1 }))},why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus kept in Slovak');
+        await page.ev(`document.querySelector('[data-language="en"]').click()`);
+        assert(!page.errors.length && !page.exceptions.length, JSON.stringify([...page.errors, ...page.exceptions]));
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 6. Phones with 3 and 4: Close at the top right, the range, the arrows,
+  // the fade, a real swipe and Tab into the hidden columns.
+  for (const width of [320, 390]) for (const ui of ['en', 'sk']) for (const n of [3, 4]) {
+    const page = await open(`?ui=${ui}`, width, 844, four.slice(0, n));
+    try {
+      await check(`${width}/${ui}/${n}`, 'B3A phone compare', 'Close at the top right; "1–2 of n", arrows and a fade that stop at each end; a swipe and Tab move through the columns', async () => {
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===${n},why:'compare not open'})`, 5000, 'compare open');
+        await frames(page);
+        const head = await page.ev(`(()=>{const h=document.querySelector('.cmp-head'),c=document.querySelector('#cmp-close').getBoundingClientRect(),t=document.querySelector('#cmp-h').getBoundingClientRect(),r=h.getBoundingClientRect(),pad=parseFloat(getComputedStyle(h).paddingRight);
+          return {right:Math.abs(c.right-(r.right-pad)),row:c.top<t.bottom&&t.top<c.bottom,size:[c.width,c.height],overflow:document.documentElement.scrollWidth-innerWidth}})()`);
+        assert(head.right <= 2 && head.row && head.size.every((s) => s >= 44) && head.overflow <= 0, JSON.stringify(head));
+        const range = (from, to) => say(ui, n === 4 ? 'r3_cmp_range_zo' : 'r3_cmp_range', { from, to, total: n });
+        const state = `(()=>{const f=document.querySelector('.cmp-frame'),b=document.querySelector('.cmp-scroll');return {range:document.querySelector('.cmp-range').textContent,prev:document.querySelector('.cmp-prev').disabled,next:document.querySelector('.cmp-next').disabled,fade:getComputedStyle(f,'::after').display!=='none',end:f.classList.contains('at-end'),scroll:[b.scrollLeft,b.clientWidth,b.scrollWidth]}})()`;
+        let m = await page.ev(state);
+        assert(m.range === range(1, 2) && m.prev && !m.next && m.fade, 'start ' + JSON.stringify(m));
+        if (width === 390 && n === 3) await shot(page, `compare-3-phone-${ui}`);
+        for (let to = 3; to <= n; to++) {
+          await page.click(`document.querySelector('.cmp-next')`, 'Next programme');
+          await page.waitFor(`({ok:${state}.range===${JSON.stringify(range(to - 1, to))},why:${state}.range})`, 5000, `range ${to - 1}–${to}`);
+        }
+        // The arrows scroll smoothly; the end state lands once the scroll settles.
+        await page.waitFor(`(()=>{const m=${state};return {ok:m.next && !m.prev && !m.fade && m.end,why:JSON.stringify(m)}})()`, 5000, 'the end state');
+        if (width === 390 && n === 3) await shot(page, `compare-3-phone-end-${ui}`);
+        await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
+        await page.waitFor(`({ok:${state}.range===${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'back at the start');
+        // A finger dragged right to left across the table, inside the window.
+        const box = await page.ev(`(()=>{const r=document.querySelector('.cmp-scroll').getBoundingClientRect();return {x:Math.round(Math.min(r.right,innerWidth)-30),y:Math.round(Math.min(Math.max(r.top+80,10),innerHeight-10))}})()`);
+        await page.send('Input.synthesizeScrollGesture', { x: box.x, y: box.y, xDistance: -150, yDistance: 0, gestureSourceType: 'touch', speed: 800 });
+        await page.waitFor(`({ok:${state}.range!==${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'a swipe moves the range');
+        await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
+        await frames(page);
+        const third = await page.ev(`document.querySelectorAll('#cmp-body th[scope=col]')[2].dataset.id`);
+        await page.ev(`document.querySelectorAll('#cmp-body th[scope=col]')[1].querySelector('.cmp-x').focus()`);
+        for (const [what, selector] of [['save', `th[data-id="${third}"] [data-save-id]`], ['x', `th[data-id="${third}"] .cmp-x`]]) {
+          await page.key('Tab', 'Tab', 9);
+          await page.waitFor(`(()=>{const a=document.activeElement,box=document.querySelector('.cmp-scroll').getBoundingClientRect(),fact=document.querySelector('.cmp-c').getBoundingClientRect(),r=a.getBoundingClientRect();
+            return {ok:a===document.querySelector('#cmp-body ${selector}') && r.left>=fact.right-0.5 && r.right<=box.right+0.5,why:a.outerHTML.slice(0,60)+' '+JSON.stringify([r.left,r.right,fact.right,box.right])}})()`, 5000, `Tab to the third column's ${what}`);
+        }
+        assert(await page.ev(noOverflow), 'the page scrolls sideways');
+      });
+    } finally { await page.close(); }
+    watchdog.refresh();
+  }
+
+  // 7. Screenshots for Leon: the phone view at 0 (after the last x) and 1.
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 390, 844, four.slice(0, 1));
+    try {
+      await check(`390/${ui}`, 'B3A phone one and none', 'one column asks for another; the last "x" leaves the empty state with focus on Browse', async () => {
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:${shown('#cmp-one')},why:'no one-column prompt'})`, 5000, 'one column');
+        await shot(page, `compare-1-phone-${ui}`);
+        await page.click(`document.querySelector('#cmp-body .cmp-x')`, 'x');
+        await page.waitFor(`({ok:${shown('#cmp-empty')} && document.activeElement.id==='cmp-browse',why:document.activeElement.id})`, 5000, 'empty state');
+        await shot(page, `compare-0-phone-${ui}`);
+        await page.click(`document.querySelector('#cmp-browse')`, 'Browse');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden && ${shown('.split')},why:'still open'})`, 5000, 'closed');
+      });
+    } finally { await page.close(); }
+  }
 }
 
 async function runBatch3B(base) {
