@@ -810,7 +810,12 @@ async function runRound2(base) {
       } else await page.click(`document.querySelector('.status [data-edit]')`, 'Edit my answers');
       await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`,5000,'setup');
     };
-    const next = () => page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next onboarding step');
+    // Batch 3 C1: step 5's primary is Finish, which opens the done screen; its
+    // primary, "Show my programmes", then closes setup as step 5's used to.
+    const next = async () => {
+      await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next onboarding step');
+      if (await page.ev(`Boolean(document.querySelector('#onboarding[open] .ob-done'))`)) await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    };
     try {
       await page.waitFor(ready,15000,'round 2 boot');
       await check(width,'R2A','first visit, quarter progress, draft Skip/Escape and dismissal',async()=>{
@@ -837,14 +842,24 @@ async function runRound2(base) {
         assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
       });
-      await check(width,'R2M','the setup FAQ link dismisses setup without applying answers and lands on the FAQ below the sticky bar',async()=>{
+      // Batch 3 C1: the FAQ link moved from step 1 to the done screen, and the
+      // answers are applied before it opens the FAQ.
+      await check(width,'R2M','the done screen\'s FAQ button applies the answers and lands on the FAQ below the sticky bar',async()=>{
         await page.ev(`window.scrollTo(0,0)`);
         await edit();
-        await page.click(`document.querySelector('#onboarding .ob-faq')`,'the FAQ link');
-        assert(await page.ev(`!document.querySelector('#onboarding').open && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && document.querySelector('#f-points').value===''`),'FAQ link applied answers or left setup open');
+        assert(await page.ev(`!document.querySelector('#onboarding .ob-faq') && !document.querySelector('#onboarding .ob-step a')`),'step 1 still has a FAQ link');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Start');
+        await page.click(`document.querySelector('#ob-points')`,'predicted points'); await page.type('39');
+        for(let i=0;i<3;i++)await page.click(`document.querySelector('.ob-foot>.btn-p')`,'the next onboarding step');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Finish');
+        assert(await page.ev(`document.querySelector('#onboarding').open && Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-points').value==='39' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Finish did not apply and show the done screen');
+        await page.click(`[...document.querySelectorAll('#onboarding .ob-foot .btn')].find(b=>b.textContent==='Read the FAQ')`,'Read the FAQ');
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='39'`),'FAQ button left setup open or lost the answers');
         assert(await page.ev(`document.activeElement===document.querySelector('#faq summary')`),'focus is not on the first FAQ question');
         await page.waitFor(`(()=>{const top=document.querySelector('#faq').getBoundingClientRect().top,bar=${width<600?"document.querySelector('.status').getBoundingClientRect().bottom":"document.querySelector('.hd').getBoundingClientRect().bottom"};return {ok:top>=bar-1 && top<innerHeight-40,why:JSON.stringify({top,bar})}})()`,5000,'the FAQ in view');
-        await page.ev(`window.scrollTo(0,0)`);
+        // Leave no answers behind for R2B, which starts from blank fields.
+        await page.ev(`document.querySelector('#f-clear').click();window.scrollTo(0,0)`);
+        assert(await page.ev(`document.querySelector('#f-points').value===''`),'Clear all left the points');
       });
       await check(width,'R2B','answers apply once, typed budget exceeds slider, saved filters restore, URL wins without overwriting',async()=>{
         await edit(); await next();
@@ -1278,7 +1293,8 @@ async function runBatch2A(base) {
       await resize(page, width, 844);
       await check(width, 'R4B', `the logo is named and the page keeps its h1 (${lang})`, async () => {
         const link = await axNode(page, '.mark'), heading = await axNode(page, '.mark h1');
-        const name = lang === 'sk' ? 'University Finder, späť na začiatok' : 'University Finder, back to top';
+        // Batch 3 C2: the logo now goes home, so its name says so.
+        const name = lang === 'sk' ? 'University Finder, všetky programy' : 'University Finder, all programmes';
         assert(link.role?.value === 'link' && link.name?.value === name, `link: ${link.role?.value} "${link.name?.value}"`);
         assert(!heading.ignored && heading.role?.value === 'heading' && heading.name?.value === 'University Finder', `heading: ${JSON.stringify([heading.ignored, heading.role?.value, heading.name?.value])}`);
         const m = await page.ev(`(()=>{const h=document.querySelector('.mark h1'),r=h.getBoundingClientRect(),s=getComputedStyle(h);return {w:r.width,h:r.height,display:s.display,clip:s.clipPath,text:h.textContent,sw:document.documentElement.scrollWidth,iw:innerWidth}})()`);
@@ -1763,14 +1779,18 @@ async function runBatch2Followup(base) {
             }
             assert(!m.over && !m.badgeOver, `Filters collides with Search: ${JSON.stringify(m)}`);
             assert(m.missed.length === 0, `Filters covered at a corner by ${m.missed}`);
-            assert(Math.abs(m.btn[1] - m.slot) <= 0.5 && m.btn[1] >= (coarse ? 44 : 36) && m.btn[2] >= (coarse ? 44 : 36), `button ${m.btn} in a ${m.slot} slot`);
+            // Batch 3 C2: the logo tile stays beside it, so the slot is 44 + 6 + 44 = 94 px
+            // in both states and the button is 44 px wide (it filled a 36/44 px slot).
+            assert(Math.abs(m.slot - 94) <= 0.5 && Math.abs(m.btn[1] - 44) <= 0.5 && m.btn[2] >= (coarse ? 44 : 36), `button ${m.btn} in a ${m.slot} slot`);
             assert(m.badgeShown && m.badgeInside && m.badgeText === '2', `count badge: ${JSON.stringify(m)}`);
             // The label is hidden on purpose, not cut: it stays the button's name.
             // (The badge sticks out over the corner by design, so scrollWidth is no test.)
             assert(m.label[0] <= 1 && m.label[1] <= 1 && !m.iconCut, `label shows or icon cut: ${JSON.stringify(m)}`);
             assert(name.includes(lang === 'sk' ? 'Filtre' : 'Filters') && name.includes('2'), `accessible name "${name}"`);
             assert(Math.abs(m.search[0] - before[0]) < 0.5 && Math.abs(m.search[1] - before[1]) < 0.5, `Search moved: ${before} → ${m.search}`);
-            assert(m.search[1] >= 200, `Search only ${m.search[1]} wide`);
+            // Batch 3 C2: the 94 px slot (tile + Filters) costs Search 58 px at 600 px;
+            // the batch 3 plan sets 160 px as the floor (it was 200).
+            assert(m.search[1] >= 160, `Search only ${m.search[1]} wide`);
             assert(m.h === 56, `header ${m.h}`);
             assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
           });
@@ -1832,6 +1852,207 @@ async function runBatch3B(base) {
 
 async function runBatch3C(base) {
   watchdog.refresh();
+  const shots = '/tmp/ib-batch3-c';
+  await mkdir(shots, { recursive: true });
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const shoot = async (page, name) => {
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+
+  // C1: setup ends on a done screen. 568 px is the shortest phone we design for.
+  for (const width of [320, 390, 1280]) {
+    const page = await openPage(`${base}?ui=en`, width, 568);
+    try {
+      await page.waitFor(ready, 15000, 'done screen page');
+      for (const lang of ['en', 'sk']) {
+        for (const reduced of [false, true]) {
+          await check(width, 'B3C done screen', `(${lang}${reduced ? ', reduced motion' : ''}): both buttons in view at 568 px, 44 px, primary on top on phones, no overflow`, async () => {
+            watchdog.refresh();
+            if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+            try {
+              // A first visit opens setup by itself.
+              await page.ev(`localStorage.clear();localStorage.setItem('ib-university-finder:language','${lang}');window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=${lang}'`);
+              await page.waitFor(ready, 15000, 'reloaded page');
+              await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+              for (let i = 0; i < 4; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, `step ${i + 1}`);
+              await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Finish');
+              if (reduced) assert(await page.ev(`getComputedStyle(document.querySelector('.ob-done')).animationName==='none'`), 'the done screen still slides in with reduced motion');
+              await settle(page);
+              const m = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),r=d.getBoundingClientRect(),body=d.querySelector('.ob-body'),btns=[...d.querySelectorAll('.ob-foot .btn')],box=(n)=>n.getBoundingClientRect();
+                return {heading:d.querySelector('.ob-done h2').textContent,focused:document.activeElement===d.querySelector('#ob-title'),step:!!d.querySelector('.ob-n'),bar:d.querySelector('.ob-bar i').style.transform,
+                  dialog:[r.top,r.bottom],btns:btns.map(b=>{const k=box(b);return {text:b.textContent,primary:b.classList.contains('btn-p'),top:k.top,bottom:k.bottom,left:k.left,right:k.right,w:k.width,h:k.height,clipped:b.scrollWidth>b.clientWidth+1}}),
+                  foot:(()=>{const f=box(d.querySelector('.ob-foot')),s=getComputedStyle(d.querySelector('.ob-foot'));return {left:f.left+parseFloat(s.paddingLeft),right:f.right-parseFloat(s.paddingRight)}})(),
+                  bodyOver:body.scrollWidth>body.clientWidth,sw:document.documentElement.scrollWidth,w:innerWidth,h:innerHeight}})()`);
+              await shoot(page, `done-${width}-${lang}${reduced ? '-reduced' : ''}`);
+              assert(m.heading === (lang === 'sk' ? 'V nastavení si nepridal žiadne odpovede.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
+              assert(m.btns.length === 2 && m.btns[0].primary, `buttons ${JSON.stringify(m.btns)}`);
+              for (const b of m.btns) {
+                assert(b.h >= 44 && b.w >= 44 && !b.clipped, `button ${JSON.stringify(b)}`);
+                assert(b.top >= m.dialog[0] && b.bottom <= m.dialog[1] && b.bottom <= m.h && b.left >= 0 && b.right <= m.w, `button out of view: ${JSON.stringify(b)} dialog ${m.dialog}`);
+              }
+              const [primary, faq] = m.btns;
+              if (width < 600) {
+                assert(primary.bottom <= faq.top, `primary not on top: ${JSON.stringify(m.btns)}`);
+                assert(m.btns.every(b => Math.abs(b.left - m.foot.left) <= 1 && Math.abs(b.right - m.foot.right) <= 1), `not full width: ${JSON.stringify(m)}`);
+              } else {
+                assert(Math.abs(primary.top - faq.top) <= 1 && primary.left > faq.right && Math.abs(primary.right - m.foot.right) <= 1, `primary not right of the FAQ: ${JSON.stringify(m)}`);
+              }
+              assert(!m.bodyOver && m.sw === m.w, `overflow ${JSON.stringify(m)}`);
+              await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+              assert(await page.ev(`!document.querySelector('#onboarding').open && document.activeElement.getAttribute('aria-labelledby')==='results-h' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Show my programmes did not close to the results');
+              assert(await page.ev(`!document.querySelector('#toasts .toast')`), 'a toast appeared after setup');
+              assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+            } finally {
+              if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [] });
+            }
+          });
+        }
+      }
+      // With an answer: the heading says so and the count names the matches.
+      await check(width, 'B3C done screen', 'with an answer (sk): "Tvoje odpovede sú teraz filtre" and a matching count', async () => {
+        await page.ev(`localStorage.clear();localStorage.setItem('ib-university-finder:language','sk');window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=sk'`);
+        await page.waitFor(ready, 15000, 'reloaded page');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Start');
+        await page.click(`document.querySelector('#ob-points')`, 'points'); await page.type('36');
+        for (let i = 0; i < 3; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, `step ${i + 2}`);
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Dokončiť');
+        await settle(page);
+        const m = await page.ev(`({h:document.querySelector('.ob-done h2').textContent,count:document.querySelector('.ob-count').textContent,shown:document.querySelectorAll('#results>li.item').length,total:document.querySelector('#result-count b')?.textContent})`);
+        await shoot(page, `done-${width}-sk-answers`);
+        assert(m.h === 'Tvoje odpovede sú teraz filtre' && /^Tvojim odpovediam zodpovedá|^Tvojim odpovediam zodpovedajú/.test(m.count), JSON.stringify(m));
+        assert(m.count.replace(/\D/g, '') === String(m.total).replace(/\D/g, ''), `count ${m.count} vs shown ${m.total}`);
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Esc on the done screen lost the answers');
+      });
+    } finally { await page.close(); }
+  }
+  // C2: the logo goes home from anywhere, keeps the filters, and can be reached
+  // while scrolled: in the compact header from 600 px, in the stuck count row on
+  // phones.
+  const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
+  const clickAt = async (page, x, y) => {
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const centre = (sel) => `(()=>{const r=document.querySelector('${sel}').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`;
+  const openHome = async (query, width, height) => {
+    const page = await openPage(`${base}${query}`, width, height);
+    await page.waitFor(ready, 15000, 'home page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'home page reloaded');
+    return page;
+  };
+  const landedHome = (page, filters) => page.waitFor(`(()=>{const q=location.search;return {ok:scrollY===0&&document.querySelector('#header-list').getAttribute('aria-pressed')==='false'&&!q.includes('list=')&&${JSON.stringify(filters)}.every(f=>q.includes(f))&&location.hash===''&&document.activeElement===document.querySelector('.hd .mark'),
+    why:JSON.stringify({y:scrollY,q,hash:location.hash,list:document.querySelector('#header-list').getAttribute('aria-pressed'),active:document.activeElement.className})}})()`, 8000, 'home');
+
+  for (const width of [1280, 390]) {
+    const page = await openHome('?ui=en&country=Ireland&points=36', width, width < 600 ? 844 : 900);
+    try {
+      const ids = await page.ev(`[...document.querySelectorAll('#results>li.item')].slice(0,2).map(n=>n.dataset.id)`);
+      await check(width, 'R4B logo click', 'from My list: the main list at the top, filters kept', async () => {
+        await page.ev(`localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(${JSON.stringify(ids)}));window.__oldPage=true;location.reload()`);
+        await page.waitFor(ready, 15000, 'reloaded with saves');
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelector('#header-list').getAttribute('aria-pressed')==='true'&&document.querySelectorAll('#results>li.item').length===2,why:'not in My list'})`, 5000, 'My list');
+        await page.click(`document.querySelector('.hd .mark')`, 'the logo');
+        await landedHome(page, ['country=Ireland', 'points=36']);
+        assert(await page.ev(`document.querySelectorAll('#results>li.item').length>2 && JSON.parse(localStorage.getItem('ib-university-finder:shortlist:v1')).length===2`), 'main list not back or saves lost');
+      });
+      await check(width, 'R4B logo click', 'from a shared ?list= link: the main list, list= dropped, filters kept', async () => {
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en&country=Ireland&points=36&list=${ids.join(',')}'`);
+        await page.waitFor(ready, 15000, 'shared list');
+        await page.waitFor(`({ok:location.search.includes('list=')&&document.querySelector('#header-list').getAttribute('aria-pressed')==='true',why:location.search})`, 5000, 'shared view');
+        await page.click(`document.querySelector('.hd .mark')`, 'the logo');
+        await landedHome(page, ['country=Ireland', 'points=36']);
+      });
+    } finally { await page.close(); }
+  }
+
+  // Wide: scrolled until compact, the tile sits beside Filters, Search does not
+  // move, and a real click on the tile goes home.
+  for (const [width, coarse] of [[1280, false], [768, false], [768, true]]) {
+    const page = await openHome('?ui=en&country=Ireland&points=36', width, 900);
+    try {
+      for (const lang of ['en', 'sk']) {
+        await check(width, 'R4B logo click', `compact (${lang}, ${coarse ? 'touch' : 'mouse'}): the tile shows beside Filters, Search stays put, a real click goes home`, async () => {
+          watchdog.refresh();
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: coarse });
+          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.waitFor(`({ok:document.documentElement.lang==='${lang}'&&innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, 'language and width');
+          await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
+          await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'compact at top'})`, 3000, 'expanded');
+          await settle(page);
+          const before = await page.ev(`(()=>{const q=document.querySelector('#f-search').getBoundingClientRect(),s=document.querySelector('.slot').getBoundingClientRect();return {search:q.left,slot:s.width}})()`);
+          await page.ev(`scrollTo({top:2400,behavior:'instant'})`);
+          await page.waitFor(`({ok:document.body.classList.contains('compact'),why:'not compact'})`, 3000, 'compact');
+          await settle(page);
+          const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.hd .mono'),k=box('.hd .mark'),f=box('#compact-filters'),q=box('#f-search'),s=box('.slot'),c=${centre('.hd .mono')};
+            const hit=document.elementFromPoint(c.x,c.y);return {tile:[t.left,t.width],mark:[k.left,k.right,k.width,k.height],opacity:getComputedStyle(document.querySelector('.hd .mark')).opacity,h1:getComputedStyle(document.querySelector('.mark h1')).opacity,
+            filters:[f.left,f.right],midline:Math.abs((t.top+t.bottom)/2-(f.top+f.bottom)/2),over:hits(k,f),fOver:hits(f,q),inSlot:f.right<=s.right+0.5,search:q.left,slot:s.width,hit:document.querySelector('.hd .mark').contains(hit),sw:document.documentElement.scrollWidth,w:innerWidth}})()`);
+          const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: await page.ev('scrollY'), width, height: 140, scale: 2 } });
+          await writeFile(`${shots}/header-compact-${width}-${lang}${coarse ? '-touch' : ''}.png`, Buffer.from(data, 'base64'));
+          assert(m.opacity === '1' && m.h1 === '0' && m.tile[1] >= 30 && m.hit, `tile not visible or not hit: ${JSON.stringify(m)}`);
+          assert(m.midline <= 1, `tile and Filters off one centre line: ${JSON.stringify(m)}`);
+          assert(!m.over && !m.fOver && m.inSlot && m.filters[0] > m.tile[0] + m.tile[1], `Filters overlaps: ${JSON.stringify(m)}`);
+          assert(Math.abs(m.search - before.search) <= 0.5 && Math.abs(m.slot - before.slot) <= 0.5, `Search moved: ${JSON.stringify([before, m])}`);
+          if (coarse) assert(m.mark[2] >= 44 && m.mark[3] >= 44, `touch target ${m.mark}`);
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          const c = await page.ev(centre('.hd .mono'));
+          await clickAt(page, c.x, c.y);
+          await landedHome(page, ['country=Ireland', 'points=36']);
+          await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'still compact at the top'})`, 3000, 'header expanded at the top');
+          await page.ev(`document.activeElement.blur()`);
+        });
+      }
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    } finally { await page.close(); }
+  }
+
+  // Phones: the header scrolls away, so the stuck count row carries the tile.
+  for (const [width, lang] of [[390, 'en'], [375, 'en'], [375, 'sk'], [320, 'sk'], [320, 'en']]) {
+    const page = await openHome(`?ui=${lang}&country=Ireland&points=36`, width, 844);
+    try {
+      const stick = async () => {
+        await page.ev(`document.activeElement.blur();scrollTo({top:2400,behavior:'instant'})`);
+        await page.waitFor(`({ok:document.querySelector('.status').classList.contains('is-stuck'),why:'not stuck'})`, 3000, 'stuck row');
+        await settle(page);
+      };
+      await check(width, 'R4B logo click', `phone (${lang}): the stuck row shows [IB][count][Filters], 44 px, hit-testable, nothing overlaps`, async () => {
+        await stick();
+        const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.home-tile'),n=box('.status .cshort'),f=box('#f-more'),c=${centre('.home-tile')};
+          return {tile:[t.left,t.top,t.width,t.height],hit:document.querySelector('.home-tile').contains(document.elementFromPoint(c.x,c.y)),overlaps:[hits(t,n),hits(n,f),hits(t,f)],order:t.right<=n.left&&n.right<=f.left,inside:t.left>=0&&f.right<=innerWidth,sw:document.documentElement.scrollWidth,w:innerWidth,row:box('.status').height}})()`);
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: await page.ev('scrollY'), width, height: 120, scale: 2 } });
+        await writeFile(`${shots}/stuck-row-${width}-${lang}.png`, Buffer.from(data, 'base64'));
+        assert(m.tile[2] >= 44 && m.tile[3] >= 44 && m.hit, `tile ${JSON.stringify(m)}`);
+        assert(!m.overlaps.some(Boolean) && m.order && m.inside, `overlap ${JSON.stringify(m)}`);
+        assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+      });
+      if (width === 390 || width === 320) await check(width, 'R4B logo click', `phone (${lang}): a real tap on the stuck tile goes to the top with focus on the logo, in view`, async () => {
+        await stick();
+        const c = await page.ev(centre('.home-tile'));
+        await clickAt(page, c.x, c.y);
+        await landedHome(page, ['country=Ireland', 'points=36']);
+        assert(await page.ev(`(()=>{const r=document.querySelector('.hd .mark').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.width>=44})()`), 'the logo is not in view');
+      });
+      if (width === 390) await check(width, 'R4B logo click', 'phone keyboard: Enter on the stuck tile, then a visible focus ring on the logo; reduced motion is instant', async () => {
+        for (const reduced of [false, true]) {
+          if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+          try {
+            await stick();
+            await page.ev(`document.querySelector('.home-tile').focus()`);
+            await page.key('Enter', 'Enter', 13, [], '\r');
+            if (reduced) assert(await page.ev(`scrollY`) === 0, 'reduced motion: the scroll was not instant');
+            await landedHome(page, ['country=Ireland', 'points=36']);
+            assert(await page.ev(`document.querySelector('.hd .mark').matches(':focus-visible') && getComputedStyle(document.querySelector('.hd .mark')).outlineStyle!=='none'`), 'no visible focus on the logo');
+          } finally { if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+        }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 async function main() {

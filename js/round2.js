@@ -183,15 +183,17 @@ export function showToast(message, actionLabel, action) {
   }, 6000);
 }
 
-export function wireCompactHeader(dom) {
-  const header = document.querySelector('.hd'), compactButton = document.getElementById('compact-filters');
+export function wireCompactHeader(dom, { goHome } = {}) {
+  const header = document.querySelector('.hd'), compactButton = document.getElementById('compact-filters'), mark = header.querySelector('.mark');
   let pastFilters = false;
+  // A focused header control must not move or vanish, so the header waits for
+  // it to lose focus. The logo is the exception: its tile shows in both states
+  // (batch 3), and after going home it holds focus at the top of the page.
   const sync = () => {
     const allowed = innerWidth >= 600 && innerHeight > 500;
-    if (header.contains(document.activeElement)) return;
+    if (header.contains(document.activeElement) && document.activeElement !== mark) return;
     document.body.classList.toggle('compact', allowed && pastFilters);
     compactButton.tabIndex = allowed && pastFilters ? 0 : -1;
-    header.querySelector('.mark').tabIndex = allowed && pastFilters ? -1 : 0;
   };
   const offsets = () => {
     const headings = document.querySelector('.cols');
@@ -216,14 +218,23 @@ export function wireCompactHeader(dom) {
     document.getElementById('top-marker').scrollIntoView({ block: 'start' });
     dom.points.focus({ preventScroll: true });
   });
-  // Back to the top without following #top-marker: keepAddress keeps the hash, so
-  // it would leak into every link copied afterwards. Filters, list view and focus
-  // stay as they are. A modified click keeps the browser's own behaviour.
-  header.querySelector('.mark').addEventListener('click', (event) => {
+  // The logo, and the phone tile in the stuck count row, go home (Leon,
+  // 2026-11-05): the main list at the top, filters kept. Not by following
+  // #top-marker: keepAddress keeps the hash, so it would leak into every link
+  // copied afterwards. Focus moves to the logo at once, before the scroll: the
+  // phone tile hides when the row unsticks on the way up, and focus on a hidden
+  // node is lost. With nothing left to do after the scroll, an interrupted
+  // scroll leaves nothing stale. A modified click keeps the browser's own
+  // behaviour.
+  const home = (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
+    goHome?.();
     scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-  });
+    mark.tabIndex = 0;
+    mark.focus({ preventScroll: true });
+  };
+  for (const link of [mark, ...document.querySelectorAll('[data-home]')]) link.addEventListener('click', home);
   document.addEventListener('click', (event) => { if (event.target.closest('[data-open-list]')) dom.shortlistOnly.click(); });
   offsets();
 }

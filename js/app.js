@@ -263,7 +263,7 @@ async function start() {
   syncSort();
   wireInputs();
   wireRound2(dom);
-  wireCompactHeader(dom);
+  wireCompactHeader(dom, { goHome });
   for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
     const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
     const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
@@ -321,6 +321,8 @@ async function start() {
       apply(answers) {
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
+        // Setup's done screen says how many programmes this leaves.
+        return currentlyShown;
       },
     });
   } catch (err) {
@@ -850,6 +852,19 @@ function closeCompare(returnFocus) {
   dom.split.hidden = false;
   dom.compareBody.replaceChildren();
   if (returnFocus) dom.comparePicker.querySelector('summary').focus({ preventScroll: true });
+}
+
+// The logo goes home (Leon, 2026-11-05): the main list, out of My list, a
+// shared list or Compare. Filters, search, sort, saves, the Compare set and the
+// pane's pick all stay. update() then drops list= from the address. The logo's
+// handler (wireCompactHeader) scrolls to the top and moves focus.
+function goHome() {
+  closeCompare(false);
+  shared = null;
+  state.shortlistOnly = false;
+  listAll = false;
+  for (const panel of document.querySelectorAll('.ml-pop,.dropdown')) if (panel.open) panel.open = false;
+  update();
 }
 
 function clearAll() {

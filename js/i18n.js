@@ -9,7 +9,6 @@ export const UI = {
     "r2_fee_heading": "EU fee / year",
     "r2_close_details": "Close details",
 
-    "r2_edit_short": "Edit",
     "r2_default_order": "default order",
     "r2_max_year": "Max yearly cost (fee + living)",
     "r2_per_month": "€/month",
@@ -23,7 +22,6 @@ export const UI = {
     "r2_ob1h": "Find programmes that fit you",
     "r2_ob1p": "Four quick questions become your filters. Leave any answer blank. You can change your filters later.",
     "r2_ob1n": "Always check the university's official page before you apply. Requirements, fees and deadlines can change.",
-    "r2_ob_faq": "Questions? Read the FAQ",
     "r2_ob2h": "Your predicted IB points",
     "r2_ob2p": "We’ll mark which programmes are within reach.",
     "r2_ob2m": "I take HL Maths and expect 4 or more",
@@ -540,7 +538,6 @@ export const UI = {
     "unclassified": "Unclassified",
 
     // batch 2 · A
-    "r2_home_label": "University Finder, back to top",
     "r2_deadline_open_note": "Uses the recorded deadline dates. Programmes with no recorded date stay in the list.",
 
     // batch 2 · B
@@ -581,6 +578,20 @@ export const UI = {
     // batch 3 · B
 
     // batch 3 · C
+    "r3_ob_finish": "Finish",
+    "r3_ob_done_count": {
+      "one": "{count} programme matches your answers.",
+      "other": "{count} programmes match your answers."
+    },
+    "r3_ob_shown_count": {
+      "one": "{count} programme shown.",
+      "other": "{count} programmes shown."
+    },
+    "r3_ob_done_p": "You can change these filters any time in Filters.",
+    "r3_ob_done_h_none": "You haven't added any setup answers.",
+    "r3_ob_done_p_none": "Your existing filters still apply. You can change them any time in Filters.",
+    "r3_ob_faq": "Read the FAQ",
+    "r3_home_label": "University Finder, all programmes",
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -591,7 +602,6 @@ export const UI = {
     "r2_fee_heading": "Školné pre EÚ / rok",
     "r2_close_details": "Zavrieť podrobnosti",
 
-    "r2_edit_short": "Upraviť",
     "r2_default_order": "predvoleného poradia",
     "r2_max_year": "Max. ročné náklady (školné + život)",
     "r2_per_month": "€/mes.",
@@ -605,7 +615,6 @@ export const UI = {
     "r2_ob1h": "Nájdi programy, ktoré ti sedia",
     "r2_ob1p": "Štyri krátke otázky sa zmenia na tvoje filtre. Na čokoľvek môžeš neodpovedať. Filtre zmeníš kedykoľvek neskôr.",
     "r2_ob1n": "Pred podaním prihlášky si vždy over informácie na oficiálnej stránke univerzity. Požiadavky, poplatky a termíny sa môžu meniť.",
-    "r2_ob_faq": "Máš otázky? Pozri si časté otázky",
     "r2_ob2h": "Tvoje predpokladané IB body",
     "r2_ob2p": "Označíme programy, na ktoré dosiahneš.",
     "r2_ob2m": "Mám HL matematiku a čakám 4 alebo viac",
@@ -1125,7 +1134,6 @@ export const UI = {
     "unclassified": "Nezaradené",
 
     // batch 2 · A
-    "r2_home_label": "University Finder, späť na začiatok",
     "r2_deadline_open_note": "Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.",
 
     // batch 2 · B
@@ -1166,6 +1174,22 @@ export const UI = {
     // batch 3 · B
 
     // batch 3 · C
+    "r3_ob_finish": "Dokončiť",
+    "r3_ob_done_count": {
+      "one": "Tvojim odpovediam zodpovedá {count} program.",
+      "few": "Tvojim odpovediam zodpovedajú {count} programy.",
+      "other": "Tvojim odpovediam zodpovedá {count} programov."
+    },
+    "r3_ob_shown_count": {
+      "one": "Zobrazený je {count} program.",
+      "few": "Zobrazené sú {count} programy.",
+      "other": "Zobrazených je {count} programov."
+    },
+    "r3_ob_done_p": "Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.",
+    "r3_ob_done_h_none": "V nastavení si nepridal žiadne odpovede.",
+    "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
+    "r3_ob_faq": "Prečítaj si časté otázky",
+    "r3_home_label": "University Finder, všetky programy",
   }
 };
 
