@@ -6104,7 +6104,7 @@ check('F1 compact Filters at 600–700 px is icon-only, fills the slot, label ke
   && /<button class="btn filters-btn" id="compact-filters"[^>]*><svg class="ic" aria-hidden="true">[^]*?<span data-i18n="filters_2">Filters<\/span><span id="compact-count" class="badge">/.test(read('index.html')));
 // "Podľa univerzity" was clipped in the 112 px living-costs field (Leon chose
 // "Podľa školy", 2026-11-05). English keeps "University's".
-check('F2 Slovak living-costs placeholder is "Podľa školy" and fits the short field',
+check('F2 Slovak living-costs placeholder is "Podľa školy" (smoke F2 measures the fit)',
   UI.sk.university_s === 'Podľa školy' && UI.en.university_s === "University's"
   && /id="f-living"[^>]*data-i18n-attr="placeholder:university_s"/.test(read('index.html')));
 check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText));
