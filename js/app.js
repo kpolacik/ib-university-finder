@@ -321,6 +321,8 @@ async function start() {
       apply(answers) {
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
+        // Setup's done screen says how many programmes this leaves.
+        return currentlyShown;
       },
     });
   } catch (err) {

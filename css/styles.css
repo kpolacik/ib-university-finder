@@ -1233,8 +1233,6 @@ dialog.ob[open]::backdrop{opacity:1}
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
 .ob .note{border:0}
-/* Setup's FAQ link: small, blue because it is pressable, 44 px on touch. */
-.ob .ob-faq{justify-self:start;display:inline-flex;align-items:center;min-height:var(--tap);font-size:14px;color:var(--accent);text-underline-offset:3px}
 /* The FAQ link lands below the sticky bar: the count bar on phones, the
    header from 600 px. */
 #faq{scroll-margin-top:calc(var(--count-height) + 8px)}
@@ -1487,6 +1485,17 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 3 · B: My list */
 
 /* Batch 3 · C: setup and home */
+/* Setup's done screen (C1): two large buttons, the primary on the right from
+   600 px and on top, full width, on phones. The primary is first in the DOM, so
+   the row is reversed on wide screens; the spacer (last) pushes both right. */
+.ob .ob-count{color:var(--ink);font-size:17px;font-weight:600}
+.ob-done-foot{flex-direction:row-reverse}
+.ob-done-foot>.btn{min-height:44px;padding-inline:18px}
+@media (max-width:599.98px){
+ .ob-done-foot{flex-direction:column;align-items:stretch}
+ .ob-done-foot>.btn{width:100%;justify-content:center}
+ .ob-foot.ob-done-foot>.btn-p{margin-left:0}
+}
 
 /* ------------------------------------------------- motion preferences */
 

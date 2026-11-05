@@ -5392,37 +5392,60 @@ appCheck('heading sort cycles include the default order, announced next state an
   get('f-sort').value='points:desc'; fire(get('f-sort'),'change');
   return run('state.sort')==='points' && run('state.dir')==='desc';
 });
-for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, ({get,fire,context,resultsSection}) => {
+// The real setup dialog on the app harness's page. apply() returns the number
+// shown, as app.js's callback does; matchMedia is only read by the FAQ button.
+function realSetup({get,fire,context,resultsSection}, {shown = 7, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[];
-  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args)};
-  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
-  setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
-  const dialog=get('onboarding'), next=()=>fire(dialog.querySelector('.ob-foot .btn-p'),'click');
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return shown;},results:resultsSection,closeSheet(){},firstVisit:true});
+  const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
+  // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
+  const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
+    text:section.textContent,focused:stubDocument.activeElement===get('ob-title'),noStep:!dialog.querySelector('.ob-n'),bar:dialog.querySelector('.ob-bar i').style.transform,barShown:!dialog.querySelector('.ob-bar').hidden,
+    buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
+  return {writes,applied,toasts,dialog,primary,next,doneScreen,api};
+}
+// Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
+// done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
+for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {
+  const {get,fire,resultsSection}=h, {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h);
   if(!dialog.querySelector('.ob-bar').hidden || dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0)')return false;
   next(); const points=get('ob-points'); points.value='38'; fire(points,'input'); next();
   if(dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0.5)')return false;
-  if(outcome==='apply'){next();next();next();}
+  if(outcome==='apply'){
+    next();next();
+    if(dialog.querySelector('.ob-foot .btn-p').textContent!==t('r3_ob_finish'))return false;
+    next();
+    const d=doneScreen();
+    if(!dialog.open||!d||d.heading!==t('r2_answers_applied')||!d.focused||!d.noStep||d.bar!=='scaleX(1)'||!d.barShown)return false;
+    if(JSON.stringify(d.buttons)!==JSON.stringify([t('r2_show_mine'),t('r3_ob_faq')])||dialog.querySelector('.skipwrap'))return false;
+    if(writes.length!==1||writes[0][1]!=='completed'||applied.length!==1)return false;
+    next();
+  }
   else if(outcome==='skip')fire(dialog.querySelector('.skipwrap button'),'click');
   else fire(dialog,'cancel');
   return !dialog.open && writes.length===1 && writes[0][1]===(outcome==='apply'?'completed':'dismissed')
-    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===(outcome==='apply'?1:0)
+    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===0 && !dialog.querySelector('.ob-done')===(outcome!=='apply')
     && stubDocument.activeElement===(outcome==='apply'?resultsSection:get('f-search'))
     && !(stubDocument.scrolls??[]).some(s=>s.node===resultsSection);
 });
 // Leon, 2026-11-05: finishing setup with nothing chosen still said "Your answers are now filters".
-appCheck('real onboarding handlers: clicking through with no answers applies but shows no toast', ({get,fire,context,resultsSection}) => {
-  const applied=[], toasts=[];
-  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem(){}},syncSlider(){},showToast:(...args)=>toasts.push(args)};
-  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
-  setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
-  const dialog=get('onboarding');
-  for(let i=0;i<5;i++)fire(dialog.querySelector('.ob-foot .btn-p'),'click');
-  return !dialog.open && applied.length===1 && toasts.length===0;
+appCheck('real onboarding handlers: clicking through with no answers shows the no-answers done screen and no toast', (h) => {
+  const {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h,{shown:2915});
+  for(let i=0;i<5;i++)next();
+  const d=doneScreen();
+  return dialog.open && applied.length===1 && toasts.length===0 && writes.length===1 && writes[0][1]==='completed'
+    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown.' && d.text.includes(t('r3_ob_done_p_none'))
+    && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
-check('onboarding completion toast uses the compact Edit action and native maths shares the segmented label',
-  read('js/onboarding.js').includes("t('r2_edit_short')") && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
+// Was "onboarding completion toast uses the compact Edit action…": the toast is
+// gone (the done screen says it), and r2_edit_short with it. The native maths
+// half still stands.
+check('setup ends with no toast and no Edit toast key; native maths shares the segmented label',
+  !read('js/onboarding.js').includes('showToast') && !('r2_edit_short' in UI.en) && !('r2_edit_short' in UI.sk)
+  && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
 
 
 section('Review round 1 presentation regressions');
@@ -6114,6 +6137,81 @@ section('Batch 3 · A');
 section('Batch 3 · B');
 
 section('Batch 3 · C');
+// C1: setup ends on a done screen (Leon, 2026-11-05), replacing step 1's FAQ
+// link and the completion toast.
+{
+  const sk = (key, count) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, { count }); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('B3C1 done screen EN copy', [t('r3_ob_finish'), t('r3_ob_done_count', { count: 1 }), t('r3_ob_done_count', { count: 3 }), t('r3_ob_shown_count', { count: 1 }), t('r3_ob_shown_count', { count: 0 }), t('r3_ob_done_p'), t('r3_ob_done_h_none'), t('r3_ob_done_p_none'), t('r3_ob_faq'), t('r2_show_mine'), t('r2_answers_applied')],
+    ['Finish', '1 programme matches your answers.', '3 programmes match your answers.', '1 programme shown.', '0 programmes shown.', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
+  equal('B3C1 done screen SK plurals for 1, 3, 312 and 0 (0 takes "other")',
+    [1, 3, 312, 0].flatMap((n) => [sk('r3_ob_done_count', n), sk('r3_ob_shown_count', n)]),
+    ['Tvojim odpovediam zodpovedá 1 program.', 'Zobrazený je 1 program.', 'Tvojim odpovediam zodpovedajú 3 programy.', 'Zobrazené sú 3 programy.',
+      'Tvojim odpovediam zodpovedá 312 programov.', 'Zobrazených je 312 programov.', 'Tvojim odpovediam zodpovedá 0 programov.', 'Zobrazených je 0 programov.']);
+  equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení si nepridal žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+  check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
+}
+appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {
+  const {dialog,next,doneScreen,applied,writes}=realSetup(h);
+  if (dialog.querySelector('.ob-faq') || dialog.querySelector('a')) return false;
+  next(); next(); h.fire(dialog.querySelector('.skipwrap button'), 'click');
+  return !dialog.open && !doneScreen() && applied.length === 0 && writes[0][1] === 'dismissed';
+});
+appCheck('B3C1 Esc on the done screen keeps the answers and writes "completed" once', (h) => {
+  const {get,fire,resultsSection}=h, {dialog,next,doneScreen,applied,writes}=realSetup(h,{shown:1});
+  next(); const points=get('ob-points'); points.value='40'; fire(points,'input'); next(); next(); next(); next();
+  const d=doneScreen();
+  if (!d || d.count !== '1 programme matches your answers.') return false;
+  fire(dialog, 'cancel');
+  return !dialog.open && applied.length === 1 && applied[0].myIbPoints === 40 && writes.length === 1 && writes[0][1] === 'completed'
+    && stubDocument.activeElement === resultsSection;
+});
+appCheck('B3C1 a second Finish click applies nothing more; the done screen formats the count', (h) => {
+  const {dialog,next,doneScreen,applied,primary}=realSetup(h,{shown:2915,state:savedState.validateFilters({countries:['Ireland']})});
+  for (let i = 0; i < 4; i++) next();
+  const finish = primary(); h.fire(finish, 'click'); h.fire(finish, 'click');
+  // The second click of a double-click (detail 2) lands on "Show my programmes".
+  h.fire(primary(), 'click', { detail: 2 });
+  return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes match your answers.';
+});
+appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
+  const {get}=h, {dialog,next,writes}=realSetup(h);
+  for (let i = 0; i < 5; i++) next();
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed'
+    && (stubDocument.scrolls ?? []).some((s) => s.node === get('faq')) && stubDocument.activeElement === get('faq').querySelector('summary');
+});
+// Found by smoke R2M: Finish re-renders the list, which fills in after the FAQ
+// scroll starts, so a quick tap landed mid-list. The FAQ aims once more when the
+// list stops growing; never every frame (a restarted smooth scroll crawls), and
+// not at all once the reader scrolls.
+for (const [name, grow, input] of [['aims once more after the list grows', true, false], ['does not aim again when nothing grew', false, false], ['stops when the reader scrolls', true, true]]) appCheck(`B3C1 the done screen FAQ ${name}`, (h) => {
+  const {get}=h, frames=new Map(); let id=0;
+  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+  for (let i = 0; i < 5; i++) next();
+  stubDocument.scrolls = [];
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  const aims = () => stubDocument.scrolls.filter((s) => s.node === get('faq')).length;
+  if (aims() !== 1) return false;
+  if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
+  for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
+  return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+});
+appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
+  const {dialog,next,doneScreen,api,writes}=realSetup(h);
+  for (let i = 0; i < 6; i++) next();
+  if (dialog.open) return false;
+  api.open(null);
+  const ok = dialog.open && !doneScreen() && dialog.querySelector('.ob-foot .btn-p').textContent === t('r2_start')
+    && !!dialog.querySelector('.skipwrap') && !dialog.querySelector('.ob-foot').classList.contains('ob-done-foot');
+  h.fire(dialog, 'cancel');
+  return ok && writes.at(-1)[1] === 'dismissed';
+});
+check('B3C1 the done screen stacks full width on phones, primary first; 44 px buttons',
+  /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
+  && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
+  && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
+check('B3C1 the app apply callback returns the shown count for the done screen', /preferencesDirty = true; update\(\);\s*\/\/[^\n]*\n\s*return currentlyShown;/.test(appSrc));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

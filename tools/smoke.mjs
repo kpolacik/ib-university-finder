@@ -810,7 +810,12 @@ async function runRound2(base) {
       } else await page.click(`document.querySelector('.status [data-edit]')`, 'Edit my answers');
       await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`,5000,'setup');
     };
-    const next = () => page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next onboarding step');
+    // Batch 3 C1: step 5's primary is Finish, which opens the done screen; its
+    // primary, "Show my programmes", then closes setup as step 5's used to.
+    const next = async () => {
+      await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next onboarding step');
+      if (await page.ev(`Boolean(document.querySelector('#onboarding[open] .ob-done'))`)) await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    };
     try {
       await page.waitFor(ready,15000,'round 2 boot');
       await check(width,'R2A','first visit, quarter progress, draft Skip/Escape and dismissal',async()=>{
@@ -837,14 +842,24 @@ async function runRound2(base) {
         assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
       });
-      await check(width,'R2M','the setup FAQ link dismisses setup without applying answers and lands on the FAQ below the sticky bar',async()=>{
+      // Batch 3 C1: the FAQ link moved from step 1 to the done screen, and the
+      // answers are applied before it opens the FAQ.
+      await check(width,'R2M','the done screen\'s FAQ button applies the answers and lands on the FAQ below the sticky bar',async()=>{
         await page.ev(`window.scrollTo(0,0)`);
         await edit();
-        await page.click(`document.querySelector('#onboarding .ob-faq')`,'the FAQ link');
-        assert(await page.ev(`!document.querySelector('#onboarding').open && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && document.querySelector('#f-points').value===''`),'FAQ link applied answers or left setup open');
+        assert(await page.ev(`!document.querySelector('#onboarding .ob-faq') && !document.querySelector('#onboarding .ob-step a')`),'step 1 still has a FAQ link');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Start');
+        await page.click(`document.querySelector('#ob-points')`,'predicted points'); await page.type('39');
+        for(let i=0;i<3;i++)await page.click(`document.querySelector('.ob-foot>.btn-p')`,'the next onboarding step');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Finish');
+        assert(await page.ev(`document.querySelector('#onboarding').open && Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-points').value==='39' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Finish did not apply and show the done screen');
+        await page.click(`[...document.querySelectorAll('#onboarding .ob-foot .btn')].find(b=>b.textContent==='Read the FAQ')`,'Read the FAQ');
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='39'`),'FAQ button left setup open or lost the answers');
         assert(await page.ev(`document.activeElement===document.querySelector('#faq summary')`),'focus is not on the first FAQ question');
         await page.waitFor(`(()=>{const top=document.querySelector('#faq').getBoundingClientRect().top,bar=${width<600?"document.querySelector('.status').getBoundingClientRect().bottom":"document.querySelector('.hd').getBoundingClientRect().bottom"};return {ok:top>=bar-1 && top<innerHeight-40,why:JSON.stringify({top,bar})}})()`,5000,'the FAQ in view');
-        await page.ev(`window.scrollTo(0,0)`);
+        // Leave no answers behind for R2B, which starts from blank fields.
+        await page.ev(`document.querySelector('#f-clear').click();window.scrollTo(0,0)`);
+        assert(await page.ev(`document.querySelector('#f-points').value===''`),'Clear all left the points');
       });
       await check(width,'R2B','answers apply once, typed budget exceeds slider, saved filters restore, URL wins without overwriting',async()=>{
         await edit(); await next();
@@ -1832,6 +1847,83 @@ async function runBatch3B(base) {
 
 async function runBatch3C(base) {
   watchdog.refresh();
+  const shots = '/tmp/ib-batch3-c';
+  await mkdir(shots, { recursive: true });
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const shoot = async (page, name) => {
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+
+  // C1: setup ends on a done screen. 568 px is the shortest phone we design for.
+  for (const width of [320, 390, 1280]) {
+    const page = await openPage(`${base}?ui=en`, width, 568);
+    try {
+      await page.waitFor(ready, 15000, 'done screen page');
+      for (const lang of ['en', 'sk']) {
+        for (const reduced of [false, true]) {
+          await check(width, 'B3C done screen', `(${lang}${reduced ? ', reduced motion' : ''}): both buttons in view at 568 px, 44 px, primary on top on phones, no overflow`, async () => {
+            watchdog.refresh();
+            if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+            try {
+              // A first visit opens setup by itself.
+              await page.ev(`localStorage.clear();localStorage.setItem('ib-university-finder:language','${lang}');window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=${lang}'`);
+              await page.waitFor(ready, 15000, 'reloaded page');
+              await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+              for (let i = 0; i < 4; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, `step ${i + 1}`);
+              await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Finish');
+              if (reduced) assert(await page.ev(`getComputedStyle(document.querySelector('.ob-done')).animationName==='none'`), 'the done screen still slides in with reduced motion');
+              await settle(page);
+              const m = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),r=d.getBoundingClientRect(),body=d.querySelector('.ob-body'),btns=[...d.querySelectorAll('.ob-foot .btn')],box=(n)=>n.getBoundingClientRect();
+                return {heading:d.querySelector('.ob-done h2').textContent,focused:document.activeElement===d.querySelector('#ob-title'),step:!!d.querySelector('.ob-n'),bar:d.querySelector('.ob-bar i').style.transform,
+                  dialog:[r.top,r.bottom],btns:btns.map(b=>{const k=box(b);return {text:b.textContent,primary:b.classList.contains('btn-p'),top:k.top,bottom:k.bottom,left:k.left,right:k.right,w:k.width,h:k.height,clipped:b.scrollWidth>b.clientWidth+1}}),
+                  foot:(()=>{const f=box(d.querySelector('.ob-foot')),s=getComputedStyle(d.querySelector('.ob-foot'));return {left:f.left+parseFloat(s.paddingLeft),right:f.right-parseFloat(s.paddingRight)}})(),
+                  bodyOver:body.scrollWidth>body.clientWidth,sw:document.documentElement.scrollWidth,w:innerWidth,h:innerHeight}})()`);
+              await shoot(page, `done-${width}-${lang}${reduced ? '-reduced' : ''}`);
+              assert(m.heading === (lang === 'sk' ? 'V nastavení si nepridal žiadne odpovede.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
+              assert(m.btns.length === 2 && m.btns[0].primary, `buttons ${JSON.stringify(m.btns)}`);
+              for (const b of m.btns) {
+                assert(b.h >= 44 && b.w >= 44 && !b.clipped, `button ${JSON.stringify(b)}`);
+                assert(b.top >= m.dialog[0] && b.bottom <= m.dialog[1] && b.bottom <= m.h && b.left >= 0 && b.right <= m.w, `button out of view: ${JSON.stringify(b)} dialog ${m.dialog}`);
+              }
+              const [primary, faq] = m.btns;
+              if (width < 600) {
+                assert(primary.bottom <= faq.top, `primary not on top: ${JSON.stringify(m.btns)}`);
+                assert(m.btns.every(b => Math.abs(b.left - m.foot.left) <= 1 && Math.abs(b.right - m.foot.right) <= 1), `not full width: ${JSON.stringify(m)}`);
+              } else {
+                assert(Math.abs(primary.top - faq.top) <= 1 && primary.left > faq.right && Math.abs(primary.right - m.foot.right) <= 1, `primary not right of the FAQ: ${JSON.stringify(m)}`);
+              }
+              assert(!m.bodyOver && m.sw === m.w, `overflow ${JSON.stringify(m)}`);
+              await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+              assert(await page.ev(`!document.querySelector('#onboarding').open && document.activeElement.getAttribute('aria-labelledby')==='results-h' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Show my programmes did not close to the results');
+              assert(await page.ev(`!document.querySelector('#toasts .toast')`), 'a toast appeared after setup');
+              assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+            } finally {
+              if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [] });
+            }
+          });
+        }
+      }
+      // With an answer: the heading says so and the count names the matches.
+      await check(width, 'B3C done screen', 'with an answer (sk): "Tvoje odpovede sú teraz filtre" and a matching count', async () => {
+        await page.ev(`localStorage.clear();localStorage.setItem('ib-university-finder:language','sk');window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=sk'`);
+        await page.waitFor(ready, 15000, 'reloaded page');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Start');
+        await page.click(`document.querySelector('#ob-points')`, 'points'); await page.type('36');
+        for (let i = 0; i < 3; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, `step ${i + 2}`);
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Dokončiť');
+        await settle(page);
+        const m = await page.ev(`({h:document.querySelector('.ob-done h2').textContent,count:document.querySelector('.ob-count').textContent,shown:document.querySelectorAll('#results>li.item').length,total:document.querySelector('#result-count b')?.textContent})`);
+        await shoot(page, `done-${width}-sk-answers`);
+        assert(m.h === 'Tvoje odpovede sú teraz filtre' && /^Tvojim odpovediam zodpovedá|^Tvojim odpovediam zodpovedajú/.test(m.count), JSON.stringify(m));
+        assert(m.count.replace(/\D/g, '') === String(m.total).replace(/\D/g, ''), `count ${m.count} vs shown ${m.total}`);
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Esc on the done screen lost the answers');
+      });
+    } finally { await page.close(); }
+  }
 }
 
 async function main() {
