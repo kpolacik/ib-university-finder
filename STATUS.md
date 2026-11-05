@@ -647,7 +647,7 @@ students, and where each rule lives:
 - *Help (batch 1).* On phones the inline help opens and closes with the same
   small slide and fade as the desktop bubble, and the sheet's Budget, Subject
   area… rows open with a short height animation. Browsers that can't animate
-  to an automatic height (every iPhone today) fade the help in and open those
+  to an automatic height (Safari, so iPhones, as of 2026-11; not tested on a device) fade the help in and open those
   rows at once; Leon kept it that way. The desktop help bubble is now only as wide as its
   text (up to 260 px). CSS: the `@supports (interpolate-size…)` block.
 - *My list on phones (batch 1)* is one even toolbar joined to the list.
