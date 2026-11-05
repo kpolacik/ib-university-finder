@@ -590,6 +590,8 @@ export const UI = {
     "r3_cmp_removed": "Removed from compare.",
     "r3_cmp_full": "You can compare up to 4 programmes. Remove one first.",
     "r3_cmp_open_label": "Open compare",
+    "r3_tray_text": "Compare {count} of 4",
+    "r3_tray_open": "Open",
 
     // batch 3 · B
 
@@ -1189,6 +1191,8 @@ export const UI = {
     "r3_cmp_removed": "Odstránené z porovnania.",
     "r3_cmp_full": "Porovnať môžeš najviac 4 programy. Najprv jeden odstráň.",
     "r3_cmp_open_label": "Otvoriť porovnanie",
+    "r3_tray_text": "Porovnanie: {count} zo 4",
+    "r3_tray_open": "Otvoriť",
 
     // batch 3 · B
 

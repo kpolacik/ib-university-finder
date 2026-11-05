@@ -266,7 +266,22 @@
       "removed",
       "save",
       "th",
-      "th [data-save-id=\""
+      "th [data-save-id=\"",
+      "(max-width: 599.98px), (max-height: 500px)",
+      "--tray-h",
+      "cmp-status",
+      "cmp-tray",
+      "cmp-tray-text",
+      "dialog",
+      "has-tray",
+      "header-compare-count",
+      "px",
+      "radio",
+      "range",
+      "reset",
+      "select",
+      "submit",
+      "textarea"
     ],
     "js/compare.js": [
       "./cost.js",

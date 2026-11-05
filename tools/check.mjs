@@ -2916,7 +2916,7 @@ check('row wraps whole point parts without clipping requirements; containment on
     && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
-    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height'].includes(t))
+    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h'].includes(t))
     && (css.match(/var\(--shadow\)/g) ?? []).length === 1
     && /box-shadow:var\(--shadow\)/.test(cssRules.match(/\.pane\{display:block;[^}]+/)?.[0] ?? ''));
 
@@ -3220,7 +3220,10 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
     // layout stubs; an unknown query is an error rather than a silent 1024.
     const motionMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
-    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia };
+    // Batch 3 · A: where the compare tray replaces the header button.
+    const trayMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
+      '(max-width: 599.98px), (max-height: 500px)': trayMedia };
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
     let nextFrame = 1; const frames = new Map();
@@ -3311,7 +3314,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
     };
     result = test({ perf, drain, timers, run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
       docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id),
-      motionMedia, printMedia, frames, flushFrame, fireWindow, styleReads });
+      motionMedia, printMedia, trayMedia, frames, flushFrame, fireWindow, styleReads });
   } catch (err) { finish(); throw err; }
   if (result && typeof result.then === 'function') return result.finally(finish);
   finish();
@@ -4209,8 +4212,10 @@ const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x
   check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
     `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
 }
-check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, but never the sample warning',
-  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail']
+// Batch 3 · A: and the compare tray, the header Compare button and every compare control.
+check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
+  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
+    '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn') + printBody('.src-more')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
@@ -6278,6 +6283,77 @@ await asyncAppCheck('A3 a shared list stays open, with ?list= in the address, af
 equal('A3 the heading counts in both languages: Slovak 1 program, 2 and 4 programy, 5 programov',
   [1, 2, 4, 5].map((count) => i18n.inLanguage('sk', () => t('r3_cmp_heading', { count }))).concat([1, 2].map((count) => t('r3_cmp_heading', { count }))),
   ['Porovnať 1 program', 'Porovnať 2 programy', 'Porovnať 4 programy', 'Porovnať 5 programov', 'Compare 1 programme', 'Compare 2 programmes']);
+appCheck('A4 the header Compare button counts the set and is pressed while the view is open; it opens and closes the view', ({ run, get, fire, ids: [a, b] }) => {
+  const button = get('header-compare');
+  if (get('header-compare-count').textContent !== '0' || button.getAttribute('aria-pressed') !== 'false') return false;
+  fire(cmpOf(get('results').children[0]), 'click'); fire(cmpOf(get('results').children[1]), 'click');
+  if (get('header-compare-count').textContent !== '2') return false;
+  button.focus(); fire(button, 'click');
+  if (get('compare').hidden || button.getAttribute('aria-pressed') !== 'true' || stubDocument.activeElement !== get('cmp-h')) return false;
+  fire(button, 'click');
+  if (!get('compare').hidden || button.getAttribute('aria-pressed') !== 'false' || stubDocument.activeElement !== button) return false;
+  // Ids no longer in the data never count.
+  run(`${cmpSet(['gone', a])} syncCompareControls();`);
+  return get('header-compare-count').textContent === '1';
+});
+appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog and while printing; has-tray follows it', ({ run, get, fire, trayMedia, docBody, ids: [a, b] }) => {
+  // The harness starts with focus on a stand-in text field, which counts as typing.
+  stubDocument.activeElement = docBody;
+  const tray = get('cmp-tray'), shown = () => !tray.hidden && docBody.classList.contains('has-tray');
+  const gone = () => tray.hidden && !docBody.classList.contains('has-tray');
+  trayMedia.matches = true; for (const fn of trayMedia.listeners) fn({ matches: true });
+  if (!gone()) return false;
+  fire(cmpOf(get('results').children[0]), 'click');
+  if (!shown() || get('cmp-tray-text').textContent !== 'Compare 1 of 4') return false;
+  fire(cmpOf(get('results').children[1]), 'click');
+  if (get('cmp-tray-text').textContent !== 'Compare 2 of 4') return false;
+  // Typing in Search (the keyboard is up): hidden; a checkbox is not typing.
+  fire(get('f-search'), 'focusin');
+  if (!gone()) return false;
+  fire(get('f-search'), 'focusout', { relatedTarget: get('f-maths') });
+  if (!shown()) return false;
+  fire(get('f-search'), 'focusin'); fire(get('f-search'), 'focusout', { relatedTarget: null });
+  if (!shown()) return false;
+  // Opening from the tray hides it; closing brings it back with focus on Open.
+  get('cmp-tray-open').focus(); fire(get('cmp-tray-open'), 'click');
+  if (!gone() || get('compare').hidden) return false;
+  fire(get('cmp-close'), 'click');
+  if (!shown() || stubDocument.activeElement !== get('cmp-tray-open')) return false;
+  // A dialog: the filter sheet.
+  get('filter-sheet').showModal(); fire(get('sheet-h'), 'focusin');
+  if (!gone()) return false;
+  get('filter-sheet').close(); fire(get('filter-sheet'), 'close', { bubbles: false });
+  if (!shown()) return false;
+  // Desktop: no tray. Printing: none.
+  trayMedia.matches = false; for (const fn of trayMedia.listeners) fn({ matches: false });
+  if (!gone()) return false;
+  trayMedia.matches = true; for (const fn of trayMedia.listeners) fn({ matches: true });
+  run('printing = true; syncTray();');
+  if (!gone()) return false;
+  run('afterPrint();');
+  if (!shown()) return false;
+  run(`${cmpSet([])} syncCompareControls();`);
+  return gone();
+});
+appCheck('A4 the tray says it in Slovak: "Porovnanie: 3 zo 4", and Open is named "Otvoriť porovnanie"', ({ run, get, trayMedia, docBody, ids: [a, b, c] }) => {
+  trayMedia.matches = true; stubDocument.activeElement = docBody;
+  run(`${cmpSet([a, b, c])} switchLanguage('sk');`);
+  const ok = get('cmp-tray-text').textContent === 'Porovnanie: 3 zo 4' && !get('cmp-tray').hidden
+    && t('r3_cmp_open_label') === 'Otvoriť porovnanie' && t('r3_tray_open') === 'Otvoriť';
+  run("switchLanguage('en');");
+  return ok;
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+check('A4 markup: the header button beside My list, the tray before the footer with text and button apart, one status line',
+  /<button class="btn hb" id="header-list" type="button">[^]*?<span class="hb-l" data-i18n="my_list">My list<\/span><span id="header-list-count" class="badge">0<\/span><\/button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"\/><\/svg><span class="hb-l" data-i18n="compare_2">Compare<\/span><span id="header-compare-count" class="badge">0<\/span><\/button>/.test(read('index.html'))
+  && /<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
+check('A4 CSS: the header button hides where the tray serves; icon-only header buttons at 600–1023; the tray reserves its height, scroll padding and the toasts\' lift, none in print',
+  /@media \(max-width:599\.98px\),\(max-height:500px\)\{#header-compare\{display:none\}\}/.test(cssText)
+  && /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\s*\.hb \.hb-l\{position:absolute;[^}]*clip-path:inset\(50%\)/.test(cssText)
+  && /body\.has-tray\{padding-bottom:var\(--tray-h,0px\)\}/.test(cssText) && /html\{scroll-padding-bottom:var\(--tray-h,0px\)\}/.test(cssText)
+  && /\.toasts\{bottom:calc\(24px \+ var\(--tray-h,0px\)\)\}/.test(cssText)
+  && /@media print\{\s*body\.has-tray\{padding-bottom:0\}\s*html\{scroll-padding-bottom:0\}\s*\}/.test(cssText)
+  && appSrc.includes("matchMedia('(max-width: 599.98px), (max-height: 500px)')"));
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.

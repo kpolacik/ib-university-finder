@@ -142,7 +142,7 @@
         <input class="inp" type="search" id="f-search" name="search" form="filter-form" placeholder="Programme, university or city" data-i18n-attr="placeholder:r2_searchph"><kbd aria-hidden="true">/</kbd>
       </span>
     </div>
-    <div class="hd-right"><button class="btn" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button>
+    <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button>
       <div class="lang" role="group" aria-label="Site language" data-i18n-attr="aria-label:site_language">
         <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
         <button type="button" aria-pressed="false" data-language="sk" lang="sk"><span data-i18n="sk">SK</span><span class="visually-hidden" data-i18n="slovak"> (Slovak)</span></button>
@@ -393,6 +393,16 @@
     <button type="button" id="sheet-show" class="btn btn-p" disabled data-i18n="loading_programmes">Loading programmes…</button>
   </div>
 </dialog>
+
+<!-- Compare on phones (batch 3): from the first programme added, a bar at the
+     bottom, in reach while scrolling, since the header scrolls away there.
+     Text and button apart, so a scroll cannot open Compare by accident. Hidden
+     while typing, while Compare is open, in a dialog and in print (app.js). -->
+<div class="cmp-tray" id="cmp-tray" hidden>
+  <p id="cmp-tray-text"></p>
+  <button type="button" class="btn btn-p btn-s" id="cmp-tray-open" aria-label="Open compare" data-i18n="r3_tray_open" data-i18n-attr="aria-label:r3_cmp_open_label">Open</button>
+</div>
+<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>
 
 <footer class="foot"><div><h2><span data-i18n="r2_footer_h">Check before you apply</span></h2><p><span data-i18n="r2_footer_p">Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.</span></p><p class="src" id="source-line" hidden></p></div><div class="faq" id="faq"><details><summary><span data-i18n="r2_faq_cao">How are Irish CAO points turned into IB points?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_cao_a">Irish courses list last year’s CAO cutoff, not a minimum. We convert it with the CAO’s IB table; a cutoff from 601 to 625 assumes the 25 HL Maths bonus points.</span></div></details><details><summary><span data-i18n="r2_faq_unknown">What does “Not published” mean?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_unknown_a">The university does not publish a figure. The programme stays in your results, because unknown never hides a programme.</span></div></details><details><summary><span data-i18n="r2_faq_source">Where does the data come from?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_source_a">Every row comes from the university’s official page. Rows nobody has checked by hand yet are marked.</span></div></details></div></footer>
 

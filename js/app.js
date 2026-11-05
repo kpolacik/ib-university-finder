@@ -123,6 +123,12 @@ const dom = {
   compareBody: document.getElementById('cmp-body'),
   compareEmpty: document.getElementById('cmp-empty'),
   compareBrowse: document.getElementById('cmp-browse'),
+  headerCompare: document.getElementById('header-compare'),
+  headerCompareCount: document.getElementById('header-compare-count'),
+  tray: document.getElementById('cmp-tray'),
+  trayText: document.getElementById('cmp-tray-text'),
+  trayOpen: document.getElementById('cmp-tray-open'),
+  compareStatus: document.getElementById('cmp-status'),
   issues: document.getElementById('issues'),
   issuesSummary: document.getElementById('issues-summary'),
   issuesList: document.getElementById('issues-list'),
@@ -182,6 +188,10 @@ const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 // Paper is narrower than the screen, so both layout queries can fire while
 // printing. Between beforeprint and afterprint nothing moves (A08).
 const printQuery = matchMedia('print');
+// Where the header does not stick (phones, and any width at 500 px tall or
+// less) Compare's entry is the tray at the bottom instead of the header
+// button. The same query as the CSS.
+const trayQuery = matchMedia('(max-width: 599.98px), (max-height: 500px)');
 let printing = false;
 let updateAfterPrint = false;
 // Slot motion owned by each slot: its pending frame, transitionend listener and
@@ -294,8 +304,9 @@ async function start() {
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
-  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); });
+  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); syncTray(); });
   window.addEventListener('afterprint', afterPrint);
+  wireTray();
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
@@ -722,7 +733,55 @@ function onToggleCompare(id) {
 function syncCompareControls() {
   const inSet = new Set(compareIds);
   for (const button of document.querySelectorAll('[data-compare-id]')) setInCompare(button, inSet.has(button.getAttribute('data-compare-id')));
+  syncCompareEntry();
   drawCompare();
+}
+
+// The header button's count and pressed state, and the tray.
+function syncCompareEntry() {
+  const count = String(shownCompare().length);
+  if (dom.headerCompareCount.textContent !== count) dom.headerCompareCount.textContent = count;
+  dom.headerCompare.setAttribute('aria-pressed', String(compareOpen));
+  syncTray();
+}
+
+// The tray shows on phones (trayQuery) once a programme is in Compare. It
+// hides while Compare is open, while a field that brings up the on-screen
+// keyboard has focus, while a dialog is open and while printing.
+// body.has-tray reserves its height at the end of the page; the height itself
+// comes from the ResizeObserver in wireTray, never read here, since a layout
+// read after the rows are rebuilt costs a full layout of the list (L09).
+function syncTray(focused = document.activeElement) {
+  const count = shownCompare().length;
+  const show = loaded && count > 0 && !compareOpen && trayQuery.matches && !printing && !opensKeyboard(focused)
+    && ![...document.querySelectorAll('dialog')].some((dialog) => dialog.open);
+  const text = t('r3_tray_text', { count });
+  if (dom.trayText.textContent !== text) dom.trayText.textContent = text;
+  if (dom.tray.hidden === show) dom.tray.hidden = !show;
+  document.body.classList.toggle('has-tray', show);
+}
+
+function opensKeyboard(node) {
+  const tag = node?.tagName?.toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return true;
+  return tag === 'input' && !['checkbox', 'radio', 'range', 'button', 'submit', 'reset'].includes(node.type);
+}
+
+// The tray follows focus (the keyboard), the phone query and every dialog. Its
+// measured height (safe area included) becomes --tray-h: the page's bottom
+// padding, the root's scroll-padding-bottom (so Tab never lands under it) and
+// the toasts' lift. 0 while hidden.
+function wireTray() {
+  document.addEventListener('focusin', (event) => syncTray(event.target));
+  document.addEventListener('focusout', (event) => syncTray(event.relatedTarget));
+  trayQuery.addEventListener('change', () => syncTray());
+  for (const dialog of document.querySelectorAll('dialog')) dialog.addEventListener('close', () => syncTray());
+  if (typeof ResizeObserver !== 'function') return;
+  new ResizeObserver((entries) => {
+    const height = Math.ceil(entries.at(-1).borderBoxSize?.[0]?.blockSize ?? dom.tray.offsetHeight);
+    if (height) document.documentElement.style.setProperty('--tray-h', `${height}px`);
+    else document.documentElement.style.removeProperty('--tray-h');
+  }).observe(dom.tray);
 }
 
 // The list view's ids and counts from the saves as they are now, without
@@ -783,6 +842,12 @@ function wireList() {
     if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'));
   });
   dom.compareBrowse.addEventListener('click', () => closeCompare(true));
+  // The header button (from 600 px) opens Compare, and closes it when open;
+  // the tray (phones) only opens it.
+  dom.headerCompare.addEventListener('click', () => {
+    if (compareOpen) closeCompare(true); else openCompare(dom.headerCompare);
+  });
+  dom.trayOpen.addEventListener('click', () => openCompare(dom.trayOpen));
   dom.compareDiff.addEventListener('change', () => {
     onlyDifferences = dom.compareDiff.checked;
     drawCompare();
@@ -1077,6 +1142,7 @@ function update() {
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
+  syncCompareEntry();
   drawCompare();
   keepAddress();
 }
@@ -1551,6 +1617,7 @@ function isPrinting() {
 
 function afterPrint() {
   printing = false;
+  syncTray();
   crossBar();
   crossWide();
   if (updateAfterPrint) {

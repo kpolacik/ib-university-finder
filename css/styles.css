@@ -1510,6 +1510,29 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-x{position:absolute;top:2px;right:2px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
 .cmp-x:hover{background:var(--hover);color:var(--accent)}
 .cmp-x .ic{width:18px;height:18px}
+/* The entry: a header button beside My list where the header sticks, the
+   tray at the bottom where it does not (the same query as app.js). From 600
+   to 1023 px both header buttons are icon and count only; the label stays in
+   their names. */
+#header-compare{font-size:15px;font-weight:400}
+.hb .ic{width:16px;height:16px;flex:none}
+@media (max-width:599.98px),(max-height:500px){#header-compare{display:none}}
+@media (min-width:600px) and (max-width:1023.98px){
+ .hb .hb-l{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .hd-right .hb{padding:0 8px}
+}
+.cmp-tray{position:fixed;inset-inline:0;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px var(--gut) calc(8px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--hairline);box-shadow:var(--pop-shadow)}
+.cmp-tray[hidden]{display:none}
+.cmp-tray p{margin:0;min-width:0;font-size:15px;line-height:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.cmp-tray .btn{flex:none;min-height:44px;padding:0 18px;font-size:15px}
+@media (min-width:600px) and (min-height:501px){.cmp-tray{display:none}}
+body.has-tray{padding-bottom:var(--tray-h,0px)}
+html{scroll-padding-bottom:var(--tray-h,0px)}
+.toasts{bottom:calc(24px + var(--tray-h,0px))}
+@media print{
+ body.has-tray{padding-bottom:0}
+ html{scroll-padding-bottom:0}
+}
 /* The detail: the official link across the top, then Save and Compare as an
    equal pair (Leon, 2026-11-05). Without a link, the pair is the first row. */
 .d-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -1547,6 +1570,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
      select under 900 px has that weight, and paper is under 900 px, so a
      plain .f-sort lost and the select printed. */
   .hd, .toasts, .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
+  .cmp-tray, #header-compare, .cmpi, .cmpb, .cmp-acts, .cmp-nav,
   .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
   .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
