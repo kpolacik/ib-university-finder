@@ -599,6 +599,19 @@ headers are explicitly named by programme and university so their controls do
 not become part of the header name. Hovering a toast during its exit cancels
 that exit, just as focusing it does. These review fixes have regression checks.
 
+**Alignment fixes, list, detail and Compare (2026-11-05, local
+`align-fix-list-compare`):** a long degree wraps inside the row and pane; row
+labels start with their values and the row toggles centre on the title's first
+line. The detail's Save and Compare never break inside a word and stack when
+they do not fit side by side (Slovak needs about 450 px, English 330). In
+Compare every Save sits on one line at the foot of the header, one width for
+Save and Saved; below 1024 px the "x" has its own strip so names do not break
+beside it; the fact names are 6.5rem up to 1023 px; Close, Save and Browse are
+44 px; the count is hidden while Compare is open. At 320 px a word wider than
+its column still has to break (this Chrome hyphenates Slovak, Czech and German,
+not English). Rules: CSS section "Alignment fixes · list, detail, Compare";
+checks: smoke `runAlignListCompare`, check.mjs section of the same name.
+
 **Round 2 (2026-11-05):** branch `redesign-round2-only` (a PR for `main`,
 without the Supabase switch-over) includes the approved white 56 px header,
 two filter rows, custom budget sliders,
