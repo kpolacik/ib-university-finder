@@ -6861,5 +6861,37 @@ section('Alignment · header, My list, setup');
     && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
 }
 
+{
+  const html = read('index.html');
+  check('AL-M1 My list from 600 px: Clear is a small outlined button at the right end; Group by has its own row to 1023 px; the CSV note is its own line',
+    /height:var\(--tap\);margin-left:auto;padding:0 10px;border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist .ml-tools>#clear-shortlist', '(min-width:600px)'))
+    && /flex:0 0 100%;display:flex/.test(ruleAt(cssText, '.ml-group', '(min-width:600px) and (max-width:1023.98px)'))
+    && /flex:0 0 100%/.test(ruleAt(cssText, '.ml-tools>.ml-export-note')));
+  check('AL-M2 the CSV note is hidden with Export on a shared list',
+    /<p class="help ml-mine ml-export-note" data-i18n="export_note">/.test(html));
+  check('AL-M3 phones: one-line tool labels (SK "Vymazať zoznam", no icons under 360 px), centred if a label still wraps',
+    UI.sk.clear_my_list === 'Vymazať zoznam'
+    && /display:none/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist>.ic', '(max-width:359.98px)'))
+    && /padding-inline:6px/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist.btn', '(max-width:359.98px)'))
+    && /flex-wrap:wrap;align-content:center/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>.btn', '(max-width:599.98px)')));
+}
+appCheck('AL-M4 an empty My list has one way back, the empty card\'s button; the bar\'s back button returns with saves', ({ run, get, fire }) => {
+  // The empty card's button clicks the bar's; the stand-in nodes lack click().
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try { return flow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function flow() {
+  fire(get('f-shortlist-only'), 'click');
+  if (run('state.shortlistOnly') !== true || get('empty-back').hidden || !get('f-shortlist-only').hidden) return false;
+  fire(get('empty-back'), 'click');
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  return run('state.shortlistOnly') === true && !get('f-shortlist-only').hidden && get('empty-state').hidden;
+  }
+});
+check('AL-M5 the empty list card lines up with the pane, and the bar is joined only to a shown list',
+  /margin-top:0/.test(ruleAt(cssText, '.mylist:not([hidden]) ~ .split .empty'))
+  && /border-bottom:0/.test(ruleAt(cssText, '.mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden]))', '(max-width: 599.98px)')));
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

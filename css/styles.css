@@ -560,7 +560,7 @@ html:has(.sheet[open]){overflow:hidden}
   /* In the list view the panel and the list are one card: the Sort by strip is
      the toolbar's last row, not a second box 12 px below. Not while Compare
      hides the list. */
-  .mylist.is-list:has(~ .split:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
+  .mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
   .mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp,.mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp>.f-sort{border-top-left-radius:0;border-top-right-radius:0}
 }
 
@@ -1502,6 +1502,40 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    is .btn's 14 px padding plus its 1 px border. */
 .sheet-b .copy{margin:0}
 .sheet-b .sheet-edit{margin-left:-15px}
+
+/* My list (alignment audit). From 600 px Clear my list is a small outlined
+   button like Share, Export and Print, in secondary ink, at the toolbar's
+   right end; it was a borderless 36 px link 4 px above their labels. The CSV
+   note is a footnote on its own line, not a toolbar item, and like Export it
+   is not shown for a shared list (ml-mine, index.html). */
+.ml-tools>.ml-export-note{flex:0 0 100%;margin:0}
+@media (min-width:600px){
+ .mylist .ml-tools>#clear-shortlist{height:var(--tap);margin-left:auto;padding:0 10px;border:1px solid var(--edge);background:var(--panel);color:var(--ink-2);font-size:var(--fs-13);text-decoration:none}
+}
+/* 600–1023 px: Group by takes its own row, label beside the select as on
+   phones, so the four buttons stay together on the next row. They did not fit
+   beside it in Slovak at 700 px or in English at 600 px, and Clear wrapped alone. */
+@media (min-width:600px) and (max-width:1023.98px){
+ .ml-group{flex:0 0 100%;display:flex;align-items:center;gap:8px}
+ .ml-group>.inp{width:10rem}
+}
+/* Phones: every label fits its half of the 2 x 2 grid on one line. "Vymazať
+   môj zoznam" wrapped beside its icon at 390 px, so Slovak says "Vymazať
+   zoznam" (js/i18n.js). Under 360 px the icons go (Share has none anyway) and
+   the padding is 6 px, which fits "Vymazať zoznam" and "Exportovať CSV". If a
+   label still cannot fit (zoom, larger text), it moves under its icon, both
+   centred, rather than wrapping beside an icon stuck at the left. */
+@media (max-width:599.98px){
+ .mylist.is-list .ml-tools>.btn{flex-wrap:wrap;align-content:center;row-gap:2px}
+}
+@media (max-width:359.98px){
+ .mylist.is-list .ml-tools>.btn>.ic,.mylist.is-list .ml-tools>#clear-shortlist>.ic{display:none}
+ .mylist.is-list .ml-tools>.btn,.mylist.is-list .ml-tools>#clear-shortlist.btn,.mylist.is-list .ml-tools>.ml-pop>summary{padding-inline:6px}
+}
+/* An empty My list: the empty card lines up with the pane (the bar above
+   already leaves 12 px), and the bar keeps its rounded bottom, since no list
+   is joined under it. */
+.mylist:not([hidden]) ~ .split .empty{margin-top:0}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer

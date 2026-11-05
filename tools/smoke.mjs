@@ -2670,6 +2670,95 @@ async function runAlignChromeSetup(base) {
       });
     } finally { await page.close(); }
   }
+
+  // My list toolbar. From 600 px the four tools are one row of equal buttons
+  // (Clear at the right end, Group by above them below 1024 px), their labels
+  // on one centre line; the CSV note is its own line under them.
+  const openList = async (page) => {
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'not in My list'})`, 5000, 'My list');
+    await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+    await settle(page);
+  };
+  const tools = `(()=>{const tb=${textBox},box=(n)=>n.getBoundingClientRect(),sel=['#ml-share>summary','#export-csv','#print-shortlist','#clear-shortlist'];
+    const b=sel.map(q=>{const n=document.querySelector(q),r=box(n),t=tb(n.querySelector('span')),s=getComputedStyle(n);return {q,top:r.top,bottom:r.bottom,left:r.left,right:r.right,h:r.height,mid:(t.top+t.bottom)/2,lines:(()=>{const g=document.createRange();g.selectNodeContents(n.querySelector('span'));return new Set([...g.getClientRects()].map(x=>Math.round(x.top))).size})(),
+      fs:s.fontSize,border:s.borderTopStyle+' '+s.borderTopWidth,icon:(n.querySelector('svg')&&getComputedStyle(n.querySelector('svg')).display!=='none')||false}});
+    const g=box(document.querySelector('.ml-group')),note=document.querySelector('.ml-export-note'),nr=box(note),card=box(document.querySelector('#ml-tools'));
+    return {b,group:{left:g.left,bottom:g.bottom,top:g.top},note:{shown:getComputedStyle(note).display!=='none'&&nr.height>0,top:nr.top,left:nr.left},cardRight:card.right-parseFloat(getComputedStyle(document.querySelector('#ml-tools')).paddingRight),sw:document.documentElement.scrollWidth-innerWidth}})()`;
+  for (const [width, lang] of [[1280, 'en'], [1280, 'sk'], [1024, 'sk'], [700, 'sk'], [700, 'en'], [600, 'en'], [600, 'sk']]) {
+    const page = await open(width, 900, lang, { saves: 3 });
+    try {
+      await check(width, 'AL-M1 My list tools', `(${lang}): Share, Export, Print and Clear one row of equal buttons, Clear at the right end, labels on one line; the CSV note below`, async () => {
+        await openList(page);
+        const m = await page.ev(tools);
+        await shoot(page, `mylist-${width}-${lang}`);
+        const [share, , , clear] = m.b;
+        assert(m.b.every((x) => Math.abs(x.top - share.top) <= 1 && Math.abs(x.h - share.h) <= 0.5 && Math.abs(x.mid - share.mid) <= 1 && x.fs === share.fs && x.lines === 1), `buttons differ: ${JSON.stringify(m.b)}`);
+        assert(clear.border === '1px solid' || clear.border === 'solid 1px', `Clear has no border: ${clear.border}`);
+        assert(Math.abs(clear.right - m.cardRight) <= 1, `Clear not at the right end: ${JSON.stringify([clear, m.cardRight])}`);
+        if (width < 1024) assert(m.group.bottom <= share.top, `Group by not above the buttons: ${JSON.stringify(m)}`);
+        assert(m.note.shown && m.note.top >= Math.max(...m.b.map((x) => x.bottom)) && Math.abs(m.note.left - m.group.left) <= 1, `CSV note not its own line: ${JSON.stringify(m.note)}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        // Open Share: the note stays below and the page does not widen.
+        await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        await settle(page);
+        await shoot(page, `mylist-${width}-${lang}-share`);
+        assert(await page.ev(`document.documentElement.scrollWidth===innerWidth`), 'Share widened the page');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // Phones: the 2 x 2 grid. Every label on one line in both languages; under
+  // 360 px no icons; equal 44 px buttons.
+  for (const [width, lang] of [[390, 'sk'], [390, 'en'], [320, 'sk'], [320, 'en']]) {
+    const page = await open(width, 844, lang, { saves: 3 });
+    try {
+      await check(width, 'AL-M3 phone tools', `(${lang}): four equal 44 px buttons, each label on one line${width < 360 ? ', no icons' : ''}`, async () => {
+        await openList(page);
+        const m = await page.ev(tools);
+        await shoot(page, `mylist-${width}-${lang}`);
+        assert(m.b.every((x) => x.lines === 1 && x.h >= 44 && Math.abs(x.h - m.b[0].h) <= 0.5), `labels wrap or heights differ: ${JSON.stringify(m.b)}`);
+        if (width < 360) assert(m.b.every((x) => !x.icon), `icons at ${width}: ${JSON.stringify(m.b)}`);
+        else assert(m.b.slice(1).every((x) => x.icon), `icons missing at ${width}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        const badge = await page.ev(`(()=>{const b=document.querySelector('#header-list').getBoundingClientRect(),c=document.querySelector('#header-list .badge').getBoundingClientRect();return c.left>=b.left&&c.right<=b.right&&c.top>=b.top&&c.bottom<=b.bottom})()`);
+        assert(badge, 'the My list count overlaps its button\'s edge');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // A shared list hides Export, so it hides the note about Export too.
+  for (const width of [1280, 390]) {
+    let page = await open(width, width < 600 ? 844 : 900, 'en', { saves: 3 });
+    const ids = page.ids;
+    await page.close();
+    page = await open(width, width < 600 ? 844 : 900, 'en', { query: `&list=${ids.join(',')}` });
+    try {
+      await check(width, 'AL-M2 shared list', 'no CSV note without Export', async () => {
+        await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list')&&!document.querySelector('#ml-save-shared').hidden,why:'not the shared view'})`, 5000, 'shared view');
+        await settle(page);
+        await shoot(page, `mylist-shared-${width}`);
+        assert(await page.ev(`getComputedStyle(document.querySelector('#export-csv')).display==='none' && getComputedStyle(document.querySelector('.ml-export-note')).display==='none'`), 'the CSV note shows on a shared list');
+      });
+    } finally { await page.close(); }
+  }
+  // An empty My list: one "Back to all programmes"; the card lines up with the
+  // pane on wide screens and the bar keeps its rounded bottom on phones.
+  for (const [width, lang] of [[1280, 'en'], [390, 'en'], [390, 'sk']]) {
+    const page = await open(width, width < 600 ? 844 : 900, lang);
+    try {
+      await check(width, 'AL-M4 empty My list', `(${lang}): one way back; the card lines up${width < 600 ? ', the bar is a whole card' : ' with the pane'}`, async () => {
+        await openList(page);
+        const m = await page.ev(`(()=>{const v=(n)=>getComputedStyle(n).display!=='none'&&n.getBoundingClientRect().height>0,back=${JSON.stringify(UI[lang].back_to_all_programmes)};
+          const n=[...document.querySelectorAll('button')].filter(b=>v(b)&&b.textContent.trim()===back).length,bar=document.querySelector('#shortlist-bar'),bs=getComputedStyle(bar),e=document.querySelector('#empty-state').getBoundingClientRect(),p=document.querySelector('#pane');
+          return {n,emptyTop:e.top,paneTop:p&&v(p)?p.getBoundingClientRect().top:null,radius:bs.borderBottomLeftRadius,border:bs.borderBottomWidth,gap:e.top-bar.getBoundingClientRect().bottom}})()`);
+        await shoot(page, `mylist-empty-${width}-${lang}`);
+        assert(m.n === 1, `${m.n} back buttons`);
+        if (width >= 1200) assert(m.paneTop !== null && Math.abs(m.emptyTop - m.paneTop) <= 1, `card and pane tops differ: ${JSON.stringify(m)}`);
+        else assert(m.radius !== '0px' && m.border !== '0px' && m.gap >= 8 && m.gap <= 13, `bar looks cut off: ${JSON.stringify(m)}`);
+      });
+    } finally { await page.close(); }
+  }
 }
 
 async function main() {
