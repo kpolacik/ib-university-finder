@@ -1017,7 +1017,7 @@ export const UI = {
     "year_3": "€/rok",
     "max_yearly_cost_2": "Max. ročné náklady",
     "my_living_costs": "Moje životné náklady",
-    "university_s": "Podľa univerzity",
+    "university_s": "Podľa školy",
     "month_2": "€/mesiac",
     "keeps_programmes_whose_lowest_estimate_fits": "Ponechá programy, ktorých najnižší odhad sa zmestí do rozpočtu",
     "selected": "vybrané",

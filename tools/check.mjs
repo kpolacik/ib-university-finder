@@ -6102,6 +6102,11 @@ section('Batch 2 follow-up');
 check('F1 compact Filters at 600–700 px is icon-only, fills the slot, label kept for screen readers, count on the corner',
   /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.filters-btn\{width:100%;padding:0\}\s*\.filters-btn>span:not\(\.badge\)\{[^}]*clip-path:inset\(50%\)[^}]*\}\s*\.filters-btn>\.badge\{position:absolute;[^}]*\}/.test(cssText)
   && /<button class="btn filters-btn" id="compact-filters"[^>]*><svg class="ic" aria-hidden="true">[^]*?<span data-i18n="filters_2">Filters<\/span><span id="compact-count" class="badge">/.test(read('index.html')));
+// "Podľa univerzity" was clipped in the 112 px living-costs field (Leon chose
+// "Podľa školy", 2026-11-05). English keeps "University's".
+check('F2 Slovak living-costs placeholder is "Podľa školy" and fits the short field',
+  UI.sk.university_s === 'Podľa školy' && UI.en.university_s === "University's"
+  && /id="f-living"[^>]*data-i18n-attr="placeholder:university_s"/.test(read('index.html')));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

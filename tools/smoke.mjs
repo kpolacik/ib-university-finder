@@ -1707,7 +1707,8 @@ async function runBatch2C(base) {
 
 // --- Batch 2 follow-up ----------------------------------------------------------
 // F1: at 600–700 px the compact Filters button was wider than the logo slot, so
-// Search covered it ("Fil…", right part unclickable).
+// Search covered it ("Fil…", right part unclickable). F2: the Slovak living-costs
+// placeholder was clipped in its 112 px field.
 async function runBatch2Followup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-batch2-followup';
@@ -1778,6 +1779,42 @@ async function runBatch2Followup(base) {
     }
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
   } finally { await page.close(); }
+
+  // The placeholder lives in the input's shadow tree, so its overflow is read
+  // there: the old "Podľa univerzity" needed 93 px of the 83 px it gets.
+  for (const width of [1280, 700]) {
+    page = await open('?ui=sk', width, 900);
+    try {
+      await check(width, 'F2', 'Slovak living-costs placeholder "Podľa školy" fits its 112 px field', async () => {
+        await page.ev(`document.querySelector('#dd-budget').open=true`);
+        await settle(page);
+        const field = await page.ev(`(()=>{const i=document.querySelector('#f-living');return {ph:i.placeholder,w:i.getBoundingClientRect().width}})()`);
+        const { root } = await page.send('DOM.getDocument', { depth: -1, pierce: true });
+        const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#f-living' });
+        const { node } = await page.send('DOM.describeNode', { nodeId, depth: -1, pierce: true });
+        const find = (n) => {
+          const a = n.attributes || [];
+          for (let i = 0; i < a.length; i += 2) if (a[i] === 'pseudo' && a[i + 1] === '-webkit-input-placeholder') return n.backendNodeId;
+          for (const c of [...(n.children || []), ...(n.shadowRoots || [])]) { const id = find(c); if (id) return id; }
+          return null;
+        };
+        const backendNodeId = find(node);
+        assert(backendNodeId, 'placeholder node not found');
+        const { object } = await page.send('DOM.resolveNode', { backendNodeId });
+        const { result } = await page.send('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
+          functionDeclaration: 'function(){return {sw:this.scrollWidth,cw:this.clientWidth,text:this.textContent}}' });
+        const p = result.value;
+        if (width === 1280) {
+          const r = await page.ev(`(()=>{const r=document.querySelector('#dd-budget .dropdown-panel').getBoundingClientRect();return {x:r.left-8,y:r.top-8,width:r.width+16,height:r.height+16}})()`);
+          const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { ...r, scale: 2 } });
+          await writeFile(`${shots}/budget-sk.png`, Buffer.from(data, 'base64'));
+        }
+        assert(field.ph === 'Podľa školy' && p.text === 'Podľa školy', `placeholder ${JSON.stringify([field, p])}`);
+        assert(Math.round(field.w) === 112, `field is ${field.w} wide`);
+        assert(p.cw > 0 && p.sw <= p.cw, `placeholder clipped: ${p.sw} > ${p.cw}`);
+      });
+    } finally { await page.close(); }
+  }
 }
 
 // --- Main -----------------------------------------------------------------------
