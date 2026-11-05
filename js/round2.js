@@ -161,26 +161,55 @@ export function syncRound2(dom, state, active, saved) {
   }
 }
 
-let toastTimer;
-function retireToast(toast) {
+// Batch 3 · A. Each toast keeps its own timer (6 s), paused while it is
+// hovered or holds focus. A new toast replaces the old ones, except one that
+// holds focus (its Undo, say): that stays, and the new one goes beside it, at
+// most two. A toast whose action has been used goes at once.
+const TOAST_MS = 6000;
+const toastState = new WeakMap();
+function holdsFocus(toast) {
+  return toast.contains(document.activeElement);
+}
+function timeToast(toast) {
+  const state = toastState.get(toast);
+  clearTimeout(state.timer);
+  if (state.hover || holdsFocus(toast)) return;
+  state.timer = setTimeout(() => retireToast(toast), TOAST_MS);
+}
+// Leaves with its 160 ms exit, unless focus arrives first (then it stays).
+function retireToast(toast, { used = false } = {}) {
+  const state = toastState.get(toast);
+  clearTimeout(state.timer);
+  if (!used && (state.hover || holdsFocus(toast))) return;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { toast.remove(); return; }
   toast.classList.add('out');
-  setTimeout(() => toast.remove(), 160);
+  state.exit = setTimeout(() => toast.remove(), 160);
 }
 export function showToast(message, actionLabel, action) {
   const region = document.getElementById('toasts');
-  clearTimeout(toastTimer);
   const toast = document.createElement('div'); toast.className = 'toast';
+  const state = { timer: undefined, exit: undefined, hover: false };
+  toastState.set(toast, state);
   const text = document.createElement('span'); text.textContent = message; toast.append(text);
   if (action) {
     const button = document.createElement('button'); button.type = 'button'; button.textContent = actionLabel;
-    button.addEventListener('click', () => { action(); retireToast(toast); }); toast.append(button);
+    button.addEventListener('click', () => { action(); retireToast(toast, { used: true }); }); toast.append(button);
   }
-  region.replaceChildren(toast);
-  toastTimer = setTimeout(() => {
-    if (toast.contains(document.activeElement)) return;
-    retireToast(toast);
-  }, 6000);
+  toast.addEventListener('mouseenter', () => { state.hover = true; clearTimeout(state.timer); });
+  toast.addEventListener('mouseleave', () => { state.hover = false; timeToast(toast); });
+  toast.addEventListener('focusin', () => {
+    clearTimeout(state.timer); clearTimeout(state.exit);
+    toast.classList.remove('out');
+  });
+  toast.addEventListener('focusout', (event) => { if (!toast.contains(event.relatedTarget)) timeToast(toast); });
+  const kept = [...region.children].filter(holdsFocus).slice(-1);
+  for (const old of [...region.children]) {
+    if (kept.includes(old)) continue;
+    clearTimeout(toastState.get(old)?.timer); clearTimeout(toastState.get(old)?.exit);
+    old.remove();
+  }
+  region.append(toast);
+  timeToast(toast);
 }
 
 export function wireCompactHeader(dom) {

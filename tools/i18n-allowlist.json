@@ -281,7 +281,8 @@
       "reset",
       "select",
       "submit",
-      "textarea"
+      "textarea",
+      "added"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -919,7 +920,10 @@
       "small",
       "opt-note",
       "f-deadline-open-note",
-      "open"
+      "open",
+      "focusin",
+      "mouseenter",
+      "mouseleave"
     ],
     "js/saved-state.js": [
       "./filters.js",

@@ -592,6 +592,8 @@ export const UI = {
     "r3_cmp_open_label": "Open compare",
     "r3_tray_text": "Compare {count} of 4",
     "r3_tray_open": "Open",
+    "r3_cmp_added": "Added to compare ({count} of 4).",
+    "r3_cmp_added_sr": "Added to compare, {count} of 4.",
 
     // batch 3 · B
 
@@ -1193,6 +1195,8 @@ export const UI = {
     "r3_cmp_open_label": "Otvoriť porovnanie",
     "r3_tray_text": "Porovnanie: {count} zo 4",
     "r3_tray_open": "Otvoriť",
+    "r3_cmp_added": "Pridané do porovnania ({count} zo 4).",
+    "r3_cmp_added_sr": "Pridané do porovnania, {count} zo 4.",
 
     // batch 3 · B
 

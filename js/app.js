@@ -694,11 +694,12 @@ function savesFromStorage() {
   if (selectedId === null) drawPane();
 }
 
-// The ids of every programme in the data, worked out once per load.
+// The ids of every programme in the data, worked out again only when the
+// rows change (ids are unique, so the count follows the rows).
 let knownRows = null;
 let knownSet = new Set();
 function knownIds() {
-  if (knownRows !== allRows) { knownRows = allRows; knownSet = new Set(allRows.map((row) => row.id)); }
+  if (knownRows !== allRows || knownSet.size !== allRows.length) { knownRows = allRows; knownSet = new Set(allRows.map((row) => row.id)); }
   return knownSet;
 }
 
@@ -721,11 +722,33 @@ function changeCompare(change) {
   return result;
 }
 
-// A compare toggle on a row, its slot or the pane: in or out of the set.
+// A compare toggle on a row, its slot or the pane: in or out of the set. A
+// fifth is refused with a toast that says why; the button is never disabled.
 function onToggleCompare(id) {
   const result = changeCompare((ids) => toggleIn(ids, id, knownIds()));
   syncCompareControls();
+  compareFeedback(result);
   return result;
+}
+
+// One announcement per change, never two. On phones the tray's count changes
+// by the thumb, so only screen readers hear it (#cmp-status); on desktop the
+// header is far from the row, so a toast says it. The limit says so anywhere.
+function compareFeedback(result) {
+  const count = shownCompare().length;
+  if (result === 'full') showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+  else if (trayQuery.matches) announceCompare(t(result === 'added' ? 'r3_cmp_added_sr' : 'r3_cmp_removed', { count }));
+  else if (result === 'added') showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
+  else showToast(t('r3_cmp_removed'));
+}
+
+// Cleared, then written on the next frame, so the same words twice are
+// still read; a newer change cancels the one still waiting.
+let compareStatusFrame;
+function announceCompare(text) {
+  cancelAnimationFrame(compareStatusFrame);
+  dom.compareStatus.textContent = '';
+  compareStatusFrame = requestAnimationFrame(() => { dom.compareStatus.textContent = text; });
 }
 
 // Brings everything that shows the compare set up to date, in place, and

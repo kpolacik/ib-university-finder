@@ -6354,6 +6354,116 @@ check('A4 CSS: the header button hides where the tray serves; icon-only header b
   && /\.toasts\{bottom:calc\(24px \+ var\(--tray-h,0px\)\)\}/.test(cssText)
   && /@media print\{\s*body\.has-tray\{padding-bottom:0\}\s*html\{scroll-padding-bottom:0\}\s*\}/.test(cssText)
   && appSrc.includes("matchMedia('(max-width: 599.98px), (max-height: 500px)')"));
+appCheck('A5 a fifth is refused: the set stays, the button is neither pressed nor disabled, and the limit toast opens Compare', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  const ids = context.fixture.map((r) => r.id);
+  run(`allRows = fixture; ${cmpSet(ids.slice(0, 4))} update();`);
+  const fifth = cmpOf(get('results').children.find((n) => n.dataset.id === ids[4]));
+  fire(fifth, 'click');
+  const toast = context.toasts.at(-1);
+  if (run('compareIds.join()') !== ids.slice(0, 4).join() || fifth.getAttribute('aria-pressed') !== 'false' || fifth.disabled || fifth.getAttribute('aria-disabled')
+    || toast.message !== 'You can compare up to 4 programmes. Remove one first.' || toast.label !== 'Open compare' || get('header-compare-count').textContent !== '4') return false;
+  toast.action();
+  return !get('compare').hidden && cmpColIds(get).join() === ids.slice(0, 4).join() && stubDocument.activeElement === get('cmp-h');
+});
+appCheck('A5 desktop: an add shows one toast with the count and "Open compare"; a removal a plain toast; nothing in the status line', ({ get, fire, context, flushFrame }) => {
+  const button = cmpOf(get('results').children[0]);
+  fire(cmpOf(get('results').children[1]), 'click');
+  fire(button, 'click');
+  const added = context.toasts.at(-1);
+  if (context.toasts.length !== 2 || added.message !== 'Added to compare (2 of 4).' || added.label !== 'Open compare') return false;
+  fire(button, 'click');
+  flushFrame();
+  const removed = context.toasts.at(-1);
+  return context.toasts.length === 3 && removed.message === 'Removed from compare.' && !removed.action && get('cmp-status').textContent === '';
+});
+appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 leave one line, "4 of 4"', ({ run, get, fire, context, trayMedia, frames, flushFrame }) => {
+  trayMedia.matches = true;
+  context.fixture.push(...context.live.slice(1, 2));
+  run('update();');
+  const rows = get('results').children;
+  fire(cmpOf(rows[0]), 'click');
+  if (get('cmp-status').textContent !== '' || frames.size !== 1) return false;
+  flushFrame();
+  if (get('cmp-status').textContent !== 'Added to compare, 1 of 4.' || (context.toasts ?? []).length) return false;
+  fire(cmpOf(rows[0]), 'click');
+  for (const row of rows) fire(cmpOf(row), 'click');
+  if (frames.size !== 1 || get('cmp-status').textContent !== '') return false;
+  flushFrame();
+  if (get('cmp-status').textContent !== 'Added to compare, 4 of 4.') return false;
+  fire(cmpOf(rows[3]), 'click'); flushFrame();
+  return get('cmp-status').textContent === 'Removed from compare.' && (context.toasts ?? []).length === 0;
+});
+{
+  // The real showToast, on a stand-in page with a fake clock.
+  const toastPage = (test) => {
+    let now = 0, nextId = 1; const timers = new Map();
+    const advance = (ms) => {
+      const end = now + ms;
+      for (;;) {
+        const due = [...timers].filter(([, x]) => x.at <= end).sort((p, q) => p[1].at - q[1].at)[0];
+        if (!due) break;
+        timers.delete(due[0]); now = due[1].at; due[1].fn();
+      }
+      now = end;
+    };
+    const region = Object.assign(new ChromeNode('div'), { id: 'toasts' });
+    const page = { ...stubDocument, activeElement: null, getElementById: (id) => (id === 'toasts' ? region : null), listeners: {} };
+    return withGlobals({
+      document: page, matchMedia: () => ({ matches: false }),
+      setTimeout: (fn, ms = 0) => { const id = nextId++; timers.set(id, { at: now + ms, fn }); return id; },
+      clearTimeout: (id) => { timers.delete(id); },
+    }, () => {
+      const focus = (node) => { const was = page.activeElement; page.activeElement = node;
+        if (was) dispatchStub(was, { type: 'focusout', relatedTarget: node }); if (node) dispatchStub(node, { type: 'focusin' }); };
+      return test({ region, advance, focus, show: realRound2.showToast, buttonOf: (toast) => toast.querySelector('button') });
+    });
+  };
+  check('A5 toasts: one leaves after 6 s with its 160 ms exit; a new one replaces an unfocused one', toastPage(({ region, advance, show }) => {
+    show('One'); show('Two');
+    if (region.children.length !== 1 || region.textContent !== 'Two') return false;
+    advance(5999); if (region.children.length !== 1 || region.children[0].classList.contains('out')) return false;
+    advance(1); if (!region.children[0].classList.contains('out')) return false;
+    advance(160); return region.children.length === 0;
+  }));
+  check('A5 toasts: hovering pauses the timer; leaving starts it again', toastPage(({ region, advance, show }) => {
+    show('One'); const toast = region.children[0];
+    dispatchStub(toast, { type: 'mouseenter', bubbles: false }); advance(20000);
+    if (region.children[0] !== toast) return false;
+    dispatchStub(toast, { type: 'mouseleave', bubbles: false }); advance(6160);
+    return region.children.length === 0;
+  }));
+  check('A5 toasts: a focused Undo is never replaced or timed out; the new toast goes beside it, and each Undo keeps its own action', toastPage(({ region, advance, focus, show, buttonOf }) => {
+    const done = [];
+    show('Removed A', 'Undo', () => done.push('A'));
+    const first = region.children[0];
+    focus(buttonOf(first));
+    show('Removed B', 'Undo', () => done.push('B'));
+    const second = region.children[1];
+    if (region.children.length !== 2 || region.children[0] !== first || stubDocument !== stubDocument) return false;
+    advance(20000);
+    if (!region.children.includes(first) || region.children.includes(second)) return false;
+    // A third while the first still holds focus: at most two, the focused one kept.
+    show('Removed C', 'Undo', () => done.push('C'));
+    const third = region.children.at(-1);
+    if (region.children.length !== 2 || region.children[0] !== first) return false;
+    dispatchStub(buttonOf(first), { type: 'click' });
+    focus(buttonOf(third));
+    dispatchStub(buttonOf(third), { type: 'click' });
+    advance(200);
+    return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 toasts: focus arriving during the exit keeps the toast; leaving it starts the timer again', toastPage(({ region, advance, focus, show, buttonOf }) => {
+    show('Removed', 'Undo', () => {});
+    const toast = region.children[0];
+    advance(6000); if (!toast.classList.contains('out')) return false;
+    focus(buttonOf(toast)); advance(1000);
+    if (region.children[0] !== toast || toast.classList.contains('out')) return false;
+    focus(null); dispatchStub(buttonOf(toast), { type: 'focusout', relatedTarget: null });
+    advance(6160);
+    return region.children.length === 0;
+  }));
+}
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.
