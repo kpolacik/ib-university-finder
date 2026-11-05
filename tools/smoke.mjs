@@ -839,10 +839,12 @@ async function runRound2(base) {
       });
       // Leon, 2026-11-05: the stepper sat left on wide screens, and Skip setup
       // sat above Back/Next and right of its "Discards" hint (button padding).
+      // On phones Next has its own full-width row (alignment audit), so Skip
+      // shares Back's centre line there.
       await check(width,'R2J','setup stepper is centred; Skip text shares the Back/Next centre line and the hint edge',async()=>{
         await edit(); await next();
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
-          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector('.ob-foot>.btn-p'));
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector(${JSON.stringify(width < 600 ? '.ob-foot>.btn:not(.btn-p)' : '.ob-foot>.btn-p')}));
           return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,lift:(next.top+next.height/2)-(skip.top+skip.height/2),indent:skip.left-hint.left};})()`);
         assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
@@ -2759,6 +2761,72 @@ async function runAlignChromeSetup(base) {
         assert(m.n === 1, `${m.n} back buttons`);
         if (width >= 1200) assert(m.paneTop !== null && Math.abs(m.emptyTop - m.paneTop) <= 1, `card and pane tops differ: ${JSON.stringify(m)}`);
         else assert(m.radius !== '0px' && m.border !== '0px' && m.gap >= 8 && m.gap <= 13, `bar looks cut off: ${JSON.stringify(m)}`);
+      });
+    } finally { await page.close(); }
+  }
+  // Setup. Step 2 never scrolls sideways; on phones Next/Finish is full width
+  // on its own row with Skip and Back together under it; every footer button
+  // is 44 px; the done screen has no empty band; Skip's ring clears its hint.
+  const next = (page, what) => page.click(`document.querySelector('.ob-foot>.btn-p')`, what);
+  const foot = `(()=>{const d=document.querySelector('#onboarding'),box=(n)=>n.getBoundingClientRect(),f=d.querySelector('.ob-foot'),fs=getComputedStyle(f),fr=box(f),body=d.querySelector('.ob-body');
+    const vis=[...f.querySelectorAll('.btn')].filter(n=>n.offsetParent);const p=f.querySelector('.btn-p'),skip=f.querySelector('.skipwrap .btn'),back=vis.find(n=>n!==p&&n!==skip);
+    const r=(n)=>n&&(({top,bottom,left,right,height})=>({top,bottom,left,right,height}))(box(n));
+    return {primary:r(p),skip:r(skip),back:r(back),heights:vis.map(n=>box(n).height),edge:[fr.left+parseFloat(fs.paddingLeft),fr.right-parseFloat(fs.paddingRight)],over:body.scrollWidth-body.clientWidth,step:d.querySelector('.ob-n')?.textContent}})()`;
+  for (const [width, lang] of [[320, 'sk'], [320, 'en'], [390, 'sk'], [390, 'en']]) {
+    const page = await open(width, 844, lang, { onboarding: null });
+    try {
+      await check(width, 'AL-S1 setup footer', `(${lang}): no sideways scroll; Next full width on top, Skip and Back on one row, 44 px, on every step`, async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        for (let step = 1; step <= 5; step++) {
+          await settle(page);
+          const m = await page.ev(foot);
+          if (step === 2 || step === 5) await shoot(page, `setup-${width}-${lang}-s${step}`);
+          assert(m.over <= 0, `step ${step} scrolls sideways by ${m.over}`);
+          assert(Math.abs(m.primary.left - m.edge[0]) <= 1 && Math.abs(m.primary.right - m.edge[1]) <= 1, `step ${step}: primary not full width ${JSON.stringify(m)}`);
+          assert(m.primary.bottom <= m.skip.top, `step ${step}: primary not on top ${JSON.stringify(m)}`);
+          if (step > 1) assert(m.back && Math.abs(m.back.top - m.skip.top) <= 1 && Math.abs(m.back.right - m.edge[1]) <= 1, `step ${step}: Skip and Back not one row ${JSON.stringify(m)}`);
+          assert(m.heights.every((h) => h >= 44), `step ${step}: heights ${m.heights}`);
+          if (step < 5) await next(page, `step ${step + 1}`);
+        }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  for (const width of [1280, 600, 390]) {
+    const page = await open(width, width < 600 ? 844 : 900, 'en', { onboarding: null });
+    try {
+      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring clears its hint', async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await settle(page);
+        await page.key('Shift', 'ShiftLeft', 16);
+        await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
+        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),s=getComputedStyle(b),r=document.createRange();r.selectNodeContents(document.querySelector('.skipwrap small'));return {vis:b.matches(':focus-visible'),clear:r.getBoundingClientRect().top-(b.getBoundingClientRect().bottom+parseFloat(s.outlineOffset)+parseFloat(s.outlineWidth))}})()`);
+        assert(ring.vis && ring.clear >= 0, `Skip's ring touches the hint: ${JSON.stringify(ring)}`);
+        const heights = [];
+        for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
+        await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
+        await settle(page);
+        const done = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),last=[...d.querySelectorAll('.ob-done>*')].at(-1).getBoundingClientRect(),f=d.querySelector('.ob-foot').getBoundingClientRect();return {gap:f.top-last.bottom,heights:[...d.querySelectorAll('.ob-foot .btn')].map(n=>n.getBoundingClientRect().height)}})()`);
+        await shoot(page, `setup-done-${width}`);
+        assert([...heights, ...done.heights].every((h) => Math.abs(h - 44) <= 0.5), `button heights differ: ${JSON.stringify([heights, done.heights])}`);
+        assert(done.gap <= 24, `empty band above the done buttons: ${done.gap}`);
+      });
+    } finally { await page.close(); }
+  }
+
+  // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
+  // the first question's line.
+  for (const [width, lang] of [[1280, 'en'], [600, 'sk'], [390, 'en']]) {
+    const page = await open(width, width < 600 ? 844 : 900, lang);
+    try {
+      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line${width >= 600 ? '; heading on the first question\'s line' : ''}`, async () => {
+        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'start',behavior:'instant'})`);
+        await settle(page);
+        const m = await page.ev(`(()=>{const first=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getClientRects()[0]};
+          const qs=[...document.querySelectorAll('.faq summary')].map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
+          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('.faq summary span'));return {qs,head:h.top-q.top}})()`);
+        assert(m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
+        if (width >= 600) assert(Math.abs(m.head) <= 1, `heading and first question differ by ${m.head}`);
       });
     } finally { await page.close(); }
   }

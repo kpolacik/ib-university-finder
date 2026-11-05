@@ -1221,7 +1221,7 @@ dialog.ob[open]::backdrop{opacity:1}
    and the step text above all start on one line. Change all three together. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
 .skipwrap .btn.btn-q{padding-inline:11px}
-.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:-4px}
+.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:4px}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
@@ -1536,6 +1536,31 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    already leaves 12 px), and the bar keeps its rounded bottom, since no list
    is joined under it. */
 .mylist:not([hidden]) ~ .split .empty{margin-top:0}
+
+/* Setup (alignment audit). The switch label could not wrap, so at 320 px the
+   step was wider than the dialog and scrolled sideways (Slovak lost 50 px at
+   the right); the step's one column now never outgrows the dialog. */
+.ob-step.on{grid-template-columns:minmax(0,1fr)}
+.ob .switch{white-space:normal}
+/* One button height on every screen: Skip, Back and Next were 36 px from
+   600 px but the done screen's buttons are 44 px, so the row jumped. */
+.ob-foot .btn{height:44px}
+/* The Skip hint (.skipwrap small above) sat 4 px into the Skip button's box,
+   so the focus ring (2.5 px at a 2 px offset) ran into it; it is 4 px below. */
+/* The done screen is shorter than the steps; the steps' minimum height left
+   90–130 px of nothing above its buttons. */
+.ob .ob-body:has(.ob-done){min-height:0}
+/* Phones: Next/Finish took the end of the row and wrapped alone under Back
+   (320 px, and Slovak at 390 px). Now it is always full width on its own row,
+   on top as on the done screen, with Skip and Back together below. */
+@media (max-width:599.98px){
+ .ob-foot:not(.ob-done-foot)>.btn-p{order:-1;flex:0 0 100%;margin-left:0}
+ .ob-foot:not(.ob-done-foot){row-gap:12px}
+}
+/* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
+   from 600 px the footer heading starts on the first question's line. */
+.faq summary>.ic{margin-top:calc(.5lh - 8px)}
+@media (min-width:600px){.foot h2{margin-top:12px}}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer
