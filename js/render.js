@@ -811,6 +811,7 @@ export function setInCompare(button, on) {
 export function renderCompare(container, rows, table, { onlyDifferences = false, saved = new Set() } = {}) {
   const facts = visibleFacts(table, onlyDifferences);
   const wrap = el('div', 'cmp-scroll');
+  wrap.id = 'cmp-scroll';
   wrap.setAttribute('tabindex', '0');
   wrap.setAttribute('role', 'region');
   wrap.setAttribute('aria-label', t('compare_table_scrolls_sideways'));
@@ -852,11 +853,32 @@ export function renderCompare(container, rows, table, { onlyDifferences = false,
   }
   grid.append(head, body);
   wrap.append(grid);
+  // A phone shows two programmes at a time. With three or four, the arrows and
+  // "Programmes 1–2 of 3" say more are off to the side, and the frame's fade
+  // marks the edge (app.js keeps them in step with the scroll; CSS shows them
+  // below 600 px only).
+  const frame = el('div', 'cmp-frame');
+  frame.append(wrap);
+  const out = [frame];
+  if (rows.length >= 3) out.unshift(compareNav());
   const hidden = table.length - facts.length;
-  const out = [wrap];
   if (hidden) out.push(el('p', 'help cmp-same', t('facts_hidden_count', { count: hidden })));
   container.replaceChildren(...out);
   return facts.length;
+}
+
+function compareNav() {
+  const nav = el('div', 'cmp-nav');
+  const arrow = (className, symbol, label) => {
+    const button = el('button', `btn ${className}`);
+    button.type = 'button';
+    button.setAttribute('aria-label', t(label));
+    button.setAttribute('aria-controls', 'cmp-scroll');
+    button.append(icon(symbol, 'ic'));
+    return button;
+  };
+  nav.append(arrow('cmp-prev', 'i-chevron-left', 'r3_cmp_prev'), el('p', 'cmp-range'), arrow('cmp-next', 'i-chevron-right', 'r3_cmp_next'));
+  return nav;
 }
 
 // A column's own controls: Save (the bookmark, "Save" / "Saved", the same

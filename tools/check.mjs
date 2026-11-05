@@ -6464,6 +6464,35 @@ appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 l
     return region.children.length === 0;
   }));
 }
+check('A6 the My list picker is gone: no #ml-compare, #ml-compare-open or #ml-compare-hint in the page, no prunePicks, and its words are out of both languages',
+  !/id="ml-compare|id="ml-picks"/.test(read('index.html')) && !/prunePicks|comparePicks|drawPicks|syncPicks/.test(appSrc + read('js/compare.js'))
+  && ['r2_compare_hint', 'r2_compare_n', 'pick_2_to_4_programmes', 'compare', 'compare_programmes'].every((key) => !Object.hasOwn(UI.en, key) && !Object.hasOwn(UI.sk, key))
+  && !/\.ml-hint|\.cmp-cta|\.ml-picks/.test(cssText));
+equal('A6 the range says "z" for 2 and 3 and "zo" for 4 in Slovak; English is "of"',
+  [i18n.inLanguage('sk', () => t('r3_cmp_range', { from: 1, to: 2, total: 3 })), i18n.inLanguage('sk', () => t('r3_cmp_range_zo', { from: 3, to: 4, total: 4 })), t('r3_cmp_range_zo', { from: 1, to: 2, total: 4 })],
+  ['Programy 1–2 z 3', 'Programy 3–4 zo 4', 'Programmes 1–2 of 4']);
+appCheck('A6 three or four programmes get the arrows and the range above a framed scroll box they control; two do not', ({ run, get, context }) => {
+  context.fixture.push(...context.live.slice(1, 2));
+  const ids = context.fixture.map((r) => r.id);
+  run(`allRows = fixture; ${cmpSet(ids.slice(0, 2))} update(); openCompare(null);`);
+  if (get('cmp-body').querySelector('.cmp-nav') || !get('cmp-body').querySelector('.cmp-frame .cmp-scroll')) return false;
+  const texts = [];
+  for (const [n, lang] of [[3, 'sk'], [4, 'sk'], [3, 'en']]) {
+    run(`switchLanguage('${lang}'); ${cmpSet(ids.slice(0, n))} syncCompareControls();`);
+    const nav = get('cmp-body').querySelector('.cmp-nav'), box = get('cmp-body').querySelector('.cmp-scroll');
+    if (!nav || nav.parent !== get('cmp-body') || get('cmp-body').children[0] !== nav || box.id !== 'cmp-scroll'
+      || [nav.querySelector('.cmp-prev'), nav.querySelector('.cmp-next')].some((b) => b.getAttribute('aria-controls') !== 'cmp-scroll' || !b.getAttribute('aria-label'))
+      || nav.querySelector('.cmp-range').getAttribute('aria-live')) return false;
+    texts.push(nav.querySelector('.cmp-range').textContent, nav.querySelector('.cmp-next').getAttribute('aria-label'));
+  }
+  run("switchLanguage('en');");
+  return /z 3$/.test(texts[0]) && texts[1] === 'Nasledujúci program' && /zo 4$/.test(texts[2]) && /of 3$/.test(texts[4]) && texts[5] === 'Next programme';
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+check('A6 CSS: below 600 px Close is a 44 px icon at the heading\'s right, its words kept for screen readers, the differences tick on row 2; the nav shows only there; the fade stops at the end',
+  /@media \(max-width:599\.98px\)\{\s*\.cmp-head\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;[^}]*\}\s*#cmp-h\{grid-column:1;grid-row:1\}\s*#cmp-close\{grid-column:2;grid-row:1;width:44px;height:44px;padding:0\}\s*\.cmp-close-t\{position:absolute;[^}]*clip-path:inset\(50%\)[^}]*\}\s*#cmp-diff-label\{grid-column:1\/-1;grid-row:2\}/.test(cssText)
+  && /@media \(min-width:600px\)\{\.cmp-nav\{display:none\}\}/.test(cssText) && /\.cmp-frame\.at-end::after\{display:none\}/.test(cssText)
+  && /\.cmp-frame::after\{[^}]*pointer-events:none\}/.test(cssText) && /<span class="cmp-close-t" data-i18n="close_compare">Close compare<\/span>/.test(read('index.html')));
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.

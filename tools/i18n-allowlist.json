@@ -282,7 +282,20 @@
       "select",
       "submit",
       "textarea",
-      "added"
+      "added",
+      ".cmp-c",
+      ".cmp-nav",
+      ".cmp-next",
+      ".cmp-prev",
+      ".cmp-range",
+      "at-end",
+      "at-start",
+      "instant",
+      "resize",
+      "scroll",
+      "scrollend",
+      "smooth",
+      "th.cmp-p"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -745,7 +758,15 @@
       "cmp-x",
       "data-compare-remove",
       "i-x",
-      "save-s"
+      "save-s",
+      "btn ",
+      "cmp-frame",
+      "cmp-nav",
+      "cmp-next",
+      "cmp-prev",
+      "cmp-range",
+      "i-chevron-left",
+      "i-chevron-right"
     ],
     "js/shortlist.js": [
       "./cost.js",

@@ -871,6 +871,7 @@ function wireList() {
     if (compareOpen) closeCompare(true); else openCompare(dom.headerCompare);
   });
   dom.trayOpen.addEventListener('click', () => openCompare(dom.trayOpen));
+  window.addEventListener('resize', syncCompareCue);
   dom.compareDiff.addEventListener('change', () => {
     onlyDifferences = dom.compareDiff.checked;
     drawCompare();
@@ -957,11 +958,68 @@ function drawCompare() {
     renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences: onlyDifferences && n >= MIN_COMPARE, saved: shortlist });
     const next = dom.compareBody.querySelector('.cmp-scroll');
     if (next && scrollLeft) next.scrollLeft = scrollLeft;
+    wireCompareCue(next);
   } else dom.compareBody.replaceChildren();
   dom.compare.hidden = false;
   dom.split.hidden = true;
   dom.shortlistBar.hidden = true;
   if (focus) restoreCompareFocus(focus, rows.map((row) => row.id));
+}
+
+// The phone cue for columns off to the side: "Programmes 1–2 of 3", the
+// arrows (each moves one column, off at its end) and the trailing fade. Its
+// listeners live on the scroll box, so a redraw drops them with it; a resize
+// is the one window listener (wireList).
+let compareCueFrame = 0;
+function wireCompareCue(box) {
+  const nav = dom.compareBody.querySelector('.cmp-nav');
+  if (nav) {
+    const step = (dir) => {
+      const column = box.querySelector('th.cmp-p');
+      const width = column ? column.getBoundingClientRect().width : 0;
+      box.scrollBy({ left: dir * width, behavior: motionQuery.matches ? 'instant' : 'smooth' });
+    };
+    nav.querySelector('.cmp-prev').addEventListener('click', () => step(-1));
+    nav.querySelector('.cmp-next').addEventListener('click', () => step(1));
+  }
+  box.addEventListener('scroll', () => {
+    if (compareCueFrame) return;
+    compareCueFrame = requestAnimationFrame(() => { compareCueFrame = 0; syncCompareCue(); });
+  }, { passive: true });
+  box.addEventListener('scrollend', syncCompareCue);
+  syncCompareCue();
+}
+
+// Which programmes are in view, measured right of the sticky fact column: a
+// column counts once at least half of it shows.
+function syncCompareCue() {
+  const box = dom.compareBody.querySelector('.cmp-scroll');
+  if (!compareOpen || !box) return;
+  const frame = box.parentElement;
+  const atStart = (box.scrollLeft ?? 0) <= 1;
+  const atEnd = (box.scrollLeft ?? 0) + (box.clientWidth ?? 0) >= (box.scrollWidth ?? 0) - 1;
+  frame.classList.toggle('at-start', atStart);
+  frame.classList.toggle('at-end', atEnd);
+  const nav = dom.compareBody.querySelector('.cmp-nav');
+  if (!nav) return;
+  const columns = [...box.querySelectorAll('th.cmp-p')];
+  const outer = box.getBoundingClientRect();
+  const left = outer.left + (box.querySelector('.cmp-c')?.getBoundingClientRect().width ?? 0);
+  const shown = columns.map((th, i) => {
+    const r = th.getBoundingClientRect();
+    return Math.min(r.right, outer.right) - Math.max(r.left, left) >= r.width / 2 - 1 ? i + 1 : 0;
+  }).filter(Boolean);
+  const total = columns.length;
+  const [from, to] = shown.length ? [shown[0], shown.at(-1)] : [1, Math.min(2, total)];
+  const text = t(total === 4 ? 'r3_cmp_range_zo' : 'r3_cmp_range', { from, to, total });
+  const range = nav.querySelector('.cmp-range');
+  if (range.textContent !== text) range.textContent = text;
+  const prev = nav.querySelector('.cmp-prev'), next = nav.querySelector('.cmp-next');
+  // A disabled button drops focus to the page, so focus crosses to the other arrow first.
+  if (atStart && document.activeElement === prev) next.focus({ preventScroll: true });
+  if (atEnd && document.activeElement === next) prev.focus({ preventScroll: true });
+  prev.disabled = atStart;
+  next.disabled = atEnd;
 }
 
 // Where focus is in the compare view, as something a redraw cannot break: a

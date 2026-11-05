@@ -594,6 +594,10 @@ export const UI = {
     "r3_tray_open": "Open",
     "r3_cmp_added": "Added to compare ({count} of 4).",
     "r3_cmp_added_sr": "Added to compare, {count} of 4.",
+    "r3_cmp_range": "Programmes {from}–{to} of {total}",
+    "r3_cmp_range_zo": "Programmes {from}–{to} of {total}",
+    "r3_cmp_prev": "Previous programme",
+    "r3_cmp_next": "Next programme",
 
     // batch 3 · B
 
@@ -1197,6 +1201,10 @@ export const UI = {
     "r3_tray_open": "Otvoriť",
     "r3_cmp_added": "Pridané do porovnania ({count} zo 4).",
     "r3_cmp_added_sr": "Pridané do porovnania, {count} zo 4.",
+    "r3_cmp_range": "Programy {from}–{to} z {total}",
+    "r3_cmp_range_zo": "Programy {from}–{to} zo {total}",
+    "r3_cmp_prev": "Predchádzajúci program",
+    "r3_cmp_next": "Nasledujúci program",
 
     // batch 3 · B
 

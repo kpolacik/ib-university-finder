@@ -1533,6 +1533,27 @@ html{scroll-padding-bottom:var(--tray-h,0px)}
  body.has-tray{padding-bottom:0}
  html{scroll-padding-bottom:0}
 }
+/* Phones: Close is a 44 px icon at the heading's right; "Show only
+   differences" takes the second row (Leon, 2026-11-05). From 600 px the head
+   stays as it was. With three or four programmes, the arrows and the range say
+   more columns are off to the side, and a fade marks the edge until the end. */
+.cmp-frame{position:relative}
+.cmp-frame::after{content:"";position:absolute;top:0;right:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--panel));pointer-events:none}
+.cmp-frame.at-end::after{display:none}
+.cmp-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px;border-bottom:1px solid var(--hairline)}
+.cmp-range{margin:0;font-size:var(--fs-14);color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:center}
+.cmp-nav .btn{width:44px;height:44px;padding:0}
+.cmp-nav .btn:disabled{color:var(--ink-3);cursor:default}
+.cmp-nav .ic{width:20px;height:20px}
+@media (min-width:600px){.cmp-nav{display:none}}
+@media (max-width:599.98px){
+ .cmp-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding:8px 8px 8px 16px}
+ #cmp-h{grid-column:1;grid-row:1}
+ #cmp-close{grid-column:2;grid-row:1;width:44px;height:44px;padding:0}
+ .cmp-close-t{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ #cmp-diff-label{grid-column:1/-1;grid-row:2}
+ .cmp-head .ml-note{grid-column:1/-1}
+}
 /* The detail: the official link across the top, then Save and Compare as an
    equal pair (Leon, 2026-11-05). Without a link, the pair is the first row. */
 .d-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
