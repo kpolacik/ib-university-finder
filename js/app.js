@@ -784,6 +784,8 @@ async function copyShareLink() {
   try {
     await navigator.clipboard.writeText(url);
   } catch {
+    // Select the link that failed, even if the list changed while copying.
+    dom.shareUrl.value = url;
     dom.shareUrl.select();
     showToast(failure);
     return;
@@ -1511,12 +1513,15 @@ async function copyLink() {
   const url = location.origin + location.pathname + (query ? `?${query}` : '');
   const inSheet = dom.sheet.open && dom.sheet.contains(dom.copy);
   const success = t(`r2_copied_${kind}`);
-  const failure = t(inSheet ? 'r2_copy_failed_sheet' : 'r2_copy_failed_desktop');
+  const failSheet = t('r2_copy_failed_sheet'), failDesktop = t('r2_copy_failed_desktop');
   let message = success;
   try {
     await navigator.clipboard.writeText(url);
   } catch {
-    message = failure;
+    // Texts in the click's language; which one is chosen when the copy settles: if the sheet closed meanwhile, "close
+    // Filters first" would be wrong (batch 2 B review).
+    const stillInSheet = inSheet && dom.sheet.open && dom.sheet.contains(dom.copy);
+    message = stillInSheet ? failSheet : failDesktop;
   }
   if (inSheet && dom.sheet.open && dom.sheet.contains(dom.copy)) {
     dom.copyStatus.textContent = '';

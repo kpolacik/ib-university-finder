@@ -3682,7 +3682,8 @@ await asyncAppCheck("Copy link writes the state's address and a state-based toas
   if (context.toastMessages.at(-1) !== t('r2_copy_failed_desktop')) return false;
   context.navigator.clipboard = undefined; fire(copy, 'click'); await settle();
   return context.toastMessages.at(-1) === t('r2_copy_failed_desktop') && copy.textContent === label
-    && copy.querySelector('.copy-long').textContent === t('r2_copy_filters_link');
+    && copy.querySelector('.copy-long').textContent === t('r2_copy_filters_link')
+    && copy.getAttribute('aria-live') === null;
 });
 appCheck('actual arrows scroll the new pick after selecting it: nearest when it fits under the sticky header, start when taller; focus never scrolls', ({ run, flip, get, html, context }) => {
   flip(true);
@@ -5745,6 +5746,10 @@ section('Batch 2 · A');
 // batch 2 · A checks go here
 
 section('Batch 2 · B');
+// Batch 2 B review: a failed list copy selects the link that failed, even if
+// the list or the points tick changed while the clipboard was pending.
+check('B1 failed list copy restores the snapshot link before selecting it',
+  /catch \{[^}]*dom\.shareUrl\.value = url;\s*dom\.shareUrl\.select\(\);/.test(appSrc));
 const { linkContents } = filtersMod;
 check('B1 link contents covers all nine states, HL Maths and descending sort', (() => {
   const plain = createFilterState();
@@ -5821,7 +5826,12 @@ await asyncAppCheck('B1 sheet status repeats once and clears on every close rout
   fire(get('f-more'), 'click');
   let done; context.navigator.clipboard = { writeText: () => new Promise((resolve) => { done = resolve; }) };
   fire(get('f-copy'), 'click'); fire(get('sheet-done'), 'click'); advance(0); done(); await settle(); flushFrame();
-  return status.textContent === '' && messages.length === 1 && messages[0] === t('r2_copied_none');
+  if (!(status.textContent === '' && messages.length === 1 && messages[0] === t('r2_copied_none'))) return false;
+  // A rejection that settles after the sheet closed says the desktop failure, not "close Filters".
+  fire(get('f-more'), 'click');
+  let fail; context.navigator.clipboard = { writeText: () => new Promise((_, reject) => { fail = reject; }) };
+  fire(get('f-copy'), 'click'); fire(get('sheet-done'), 'click'); advance(0); fail(new Error('denied')); await settle(); flushFrame();
+  return status.textContent === '' && messages.length === 2 && messages[1] === t('r2_copy_failed_desktop');
 });
 await asyncAppCheck('B1 sheet missing clipboard and rejection show only the sheet failure', async ({ run, get, fire, settle, flushFrame, clipboard, context }) => {
   context.location.origin = 'http://localhost:8765';
