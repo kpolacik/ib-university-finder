@@ -1545,10 +1545,6 @@ html{scroll-padding-bottom:var(--tray-h,0px)}
  .cmp-t a.lnk::after{content:" — " attr(href);font-size:.85em;word-break:break-all}
  .cmp-t .lnk svg{display:none}
 }
-/* The picker left My list, so the phone toolbar always has three actions:
-   Clear my list takes the cell beside Print, as it did when Compare was
-   hidden (that rule's :has(#ml-compare[hidden]) can no longer match). */
-@media (max-width:599.98px){.ml-tools>.btn-q{grid-column:auto}}
 /* Phones: Close is a 44 px icon at the heading's right; "Show only
    differences" takes the second row (Leon, 2026-11-05). From 600 px the head
    stays as it was. With three or four programmes, the arrows and the range say

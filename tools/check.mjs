@@ -6555,8 +6555,12 @@ check('A6 a dashed unknown wraps inside a compare column (it poked 28 px past th
 check('A3 compare column names use the whole column below the "x" (a float spacer, not padding down the whole cell) and Save never breaks inside its word',
   /\.cmp-t th\.cmp-p::before\{content:"";float:right;width:36px;height:34px\}/.test(cssText) && !/th\.cmp-p\{[^}]*padding-right:48px/.test(cssText)
   && /\.cmp-save\{[^}]*overflow-wrap:normal/.test(cssText));
+// After the merge B's 2 x 2 toolbar owns this: Clear is an outlined grid cell
+// beside Print, and no rule may stretch it across the row (smoke R3H checks
+// the layout in Chrome).
 check('A6 with the picker gone the phone My list toolbar keeps Clear my list beside Print, not Print alone on a row (smoke R3H)',
-  /@media \(max-width:599\.98px\)\{\.ml-tools>\.btn-q\{grid-column:auto\}\}/.test(cssText));
+  /border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist', '(max-width: 599.98px)'))
+  && !/#clear-shortlist[^{]*\{[^}]*grid-column:1\s*\/\s*-1/.test(cssText) && !/\.ml-tools>\.btn-q\{[^}]*grid-column:1/.test(cssText));
 check('A4 a wide but short window keeps the pane\'s end above the tray',
   /@media \(min-width:1200px\)\{body\.has-tray \.pane\{max-height:calc\(100dvh - var\(--header-visible\) - 24px - var\(--tray-h,0px\)\)\}\}/.test(cssText));
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
@@ -6618,8 +6622,10 @@ section('Batch 3 · B');
 // second row above the cards. The stub has no layout, so the state is checked
 // here and the computed display:none in smoke "B3B main top".
 check('B3B1 on a phone the main-view My list bar is hidden unless a failure note shows', (() => {
-  const phone = ruleAt(cssText, '.mylist:not(.is-list):not(:has(.ml-note:not([hidden])))', '(max-width: 599.98px)');
-  return /display:none/.test(phone);
+  // With Compare out of the bar (A), the rule needs no phone scope: the bar
+  // shows only for a failure note at every width.
+  const rule = ruleAt(cssText, '.mylist:not(.is-list):not(:has(.ml-note:not([hidden])))');
+  return /display:none/.test(rule) && !/\.ml-hint|cmp-cta/.test(cssText.match(/\.mylist:not\(\.is-list\):not\(:has\([^{]*\{/g)?.join('') || '');
 })());
 appCheck('B3B1 with 3 saved and no note the main-view bar carries no note (so the phone rule hides it); a failed save shows the note', ({ run, get, item, fire, context, ids: [a] }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');
