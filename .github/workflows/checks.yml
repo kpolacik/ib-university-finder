@@ -1,0 +1,27 @@
+# Runs the same checks you would run by hand, on GitHub, for every push and
+# pull request. It exists because nothing else stops a broken change: there is
+# no build step, and whatever reaches main is the live site (audit L08).
+#
+# It reads the repository and nothing else: no secrets and no network after
+# setup. tools/smoke.mjs is left out on purpose; see STATUS.md,
+# "Running it".
+name: Checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: node tools/check.mjs
+      - run: node tools/check-contrast.mjs

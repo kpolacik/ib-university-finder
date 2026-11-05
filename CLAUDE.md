@@ -23,7 +23,7 @@ or any npm package. Somebody who doesn't code has to be able to maintain it.
 Read these first: `STATUS.md` (current state, known gaps, decisions, past bugs),
 `MAINTENANCE.md` (the column rules, written for non-coders), `README.md`.
 
-## Commands (all local; there is no CI)
+## Commands (run locally; `.github/workflows/checks.yml` also runs check and contrast on GitHub)
 
 ```bash
 node tools/serve.mjs [port]     # dev server, no-store caching; default http://localhost:8765

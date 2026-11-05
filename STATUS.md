@@ -1330,6 +1330,12 @@ opens the real page in an invisible Chrome with a temporary profile
 (never yours), clicks through it at phone and desktop widths, then deletes the
 profile; without Chrome it prints SKIP and changes nothing (L08).
 
+`.github/workflows/checks.yml` runs `check.mjs` and `check-contrast.mjs` on
+GitHub for every push and pull request, with no secrets. `smoke.mjs` stays
+local: nobody has run it on GitHub's Linux machines, where Chrome's sandbox may
+need a flag it doesn't pass, and a test that fails for no real reason teaches
+people to ignore the red mark.
+
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette
 — and checks each foreground against the background it is genuinely painted on.
