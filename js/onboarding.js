@@ -34,6 +34,16 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   const progress = el('div', 'ob-bar'), fill = el('i'); progress.append(fill);
   const body = el('div', 'ob-body'), foot = el('div', 'ob-foot');
   dialog.append(progress, body, foot);
+  const phone = matchMedia('(max-width: 599.98px)');
+  const orderFooter = () => {
+    if (!draft || done) return;
+    const primary = foot.querySelector('.btn-p'), active = document.activeElement;
+    // CSS puts Next above Skip on phones; DOM order must follow it for Tab.
+    if (phone.matches) foot.insertBefore(primary, foot.children[0]);
+    else foot.append(primary);
+    if (active === primary) primary.focus({ preventScroll: true });
+  };
+  phone.addEventListener('change', orderFooter);
   const close = (applied = false) => {
     if (!done) dismiss(applied ? 'completed' : 'dismissed');
     draft = null; done = false; dialog.close();
@@ -133,7 +143,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       const answers = validateFilters(draft, facets); done = true;
       const shown = apply(answers); dismiss('completed'); drawDone(answers, shown);
     });
-    foot.replaceChildren(skip, spacer, previous, next); heading.focus({ preventScroll: true });
+    foot.replaceChildren(skip, spacer, previous, next); orderFooter(); heading.focus({ preventScroll: true });
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
   // filters, so it says so, how many programmes that leaves, and offers the

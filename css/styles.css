@@ -560,7 +560,7 @@ html:has(.sheet[open]){overflow:hidden}
   /* In the list view the panel and the list are one card: the Sort by strip is
      the toolbar's last row, not a second box 12 px below. Not while Compare
      hides the list. */
-  .mylist.is-list:has(~ .split:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
+  .mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
   .mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp,.mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp>.f-sort{border-top-left-radius:0;border-top-right-radius:0}
 }
 
@@ -1087,7 +1087,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 .sheet-b .budget>.fld{width:auto}
 .sheet-b .dropdown>summary.inp{width:100%}
 @media (max-width: 1023px){.maths-control>select{display:block;min-width:148px}.maths-control>.seg{display:none}}
-@media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .copy{margin-top:12px}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
+@media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
 @media (pointer: coarse),(max-width:599px){.info,.step{min-width:44px;min-height:44px}.chipbox{height:44px}.seg{height:44px}.dropdown>summary.inp{min-height:44px}.pop-f .btn{min-height:44px}.option{min-height:44px}}
 
 /* Round 2 density and A07: all offsets follow the actual visible chrome. */
@@ -1221,7 +1221,7 @@ dialog.ob[open]::backdrop{opacity:1}
    and the step text above all start on one line. Change all three together. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
 .skipwrap .btn.btn-q{padding-inline:11px}
-.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:-4px}
+.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:4px}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
@@ -1560,6 +1560,98 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .toast button{flex:none;min-width:44px;white-space:nowrap}
 /* On paper there is no Save or "x", so no room is kept for them. */
 @media print{.cmp .cmp-t th.cmp-p{padding-block:10px}.cmp .cmp-t .lnk .ic{display:none}}
+
+/* Alignment fixes · header, My list, setup */
+/* Header (alignment audit 2026-11-05). round2.js shows the long Search hint
+   only where it fits whole; the ellipsis is a safety net for the moment before
+   the font loads. From 600 to 700 px the "/" hint gave up 40 of the field's
+   ~90 px, so it goes there, as it does on phones. */
+.search .inp{text-overflow:ellipsis}
+@media (min-width:600px) and (max-width:700px){.search kbd{display:none}.hd .search .inp{padding-right:10px}}
+/* On phones the filter band is empty (its controls live in the sheet), so its
+   hairline, plus the 1 px grey of the stuck-row marker, doubled the header's
+   hairline into a thick grey stripe. */
+@media (max-width:599.98px){.fslot{border-bottom:0}.stuck-mark{margin-inline:calc(-1 * var(--gut));background:var(--panel)}}
+/* The wordmark ended exactly at the link's edge, so the focus ring touched the
+   "r" of "Finder"; the tile side has its inset. Not while compact, where the
+   link is the tile alone. */
+@media (min-width:701px){body:not(.compact) .mark{padding-right:6px}}
+/* SK/EN: the ring drawn outside a 28 px button merged with the pill's border
+   (and crossed the neighbour on touch), so it sits just inside the button. */
+.hd .lang button:focus-visible{outline-offset:-3px}
+/* At 360 px and under the My list count sat on the button's corner, over its
+   border; it stays in the corner, inside. */
+@media (max-width:360px){#header-list .badge{top:3px;right:3px}}
+/* The Filters sheet. My IB points: the label and the number share the room, so
+   a long label wraps to two lines before the field gets too narrow for
+   "napr. 36" (it was 30 px at 320 px in Slovak). */
+.sheet-b .pts>label{flex:1 1 0;white-space:normal;line-height:18px}
+.sheet-b .pts input.inp{flex:1 1 0;min-width:64px}
+/* One left edge at the bottom: Copy link sat at the right (the bar's
+   margin-left:auto) 28 px below the rows, and "Edit my answers" (now first in
+   the sheet, index.html) had its text inset by the button padding. The -15 px
+   is .btn's 14 px padding plus its 1 px border. */
+.sheet-b .copy{margin:0}
+.sheet-b .sheet-edit{margin-left:-15px}
+
+/* My list (alignment audit). From 600 px Clear my list is a small outlined
+   button like Share, Export and Print, in secondary ink, at the toolbar's
+   right end; it was a borderless 36 px link 4 px above their labels. The CSV
+   note is a footnote on its own line, not a toolbar item, and like Export it
+   is not shown for a shared list (ml-mine, index.html). */
+.ml-tools>.ml-export-note{flex:0 0 100%;margin:0}
+@media (min-width:600px){
+ .mylist .ml-tools>#clear-shortlist{height:var(--tap);margin-left:auto;padding:0 10px;border:1px solid var(--edge);background:var(--panel);color:var(--ink-2);font-size:var(--fs-13);text-decoration:none}
+}
+/* 600–1023 px: Group by takes its own row, label beside the select as on
+   phones, so the four buttons stay together on the next row. They did not fit
+   beside it in Slovak at 700 px or in English at 600 px, and Clear wrapped alone. */
+@media (min-width:600px) and (max-width:1023.98px){
+ .ml-group{flex:0 0 100%;display:flex;align-items:center;gap:8px}
+ .ml-group>.inp{width:10rem}
+}
+/* Phones: every label fits its half of the 2 x 2 grid on one line. "Vymazať
+   môj zoznam" wrapped beside its icon at 390 px, so Slovak says "Vymazať
+   zoznam" (js/i18n.js). Under 360 px the icons go (Share has none anyway) and
+   the padding is 6 px, which fits "Vymazať zoznam" and "Exportovať CSV". If a
+   label still cannot fit (zoom, larger text), it moves under its icon, both
+   centred, rather than wrapping beside an icon stuck at the left. */
+@media (max-width:599.98px){
+ .mylist.is-list .ml-tools>.btn{flex-wrap:wrap;align-content:center;row-gap:2px}
+}
+@media (max-width:359.98px){
+ .mylist.is-list .ml-tools>.btn>.ic,.mylist.is-list .ml-tools>#clear-shortlist>.ic{display:none}
+ .mylist.is-list .ml-tools>.btn,.mylist.is-list .ml-tools>#clear-shortlist.btn,.mylist.is-list .ml-tools>.ml-pop>summary{padding-inline:6px}
+}
+/* An empty My list: the empty card lines up with the pane (the bar above
+   already leaves 12 px), and the bar keeps its rounded bottom, since no list
+   is joined under it. */
+.mylist:not([hidden]) ~ .split .empty{margin-top:0}
+
+/* Setup (alignment audit). The switch label could not wrap, so at 320 px the
+   step was wider than the dialog and scrolled sideways (Slovak lost 50 px at
+   the right); the step's one column now never outgrows the dialog. */
+.ob-step.on{grid-template-columns:minmax(0,1fr)}
+.ob .switch{white-space:normal}
+/* One button height on every screen: Skip, Back and Next were 36 px from
+   600 px but the done screen's buttons are 44 px, so the row jumped. */
+.ob-foot .btn{height:44px}
+/* The Skip hint (.skipwrap small above) sat 4 px into the Skip button's box,
+   so the focus ring (2.5 px at a 2 px offset) ran into it; it is 4 px below. */
+/* The done screen is shorter than the steps; the steps' minimum height left
+   90–130 px of nothing above its buttons. */
+.ob .ob-body:has(.ob-done){min-height:0}
+/* Phones: Next/Finish took the end of the row and wrapped alone under Back
+   (320 px, and Slovak at 390 px). Now it is always full width on its own row,
+   on top as on the done screen, with Skip and Back together below. */
+@media (max-width:599.98px){
+ .ob-foot:not(.ob-done-foot)>.btn-p{order:-1;flex:0 0 100%;margin-left:0}
+ .ob-foot:not(.ob-done-foot){row-gap:12px}
+}
+/* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
+   from 600 px the footer heading starts on the first question's line. */
+.faq summary>.ic{margin-top:calc(.5lh - 8px)}
+@media (min-width:600px){.foot h2{margin-top:12px}}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer

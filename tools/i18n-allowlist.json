@@ -952,7 +952,10 @@
       "open",
       "focusin",
       "mouseenter",
-      "mouseleave"
+      "mouseleave",
+      "canvas",
+      "2d",
+      "function"
     ],
     "js/saved-state.js": [
       "./filters.js",
@@ -990,6 +993,8 @@
       "url"
     ],
     "js/onboarding.js": [
+      "(max-width: 599.98px)",
+      ".btn-p",
       " back",
       "keydown",
       "pointerdown",

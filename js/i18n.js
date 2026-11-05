@@ -1072,7 +1072,7 @@ export const UI = {
     "link_to_your_list": "Odkaz na tvoj zoznam",
     "export_csv": "Exportovať CSV",
     "print": "Tlačiť",
-    "clear_my_list": "Vymazať môj zoznam",
+    "clear_my_list": "Vymazať zoznam",
     "saved_in_this_browser_only_another_browser_or_device_or_another_web": "Uložené len v tomto prehliadači. Iný prehliadač či zariadenie, alebo iná webová adresa tejto stránky, má vlastný zoznam.",
     "show_only_differences": "Zobraziť len rozdiely",
     "close_compare": "Zavrieť porovnanie",

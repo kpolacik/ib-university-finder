@@ -5428,11 +5428,11 @@ appCheck('heading sort cycles include the default order, announced next state an
   return run('state.sort')==='points' && run('state.dir')==='desc';
 });
 // The real setup dialog on the app harness's page. apply() returns the number
-// shown, as app.js's callback does; matchMedia is only read by the FAQ button.
+// shown, as app.js's callback does; media queries default to desktop.
 function realSetup({get,fire,context,resultsSection}, {shown = 7, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return shown;},results:resultsSection,closeSheet(){},firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -5534,7 +5534,7 @@ check('facet counts report real full-dataset occurrences without adding to the o
 // page's only h1 out of the accessibility tree below 700 px (batch 2, A2). What
 // it looks like there is measured in a real browser (smoke R4B).
 check('reviewed chrome keeps phone search short, the wordmark clipped but readable up to 700 px, heading columns aligned and FAQ icons sized',
-  read('js/round2.js').includes("innerWidth < 600 ? 'search_2' : 'r2_searchph'")
+  read('js/round2.js').includes("innerWidth >= 600 && longHintFits(dom.search) ? 'r2_searchph' : 'search_2'")
   && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}}')
   && !/\.mark h1\{[^}]*display:none/.test(cssRules)
   && /@media \(max-width:700px\)\{\s*\.mark h1\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(cssRules)
@@ -5605,7 +5605,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
@@ -6890,6 +6890,91 @@ section('Alignment · list, detail, Compare');
         && a.textContent.startsWith('Official admissions page');
     }), JSON.stringify(links.map((a) => a.children.map((c) => typeof c === 'string' ? c : c.className))));
 }
+
+// Alignment audit fixes (2026-11-05, Leon: "all is aligned"). Layout is
+// measured in Chrome by runAlignChromeSetup in tools/smoke.mjs; these pin the
+// rules so a later edit cannot quietly undo them.
+section('Alignment · header, My list, setup');
+{
+  const round2Src = read('js/round2.js');
+  check('AL-H1 Search shows its long hint only where it fits whole, measured with offsetWidth, re-measured on field resize, font load and every update',
+    /innerWidth >= 600 && longHintFits\(dom\.search\) \? 'r2_searchph' : 'search_2'/.test(round2Src)
+    && /input\.offsetWidth - \[borderLeftWidth, borderRightWidth, paddingLeft, paddingRight\]/.test(round2Src) && !/input\.clientWidth/.test(round2Src)
+    && /new ResizeObserver\(\(\) => searchPlaceholder\(\)\)\.observe\(dom\.search\)/.test(round2Src)
+    && /fonts\?\.ready\?\.then\(\(\) => searchPlaceholder\(\)\)/.test(round2Src)
+    && /syncSegments\(\);\s*searchPlaceholder\(\);/.test(round2Src)
+    && /text-overflow:ellipsis/.test(ruleAt(cssText, '.search .inp'))
+    && /display:none/.test(ruleAt(cssText, '.search kbd', '(min-width:600px) and (max-width:700px)')));
+  check('AL-H1 without canvas measurement Search falls back to its short hint', (() => {
+    const measure = (createElement) => runInNewContext(round2Src.replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '') + '\nlongHintFits;', { document: { createElement } });
+    return [() => ({ getContext: () => null }), () => { throw new Error('canvas unavailable'); }]
+      .every(create => measure(create)({}) === false);
+  })());
+  check('AL-H2 phones: no doubled hairline under the header (empty filter band and the stuck-row marker)',
+    /border-bottom:0/.test(ruleAt(cssText, '.fslot', '(max-width:599.98px)'))
+    && /margin-inline:calc\(-1 \* var\(--gut\)\);background:var\(--panel\)/.test(ruleAt(cssText, '.stuck-mark', '(max-width:599.98px)')));
+  check('AL-H3 Filters sheet: Edit my answers comes first and its text, Copy link and its help share one left edge; the points label wraps before the field shrinks',
+    /<div class="more-filters"><button type="button" class="btn btn-a sheet-edit" data-edit/.test(read('index.html'))
+    && /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /margin:0/.test(ruleAt(cssText, '.sheet-b .copy'))
+    && !/margin-top:12px/.test(ruleAt(cssText, '.sheet-b .copy', '(max-width: 599.98px)'))
+    && /flex:1 1 0;white-space:normal/.test(ruleAt(cssText, '.sheet-b .pts>label')) && /min-width:64px/.test(ruleAt(cssText, '.sheet-b .pts input.inp')));
+  check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
+    /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
+    && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+}
+
+{
+  const html = read('index.html');
+  check('AL-M1 My list from 600 px: Clear is a small outlined button at the right end; Group by has its own row to 1023 px; the CSV note is its own line',
+    /height:var\(--tap\);margin-left:auto;padding:0 10px;border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist .ml-tools>#clear-shortlist', '(min-width:600px)'))
+    && /flex:0 0 100%;display:flex/.test(ruleAt(cssText, '.ml-group', '(min-width:600px) and (max-width:1023.98px)'))
+    && /flex:0 0 100%/.test(ruleAt(cssText, '.ml-tools>.ml-export-note')));
+  check('AL-M2 the CSV note is hidden with Export on a shared list',
+    /<p class="help ml-mine ml-export-note" data-i18n="export_note">/.test(html));
+  check('AL-M3 phones: one-line tool labels (SK "Vymazať zoznam", no icons under 360 px), centred if a label still wraps',
+    UI.sk.clear_my_list === 'Vymazať zoznam'
+    && /display:none/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist>.ic', '(max-width:359.98px)'))
+    && /padding-inline:6px/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist.btn', '(max-width:359.98px)'))
+    && /flex-wrap:wrap;align-content:center/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>.btn', '(max-width:599.98px)')));
+}
+appCheck('AL-M4 an empty My list has one way back, the empty card\'s button; the bar\'s back button returns with saves', ({ run, get, fire }) => {
+  // The empty card's button clicks the bar's; the stand-in nodes lack click().
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try { return flow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function flow() {
+  fire(get('f-shortlist-only'), 'click');
+  if (run('state.shortlistOnly') !== true || get('empty-back').hidden || !get('f-shortlist-only').hidden) return false;
+  fire(get('empty-back'), 'click');
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  return run('state.shortlistOnly') === true && !get('f-shortlist-only').hidden && get('empty-state').hidden;
+  }
+});
+check('AL-M5 the empty list card lines up with the pane, and the bar is joined only to a shown list',
+  /margin-top:0/.test(ruleAt(cssText, '.mylist:not([hidden]) ~ .split .empty'))
+  && /border-bottom:0/.test(ruleAt(cssText, '.mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden]))', '(max-width: 599.98px)')));
+
+appCheck('AL-S3 setup footer follows visual order on phones and preserves focus across the breakpoint', (h) => {
+  const phone = { matches: true, addEventListener(type, listener) { this.change = listener; } };
+  const { dialog, primary, next } = realSetup(h, { env: { matchMedia: () => phone } });
+  next();
+  const foot = dialog.querySelector('.ob-foot');
+  if (foot.querySelector('button') !== primary()) return false;
+  primary().focus();
+  phone.matches = false; phone.change();
+  if (foot.children.at(-1) !== primary() || stubDocument.activeElement !== primary()) return false;
+  phone.matches = true; phone.change();
+  return foot.querySelector('button') === primary() && stubDocument.activeElement === primary();
+});
+check('AL-S1 setup: the step column never outgrows the dialog; the switch label wraps',
+  /grid-template-columns:minmax\(0,1fr\)/.test(ruleAt(cssText, '.ob-step.on')) && /white-space:normal/.test(ruleAt(cssText, '.ob .switch')));
+check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',
+  /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
+  && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
+  && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
+check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
+  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -1963,7 +1963,8 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
-  // An empty My list shows only its title, "0 saved" and the back button (B3).
+  // An empty My list shows only its title and "0 saved"; the empty card below
+  // says how to save and has the way back (B3).
   const emptyMine = mode === 'mine' && listIds.length === 0;
   const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
   if (emptyMine) { /* nothing is shown or hidden */ } else if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
@@ -1994,6 +1995,9 @@ function renderListBar() {
   dom.listNote.hidden = note === '';
 
   dom.listTools.hidden = mode === 'main' || emptyMine;
+  // An empty My list keeps one way back, the empty card's button: the bar's
+  // own back button said the same thing beside it (alignment audit).
+  dom.shortlistOnly.hidden = emptyMine;
   dom.listOrigin.hidden = mode !== 'mine' || emptyMine;
   for (const node of dom.listTools.querySelectorAll('.ml-mine')) node.hidden = mode !== 'mine';
   dom.share.hidden = mode !== 'mine';

@@ -165,7 +165,7 @@
        The pick-lists are native <details>, so they open from the keyboard with
        no script; app.js adds one-open-at-a-time and the closers. The band
        (masthead and filters) never sticks (A07). -->
-  <form class="fbar" id="filter-form" autocomplete="off" aria-label="Filters" data-i18n-attr="aria-label:filters_2"><div class="more-filters"><div class="frow"><div class="fld f-pts chipbox pts">
+  <form class="fbar" id="filter-form" autocomplete="off" aria-label="Filters" data-i18n-attr="aria-label:filters_2"><div class="more-filters"><button type="button" class="btn btn-a sheet-edit" data-edit data-i18n="r2_edit">Edit my answers</button><div class="frow"><div class="fld f-pts chipbox pts">
       <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-points" data-i18n="my_ib_points_2">My IB points</label>
       <button type="button" class="step" data-points-step="-1" data-i18n-attr="aria-label:r2_less" aria-label="One point less">−</button><input class="inp" type="number" id="f-points" name="points" min="24" max="45" step="1"
              inputmode="numeric" placeholder="e.g. 36"
@@ -239,7 +239,7 @@
           <span class="unit" data-i18n="r2_per_month">€/month</span>
         </span>
         <p class="err" id="f-living-error" aria-live="polite"></p>
-      <input type="range" data-number="f-living" min="0" max="2000" step="50" value="0" aria-label="My living costs" data-i18n-attr="aria-label:my_living_costs"></div></div></div></details></div><p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p><p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p><p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p><p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p><button type="button" class="btn btn-a sheet-edit" data-edit data-i18n="r2_edit">Edit my answers</button><div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div></div></form>
+      <input type="range" data-number="f-living" min="0" max="2000" step="50" value="0" aria-label="My living costs" data-i18n-attr="aria-label:my_living_costs"></div></div></div></details></div><p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p><p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p><p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p><p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p><div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div></div></form>
 </div>
 
 <div id="source-banner" hidden></div>
@@ -306,7 +306,7 @@
           <svg class="ic" aria-hidden="true"><use href="#i-print"/></svg><span data-i18n="print">Print</span>
         </button>
         <button type="button" id="clear-shortlist" class="btn btn-q ml-mine"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span data-i18n="clear_my_list">Clear my list</span></button>
-      <p class="help" data-i18n="export_note">CSV column headings follow the site language; data cells stay in English.</p>
+      <p class="help ml-mine ml-export-note" data-i18n="export_note">CSV column headings follow the site language; data cells stay in English.</p>
       </div>
       <p class="help ml-origin" id="ml-origin" hidden data-i18n="saved_in_this_browser_only_another_browser_or_device_or_another_web">Saved in this browser only. Another browser or device, or another web address for this site, has its own list.</p>
     </section>

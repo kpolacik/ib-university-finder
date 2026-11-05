@@ -839,10 +839,12 @@ async function runRound2(base) {
       });
       // Leon, 2026-11-05: the stepper sat left on wide screens, and Skip setup
       // sat above Back/Next and right of its "Discards" hint (button padding).
+      // On phones Next has its own full-width row (alignment audit), so Skip
+      // shares Back's centre line there.
       await check(width,'R2J','setup stepper is centred; Skip text shares the Back/Next centre line and the hint edge',async()=>{
         await edit(); await next();
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
-          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector('.ob-foot>.btn-p'));
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector(${JSON.stringify(width < 600 ? '.ob-foot>.btn:not(.btn-p)' : '.ob-foot>.btn-p')}));
           return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,lift:(next.top+next.height/2)-(skip.top+skip.height/2),indent:skip.left-hint.left};})()`);
         assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
@@ -2262,20 +2264,23 @@ async function runBatch3B(base) {
           assert(Math.max(...m.widths) - Math.min(...m.widths) <= 1 && m.heights.every((x) => x >= 44)
             && Math.abs(m.heights[0] - m.heights[1]) <= 1 && Math.abs(m.heights[2] - m.heights[3]) <= 1, `uneven tools: ${JSON.stringify(m)}`);
           assert(m.cols === 2 && m.rows === 2 && m.order.every(Boolean), `not a 2 x 2 grid: ${JSON.stringify(m)}`);
-          assert(m.clearBorder >= 1 && m.clearIcon > 0, `Clear my list not a bordered button: ${JSON.stringify(m)}`);
+          // Under 360 px the tool icons go, so every label fits on one line (alignment audit).
+          assert(m.clearBorder >= 1 && (width < 360 ? m.clearIcon === 0 : m.clearIcon > 0), `Clear my list not a bordered button: ${JSON.stringify(m)}`);
           assert(m.labels.length === 0, `labels overflow: ${m.labels}`);
           assert(m.sw === 0, `page overflows by ${m.sw}`);
         });
       }
-      // Desktop is unchanged apart from the chevron: shown in the list, never in the main view.
-      await check(`1280/${ui}`, 'B3B list toolbar', `${n} saved: desktop back button gains only the chevron`, async () => {
+      // Desktop gains the chevron: shown in the list, never in the main view.
+      // Clear my list is a small outlined button there too, without the phone's
+      // trash icon (alignment audit, 2026-11-05).
+      await check(`1280/${ui}`, 'B3B list toolbar', `${n} saved: desktop back button gains only the chevron; Clear is outlined, no icon`, async () => {
         await resize(page, 1280, 900);
-        const list = await page.ev(`(()=>{const i=document.querySelector('#f-shortlist-only svg'),c=document.querySelector('#clear-shortlist');return {chev:i.getBoundingClientRect().width,clearIcon:c.querySelector('svg').getBoundingClientRect().width,clearBorder:getComputedStyle(c).borderTopColor}})()`);
+        const list = await page.ev(`(()=>{const i=document.querySelector('#f-shortlist-only svg'),c=document.querySelector('#clear-shortlist');return {chev:i.getBoundingClientRect().width,clearIcon:c.querySelector('svg').getBoundingClientRect().width,clearBorder:getComputedStyle(c).borderTopColor,clearWidth:getComputedStyle(c).borderTopWidth,edge:getComputedStyle(document.querySelector('#export-csv')).borderTopColor}})()`);
         await page.click(`document.querySelector('#f-shortlist-only')`, 'Back to all programmes');
         await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'still the list view'})`, 5000, 'the main view');
         const main = await page.ev(`document.querySelector('#f-shortlist-only svg').getBoundingClientRect().width`);
         assert(list.chev > 0 && main === 0, `chevron list ${list.chev}, main ${main}`);
-        assert(list.clearIcon === 0 && list.clearBorder === 'rgba(0, 0, 0, 0)', `desktop Clear changed: ${JSON.stringify(list)}`);
+        assert(list.clearIcon === 0 && list.clearWidth === '1px' && list.clearBorder === list.edge, `desktop Clear not an outlined button like Export: ${JSON.stringify(list)}`);
       });
     } finally { await page.close(); }
   }
@@ -2869,6 +2874,293 @@ async function runAlignListCompare(base) {
           const { data: png } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: 794, height: Math.min(4000, cssContentSize.height), scale: 1 } });
           await writeFile(`${shots}/print-compare-${ui}.png`, Buffer.from(png, 'base64'));
         } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+
+// Alignment audit fixes (2026-11-05, Leon: "all is aligned"): header, the
+// phone Filters sheet, My list, setup and the FAQ. Each check measures the
+// layout in Chrome at the widths and languages the audit named.
+async function runAlignChromeSetup(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-align-fix-b/smoke';
+  await mkdir(shots, { recursive: true });
+  const { UI } = await import('../js/i18n.js');
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const shoot = async (page, name) => {
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  // A fresh page in one state: language, touch, saved programmes, setup seen.
+  const open = async (width, height, lang, { touch = width < 600, saves = 0, onboarding = 'dismissed', query = '' } = {}) => {
+    const page = await openPage(`${base}?ui=${lang}`, width, height);
+    try {
+      await page.waitFor(ready, 15000, 'page');
+      if (touch) {
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      }
+      const ids = await page.ev(`[...document.querySelectorAll('#results>li.item')].slice(0,${saves}).map(n=>n.dataset.id)`);
+      await page.ev(`localStorage.clear();${onboarding ? `localStorage.setItem('ibuf.onboarding.v1','${onboarding}');` : ''}localStorage.setItem('ib-university-finder:language','${lang}');localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(${JSON.stringify(ids)}));window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=${lang}${query}'`);
+      await page.waitFor(ready, 15000, 'reloaded page');
+      page.ids = ids;
+      return page;
+    } catch (err) { await page.close(); throw err; }
+  };
+  // A text's own box (a Range), not its element's.
+  const textBox = `(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()}`;
+
+  // Header: the Search hint is never cut off. The long one shows exactly where
+  // it fits whole, in both languages (re-measured after a language switch).
+  for (const [width, touch] of [[600, false], [700, false], [850, false], [1024, false], [1280, false], [768, true]]) {
+    const page = await open(width, 800, 'en', { touch });
+    try {
+      for (const lang of ['en', 'sk', 'en']) {
+        await check(width, 'AL-H1 search hint', `(${lang}${touch ? ', touch' : ''}): the hint fits its field; the long one shows whenever it fits`, async () => {
+          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:'language'})`, 3000, 'language');
+          await settle(page);
+          const m = await page.ev(`(()=>{const i=document.querySelector('#f-search'),s=getComputedStyle(i),w=(text)=>{const n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;n.textContent=text;document.body.append(n);const x=n.getBoundingClientRect().width;n.remove();return x};
+            return {ph:i.placeholder,room:i.offsetWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-parseFloat(s.borderLeftWidth)-parseFloat(s.borderRightWidth),shown:w(i.placeholder),long:w(${JSON.stringify(UI[lang].r2_searchph)}),over:s.textOverflow}})()`);
+          if (lang === 'sk' || width === 600) {
+            const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height: 60, scale: 2 } });
+            await writeFile(`${shots}/search-${width}-${lang}${touch ? '-touch' : ''}.png`, Buffer.from(data, 'base64'));
+          }
+          assert(m.shown <= m.room + 0.5, `hint cut off: ${JSON.stringify(m)}`);
+          assert((m.long <= m.room) === (m.ph === UI[lang].r2_searchph) && [UI[lang].r2_searchph, UI[lang].search_2].includes(m.ph), `wrong hint: ${JSON.stringify(m)}`);
+          assert(m.over === 'ellipsis', `no ellipsis safety net: ${m.over}`);
+        });
+      }
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // Phones: one hairline under the header, and the Filters sheet's points field
+  // and bottom actions.
+  for (const [width, lang] of [[390, 'en'], [320, 'sk'], [320, 'en']]) {
+    const page = await open(width, 844, lang);
+    try {
+      await check(width, 'AL-H2 header hairline', `(${lang}): between the header and the count row only white, no grey stripe`, async () => {
+        const m = await page.ev(`(()=>{const hd=document.querySelector('.hd').getBoundingClientRect(),st=document.querySelector('.status').getBoundingClientRect(),panel=getComputedStyle(document.querySelector('.hd')).backgroundColor;
+          const bg=(n)=>{for(;n;n=n.parentElement){const c=getComputedStyle(n).backgroundColor;if(c!=='rgba(0, 0, 0, 0)')return c}return 'none'};const bad=[];
+          for(let y=Math.ceil(hd.bottom);y<Math.floor(st.top)+1;y++)for(const x of [1,innerWidth/2,innerWidth-1]){const c=bg(document.elementFromPoint(x,y+0.5));if(c!==panel)bad.push([x,y,c])}
+          return {gap:st.top-hd.bottom,bad,fslot:getComputedStyle(document.querySelector('.fslot')).borderBottomWidth}})()`);
+        assert(m.bad.length === 0 && m.fslot === '0px' && m.gap <= 2, `stripe under the header: ${JSON.stringify(m)}`);
+      });
+      await check(width, 'AL-H3 Filters sheet', `(${lang}): the points hint fits; Edit my answers first; its text, Copy link and the help share the left edge`, async () => {
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet'})`, 3000, 'sheet');
+        await settle(page);
+        await shoot(page, `sheet-${width}-${lang}-top`);
+        const m = await page.ev(`(()=>{const tb=${textBox},b=document.querySelector('.sheet-b'),bs=getComputedStyle(b),edge=b.getBoundingClientRect().left+parseFloat(bs.paddingLeft);
+          const i=document.querySelector('#f-points'),s=getComputedStyle(i),n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+getComputedStyle(i,'::placeholder').fontWeight+' '+getComputedStyle(i,'::placeholder').fontSize+' '+s.fontFamily;n.textContent=i.placeholder;document.body.append(n);const ph=n.getBoundingClientRect().width;n.remove();
+          const edit=document.querySelector('.sheet-b .sheet-edit'),copy=document.querySelector('.sheet-b #f-copy'),help=document.querySelector('.sheet-b #f-copy-help');
+          const prev=[...b.querySelectorAll('.more-filters>*')].filter(x=>x.getBoundingClientRect().height>0).at(-1);
+          const box=document.querySelector('.sheet-b .f-pts');
+          return {edge,ph,room:i.offsetWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),first:b.querySelector('.more-filters>:not([hidden])')===edit,
+            edit:tb(edit).left,copy:copy.getBoundingClientRect().left,help:tb(help).left,gap:copy.getBoundingClientRect().top-prev.getBoundingClientRect().bottom,
+            boxOver:box.scrollWidth-box.clientWidth,boxH:box.getBoundingClientRect().height,sw:b.scrollWidth-b.clientWidth}})()`);
+        await page.ev(`document.querySelector('.sheet-b').scrollTop=1e5`);
+        await settle(page);
+        await shoot(page, `sheet-${width}-${lang}-bottom`);
+        assert(m.ph <= m.room + 0.5, `points hint cut off: ${JSON.stringify(m)}`);
+        assert(m.first, 'Edit my answers is not first in the sheet');
+        assert([m.edit, m.copy, m.help].every((x) => Math.abs(x - m.edge) <= 1), `left edges differ: ${JSON.stringify(m)}`);
+        assert(m.gap <= 17, `gap above Copy link: ${m.gap}`);
+        assert(m.boxOver <= 0 && m.sw <= 0, `overflow: ${JSON.stringify(m)}`);
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // Focus rings: the wordmark is not touched by the logo's ring; SK/EN keep
+  // theirs inside the button, clear of the pill's border.
+  for (const width of [1280, 390]) {
+    const page = await open(width, 800, 'en');
+    try {
+      await check(width, 'AL-H4 focus rings', 'logo ring clear of "Finder"; language ring inside its button', async () => {
+        await page.key('Shift', 'ShiftLeft', 16);
+        if (width >= 701) {
+          await page.ev(`document.querySelector('.hd .mark').focus()`);
+          const m = await page.ev(`(()=>{const k=document.querySelector('.hd .mark'),h=(${textBox})(k.querySelector('h1'));return {vis:k.matches(':focus-visible'),gap:k.getBoundingClientRect().right-h.right}})()`);
+          assert(m.vis && m.gap >= 4, `logo ring touches the wordmark: ${JSON.stringify(m)}`);
+        }
+        await page.ev(`document.querySelector('[data-language=sk]').focus()`);
+        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),s=getComputedStyle(b),r=b.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible'),offset:o,width:parseFloat(s.outlineWidth)}})()`);
+        assert(l.vis && l.offset + l.width <= 0, `language ring outside its button: ${JSON.stringify(l)}`);
+      });
+    } finally { await page.close(); }
+  }
+
+  // My list toolbar. From 600 px the four tools are one row of equal buttons
+  // (Clear at the right end, Group by above them below 1024 px), their labels
+  // on one centre line; the CSV note is its own line under them.
+  const openList = async (page) => {
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'not in My list'})`, 5000, 'My list');
+    await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+    await settle(page);
+  };
+  const tools = `(()=>{const tb=${textBox},box=(n)=>n.getBoundingClientRect(),sel=['#ml-share>summary','#export-csv','#print-shortlist','#clear-shortlist'];
+    const b=sel.map(q=>{const n=document.querySelector(q),r=box(n),t=tb(n.querySelector('span')),s=getComputedStyle(n);return {q,top:r.top,bottom:r.bottom,left:r.left,right:r.right,h:r.height,mid:(t.top+t.bottom)/2,lines:(()=>{const g=document.createRange();g.selectNodeContents(n.querySelector('span'));return new Set([...g.getClientRects()].map(x=>Math.round(x.top))).size})(),
+      fs:s.fontSize,border:s.borderTopStyle+' '+s.borderTopWidth,icon:(n.querySelector('svg')&&getComputedStyle(n.querySelector('svg')).display!=='none')||false}});
+    const g=box(document.querySelector('.ml-group')),note=document.querySelector('.ml-export-note'),nr=box(note),card=box(document.querySelector('#ml-tools'));
+    return {b,group:{left:g.left,bottom:g.bottom,top:g.top},note:{shown:getComputedStyle(note).display!=='none'&&nr.height>0,top:nr.top,left:nr.left},cardRight:card.right-parseFloat(getComputedStyle(document.querySelector('#ml-tools')).paddingRight),sw:document.documentElement.scrollWidth-innerWidth}})()`;
+  for (const [width, lang] of [[1280, 'en'], [1280, 'sk'], [1024, 'sk'], [700, 'sk'], [700, 'en'], [600, 'en'], [600, 'sk']]) {
+    const page = await open(width, 900, lang, { saves: 3 });
+    try {
+      await check(width, 'AL-M1 My list tools', `(${lang}): Share, Export, Print and Clear one row of equal buttons, Clear at the right end, labels on one line; the CSV note below`, async () => {
+        await openList(page);
+        const m = await page.ev(tools);
+        await shoot(page, `mylist-${width}-${lang}`);
+        const [share, , , clear] = m.b;
+        assert(m.b.every((x) => Math.abs(x.top - share.top) <= 1 && Math.abs(x.h - share.h) <= 0.5 && Math.abs(x.mid - share.mid) <= 1 && x.fs === share.fs && x.lines === 1), `buttons differ: ${JSON.stringify(m.b)}`);
+        assert(clear.border === '1px solid' || clear.border === 'solid 1px', `Clear has no border: ${clear.border}`);
+        assert(Math.abs(clear.right - m.cardRight) <= 1, `Clear not at the right end: ${JSON.stringify([clear, m.cardRight])}`);
+        if (width < 1024) assert(m.group.bottom <= share.top, `Group by not above the buttons: ${JSON.stringify(m)}`);
+        assert(m.note.shown && m.note.top >= Math.max(...m.b.map((x) => x.bottom)) && Math.abs(m.note.left - m.group.left) <= 1, `CSV note not its own line: ${JSON.stringify(m.note)}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        // Open Share: the note stays below and the page does not widen.
+        await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        await settle(page);
+        await shoot(page, `mylist-${width}-${lang}-share`);
+        assert(await page.ev(`document.documentElement.scrollWidth===innerWidth`), 'Share widened the page');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // Phones: the 2 x 2 grid. Every label on one line in both languages; under
+  // 360 px no icons; equal 44 px buttons.
+  for (const [width, lang] of [[390, 'sk'], [390, 'en'], [320, 'sk'], [320, 'en']]) {
+    const page = await open(width, 844, lang, { saves: 3 });
+    try {
+      await check(width, 'AL-M3 phone tools', `(${lang}): four equal 44 px buttons, each label on one line${width < 360 ? ', no icons' : ''}`, async () => {
+        await openList(page);
+        const m = await page.ev(tools);
+        await shoot(page, `mylist-${width}-${lang}`);
+        assert(m.b.every((x) => x.lines === 1 && x.h >= 44 && Math.abs(x.h - m.b[0].h) <= 0.5), `labels wrap or heights differ: ${JSON.stringify(m.b)}`);
+        if (width < 360) assert(m.b.every((x) => !x.icon), `icons at ${width}: ${JSON.stringify(m.b)}`);
+        else assert(m.b.slice(1).every((x) => x.icon), `icons missing at ${width}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        const badge = await page.ev(`(()=>{const b=document.querySelector('#header-list').getBoundingClientRect(),c=document.querySelector('#header-list .badge').getBoundingClientRect();return c.left>=b.left&&c.right<=b.right&&c.top>=b.top&&c.bottom<=b.bottom})()`);
+        assert(badge, 'the My list count overlaps its button\'s edge');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // A shared list hides Export, so it hides the note about Export too.
+  for (const width of [1280, 390]) {
+    let page = await open(width, width < 600 ? 844 : 900, 'en', { saves: 3 });
+    const ids = page.ids;
+    await page.close();
+    page = await open(width, width < 600 ? 844 : 900, 'en', { query: `&list=${ids.join(',')}` });
+    try {
+      await check(width, 'AL-M2 shared list', 'no CSV note without Export', async () => {
+        await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list')&&!document.querySelector('#ml-save-shared').hidden,why:'not the shared view'})`, 5000, 'shared view');
+        await settle(page);
+        await shoot(page, `mylist-shared-${width}`);
+        assert(await page.ev(`getComputedStyle(document.querySelector('#export-csv')).display==='none' && getComputedStyle(document.querySelector('.ml-export-note')).display==='none'`), 'the CSV note shows on a shared list');
+      });
+    } finally { await page.close(); }
+  }
+  // An empty My list: one "Back to all programmes"; the card lines up with the
+  // pane on wide screens and the bar keeps its rounded bottom on phones.
+  for (const [width, lang] of [[1280, 'en'], [390, 'en'], [390, 'sk']]) {
+    const page = await open(width, width < 600 ? 844 : 900, lang);
+    try {
+      await check(width, 'AL-M4 empty My list', `(${lang}): one way back; the card lines up${width < 600 ? ', the bar is a whole card' : ' with the pane'}`, async () => {
+        await openList(page);
+        const m = await page.ev(`(()=>{const v=(n)=>getComputedStyle(n).display!=='none'&&n.getBoundingClientRect().height>0,back=${JSON.stringify(UI[lang].back_to_all_programmes)};
+          const n=[...document.querySelectorAll('button')].filter(b=>v(b)&&b.textContent.trim()===back).length,bar=document.querySelector('#shortlist-bar'),bs=getComputedStyle(bar),e=document.querySelector('#empty-state').getBoundingClientRect(),p=document.querySelector('#pane');
+          return {n,emptyTop:e.top,paneTop:p&&v(p)?p.getBoundingClientRect().top:null,radius:bs.borderBottomLeftRadius,border:bs.borderBottomWidth,gap:e.top-bar.getBoundingClientRect().bottom}})()`);
+        await shoot(page, `mylist-empty-${width}-${lang}`);
+        assert(m.n === 1, `${m.n} back buttons`);
+        if (width >= 1200) assert(m.paneTop !== null && Math.abs(m.emptyTop - m.paneTop) <= 1, `card and pane tops differ: ${JSON.stringify(m)}`);
+        else assert(m.radius !== '0px' && m.border !== '0px' && m.gap >= 8 && m.gap <= 13, `bar looks cut off: ${JSON.stringify(m)}`);
+      });
+    } finally { await page.close(); }
+  }
+  // Setup. Step 2 never scrolls sideways; on phones Next/Finish is full width
+  // on its own row with Skip and Back together under it; every footer button
+  // is 44 px; the done screen has no empty band; Skip's ring clears its hint.
+  const next = (page, what) => page.click(`document.querySelector('.ob-foot>.btn-p')`, what);
+  const foot = `(()=>{const d=document.querySelector('#onboarding'),box=(n)=>n.getBoundingClientRect(),f=d.querySelector('.ob-foot'),fs=getComputedStyle(f),fr=box(f),body=d.querySelector('.ob-body');
+    const vis=[...f.querySelectorAll('.btn')].filter(n=>n.offsetParent);const p=f.querySelector('.btn-p'),skip=f.querySelector('.skipwrap .btn'),back=vis.find(n=>n!==p&&n!==skip);
+    const r=(n)=>n&&(({top,bottom,left,right,height})=>({top,bottom,left,right,height}))(box(n));
+    return {primary:r(p),skip:r(skip),back:r(back),heights:vis.map(n=>box(n).height),edge:[fr.left+parseFloat(fs.paddingLeft),fr.right-parseFloat(fs.paddingRight)],over:body.scrollWidth-body.clientWidth,step:d.querySelector('.ob-n')?.textContent}})()`;
+  for (const [width, lang] of [[320, 'sk'], [320, 'en'], [390, 'sk'], [390, 'en']]) {
+    const page = await open(width, 844, lang, { onboarding: null });
+    try {
+      await check(width, 'AL-S1 setup footer', `(${lang}): no sideways scroll; Next full width on top, Skip and Back on one row, 44 px, on every step`, async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        for (let step = 1; step <= 5; step++) {
+          await settle(page);
+          const m = await page.ev(foot);
+          if (step === 2 || step === 5) await shoot(page, `setup-${width}-${lang}-s${step}`);
+          assert(m.over <= 0, `step ${step} scrolls sideways by ${m.over}`);
+          assert(Math.abs(m.primary.left - m.edge[0]) <= 1 && Math.abs(m.primary.right - m.edge[1]) <= 1, `step ${step}: primary not full width ${JSON.stringify(m)}`);
+          assert(m.primary.bottom <= m.skip.top, `step ${step}: primary not on top ${JSON.stringify(m)}`);
+          if (step > 1) assert(m.back && Math.abs(m.back.top - m.skip.top) <= 1 && Math.abs(m.back.right - m.edge[1]) <= 1, `step ${step}: Skip and Back not one row ${JSON.stringify(m)}`);
+          assert(m.heights.every((h) => h >= 44), `step ${step}: heights ${m.heights}`);
+          // Tab order must follow the primary row, then Skip and Back below.
+          await page.ev(`document.querySelector('.ob-foot>.btn-p').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement === document.querySelector('.skipwrap button')`), `step ${step}: Tab from Next did not reach Skip`);
+          if (step > 1) {
+            await page.key('Tab', 'Tab', 9);
+            assert(await page.ev(`document.activeElement === document.querySelector('.ob-foot>.btn:not(.btn-p)')`), `step ${step}: Tab from Skip did not reach Back`);
+          }
+          if (step === 2 && width === 390 && lang === 'en') {
+            await page.ev(`document.querySelector('.ob-foot>.btn-p').focus()`);
+            for (const w of [700, 390]) {
+              await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: 844, deviceScaleFactor: 1, mobile: true }); await settle(page);
+              assert(await page.ev(`(()=>{const f=document.querySelector('.ob-foot'),p=f.querySelector('.btn-p');return document.activeElement===p && (${w}<600 ? f.firstElementChild===p : f.lastElementChild===p)})()`), `at ${w}: footer order or focus lost at the breakpoint`);
+            }
+          }
+          if (step < 5) await next(page, `step ${step + 1}`);
+        }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  for (const width of [1280, 600, 390]) {
+    const page = await open(width, width < 600 ? 844 : 900, 'en', { onboarding: null });
+    try {
+      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring clears its hint', async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await settle(page);
+        await page.key('Shift', 'ShiftLeft', 16);
+        await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
+        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),s=getComputedStyle(b),r=document.createRange();r.selectNodeContents(document.querySelector('.skipwrap small'));return {vis:b.matches(':focus-visible'),clear:r.getBoundingClientRect().top-(b.getBoundingClientRect().bottom+parseFloat(s.outlineOffset)+parseFloat(s.outlineWidth))}})()`);
+        assert(ring.vis && ring.clear >= 0, `Skip's ring touches the hint: ${JSON.stringify(ring)}`);
+        const heights = [];
+        for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
+        await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
+        await settle(page);
+        const done = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),last=[...d.querySelectorAll('.ob-done>*')].at(-1).getBoundingClientRect(),f=d.querySelector('.ob-foot').getBoundingClientRect();return {gap:f.top-last.bottom,heights:[...d.querySelectorAll('.ob-foot .btn')].map(n=>n.getBoundingClientRect().height)}})()`);
+        await shoot(page, `setup-done-${width}`);
+        assert([...heights, ...done.heights].every((h) => Math.abs(h - 44) <= 0.5), `button heights differ: ${JSON.stringify([heights, done.heights])}`);
+        assert(done.gap <= 24, `empty band above the done buttons: ${done.gap}`);
+      });
+    } finally { await page.close(); }
+  }
+
+  // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
+  // the first question's line.
+  for (const [width, lang] of [[1280, 'en'], [600, 'sk'], [390, 'en']]) {
+    const page = await open(width, width < 600 ? 844 : 900, lang);
+    try {
+      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line${width >= 600 ? '; heading on the first question\'s line' : ''}`, async () => {
+        // Use the empty list so rows still filling in cannot move the footer
+        // out of the screenshot after scrolling to it.
+        await openList(page);
+        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'start',behavior:'instant'})`);
+        await settle(page);
+        const m = await page.ev(`(()=>{const first=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getClientRects()[0]};
+          const qs=[...document.querySelectorAll('.faq summary')].map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
+          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('.faq summary span'));return {qs,head:h.top-q.top,visible:q.top>=0&&q.bottom<=innerHeight}})()`);
+        assert(m.visible, 'the FAQ is outside the screenshot');
+        await shoot(page, `faq-${width}-${lang}`);
+        assert(m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
+        if (width >= 600) assert(Math.abs(m.head) <= 1, `heading and first question differ by ${m.head}`);
       });
     } finally { await page.close(); }
   }
@@ -2902,7 +3194,8 @@ async function main() {
     await runBatch3A(base);
     await runBatch3B(base);
     await runBatch3C(base);
-    await runAlignListCompare(base); }
+    await runAlignListCompare(base);
+    await runAlignChromeSetup(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
