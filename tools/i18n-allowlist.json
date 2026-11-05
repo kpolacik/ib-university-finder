@@ -841,7 +841,13 @@
       "option",
       "options",
       "radio",
-      "radiogroup"
+      "radiogroup",
+      "instant",
+      "smooth",
+      "small",
+      "opt-note",
+      "f-deadline-open-note",
+      "open"
     ],
     "js/saved-state.js": [
       "./filters.js",

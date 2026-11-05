@@ -1144,7 +1144,290 @@ async function runReview2(base) {
 }
 
 // Batch 2 workstreams (plans/design-round2/batch2-plan.md); each fills only its own.
-async function runBatch2A(base) {}
+async function runBatch2A(base) {
+  // The watchdog is one limit for the whole run and the checks before this already
+  // take most of it. A fresh 120 s here still catches a hang in this section.
+  watchdog.refresh();
+  const open = async (query, width, height) => {
+    const page = await openPage(`${base}${query}`, width, height);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+    await page.waitFor(ready, 15000, 'the page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'the reloaded page');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise((done)=>requestAnimationFrame(()=>requestAnimationFrame(done)))`);
+  const resize = async (page, width, height, mobile = false) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await page.waitFor(`({ok:innerWidth===${width},why:'width '+innerWidth})`, 3000, `width ${width}`);
+    await settle(page);
+  };
+  const language = async (page, lang) => {
+    await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+    await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
+    await settle(page);
+  };
+  const clickAt = async (page, x, y) => {
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
+  // What a screen reader gets, from the browser's own accessibility tree.
+  const axNode = async (page, selector) => {
+    const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+    return nodes[0];
+  };
+
+  let page = await open('?ui=sk', 320, 640);
+  try {
+    for (const lang of ['sk', 'en']) {
+      await language(page, lang);
+      for (const width of [320, 390, 599]) {
+        await resize(page, width, 800);
+        await check(width, 'R4A', `logo (${lang}): a 36 px tile in a 44 px hit area that stays off Search`, async () => {
+          const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.mono'),k=box('.mark'),q=box('#f-search');
+            return {tile:[t.width,t.height],mark:[k.width,k.height],left:k.left,over:hits(k,q),off:Math.abs((t.left+t.right)-(k.left+k.right))/2,offY:Math.abs((t.top+t.bottom)-(k.top+k.bottom))/2,sw:document.documentElement.scrollWidth,w:innerWidth,search:q.width}})()`);
+          assert(m.tile[0] === 36 && m.tile[1] === 36, `tile ${m.tile}`);
+          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.left >= 0, `hit area ${m.mark} at ${m.left}`);
+          assert(m.off <= 1 && m.offY <= 1, `tile not centred: ${m.off}, ${m.offY}`);
+          assert(!m.over, 'the logo overlaps Search');
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          assert(m.search >= 80, `Search is only ${m.search} wide`);
+        });
+      }
+    }
+  } finally { await page.close(); }
+
+  page = await open('?ui=sk', 700, 800);
+  try {
+    for (const lang of ['sk', 'en']) {
+      await language(page, lang);
+      for (const width of [600, 650, 700]) {
+        await check(width, 'R4A', `logo on a touch screen (${lang}): keeps off Search, same header height, a visible focus ring`, async () => {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+          await resize(page, width, 800);
+          const fine = await page.ev(`({h:document.querySelector('.hd').offsetHeight,tile:document.querySelector('.mono').offsetWidth,coarse:matchMedia('(pointer:coarse)').matches})`);
+          assert(!fine.coarse && fine.tile === 30, `fine pointer tile: ${JSON.stringify(fine)}`);
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+          await resize(page, width, 800, true);
+          assert(await page.ev(`matchMedia('(pointer:coarse)').matches`), 'touch emulation did not give pointer:coarse');
+          await page.ev(`document.querySelector('.skip-link').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          // An outline is not hit-tested, so elementFromPoint can only test the
+          // box; the ring's outer edge is checked against Search by geometry.
+          const m = await page.ev(`(()=>{${hits}const mark=document.querySelector('.mark'),k=mark.getBoundingClientRect(),q=document.querySelector('#f-search').getBoundingClientRect(),s=getComputedStyle(mark),grow=parseFloat(s.outlineWidth)+parseFloat(s.outlineOffset),ring={left:k.left-grow,right:k.right+grow,top:k.top-grow,bottom:k.bottom+grow};
+            const corners=[[k.left+1,k.top+1],[k.right-1,k.top+1],[k.left+1,k.bottom-1],[k.right-1,k.bottom-1]].map(([x,y])=>document.elementFromPoint(x,y));
+            return {focused:document.activeElement===mark&&mark.matches(':focus-visible'),style:s.outlineStyle,grow,over:hits(k,q),ringOver:hits(ring,q),inside:ring.left>=0&&ring.top>=0&&ring.right<=innerWidth&&ring.bottom<=innerHeight,covered:corners.filter(n=>!mark.contains(n)).map(n=>n&&(n.id||n.className)),mark:[k.width,k.height],tile:document.querySelector('.mono').offsetWidth,h:document.querySelector('.hd').offsetHeight,sw:document.documentElement.scrollWidth,w:innerWidth}})()`);
+          await page.ev(`document.activeElement.blur()`);
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+          await resize(page, width, 800);
+          assert(m.focused && m.style !== 'none' && m.grow > 0, `no focus ring: ${JSON.stringify(m)}`);
+          assert(!m.over && !m.ringOver && m.inside, `ring or hit area collides: ${JSON.stringify(m)}`);
+          assert(m.covered.length === 0, `covered by ${m.covered}`);
+          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.tile === 36, `sizes ${JSON.stringify(m)}`);
+          assert(m.h === fine.h, `header ${m.h}, fine pointer ${fine.h}`);
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+        });
+      }
+    }
+  } finally { await page.close(); }
+
+  page = await open('?ui=en&country=Ireland&points=36', 1280, 900);
+  try {
+    await page.send('Accessibility.enable');
+    const before = await page.ev(`location.search`);
+    const scrollAndClick = async (y, atBottom) => {
+      await page.ev(`document.activeElement.blur();window.scrollTo({top:${y},behavior:'instant'})`);
+      await settle(page);
+      assert(await page.ev(`scrollY===${y} && !document.body.classList.contains('compact')`), 'not at the scroll position, or compact');
+      const r = await page.ev(`(()=>{const r=document.querySelector('.mark').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,bottom:r.bottom}})()`);
+      await clickAt(page, r.x, atBottom ? r.bottom - 3 : r.y);
+    };
+    const landed = () => page.ev(`({search:location.search,hash:location.hash,mark:document.activeElement===document.querySelector('.mark'),stayed:window.__stayed===true,list:document.querySelectorAll('#results .row').length})`);
+    const expectLanded = async () => {
+      await page.waitFor(`({ok:scrollY===0,why:'scrollY '+scrollY})`, 5000, 'the top of the page');
+      const m = await landed();
+      assert(m.search === before && m.hash === '' && m.mark && m.stayed && m.list > 0, JSON.stringify(m));
+    };
+    await page.ev(`window.__stayed=true`);
+    await check(1280, 'R4B', 'logo click scrolls to the top; filters, address and focus stay', async () => {
+      await scrollAndClick(120, false);
+      await expectLanded();
+    });
+    await check(1280, 'R4B', 'Enter on the logo does the same; reduced motion is instant', async () => {
+      await page.ev(`window.scrollTo({top:120,behavior:'instant'});document.querySelector('.mark').focus()`);
+      await settle(page);
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await expectLanded();
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      try {
+        await scrollAndClick(120, false);
+        assert(await page.ev(`scrollY`) === 0, 'reduced motion: the scroll was not instant');
+        await expectLanded();
+      } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+    });
+    await resize(page, 390, 844);
+    await check(390, 'R4B', 'logo click on a phone scrolls to the top; filters, address and focus stay', async () => {
+      await scrollAndClick(40, true);
+      await expectLanded();
+    });
+    for (const [width, lang] of [[320, 'sk'], [390, 'en'], [650, 'sk'], [650, 'en'], [1280, 'sk'], [1280, 'en']]) {
+      await language(page, lang);
+      await resize(page, width, 844);
+      await check(width, 'R4B', `the logo is named and the page keeps its h1 (${lang})`, async () => {
+        const link = await axNode(page, '.mark'), heading = await axNode(page, '.mark h1');
+        const name = lang === 'sk' ? 'University Finder, späť na začiatok' : 'University Finder, back to top';
+        assert(link.role?.value === 'link' && link.name?.value === name, `link: ${link.role?.value} "${link.name?.value}"`);
+        assert(!heading.ignored && heading.role?.value === 'heading' && heading.name?.value === 'University Finder', `heading: ${JSON.stringify([heading.ignored, heading.role?.value, heading.name?.value])}`);
+        const m = await page.ev(`(()=>{const h=document.querySelector('.mark h1'),r=h.getBoundingClientRect(),s=getComputedStyle(h);return {w:r.width,h:r.height,display:s.display,clip:s.clipPath,text:h.textContent,sw:document.documentElement.scrollWidth,iw:innerWidth}})()`);
+        assert(m.display !== 'none' && m.text === 'University Finder', JSON.stringify(m));
+        if (width <= 700) assert(m.w <= 1 && m.h <= 1 && m.clip === 'inset(50%)', `the wordmark is painted: ${JSON.stringify(m)}`);
+        else assert(m.w > 50 && m.h > 10 && m.clip === 'none', `the wordmark is not visible: ${JSON.stringify(m)}`);
+        assert(m.sw === m.iw, `page is ${m.sw} wide at ${m.iw}`);
+      });
+    }
+  } finally { await page.close(); }
+
+  // Only the visible direct children of a row, and nothing inside compound controls
+  // or closed panels: those have their own gaps and do not wrap as whole controls.
+  const rowsNow = `(()=>{const shown=(n)=>!n.hidden&&getComputedStyle(n).display!=='none',box=(n)=>n.getBoundingClientRect(),bad=[];
+    const kids=[...document.querySelectorAll('.fbar .more-filters>.frow')].flatMap((row)=>[...row.children].filter(shown));
+    const lines=[];for(const n of kids){const r=box(n),line=lines.find((l)=>Math.abs(l.top-r.top)<=2);if(line)line.items.push(n);else lines.push({top:r.top,items:[n]})}
+    for(const n of kids){const r=box(n);if(r.left<0||r.right>innerWidth)bad.push('outside: '+n.id+' '+Math.round(r.left)+'-'+Math.round(r.right))}
+    lines.forEach((line,i)=>{line.items.sort((a,b)=>box(a).left-box(b).left);
+      line.items.forEach((n,k)=>{if(k){const gap=box(n).left-box(line.items[k-1]).right;if(Math.abs(gap-8)>1)bad.push('gap '+gap.toFixed(1)+' before '+(n.id||n.className))}});
+      if(i){const before=Math.max(...lines[i-1].items.map((n)=>box(n).bottom)),gap=line.top-before;if(Math.abs(gap-8)>1)bad.push('line gap '+gap.toFixed(1)+' above '+(line.items[0].id||line.items[0].className))}});
+    for(const n of kids.flatMap((k)=>[...k.querySelectorAll('summary,label,button')]).filter((n)=>shown(n)&&!n.closest('.dropdown-panel')&&n.offsetWidth)){
+      if(n.scrollWidth>n.clientWidth+1)bad.push('clipped: '+n.textContent.trim().slice(0,30));
+      if(getComputedStyle(n).textOverflow==='ellipsis')bad.push('ellipsis: '+n.textContent.trim().slice(0,30))}
+    return {bad,lines:lines.length,budgetLast:document.querySelector('.facets-row').lastElementChild.id==='dd-budget',sw:document.documentElement.scrollWidth,w:innerWidth}})()`;
+  // Panels open one at a time, after the toggle event has placed them, with their
+  // opening animation finished so the scale is not measured.
+  const panelsNow = `(async()=>{const frame=()=>new Promise((done)=>requestAnimationFrame(()=>setTimeout(done))),bad=[];window.scrollTo({top:0,behavior:'instant'});
+    for(const d of document.querySelectorAll('.fbar .frow>.dropdown')){d.open=true;await frame();await frame();const panel=d.querySelector('.dropdown-panel');
+      for(const a of panel.getAnimations())a.finish();const r=panel.getBoundingClientRect();
+      if(r.left<0||r.right>innerWidth||r.bottom>innerHeight)bad.push(d.id+' panel at '+[r.left,r.right,r.bottom].map(Math.round));
+      if(panel.scrollWidth>panel.clientWidth+1)bad.push(d.id+' panel overflows sideways');
+      for(const n of panel.querySelectorAll('.option,.pop-f'))if(n.offsetWidth&&n.scrollWidth>n.clientWidth+1)bad.push(d.id+' clipped: '+n.textContent.trim().slice(0,30));
+      for(const n of panel.querySelectorAll('.option *,.pop-f *,.fld *')){const b=n.getBoundingClientRect();if(b.width&&(b.right>r.right-1||b.left<r.left+1))bad.push(d.id+' outside its panel: '+n.textContent.trim().slice(0,30))}
+      d.open=false;await frame()}
+    return bad})()`;
+  const placeholderNow = `(()=>{const n=document.querySelector('#f-points'),s=getComputedStyle(n),p=getComputedStyle(n,'::placeholder'),c=document.createElement('canvas').getContext('2d');c.font=p.font;
+    return {text:n.placeholder,need:c.measureText(n.placeholder).width,room:n.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)}})()`;
+  const long = 'subject=Law&subject=Psychology&subject=Economics&country=Ireland&country=Germany&country=Netherlands&fee=12000&living=900&deadline=60';
+  for (const [state, query] of [['no filters', ''], ['long selections', `&${long}`]]) {
+    page = await open(`?ui=en${query}`, 1280, 900);
+    try {
+      if (query) assert(await page.ev(`document.querySelector('#dd-subjects-count-number').textContent==='3' && document.querySelector('#dd-countries-count-number').textContent==='3' && document.querySelector('#budget-value').textContent==='· 2' && document.querySelector('#dd-deadline .scalar-count').textContent==='· 1'`), 'the long selections did not apply');
+      for (const lang of ['en', 'sk']) {
+        await language(page, lang);
+        for (const [width, height] of [[600, 900], [640, 450], [700, 900], [800, 900], [1023, 900], [1024, 900], [1100, 900], [1199, 900], [1200, 900], [1280, 900], [1440, 900]]) {
+          await resize(page, width, height);
+          await check(width, 'R4C', `filter rows (${lang}, ${state}): whole controls, even gaps, nothing clipped`, async () => {
+            // A closed panel stays drawn for its 250 ms exit, so the last one measured at
+            // the previous width can widen the page for a moment; a real overflow stays.
+            await page.waitFor(`({ok:document.documentElement.scrollWidth===innerWidth,why:'page is '+document.documentElement.scrollWidth+' wide at '+innerWidth})`, 1000, 'no sideways scroll');
+            const m = await page.ev(rowsNow);
+            assert(m.bad.length === 0, m.bad.join(' | '));
+            assert(m.budgetLast, 'Budget is not the last facet in the second row');
+            if (lang === 'en' && !query && width >= 1024) assert(m.lines === 2, `${m.lines} rows`);
+            if (width === 1024 || width === 1100) {
+              const p = await page.ev(placeholderNow);
+              assert(p.need <= p.room, `"${p.text}" needs ${p.need.toFixed(1)}, has ${p.room}`);
+            }
+            const panels = await page.ev(panelsNow);
+            assert(panels.length === 0, panels.join(' | '));
+          });
+        }
+      }
+    } finally { await page.close(); }
+  }
+  const noteNow = `(()=>{const note=document.querySelector('#f-deadline-open-note'),r=note.getBoundingClientRect(),s=getComputedStyle(note),label=document.querySelector('#dd-deadline input[value=open]').closest('.option'),text=label.querySelector('span').getBoundingClientRect(),panel=document.querySelector('#dd-deadline .dropdown-panel').getBoundingClientRect(),range=document.createRange(),sheet=document.querySelector('#filter-sheet .sheet-b');range.selectNodeContents(note);
+    const tops=new Set([...range.getClientRects()].map((b)=>Math.round(b.top)));
+    return {text:note.textContent,visible:r.height>0&&s.display!=='none'&&s.visibility!=='hidden',below:r.top>=label.getBoundingClientRect().bottom-1,indent:Math.abs(range.getBoundingClientRect().left-text.left),fits:r.left>=panel.left&&r.right<=panel.right,lines:tops.size,
+      rows:[...document.querySelectorAll('#dd-deadline .option')].map((n)=>n.offsetHeight),described:[...document.querySelectorAll('#dd-deadline input[aria-describedby],#dd-exam input[aria-describedby]')].map((n)=>n.value),sw:document.documentElement.scrollWidth,w:innerWidth,sheet:sheet&&sheet.scrollWidth-sheet.clientWidth}})()`;
+  page = await open('?ui=en', 1280, 900);
+  try {
+    await page.send('Accessibility.enable');
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      for (const width of [1024, 1200, 1280, 1440]) {
+        await resize(page, width, 900);
+        await check(width, 'R4C', `Budget panel by keyboard (${lang}): opens inside the right edge, reaches its fields, Escape returns`, async () => {
+          await page.ev(`window.scrollTo({top:0,behavior:'instant'});document.querySelector('#dd-exam summary').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement===document.querySelector('#dd-budget summary')`), 'Tab did not reach the Budget summary');
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`(()=>{const d=document.querySelector('#dd-budget'),p=d.querySelector('.dropdown-panel'),r=p.getBoundingClientRect();return {ok:d.open&&!p.getAnimations().some((a)=>a.playState==='running')&&r.left>=0&&r.right<=innerWidth,why:JSON.stringify([d.open,r.left,r.right,innerWidth])}})()`, 5000, 'the Budget panel inside the viewport');
+          const reached = [];
+          for (let i = 0; i < 6 && !reached.includes('f-living'); i++) {
+            await page.key('Tab', 'Tab', 9);
+            reached.push(await page.ev(`document.activeElement.id`));
+          }
+          assert(reached.includes('f-tuition') && reached.includes('f-living'), `Tab reached ${reached}`);
+          await page.key('Escape', 'Escape', 27);
+          assert(await page.ev(`!document.querySelector('#dd-budget').open && document.activeElement===document.querySelector('#dd-budget summary')`), 'Escape did not close Budget and return to its summary');
+          await page.ev(`document.activeElement.blur()`);
+        });
+      }
+    }
+    await resize(page, 390, 844);
+    await check(390, 'R4C', 'Budget is the last facet in the phone sheet', async () => {
+      await page.click(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 5000, 'the sheet');
+      assert(await page.ev(`(()=>{const f=[...document.querySelectorAll('#filter-sheet .frow>.dropdown')],tops=f.map((n)=>n.getBoundingClientRect().top);return f.at(-1).id==='dd-budget' && tops.every((t,i)=>!i||t>tops[i-1])})()`), 'sheet order');
+      await page.key('Escape', 'Escape', 27);
+    });
+    await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet open'})`, 5000, 'the sheet to close');
+    // Text boxes, so this proves a shared centre line and not a baseline; the
+    // baseline is looked at on a screenshot of the same row.
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      for (const width of [600, 800, 1280]) {
+        await resize(page, width, 900);
+        await check(width, 'R4D', `status line (${lang}): the count and Edit my answers read as one line at one size`, async () => {
+          const m = await page.ev(`(()=>{const rect=(n)=>{const r=document.createRange();r.selectNodeContents(n);return [...r.getClientRects()].at(-1)},lead=document.querySelector('.status .count-lead'),edit=document.querySelector('.status .edit-answers'),a=rect(lead.lastChild),b=rect(edit.firstChild);
+            return {centre:Math.abs((a.top+a.bottom)-(b.top+b.bottom))/2,bottom:Math.abs(a.bottom-b.bottom),lead:getComputedStyle(lead).fontSize,edit:getComputedStyle(edit).fontSize,weight:getComputedStyle(edit).fontWeight}})()`);
+          assert(m.centre <= 1 && m.bottom <= 1, JSON.stringify(m));
+          assert(m.lead === '15px' && m.edit === '15px' && m.weight === '600', JSON.stringify(m));
+        });
+      }
+    }
+    await resize(page, 1280, 900);
+    await language(page, 'en');
+    await check(1280, 'R4E', 'the Deadline note sits under "Not passed yet" and describes only that radio', async () => {
+      await page.click(`document.querySelector('#dd-deadline summary')`, 'Deadline');
+      await page.waitFor(`(()=>{const p=document.querySelector('#dd-deadline .dropdown-panel'),r=p.getBoundingClientRect();return {ok:document.querySelector('#dd-deadline').open&&!p.getAnimations().some((a)=>a.playState==='running')&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,why:JSON.stringify([r.left,r.right,r.bottom])}})()`, 5000, 'the Deadline panel inside the viewport');
+      const m = await page.ev(noteNow);
+      assert(m.visible && m.below && m.indent <= 1 && m.fits, JSON.stringify(m));
+      assert(m.rows.every((h) => h >= 40), `radio rows ${m.rows}`);
+      assert(m.described.join() === 'open', `described: ${m.described}`);
+      const radio = await axNode(page, '#dd-deadline input[value=open]');
+      assert(radio.description?.value === m.text && radio.name?.value === 'Not passed yet', `radio reads "${radio.name?.value}" / "${radio.description?.value}"`);
+      await page.key('Escape', 'Escape', 27);
+    });
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      await resize(page, 390, 844);
+      await check(390, 'R4E', `the Deadline note in the phone sheet (${lang}) wraps with no sideways scroll`, async () => {
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 5000, 'the sheet');
+        await page.click(`document.querySelector('#dd-deadline summary')`, 'Deadline');
+        await page.waitFor(`({ok:document.querySelector('#dd-deadline').open && document.querySelector('#f-deadline-open-note').getBoundingClientRect().height>0,why:'not open'})`, 5000, 'the Deadline rows');
+        // The sheet's rows open with a height animation; measure the settled layout.
+        await page.waitFor(`({ok:!document.querySelector('#dd-deadline').getAnimations({subtree:true}).some((a)=>a.playState==='running'),why:'still opening'})`, 5000, 'the rows to settle');
+        const m = await page.ev(noteNow);
+        assert(m.visible && m.below && m.indent <= 1 && m.fits, JSON.stringify(m));
+        assert(m.rows.every((h) => h >= 44), `radio rows ${m.rows}`);
+        assert(m.lines >= 2, `the note is on ${m.lines} line(s)`);
+        assert(m.sw === m.w && m.sheet === 0, `sideways: ${JSON.stringify(m)}`);
+        await page.ev(`document.querySelector('#dd-deadline').open=false`);
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet open'})`, 5000, 'the sheet to close');
+      });
+    }
+  } finally { await page.close(); }
+}
 async function runBatch2B(base) {}
 async function runBatch2C(base) {}
 

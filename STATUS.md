@@ -510,6 +510,11 @@ plans/backlog/wording.md for the translation queue.
   on AC power, a quiet machine and 4× CPU slowdown; the earlier round 1 timing
   does not certify round 2. See *The look of it*.
 
+- **Rolling admission and "Not passed yet".** 21 of the 22 programmes whose notes
+  mention rolling or ongoing admission also have a recorded deadline, so they drop
+  out of that filter once the date passes. The filter's note says so truthfully;
+  the data backfill fixes the dates (Leon, 2026-11-05).
+
 - **Czech gaps** (424 rows): 61 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no

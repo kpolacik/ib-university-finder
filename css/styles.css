@@ -1094,9 +1094,6 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 .sheet-b .pts .step{width:52px}
 .sheet-b .budget>.fld{width:auto}
 .sheet-b .dropdown>summary.inp{width:100%}
-@media (min-width:1024px) and (max-width:1199px){
- .frow{gap:6px}.pts input.inp{width:64px}.pts .step{width:26px}.pts>label{font-size:14px;padding-left:8px}.f-hl>label.switch{font-size:14px}.f-hl .switch .aside{max-width:104px;white-space:normal;line-height:1.1}.seg button{padding:0 6px}
-}
 @media (max-width: 1023px){.maths-control>select{display:block;min-width:148px}.maths-control>.seg{display:none}}
 @media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .copy{margin-top:12px}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
 @media (pointer: coarse),(max-width:599px){.info,.step{min-width:44px;min-height:44px}.chipbox{height:44px}.seg{height:44px}.dropdown>summary.inp{min-height:44px}.pop-f .btn{min-height:44px}.option{min-height:44px}}
@@ -1260,7 +1257,7 @@ html:has(.ob[open]){overflow:hidden}
 .sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
 .sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
 @media (max-width: 599.98px){
- .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.mark h1{display:none}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
+ .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
  .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}
 }
 @media (pointer: coarse),(max-width:599px){
@@ -1285,7 +1282,7 @@ html:has(.ob[open]){overflow:hidden}
 .switch input::after{box-shadow:var(--thumb-shadow)}
 input[type=range]::-webkit-slider-thumb{box-shadow:var(--thumb-shadow)}
 input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
-@media(min-width:600px) and (max-width:700px){.slot{width:36px}.mark h1{display:none}}
+@media(min-width:600px) and (max-width:700px){.slot{width:36px}}
 @container (min-width: 800px){.cols{min-height:39px;align-items:center;padding-block:10px}.cols button{padding:0}.cols .r{white-space:nowrap}}
 @media (pointer:coarse),(max-width:599px){
  .sheet-b .pts input.inp,.budget .inp,.ob .rng-top .inp,.maths-control>select,input[type=range]{min-height:44px}
@@ -1397,6 +1394,52 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .listp>.f-sort>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 }
 /* Batch 2 · A: header and filter bar */
+/* The 30 px tile looked undersized beside the 44 px controls, and its 44 px hit
+   area spilled 8 px over Search because the slot was only 36 px wide (item 1).
+   A fine pointer from 600 px keeps the smaller tile. */
+@media (max-width:599.98px),(pointer:coarse){
+ .mono{width:36px;height:36px;font-size:15px;border-radius:9px}
+ .mark{min-width:44px;min-height:44px}
+}
+@media (max-width:599.98px){
+ .slot{width:44px;height:44px}
+ .mark{position:relative;top:0;width:44px;height:44px;justify-content:center}
+}
+@media (min-width:600px) and (max-width:700px) and (pointer:coarse){
+ .slot{width:44px}
+ .mark{width:44px;justify-content:center}
+}
+/* Below 700 px the wordmark does not fit, but it is the page's only h1. It was
+   display:none, which took the heading out of the accessibility tree, so it is
+   clipped instead: no space taken, still read and still reachable (item 2). */
+@media (max-width:700px){
+ .mark h1{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+
+/* One gap inside and between the filter rows. Controls wrap whole; extra rows are
+   fine for Slovak, long selections and zoom (item 3). Two rows at 1024 px is the
+   target, and measured without help it misses: row 1 in Slovak by 13 px and row 2
+   in English by 42 px. So only here, and never the gap or the points field: the
+   maths buttons keep the tighter padding they had, and a closed facet's chevron
+   gives up its 6 px empty count slot. From 1100 px everything fits as drawn. */
+.fbar .more-filters{gap:8px}
+@media (min-width:1024px) and (max-width:1099.98px){
+ .seg button{padding:0 6px}
+ .fbar .dropdown>summary:has(.dropdown-count[hidden]) .dd-chev,.fbar .dropdown>summary:has(.scalar-count:empty) .dd-chev{margin-left:0}
+ #budget-value:empty{display:none}
+}
+
+/* The count sat in an 18 px line box beside fixed-height buttons, so it read
+   lower and smaller than "Edit my answers" (item 8). .cfull, not .count: .cshort
+   shares that class and display:flex would show it beside the full sentence. The
+   clipped full sentence on a stuck phone bar must not keep the height. */
+.status .cfull{display:flex;align-items:center;min-height:var(--ctl);line-height:20px}
+.status .count .count-lead,.status .btn{font-size:15px;line-height:20px}
+@media (max-width:599.98px){.status.is-stuck .cfull{min-height:0}}
+
+/* The Deadline note, indented to the radio's text: 8 px row padding, the 16 px
+   radio and its 10 px gap (item 11). */
+.opt-note{display:block;padding:0 8px 6px 34px;font-size:var(--fs-12);font-weight:400;line-height:16px;color:var(--ink-2)}
 
 /* Batch 2 · B: share and My list */
 

@@ -4411,9 +4411,10 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
 // Two wrap rows preserve every filter and contain all facet panels.
 {
   const row = elementSource(indexHtml, /<div class="frow facets-row">/);
-  const valid = (source) => ['subjects','countries','languages','cities','degrees','deadline','exam'].every((id) => source.includes(`id="dd-${id}"`));
-  check('round 2 puts seven facets in the second row, maths in the first; a missing facet fails',
-    valid(row) && !valid(row.replace('id="dd-exam"', 'id="missing"')) && formSrc.includes('id="maths-seg"'));
+  const valid = (source) => ['subjects','countries','languages','cities','degrees','deadline','exam','budget'].every((id) => source.includes(`id="dd-${id}"`));
+  check('round 2 puts eight facets in the second row with Budget last, maths in the first; a missing facet fails',
+    valid(row) && !valid(row.replace('id="dd-exam"', 'id="missing"')) && formSrc.includes('id="maths-seg"')
+    && formSrc.indexOf('id="dd-budget"') > formSrc.indexOf('id="dd-exam"') && !formSrc.slice(0, formSrc.indexOf('class="frow facets-row"')).includes('id="dd-budget"'));
 }
 appCheck('my-list export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
   run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
@@ -5457,15 +5458,24 @@ check('facet counts report real full-dataset occurrences without adding to the o
   return byClass(box,'option-count').map(n=>n.textContent).join() === '548,61'
     && byClass(box,'option-count').every(n=>n.getAttribute('aria-hidden')==='true');
 }));
-check('reviewed chrome keeps phone search short, tablet wordmark hidden, heading columns aligned and FAQ icons sized',
+// This used to assert display:none on the wordmark, and that is what took the
+// page's only h1 out of the accessibility tree below 700 px (batch 2, A2). What
+// it looks like there is measured in a real browser (smoke R4B).
+check('reviewed chrome keeps phone search short, the wordmark clipped but readable up to 700 px, heading columns aligned and FAQ icons sized',
   read('js/round2.js').includes("innerWidth < 600 ? 'search_2' : 'r2_searchph'")
-  && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}.mark h1{display:none}}')
+  && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}}')
+  && !/\.mark h1\{[^}]*display:none/.test(cssRules)
+  && /@media \(max-width:700px\)\{\s*\.mark h1\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(cssRules)
   && !read('index.html').includes('data-sort="deadline" class="r"')
   && read('index.html').includes('data-i18n="r2_fee_heading"') && cssRules.includes('.row{gap:10px 12px;')
   && cssRules.includes('.faq summary>.ic{width:16px;height:16px;') && cssRules.includes('.foot{margin-top:48px}'));
-check('1024px controls keep two compact filter rows without clipping the points placeholder',
-  cssRules.includes('@media (min-width:1024px) and (max-width:1199px)')
-  && cssRules.includes('.pts input.inp{width:64px}') && cssRules.includes('.seg button{padding:0 6px}'));
+// The old 1024-1199 rule also narrowed the points field and the row gap. What is
+// left is measured in smoke R4C, which also proves the placeholder is not clipped.
+check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px, never the row gap or the points field',
+  !cssRules.includes('(max-width:1199px)') && cssRules.includes('.frow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}')
+  && cssRules.includes('.fbar .more-filters{gap:8px}') && !cssRules.includes('.frow{gap:6px}')
+  && cssRules.includes('.pts input.inp{width:68px;') && !cssRules.includes('.pts input.inp{width:64px}')
+  && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules));
 section('Review round 2 regressions');
 check('the facet panel is not still hidden when its toggle event focuses the search',
   cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
@@ -5733,6 +5743,102 @@ i18n.initLanguage('', { getItem: () => 'en' });
 
 section('Batch 2 · A');
 // batch 2 · A checks go here
+// The app harness stubs wireCompactHeader and wireRound2, so code in them would
+// never run there. These run the real functions on a small fake page.
+const realRound2 = await import('../js/round2.js');
+function withGlobals(globals, fn) {
+  const saved = Object.keys(globals).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  for (const [name, value] of Object.entries(globals)) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  try { return fn(); } finally {
+    for (const [name, was] of saved) { if (was) Object.defineProperty(globalThis, name, was); else delete globalThis[name]; }
+  }
+}
+const fakeObserver = class { observe() {} };
+function logoClick(init, { reduced = false } = {}) {
+  const fake = (extra = {}) => ({ listeners: {}, tabIndex: 0, style: { setProperty() {} }, classList: { toggle() {} }, contains: () => false,
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }, getBoundingClientRect: () => ({ height: 0, bottom: 0 }), ...extra });
+  const mark = fake(), header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
+  const scrolls = [], location = { hash: '', search: '?country=Ireland' };
+  const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...init };
+  withGlobals({
+    document: { querySelector: (s) => parts[s], getElementById: () => fake(), body: fake(), activeElement: null, addEventListener() {} },
+    window: { addEventListener() {} }, innerWidth: 1280, innerHeight: 900, ResizeObserver: fakeObserver, IntersectionObserver: fakeObserver,
+    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => scrolls.push(options),
+    matchMedia: (query) => ({ matches: reduced && query === '(prefers-reduced-motion: reduce)' }),
+  }, () => {
+    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() });
+    for (const fn of mark.listeners.click) fn(event);
+  });
+  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search };
+}
+check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
+  /<a class="mark" href="#top-marker" aria-label="University Finder, back to top" data-i18n-attr="aria-label:r2_home_label">/.test(read('index.html'))
+  && UI.en.r2_home_label === 'University Finder, back to top' && UI.sk.r2_home_label === 'University Finder, späť na začiatok');
+equal('a plain logo click scrolls to the top and leaves the address alone, so #top-marker cannot reach a copied link',
+  logoClick({}), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland' });
+equal('with reduced motion the logo scroll is instant',
+  logoClick({}, { reduced: true }).scrolls, [{ top: 0, behavior: 'instant' }]);
+check('a modified or middle click on the logo keeps the browser\'s own behaviour',
+  [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }].every((init) => {
+    const click = logoClick(init);
+    return click.prevented === false && click.scrolls.length === 0;
+  }));
+
+// ChromeNode's dataset is a read-only copy; the real radio builder writes to it.
+class WiredNode extends ChromeNode {
+  get dataset() {
+    return new Proxy({}, { get: (_, name) => this.getAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`) ?? undefined,
+      set: (_, name, value) => { this.setAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, value); return true; } });
+  }
+}
+const noteCheck = (() => {
+  const page = new WiredNode('div');
+  const make = (id, className = '') => { const n = new WiredNode('div'); n.id = id; n.className = className; page.append(n); return n; };
+  const select = (id, options) => {
+    const n = make(id); n.setAttribute('aria-label', id); n.setAttribute('aria-describedby', 'f-unknown-help'); n.setAttribute('data-i18n-attr', 'aria-label:deadline');
+    n.options = options.map(([value, i18n]) => ({ value, dataset: { i18n } }));
+    return n;
+  };
+  for (const id of ['header-list', 'f-budget-help']) make(id);
+  make('', 'budget-panel');
+  const fakeDocument = { documentElement: {}, querySelectorAll: (s) => page.querySelectorAll(s), querySelector: (s) => page.querySelector(s),
+    getElementById: (id) => page.querySelector(`#${id}`), createElement: (tag) => new WiredNode(tag), addEventListener() {} };
+  const dom = { search: make('f-search'), points: make('f-points'), myMaths: make('f-mymaths'), dropdowns: [], sheet: make('filter-sheet'),
+    deadline: select('f-deadline', [['any', 'any_date'], ['open', 'not_passed_yet'], ['30', 'within_30_days'], ['60', 'within_60_days']]),
+    exam: select('f-exam', [['', 'any'], ['none', 'no_exam'], ['skippable', 'none_or_skippable']]),
+    subjects: make('f-subjects'), countries: make('f-countries'), languages: make('f-languages'), degrees: make('f-degrees'), cities: make('f-cities') };
+  return withGlobals({ document: fakeDocument, window: { addEventListener() {} }, innerWidth: 1280, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) }, () => {
+    realRound2.wireRound2(dom);
+    const note = page.querySelector('#f-deadline-open-note'), openRadio = page.querySelectorAll('input').find((n) => n.value === 'open');
+    const result = { described: page.querySelectorAll('input').filter((n) => n.getAttribute('aria-describedby')).map((n) => `${n.name}=${n.value}`),
+      points: openRadio.getAttribute('aria-describedby') === note.id, tag: note.tagName, beside: note.previousElementSibling === openRadio.parent && !openRadio.parent.contains(note), en: note.textContent };
+    i18n.setLanguage('sk', { setItem() {} });
+    try { i18n.applyLanguage(fakeDocument); result.sk = note.textContent; } finally { i18n.initLanguage('', { getItem: () => 'en' }); }
+    return result;
+  });
+})();
+equal('the Deadline note describes only "Not passed yet", beside its label so the name stays short, and follows the language', noteCheck, {
+  described: ['f-deadline-radio=open'], points: true, tag: 'small', beside: true,
+  en: 'Uses the recorded deadline dates. Programmes with no recorded date stay in the list.',
+  sk: 'Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.' });
+// Through the real parser, so "unknown" is what a blank or ? cell really becomes.
+appCheck('"Not passed yet" follows recorded dates, as its note says: unknown and future stay, a past date goes even with rolling admission in its notes', ({ run, get, fire, drain, context }) => {
+  context.deadlineRows = sheetsModule.readSheets(lintSheets().universities, lintCsv(lintProgHeader, [
+    { ...lintProg, programme_id: 'd-blank', application_deadline: '' },
+    { ...lintProg, programme_id: 'd-unknown', application_deadline: '?' },
+    { ...lintProg, programme_id: 'd-future', application_deadline: '2099-01-15' },
+    { ...lintProg, programme_id: 'd-past', application_deadline: '2020-01-15' },
+    { ...lintProg, programme_id: 'd-rolling', application_deadline: '2020-01-15', deadline_notes: 'Rolling admission: applications stay open until places are full.' },
+  ]), new Date()).programmes;
+  run('allRows = deadlineRows; sourceMeta = { issues: [] }; facets = buildFacets(allRows); drawChips(); update();');
+  drain();
+  const shown = () => get('results').children.map((n) => n.dataset.id).sort().join();
+  const any = shown();
+  get('f-deadline').value = 'open'; fire(get('f-deadline'), 'change'); drain();
+  const open = shown();
+  get('f-deadline').value = 'any'; fire(get('f-deadline'), 'change'); drain();
+  return any === 'd-blank,d-future,d-past,d-rolling,d-unknown' && open === 'd-blank,d-future,d-unknown' && shown() === any;
+});
 
 section('Batch 2 · B');
 // batch 2 · B checks go here

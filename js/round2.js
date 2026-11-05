@@ -48,6 +48,14 @@ export function wireRound2(dom) {
       input.addEventListener('change', () => { select.value = input.value; select.dispatchEvent(new Event('change', { bubbles: true })); });
       const text = document.createElement('span'); text.dataset.i18n = option.dataset.i18n; text.textContent = t(option.dataset.i18n);
       label.append(input, text); box.append(label);
+      // Beside the label, not in it, so the radio's name stays "Not passed yet". It
+      // says "recorded dates" because a rolling programme with a date drops out once
+      // that date passes; the note must not claim rolling admission stays visible.
+      if (input.value === 'open') {
+        const note = document.createElement('small'); note.className = 'opt-note'; note.id = 'f-deadline-open-note';
+        note.dataset.i18n = 'r2_deadline_open_note'; note.textContent = t(note.dataset.i18n);
+        input.setAttribute('aria-describedby', note.id); box.append(note);
+      }
       return input;
     });
     select.hidden = true; select.before(box);
@@ -207,6 +215,14 @@ export function wireCompactHeader(dom) {
   compactButton.addEventListener('click', () => {
     document.getElementById('top-marker').scrollIntoView({ block: 'start' });
     dom.points.focus({ preventScroll: true });
+  });
+  // Back to the top without following #top-marker: keepAddress keeps the hash, so
+  // it would leak into every link copied afterwards. Filters, list view and focus
+  // stay as they are. A modified click keeps the browser's own behaviour.
+  header.querySelector('.mark').addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   });
   document.addEventListener('click', (event) => { if (event.target.closest('[data-open-list]')) dom.shortlistOnly.click(); });
   offsets();
