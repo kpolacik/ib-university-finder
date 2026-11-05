@@ -5284,7 +5284,9 @@ check('Country search is available even with eleven options and matches Slovak c
 }));
 section('Round 2 saved filters and transactional onboarding');
 {
-  const { restoration, storedFilters, validateFilters, validateLoadedFacets, hasFilterParams, FILTER_KEY, ONBOARDING_KEY } = savedState;
+  const { restoration, storedFilters, validateFilters, validateLoadedFacets, hasFilterParams, hasSetupAnswers, FILTER_KEY, ONBOARDING_KEY } = savedState;
+  // Leon, 2026-11-05: clicking through setup with nothing chosen showed "Your answers are now filters".
+  check('setup with no answers is not reported as applied filters; any one answer is', !hasSetupAnswers(validateFilters({})) && !hasSetupAnswers(validateFilters({cities:['Dublin'], search:'law', deadlineWindow:'30'})) && [{myIbPoints:36},{hlMaths:true},{maxBudget:0},{subjectAreas:['Law']},{countries:['Ireland']},{languages:['English']}].every((raw) => hasSetupAnswers(validateFilters(raw))));
   const saved = { version: 1, filters: { search: 'Dublin', myIbPoints: 36, maxBudget: 15000, maxTuition: 0, hlMaths: true, countries: ['Ireland', 'Atlantis'], languages: ['English'], subjectAreas: ['Law'], cities: ['Dublin'], degreeTypes: ['BA'] } };
   for (const query of ['?q=', '?points=bad', '?maths=0', '?mymaths=bad', '?exam=bad', '?fee=', '?budget=bad', '?living=0', '?subject=bad', '?country=bad', '?lang=English', '?degree=bad', '?city=bad', '?deadline=bad', '?sort=bad', '?dir=bad', '?list=']) {
     const choice = restoration(query, saved);
@@ -5371,9 +5373,9 @@ appCheck('heading sort cycles include the default order, announced next state an
   return run('state.sort')==='points' && run('state.dir')==='desc';
 });
 for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, ({get,fire,context,resultsSection}) => {
-  const writes=[], applied=[];
-  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast(){}};
+  const writes=[], applied=[], toasts=[];
+  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args)};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
   setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
   const dialog=get('onboarding'), next=()=>fire(dialog.querySelector('.ob-foot .btn-p'),'click');
@@ -5384,9 +5386,20 @@ for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handl
   else if(outcome==='skip')fire(dialog.querySelector('.skipwrap button'),'click');
   else fire(dialog,'cancel');
   return !dialog.open && writes.length===1 && writes[0][1]===(outcome==='apply'?'completed':'dismissed')
-    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38)
+    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===(outcome==='apply'?1:0)
     && stubDocument.activeElement===(outcome==='apply'?resultsSection:get('f-search'))
     && !(stubDocument.scrolls??[]).some(s=>s.node===resultsSection);
+});
+// Leon, 2026-11-05: finishing setup with nothing chosen still said "Your answers are now filters".
+appCheck('real onboarding handlers: clicking through with no answers applies but shows no toast', ({get,fire,context,resultsSection}) => {
+  const applied=[], toasts=[];
+  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+    localStorage:{setItem(){}},syncSlider(){},showToast:(...args)=>toasts.push(args)};
+  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
+  setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
+  const dialog=get('onboarding');
+  for(let i=0;i<5;i++)fire(dialog.querySelector('.ob-foot .btn-p'),'click');
+  return !dialog.open && applied.length===1 && toasts.length===0;
 });
 check('onboarding completion toast uses the compact Edit action and native maths shares the segmented label',
   read('js/onboarding.js').includes("t('r2_edit_short')") && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
@@ -5504,7 +5517,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');

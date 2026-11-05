@@ -1,5 +1,5 @@
 import { t, facetLabel } from './i18n.js';
-import { FILTER_KEY, ONBOARDING_KEY, validateFilters } from './saved-state.js';
+import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers } from './saved-state.js';
 import { dataValue } from './render.js';
 import { syncSlider, showToast } from './round2.js';
 
@@ -107,7 +107,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     const next = button(step === 1 ? 'r2_start' : step === 5 ? 'r2_show_mine' : 'r2_next', 'btn btn-p', () => {
       if (step < 5) { step++; draw(); return; }
       const answers = validateFilters(draft, facets); apply(answers); close(true);
-      showToast(t('r2_answers_applied'), t('r2_edit_short'), () => open(document.querySelector('[data-edit]')));
+      if (hasSetupAnswers(answers)) showToast(t('r2_answers_applied'), t('r2_edit_short'), () => open(document.querySelector('[data-edit]')));
     });
     foot.replaceChildren(skip, spacer, previous, next); heading.focus({ preventScroll: true });
   };

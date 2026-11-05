@@ -30,6 +30,15 @@ export function validateFilters(raw, facets = null) {
   return out;
 }
 
+// True when the setup answers set at least one of its own five questions.
+// Clicking through setup without choosing anything applies nothing, so the
+// "Your answers are now filters" toast would be wrong (Leon, 2026-11-05).
+// Filters setup does not ask about (city, search…) do not count.
+export function hasSetupAnswers(answers) {
+  return answers.myIbPoints !== null || answers.hlMaths === true || answers.maxBudget !== null
+    || ['subjectAreas', 'countries', 'languages'].some((key) => answers[key].size > 0);
+}
+
 export function storedFilters(state, facets) {
   const clean = validateFilters(state, facets);
   const { shortlistOnly, sort, dir, ...filters } = clean;
