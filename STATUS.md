@@ -590,6 +590,12 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Alignment review (2026-11-05, local `align-fix-chrome-setup`):** Search
+keeps its short hint if canvas measurement is unavailable. On phones the
+setup footer's keyboard order follows its new layout: Next, Skip, Back.
+Crossing 600 px restores the desktop order and keeps a focused Next button.
+Regression checks cover both cases.
+
 **Batch 3 Compare review (2026-11-05, local `batch3-a-compare`):** Compare
 has its own stored set of up to four programmes, separate from saves and URL
 filters. The header opens it on tall desktop windows; phones and short windows

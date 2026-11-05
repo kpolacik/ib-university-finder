@@ -2786,6 +2786,21 @@ async function runAlignChromeSetup(base) {
           assert(m.primary.bottom <= m.skip.top, `step ${step}: primary not on top ${JSON.stringify(m)}`);
           if (step > 1) assert(m.back && Math.abs(m.back.top - m.skip.top) <= 1 && Math.abs(m.back.right - m.edge[1]) <= 1, `step ${step}: Skip and Back not one row ${JSON.stringify(m)}`);
           assert(m.heights.every((h) => h >= 44), `step ${step}: heights ${m.heights}`);
+          // Tab order must follow the primary row, then Skip and Back below.
+          await page.ev(`document.querySelector('.ob-foot>.btn-p').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement === document.querySelector('.skipwrap button')`), `step ${step}: Tab from Next did not reach Skip`);
+          if (step > 1) {
+            await page.key('Tab', 'Tab', 9);
+            assert(await page.ev(`document.activeElement === document.querySelector('.ob-foot>.btn:not(.btn-p)')`), `step ${step}: Tab from Skip did not reach Back`);
+          }
+          if (step === 2 && width === 390 && lang === 'en') {
+            await page.ev(`document.querySelector('.ob-foot>.btn-p').focus()`);
+            for (const w of [700, 390]) {
+              await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: 844, deviceScaleFactor: 1, mobile: true }); await settle(page);
+              assert(await page.ev(`(()=>{const f=document.querySelector('.ob-foot'),p=f.querySelector('.btn-p');return document.activeElement===p && (${w}<600 ? f.firstElementChild===p : f.lastElementChild===p)})()`), `at ${w}: footer order or focus lost at the breakpoint`);
+            }
+          }
           if (step < 5) await next(page, `step ${step + 1}`);
         }
       });
@@ -2820,11 +2835,16 @@ async function runAlignChromeSetup(base) {
     const page = await open(width, width < 600 ? 844 : 900, lang);
     try {
       await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line${width >= 600 ? '; heading on the first question\'s line' : ''}`, async () => {
+        // Use the empty list so rows still filling in cannot move the footer
+        // out of the screenshot after scrolling to it.
+        await openList(page);
         await page.ev(`document.querySelector('.foot').scrollIntoView({block:'start',behavior:'instant'})`);
         await settle(page);
         const m = await page.ev(`(()=>{const first=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getClientRects()[0]};
           const qs=[...document.querySelectorAll('.faq summary')].map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
-          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('.faq summary span'));return {qs,head:h.top-q.top}})()`);
+          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('.faq summary span'));return {qs,head:h.top-q.top,visible:q.top>=0&&q.bottom<=innerHeight}})()`);
+        assert(m.visible, 'the FAQ is outside the screenshot');
+        await shoot(page, `faq-${width}-${lang}`);
         assert(m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
         if (width >= 600) assert(Math.abs(m.head) <= 1, `heading and first question differ by ${m.head}`);
       });

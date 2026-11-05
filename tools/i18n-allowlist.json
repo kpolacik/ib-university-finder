@@ -992,6 +992,8 @@
       "url"
     ],
     "js/onboarding.js": [
+      "(max-width: 599.98px)",
+      ".btn-p",
       " back",
       "keydown",
       "pointerdown",

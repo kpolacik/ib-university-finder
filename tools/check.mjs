@@ -5424,11 +5424,11 @@ appCheck('heading sort cycles include the default order, announced next state an
   return run('state.sort')==='points' && run('state.dir')==='desc';
 });
 // The real setup dialog on the app harness's page. apply() returns the number
-// shown, as app.js's callback does; matchMedia is only read by the FAQ button.
+// shown, as app.js's callback does; media queries default to desktop.
 function realSetup({get,fire,context,resultsSection}, {shown = 7, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return shown;},results:resultsSection,closeSheet(){},firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -5601,7 +5601,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
@@ -6848,6 +6848,11 @@ section('Alignment · header, My list, setup');
     && /syncSegments\(\);\s*searchPlaceholder\(\);/.test(round2Src)
     && /text-overflow:ellipsis/.test(ruleAt(cssText, '.search .inp'))
     && /display:none/.test(ruleAt(cssText, '.search kbd', '(min-width:600px) and (max-width:700px)')));
+  check('AL-H1 without canvas measurement Search falls back to its short hint', (() => {
+    const measure = (createElement) => runInNewContext(round2Src.replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '') + '\nlongHintFits;', { document: { createElement } });
+    return [() => ({ getContext: () => null }), () => { throw new Error('canvas unavailable'); }]
+      .every(create => measure(create)({}) === false);
+  })());
   check('AL-H2 phones: no doubled hairline under the header (empty filter band and the stuck-row marker)',
     /border-bottom:0/.test(ruleAt(cssText, '.fslot', '(max-width:599.98px)'))
     && /margin-inline:calc\(-1 \* var\(--gut\)\);background:var\(--panel\)/.test(ruleAt(cssText, '.stuck-mark', '(max-width:599.98px)')));
@@ -6893,6 +6898,18 @@ check('AL-M5 the empty list card lines up with the pane, and the bar is joined o
   /margin-top:0/.test(ruleAt(cssText, '.mylist:not([hidden]) ~ .split .empty'))
   && /border-bottom:0/.test(ruleAt(cssText, '.mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden]))', '(max-width: 599.98px)')));
 
+appCheck('AL-S3 setup footer follows visual order on phones and preserves focus across the breakpoint', (h) => {
+  const phone = { matches: true, addEventListener(type, listener) { this.change = listener; } };
+  const { dialog, primary, next } = realSetup(h, { env: { matchMedia: () => phone } });
+  next();
+  const foot = dialog.querySelector('.ob-foot');
+  if (foot.querySelector('button') !== primary()) return false;
+  primary().focus();
+  phone.matches = false; phone.change();
+  if (foot.children.at(-1) !== primary() || stubDocument.activeElement !== primary()) return false;
+  phone.matches = true; phone.change();
+  return foot.querySelector('button') === primary() && stubDocument.activeElement === primary();
+});
 check('AL-S1 setup: the step column never outgrows the dialog; the switch label wraps',
   /grid-template-columns:minmax\(0,1fr\)/.test(ruleAt(cssText, '.ob-step.on')) && /white-space:normal/.test(ruleAt(cssText, '.ob .switch')));
 check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',

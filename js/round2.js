@@ -10,7 +10,7 @@ let searchPlaceholder = () => {};
 // otherwise "Search". From 600 to about 950 px, and at 1024 px in Slovak, the
 // long one was cut off mid-letter (alignment audit, 2026-11-05). Measured in
 // the field's own font, so it holds in both languages, on touch (16 px) and
-// when zoomed. Where nothing can be measured, the width rule it replaced.
+// when zoomed. If measurement is unavailable, keep the short hint.
 let measurer;
 function longHintFits(input) {
   try {
@@ -22,7 +22,7 @@ function longHintFits(input) {
     const { borderLeftWidth, borderRightWidth, paddingLeft, paddingRight } = style;
     const room = input.offsetWidth - [borderLeftWidth, borderRightWidth, paddingLeft, paddingRight].reduce((sum, side) => sum + parseFloat(side), 0);
     return measurer.measureText(t('r2_searchph')).width <= room;
-  } catch { return true; }
+  } catch { return false; }
 }
 export function wireRound2(dom) {
   controls = { maths: [...document.querySelectorAll('[data-maths]')], sliders: [...document.querySelectorAll('[data-number]')] };
