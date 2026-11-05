@@ -1506,6 +1506,61 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @container dfoot (max-width: 449.98px){.d-foot>.d-actions{grid-template-columns:minmax(0,1fr)}}
 @container dfoot (min-width: 330px){.d-foot>.d-actions:lang(en){grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* Compare. Every column's Save sits at the foot of its header cell, so the
+   Saves form one line across the row whatever the names' lengths; the cell
+   keeps room for it. One width for Save and Saved, so toggling never shifts. */
+.cmp-t th.cmp-p{padding-bottom:62px}
+.cmp-t th.cmp-p .cmp-acts{margin:0}
+.cmp-t th.cmp-p .cmp-save{position:absolute;left:12px;bottom:10px;width:min(calc(100% - 24px),6.5rem);padding:0 8px}
+/* Out of flow, Save no longer widens its column, so a column keeps room for
+   the longest label, Slovak "Uložené" with its icon (86 px), and every Save
+   is that wide, whatever its column's width. Phone columns are equal anyway:
+   there Save fills its column up to 6.5rem (and drops its icon below 360 px). */
+@media (min-width:600px){
+ .cmp-t th.cmp-p{min-width:110px}
+ .cmp-t th.cmp-p .cmp-save{width:86px}
+}
+/* Below 1024 px a column is too narrow to share its first lines with the
+   "x": a name broke beside it ("Nanobiolo / gy") although it fits the column.
+   The "x" gets its own strip at the top instead. */
+@media (max-width:1023.98px){
+ .cmp .cmp-t th.cmp-p::before{display:none}
+ .cmp-t th.cmp-p{padding-top:44px}
+}
+@media (max-width:599.98px){
+ .cmp-t th.cmp-p{padding-bottom:60px}
+ .cmp-t th.cmp-p .cmp-save{left:8px;bottom:8px;width:min(calc(100% - 16px),6.5rem)}
+}
+/* 600–1023 px: the fact names take 6.5rem, as on phones, rather than 10rem,
+   which left three or four programmes about 112 px each. */
+@media (min-width:600px) and (max-width:1023.98px){.cmp .cmp-t tbody th,.cmp .cmp-t .cmp-c{width:6.5rem;padding-inline:10px}}
+/* One programme: the column is as wide as its facts, so its "x" stays near
+   the name instead of 1000 px away at the card's edge. */
+@media (min-width:600px){.cmp-t[data-n="1"]{width:auto}}
+/* A fact name shares its first baseline with the values beside it. */
+.cmp .cmp-t tbody th{line-height:20px}
+/* The official link is a line of text: its icon follows the last word, the
+   value starts on the first line, and on paper its address follows the words
+   instead of squeezing them to one word per line. The padding keeps the tap
+   area without moving the text. */
+.cmp-t .lnk{display:inline;min-height:0;padding-block:calc((var(--tap) - 20px) / 2)}
+.cmp-t .lnk .ic{display:inline-block;margin-left:4px;vertical-align:-2px}
+.cmp-t .lnk-end{white-space:nowrap}
+/* The view's own buttons share one height: Close, Save and Browse are 44 px
+   (Close was 28, Browse 36). */
+#cmp-close,#cmp-browse{height:44px}
+/* Opening Compare clears whatever sticks above it, plus 8 px (A07). */
+.cmp{scroll-margin-top:calc(var(--header-visible) + 8px)}
+@media (max-width:599.98px){.cmp{scroll-margin-top:calc(var(--count-height) + 8px)}}
+/* While Compare is open the count describes the hidden list ("2 of 2 saved
+   programmes" above "Compare 4 programmes"), so it is not shown. */
+.stream:has(>#compare:not([hidden])) :is(#result-count,.status .cshort){visibility:hidden}
+.stream:has(>#compare:not([hidden]))>#count-summary{display:none}
+/* Toast actions: one line and a 44 px target ("Späť" was 41 px wide). */
+.toast button{flex:none;min-width:44px;white-space:nowrap}
+/* On paper there is no Save or "x", so no room is kept for them. */
+@media print{.cmp .cmp-t th.cmp-p{padding-block:10px}.cmp .cmp-t .lnk .ic{display:none}}
+
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer
    place: title | compare | save. Both keep the required 44 px target,
@@ -1546,7 +1601,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-save .ic{width:16px;height:16px;fill:none;flex:none}
 .cmp-save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
 .cmp-save[aria-pressed="true"] .ic{fill:currentColor}
-.cmp-x{position:absolute;top:2px;right:2px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
 .cmp-x:hover{background:var(--hover);color:var(--accent)}
 .cmp-x .ic{width:18px;height:18px}
 /* The entry: a header button beside My list where the header sticks, the

@@ -848,8 +848,18 @@ export function renderCompare(container, rows, table, { onlyDifferences = false,
       const td = el('td');
       for (const line of cell.lines) {
         const p = el('p', line.verdict ? `verd m m-${line.verdict}` : line.strong ? 'note note-strong' : '');
-        if (line.href) p.append(externalLink('lnk', line.text, line.href, line.name));
-        else p.append(lineNode(line));
+        if (line.href) {
+          // The link wraps as text here (styles.css). Its last word and icon
+          // share a no-wrap span, so the icon never sits on a line alone (a
+          // word joiner did not stop Chrome breaking before the icon).
+          const words = line.text.split(' ');
+          const end = el('span', 'lnk-end', words.pop());
+          const link = externalLink('lnk', words.length ? `${words.join(' ')} ` : '', line.href, line.name);
+          end.append(link.lastChild);
+          // Before the hidden "(opens in a new tab)", so the name still reads in order.
+          link.lastChild.before(end);
+          p.append(link);
+        } else p.append(lineNode(line));
         td.append(p);
       }
       tr.append(td);
