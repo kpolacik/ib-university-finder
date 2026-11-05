@@ -208,6 +208,14 @@ export function wireCompactHeader(dom) {
     document.getElementById('top-marker').scrollIntoView({ block: 'start' });
     dom.points.focus({ preventScroll: true });
   });
+  // Back to the top without following #top-marker: keepAddress keeps the hash, so
+  // it would leak into every link copied afterwards. Filters, list view and focus
+  // stay as they are. A modified click keeps the browser's own behaviour.
+  header.querySelector('.mark').addEventListener('click', (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  });
   document.addEventListener('click', (event) => { if (event.target.closest('[data-open-list]')) dom.shortlistOnly.click(); });
   offsets();
 }

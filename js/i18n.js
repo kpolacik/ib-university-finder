@@ -545,6 +545,7 @@ export const UI = {
     "unclassified": "Unclassified",
 
     // batch 2 · A
+    "r2_home_label": "University Finder, back to top",
 
     // batch 2 · B
 
@@ -1098,6 +1099,7 @@ export const UI = {
     "unclassified": "Nezaradené",
 
     // batch 2 · A
+    "r2_home_label": "University Finder, späť na začiatok",
 
     // batch 2 · B
 

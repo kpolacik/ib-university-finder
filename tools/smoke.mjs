@@ -1144,7 +1144,150 @@ async function runReview2(base) {
 }
 
 // Batch 2 workstreams (plans/design-round2/batch2-plan.md); each fills only its own.
-async function runBatch2A(base) {}
+async function runBatch2A(base) {
+  // The watchdog is one limit for the whole run and the checks before this already
+  // take most of it. A fresh 120 s here still catches a hang in this section.
+  watchdog.refresh();
+  const open = async (query, width, height) => {
+    const page = await openPage(`${base}${query}`, width, height);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+    await page.waitFor(ready, 15000, 'the page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'the reloaded page');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise((done)=>requestAnimationFrame(()=>requestAnimationFrame(done)))`);
+  const resize = async (page, width, height, mobile = false) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await page.waitFor(`({ok:innerWidth===${width},why:'width '+innerWidth})`, 3000, `width ${width}`);
+    await settle(page);
+  };
+  const language = async (page, lang) => {
+    await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+    await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
+    await settle(page);
+  };
+  const clickAt = async (page, x, y) => {
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
+  // What a screen reader gets, from the browser's own accessibility tree.
+  const axNode = async (page, selector) => {
+    const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+    const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+    return nodes[0];
+  };
+
+  let page = await open('?ui=sk', 320, 640);
+  try {
+    for (const lang of ['sk', 'en']) {
+      await language(page, lang);
+      for (const width of [320, 390, 599]) {
+        await resize(page, width, 800);
+        await check(width, 'R4A', `logo (${lang}): a 36 px tile in a 44 px hit area that stays off Search`, async () => {
+          const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.mono'),k=box('.mark'),q=box('#f-search');
+            return {tile:[t.width,t.height],mark:[k.width,k.height],left:k.left,over:hits(k,q),off:Math.abs((t.left+t.right)-(k.left+k.right))/2,offY:Math.abs((t.top+t.bottom)-(k.top+k.bottom))/2,sw:document.documentElement.scrollWidth,w:innerWidth,search:q.width}})()`);
+          assert(m.tile[0] === 36 && m.tile[1] === 36, `tile ${m.tile}`);
+          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.left >= 0, `hit area ${m.mark} at ${m.left}`);
+          assert(m.off <= 1 && m.offY <= 1, `tile not centred: ${m.off}, ${m.offY}`);
+          assert(!m.over, 'the logo overlaps Search');
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          assert(m.search >= 80, `Search is only ${m.search} wide`);
+        });
+      }
+    }
+  } finally { await page.close(); }
+
+  page = await open('?ui=sk', 700, 800);
+  try {
+    for (const lang of ['sk', 'en']) {
+      await language(page, lang);
+      for (const width of [600, 650, 700]) {
+        await check(width, 'R4A', `logo on a touch screen (${lang}): keeps off Search, same header height, a visible focus ring`, async () => {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+          await resize(page, width, 800);
+          const fine = await page.ev(`({h:document.querySelector('.hd').offsetHeight,tile:document.querySelector('.mono').offsetWidth,coarse:matchMedia('(pointer:coarse)').matches})`);
+          assert(!fine.coarse && fine.tile === 30, `fine pointer tile: ${JSON.stringify(fine)}`);
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+          await resize(page, width, 800, true);
+          assert(await page.ev(`matchMedia('(pointer:coarse)').matches`), 'touch emulation did not give pointer:coarse');
+          await page.ev(`document.querySelector('.skip-link').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          // An outline is not hit-tested, so elementFromPoint can only test the
+          // box; the ring's outer edge is checked against Search by geometry.
+          const m = await page.ev(`(()=>{${hits}const mark=document.querySelector('.mark'),k=mark.getBoundingClientRect(),q=document.querySelector('#f-search').getBoundingClientRect(),s=getComputedStyle(mark),grow=parseFloat(s.outlineWidth)+parseFloat(s.outlineOffset),ring={left:k.left-grow,right:k.right+grow,top:k.top-grow,bottom:k.bottom+grow};
+            const corners=[[k.left+1,k.top+1],[k.right-1,k.top+1],[k.left+1,k.bottom-1],[k.right-1,k.bottom-1]].map(([x,y])=>document.elementFromPoint(x,y));
+            return {focused:document.activeElement===mark&&mark.matches(':focus-visible'),style:s.outlineStyle,grow,over:hits(k,q),ringOver:hits(ring,q),inside:ring.left>=0&&ring.top>=0&&ring.right<=innerWidth&&ring.bottom<=innerHeight,covered:corners.filter(n=>!mark.contains(n)).map(n=>n&&(n.id||n.className)),mark:[k.width,k.height],tile:document.querySelector('.mono').offsetWidth,h:document.querySelector('.hd').offsetHeight,sw:document.documentElement.scrollWidth,w:innerWidth}})()`);
+          await page.ev(`document.activeElement.blur()`);
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+          await resize(page, width, 800);
+          assert(m.focused && m.style !== 'none' && m.grow > 0, `no focus ring: ${JSON.stringify(m)}`);
+          assert(!m.over && !m.ringOver && m.inside, `ring or hit area collides: ${JSON.stringify(m)}`);
+          assert(m.covered.length === 0, `covered by ${m.covered}`);
+          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.tile === 36, `sizes ${JSON.stringify(m)}`);
+          assert(m.h === fine.h, `header ${m.h}, fine pointer ${fine.h}`);
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+        });
+      }
+    }
+  } finally { await page.close(); }
+
+  page = await open('?ui=en&country=Ireland&points=36', 1280, 900);
+  try {
+    await page.send('Accessibility.enable');
+    const before = await page.ev(`location.search`);
+    const scrollAndClick = async (y, atBottom) => {
+      await page.ev(`document.activeElement.blur();window.scrollTo({top:${y},behavior:'instant'})`);
+      await settle(page);
+      assert(await page.ev(`scrollY===${y} && !document.body.classList.contains('compact')`), 'not at the scroll position, or compact');
+      const r = await page.ev(`(()=>{const r=document.querySelector('.mark').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,bottom:r.bottom}})()`);
+      await clickAt(page, r.x, atBottom ? r.bottom - 3 : r.y);
+    };
+    const landed = () => page.ev(`({search:location.search,hash:location.hash,mark:document.activeElement===document.querySelector('.mark'),stayed:window.__stayed===true,list:document.querySelectorAll('#results .row').length})`);
+    const expectLanded = async () => {
+      await page.waitFor(`({ok:scrollY===0,why:'scrollY '+scrollY})`, 5000, 'the top of the page');
+      const m = await landed();
+      assert(m.search === before && m.hash === '' && m.mark && m.stayed && m.list > 0, JSON.stringify(m));
+    };
+    await page.ev(`window.__stayed=true`);
+    await check(1280, 'R4B', 'logo click scrolls to the top; filters, address and focus stay', async () => {
+      await scrollAndClick(120, false);
+      await expectLanded();
+    });
+    await check(1280, 'R4B', 'Enter on the logo does the same; reduced motion is instant', async () => {
+      await page.ev(`window.scrollTo({top:120,behavior:'instant'});document.querySelector('.mark').focus()`);
+      await settle(page);
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await expectLanded();
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      try {
+        await scrollAndClick(120, false);
+        assert(await page.ev(`scrollY`) === 0, 'reduced motion: the scroll was not instant');
+        await expectLanded();
+      } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+    });
+    await resize(page, 390, 844);
+    await check(390, 'R4B', 'logo click on a phone scrolls to the top; filters, address and focus stay', async () => {
+      await scrollAndClick(40, true);
+      await expectLanded();
+    });
+    for (const [width, lang] of [[320, 'sk'], [390, 'en'], [650, 'sk'], [650, 'en'], [1280, 'sk'], [1280, 'en']]) {
+      await language(page, lang);
+      await resize(page, width, 844);
+      await check(width, 'R4B', `the logo is named and the page keeps its h1 (${lang})`, async () => {
+        const link = await axNode(page, '.mark'), heading = await axNode(page, '.mark h1');
+        const name = lang === 'sk' ? 'University Finder, späť na začiatok' : 'University Finder, back to top';
+        assert(link.role?.value === 'link' && link.name?.value === name, `link: ${link.role?.value} "${link.name?.value}"`);
+        assert(!heading.ignored && heading.role?.value === 'heading' && heading.name?.value === 'University Finder', `heading: ${JSON.stringify([heading.ignored, heading.role?.value, heading.name?.value])}`);
+        const m = await page.ev(`(()=>{const h=document.querySelector('.mark h1'),r=h.getBoundingClientRect(),s=getComputedStyle(h);return {w:r.width,h:r.height,display:s.display,clip:s.clipPath,text:h.textContent,sw:document.documentElement.scrollWidth,iw:innerWidth}})()`);
+        assert(m.display !== 'none' && m.text === 'University Finder', JSON.stringify(m));
+        if (width <= 700) assert(m.w <= 1 && m.h <= 1 && m.clip === 'inset(50%)', `the wordmark is painted: ${JSON.stringify(m)}`);
+        else assert(m.w > 50 && m.h > 10 && m.clip === 'none', `the wordmark is not visible: ${JSON.stringify(m)}`);
+        assert(m.sw === m.iw, `page is ${m.sw} wide at ${m.iw}`);
+      });
+    }
+  } finally { await page.close(); }
+}
 async function runBatch2B(base) {}
 async function runBatch2C(base) {}
 

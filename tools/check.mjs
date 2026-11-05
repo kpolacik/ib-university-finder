@@ -5457,9 +5457,14 @@ check('facet counts report real full-dataset occurrences without adding to the o
   return byClass(box,'option-count').map(n=>n.textContent).join() === '548,61'
     && byClass(box,'option-count').every(n=>n.getAttribute('aria-hidden')==='true');
 }));
-check('reviewed chrome keeps phone search short, tablet wordmark hidden, heading columns aligned and FAQ icons sized',
+// This used to assert display:none on the wordmark, and that is what took the
+// page's only h1 out of the accessibility tree below 700 px (batch 2, A2). What
+// it looks like there is measured in a real browser (smoke R4B).
+check('reviewed chrome keeps phone search short, the wordmark clipped but readable up to 700 px, heading columns aligned and FAQ icons sized',
   read('js/round2.js').includes("innerWidth < 600 ? 'search_2' : 'r2_searchph'")
-  && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}.mark h1{display:none}}')
+  && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}}')
+  && !/\.mark h1\{[^}]*display:none/.test(cssRules)
+  && /@media \(max-width:700px\)\{\s*\.mark h1\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(cssRules)
   && !read('index.html').includes('data-sort="deadline" class="r"')
   && read('index.html').includes('data-i18n="r2_fee_heading"') && cssRules.includes('.row{gap:10px 12px;')
   && cssRules.includes('.faq summary>.ic{width:16px;height:16px;') && cssRules.includes('.foot{margin-top:48px}'));
@@ -5733,6 +5738,46 @@ i18n.initLanguage('', { getItem: () => 'en' });
 
 section('Batch 2 · A');
 // batch 2 · A checks go here
+// The app harness stubs wireCompactHeader and wireRound2, so code in them would
+// never run there. These run the real functions on a small fake page.
+const realRound2 = await import('../js/round2.js');
+function withGlobals(globals, fn) {
+  const saved = Object.keys(globals).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  for (const [name, value] of Object.entries(globals)) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  try { return fn(); } finally {
+    for (const [name, was] of saved) { if (was) Object.defineProperty(globalThis, name, was); else delete globalThis[name]; }
+  }
+}
+const fakeObserver = class { observe() {} };
+function logoClick(init, { reduced = false } = {}) {
+  const fake = (extra = {}) => ({ listeners: {}, tabIndex: 0, style: { setProperty() {} }, classList: { toggle() {} }, contains: () => false,
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }, getBoundingClientRect: () => ({ height: 0, bottom: 0 }), ...extra });
+  const mark = fake(), header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
+  const scrolls = [], location = { hash: '', search: '?country=Ireland' };
+  const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...init };
+  withGlobals({
+    document: { querySelector: (s) => parts[s], getElementById: () => fake(), body: fake(), activeElement: null, addEventListener() {} },
+    window: { addEventListener() {} }, innerWidth: 1280, innerHeight: 900, ResizeObserver: fakeObserver, IntersectionObserver: fakeObserver,
+    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => scrolls.push(options),
+    matchMedia: (query) => ({ matches: reduced && query === '(prefers-reduced-motion: reduce)' }),
+  }, () => {
+    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() });
+    for (const fn of mark.listeners.click) fn(event);
+  });
+  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search };
+}
+check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
+  /<a class="mark" href="#top-marker" aria-label="University Finder, back to top" data-i18n-attr="aria-label:r2_home_label">/.test(read('index.html'))
+  && UI.en.r2_home_label === 'University Finder, back to top' && UI.sk.r2_home_label === 'University Finder, späť na začiatok');
+equal('a plain logo click scrolls to the top and leaves the address alone, so #top-marker cannot reach a copied link',
+  logoClick({}), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland' });
+equal('with reduced motion the logo scroll is instant',
+  logoClick({}, { reduced: true }).scrolls, [{ top: 0, behavior: 'instant' }]);
+check('a modified or middle click on the logo keeps the browser\'s own behaviour',
+  [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }].every((init) => {
+    const click = logoClick(init);
+    return click.prevented === false && click.scrolls.length === 0;
+  }));
 
 section('Batch 2 · B');
 // batch 2 · B checks go here

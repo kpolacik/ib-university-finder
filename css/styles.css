@@ -1260,7 +1260,7 @@ html:has(.ob[open]){overflow:hidden}
 .sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
 .sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
 @media (max-width: 599.98px){
- .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.mark h1{display:none}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
+ .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
  .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}
 }
 @media (pointer: coarse),(max-width:599px){
@@ -1285,7 +1285,7 @@ html:has(.ob[open]){overflow:hidden}
 .switch input::after{box-shadow:var(--thumb-shadow)}
 input[type=range]::-webkit-slider-thumb{box-shadow:var(--thumb-shadow)}
 input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
-@media(min-width:600px) and (max-width:700px){.slot{width:36px}.mark h1{display:none}}
+@media(min-width:600px) and (max-width:700px){.slot{width:36px}}
 @container (min-width: 800px){.cols{min-height:39px;align-items:center;padding-block:10px}.cols button{padding:0}.cols .r{white-space:nowrap}}
 @media (pointer:coarse),(max-width:599px){
  .sheet-b .pts input.inp,.budget .inp,.ob .rng-top .inp,.maths-control>select,input[type=range]{min-height:44px}
@@ -1397,6 +1397,27 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .listp>.f-sort>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 }
 /* Batch 2 · A: header and filter bar */
+/* The 30 px tile looked undersized beside the 44 px controls, and its 44 px hit
+   area spilled 8 px over Search because the slot was only 36 px wide (item 1).
+   A fine pointer from 600 px keeps the smaller tile. */
+@media (max-width:599.98px),(pointer:coarse){
+ .mono{width:36px;height:36px;font-size:15px;border-radius:9px}
+ .mark{min-width:44px;min-height:44px}
+}
+@media (max-width:599.98px){
+ .slot{width:44px;height:44px}
+ .mark{position:relative;top:0;width:44px;height:44px;justify-content:center}
+}
+@media (min-width:600px) and (max-width:700px) and (pointer:coarse){
+ .slot{width:44px}
+ .mark{width:44px;justify-content:center}
+}
+/* Below 700 px the wordmark does not fit, but it is the page's only h1. It was
+   display:none, which took the heading out of the accessibility tree, so it is
+   clipped instead: no space taken, still read and still reachable (item 2). */
+@media (max-width:700px){
+ .mark h1{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
 
 /* Batch 2 · B: share and My list */
 
