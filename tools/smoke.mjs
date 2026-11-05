@@ -1905,6 +1905,13 @@ async function runBatch3B(base) {
         assert(first === 'split', `first after the status row: ${JSON.stringify(m.after)}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
       });
+      await check(`${width}/${ui}`, 'B3B save failure', 'a failed save keeps the phone main-view warning visible', async () => {
+        await page.ev(`window.__setItem=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='ib-university-finder:shortlist:v1')throw new Error('blocked');return window.__setItem.call(this,k,v)}`);
+        try {
+          await page.click(`document.querySelector('#results button.star')`, 'unsave with storage blocked');
+          assert(await page.ev(`(()=>{const b=document.querySelector('#shortlist-bar'),n=document.querySelector('#ml-note');return getComputedStyle(b).display!=='none'&&!n.hidden&&n.getBoundingClientRect().height>0})()`), 'save failure warning is hidden');
+        } finally { await page.ev(`Storage.prototype.setItem=window.__setItem;delete window.__setItem`); }
+      });
     } finally { await page.close(); }
   }
 
@@ -1985,7 +1992,17 @@ async function runBatch3B(base) {
         assert(m.title === UI[ui].your_list_is_empty && m.hint === UI[ui].r3_list_empty_hint, `texts: ${JSON.stringify(m)}`);
         assert(m.back && !m.tools && !m.tips && !m.clear && m.pressed === 'true', `empty view: ${JSON.stringify(m)}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
+        // A navigation button has no action on paper; keep the empty-list copy.
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          assert(await page.ev(`getComputedStyle(document.querySelector('#empty-back')).display==='none' && getComputedStyle(document.querySelector('#empty-state')).display!=='none'`), 'empty-list back button prints');
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        // Keep the real mouse hit test, then re-enter for keyboard activation.
         await page.click(`document.querySelector('#empty-back')`, 'Back to all programmes');
+        assert(await page.ev(`!document.querySelector('#shortlist-bar').classList.contains('is-list') && document.activeElement===document.querySelector('#header-list')`), 'mouse exit lost focus');
+        await page.click(`document.querySelector('#header-list')`, 'Reopen empty My list');
+        await page.ev(`document.querySelector('#empty-back').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
         await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list') && document.querySelector('#empty-state').hidden && document.activeElement===document.querySelector('#header-list'),why:'not back, or focus on '+(document.activeElement?.id||document.activeElement?.tagName)})`, 5000, 'the main list with focus on My list');
       });
     } finally { await page.close(); }

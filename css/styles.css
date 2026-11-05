@@ -1518,6 +1518,9 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
   .mylist.is-list .ml-tools>.help{font-size:var(--fs-13)}
 }
 
+/* The empty-list navigation has no action on paper. */
+@media print {#empty-back{display:none}}
+
 /* Batch 3 · C: setup and home */
 
 /* ------------------------------------------------- motion preferences */
