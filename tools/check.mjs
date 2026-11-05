@@ -6107,6 +6107,7 @@ check('F1 compact Filters at 600–700 px is icon-only, fills the slot, label ke
 check('F2 Slovak living-costs placeholder is "Podľa školy" and fits the short field',
   UI.sk.university_s === 'Podľa školy' && UI.en.university_s === "University's"
   && /id="f-living"[^>]*data-i18n-attr="placeholder:university_s"/.test(read('index.html')));
+check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
