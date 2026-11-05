@@ -5530,7 +5530,7 @@ check('facet counts report real full-dataset occurrences without adding to the o
 // page's only h1 out of the accessibility tree below 700 px (batch 2, A2). What
 // it looks like there is measured in a real browser (smoke R4B).
 check('reviewed chrome keeps phone search short, the wordmark clipped but readable up to 700 px, heading columns aligned and FAQ icons sized',
-  read('js/round2.js').includes("innerWidth < 600 ? 'search_2' : 'r2_searchph'")
+  read('js/round2.js').includes("innerWidth >= 600 && longHintFits(dom.search) ? 'r2_searchph' : 'search_2'")
   && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}}')
   && !/\.mark h1\{[^}]*display:none/.test(cssRules)
   && /@media \(max-width:700px\)\{\s*\.mark h1\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(cssRules)
@@ -6833,6 +6833,33 @@ check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 
   /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
   && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
+
+// Alignment audit fixes (2026-11-05, Leon: "all is aligned"). Layout is
+// measured in Chrome by runAlignChromeSetup in tools/smoke.mjs; these pin the
+// rules so a later edit cannot quietly undo them.
+section('Alignment · header, My list, setup');
+{
+  const round2Src = read('js/round2.js');
+  check('AL-H1 Search shows its long hint only where it fits whole, measured with offsetWidth, re-measured on field resize, font load and every update',
+    /innerWidth >= 600 && longHintFits\(dom\.search\) \? 'r2_searchph' : 'search_2'/.test(round2Src)
+    && /input\.offsetWidth - \[borderLeftWidth, borderRightWidth, paddingLeft, paddingRight\]/.test(round2Src) && !/input\.clientWidth/.test(round2Src)
+    && /new ResizeObserver\(\(\) => searchPlaceholder\(\)\)\.observe\(dom\.search\)/.test(round2Src)
+    && /fonts\?\.ready\?\.then\(\(\) => searchPlaceholder\(\)\)/.test(round2Src)
+    && /syncSegments\(\);\s*searchPlaceholder\(\);/.test(round2Src)
+    && /text-overflow:ellipsis/.test(ruleAt(cssText, '.search .inp'))
+    && /display:none/.test(ruleAt(cssText, '.search kbd', '(min-width:600px) and (max-width:700px)')));
+  check('AL-H2 phones: no doubled hairline under the header (empty filter band and the stuck-row marker)',
+    /border-bottom:0/.test(ruleAt(cssText, '.fslot', '(max-width:599.98px)'))
+    && /margin-inline:calc\(-1 \* var\(--gut\)\);background:var\(--panel\)/.test(ruleAt(cssText, '.stuck-mark', '(max-width:599.98px)')));
+  check('AL-H3 Filters sheet: Edit my answers comes first and its text, Copy link and its help share one left edge; the points label wraps before the field shrinks',
+    /<div class="more-filters"><button type="button" class="btn btn-a sheet-edit" data-edit/.test(read('index.html'))
+    && /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /margin:0/.test(ruleAt(cssText, '.sheet-b .copy'))
+    && !/margin-top:12px/.test(ruleAt(cssText, '.sheet-b .copy', '(max-width: 599.98px)'))
+    && /flex:1 1 0;white-space:normal/.test(ruleAt(cssText, '.sheet-b .pts>label')) && /min-width:64px/.test(ruleAt(cssText, '.sheet-b .pts input.inp')));
+  check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
+    /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
+    && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -1087,7 +1087,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 .sheet-b .budget>.fld{width:auto}
 .sheet-b .dropdown>summary.inp{width:100%}
 @media (max-width: 1023px){.maths-control>select{display:block;min-width:148px}.maths-control>.seg{display:none}}
-@media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .copy{margin-top:12px}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
+@media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
 @media (pointer: coarse),(max-width:599px){.info,.step{min-width:44px;min-height:44px}.chipbox{height:44px}.seg{height:44px}.dropdown>summary.inp{min-height:44px}.pop-f .btn{min-height:44px}.option{min-height:44px}}
 
 /* Round 2 density and A07: all offsets follow the actual visible chrome. */
@@ -1469,6 +1469,39 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .dd-note{display:block;font-size:13px;color:var(--ink-2);margin-top:4px}
 /* Print keeps the official link as a plain left-aligned line, as before C1. */
 @media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
+
+/* Alignment fixes · header, My list, setup */
+/* Header (alignment audit 2026-11-05). round2.js shows the long Search hint
+   only where it fits whole; the ellipsis is a safety net for the moment before
+   the font loads. From 600 to 700 px the "/" hint gave up 40 of the field's
+   ~90 px, so it goes there, as it does on phones. */
+.search .inp{text-overflow:ellipsis}
+@media (min-width:600px) and (max-width:700px){.search kbd{display:none}.hd .search .inp{padding-right:10px}}
+/* On phones the filter band is empty (its controls live in the sheet), so its
+   hairline, plus the 1 px grey of the stuck-row marker, doubled the header's
+   hairline into a thick grey stripe. */
+@media (max-width:599.98px){.fslot{border-bottom:0}.stuck-mark{margin-inline:calc(-1 * var(--gut));background:var(--panel)}}
+/* The wordmark ended exactly at the link's edge, so the focus ring touched the
+   "r" of "Finder"; the tile side has its inset. Not while compact, where the
+   link is the tile alone. */
+@media (min-width:701px){body:not(.compact) .mark{padding-right:6px}}
+/* SK/EN: the ring drawn outside a 28 px button merged with the pill's border
+   (and crossed the neighbour on touch), so it sits just inside the button. */
+.hd .lang button:focus-visible{outline-offset:-3px}
+/* At 360 px and under the My list count sat on the button's corner, over its
+   border; it stays in the corner, inside. */
+@media (max-width:360px){#header-list .badge{top:3px;right:3px}}
+/* The Filters sheet. My IB points: the label and the number share the room, so
+   a long label wraps to two lines before the field gets too narrow for
+   "napr. 36" (it was 30 px at 320 px in Slovak). */
+.sheet-b .pts>label{flex:1 1 0;white-space:normal;line-height:18px}
+.sheet-b .pts input.inp{flex:1 1 0;min-width:64px}
+/* One left edge at the bottom: Copy link sat at the right (the bar's
+   margin-left:auto) 28 px below the rows, and "Edit my answers" (now first in
+   the sheet, index.html) had its text inset by the button padding. The -15 px
+   is .btn's 14 px padding plus its 1 px border. */
+.sheet-b .copy{margin:0}
+.sheet-b .sheet-edit{margin-left:-15px}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer

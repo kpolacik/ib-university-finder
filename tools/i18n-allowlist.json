@@ -951,7 +951,10 @@
       "open",
       "focusin",
       "mouseenter",
-      "mouseleave"
+      "mouseleave",
+      "canvas",
+      "2d",
+      "function"
     ],
     "js/saved-state.js": [
       "./filters.js",

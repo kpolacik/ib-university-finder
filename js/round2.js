@@ -5,6 +5,25 @@ import { t, getLanguage } from './i18n.js';
 let controls;
 let segments = [];
 let radios = [];
+let searchPlaceholder = () => {};
+// The Search hint, "Programme, university or city", only where it fits whole;
+// otherwise "Search". From 600 to about 950 px, and at 1024 px in Slovak, the
+// long one was cut off mid-letter (alignment audit, 2026-11-05). Measured in
+// the field's own font, so it holds in both languages, on touch (16 px) and
+// when zoomed. Where nothing can be measured, the width rule it replaced.
+let measurer;
+function longHintFits(input) {
+  try {
+    measurer ??= document.createElement('canvas').getContext('2d');
+    const style = getComputedStyle(input);
+    measurer.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    // offsetWidth, not clientWidth: Chrome's clientWidth of a search field
+    // already leaves out its padding.
+    const { borderLeftWidth, borderRightWidth, paddingLeft, paddingRight } = style;
+    const room = input.offsetWidth - [borderLeftWidth, borderRightWidth, paddingLeft, paddingRight].reduce((sum, side) => sum + parseFloat(side), 0);
+    return measurer.measureText(t('r2_searchph')).width <= room;
+  } catch { return true; }
+}
 export function wireRound2(dom) {
   controls = { maths: [...document.querySelectorAll('[data-maths]')], sliders: [...document.querySelectorAll('[data-number]')] };
   segments = [...document.querySelectorAll('.hd .lang,#maths-seg')].map((group) => {
@@ -13,11 +32,16 @@ export function wireRound2(dom) {
   });
   window.addEventListener('resize', () => { for (const segment of segments) segment.key = null; syncSegments(); });
   syncSegments();
-  const searchPlaceholder = () => {
-    const key = innerWidth < 600 ? 'search_2' : 'r2_searchph';
-    dom.search.dataset.i18nAttr = `placeholder:${key}`; dom.search.placeholder = t(key);
+  searchPlaceholder = () => {
+    const key = innerWidth >= 600 && longHintFits(dom.search) ? 'r2_searchph' : 'search_2';
+    if (dom.search.dataset.i18nAttr !== `placeholder:${key}`) dom.search.dataset.i18nAttr = `placeholder:${key}`;
+    if (dom.search.placeholder !== t(key)) dom.search.placeholder = t(key);
   };
   searchPlaceholder(); window.addEventListener('resize', searchPlaceholder);
+  // The field's width also changes without a window resize: the header buttons
+  // grow with a language switch or a count, and the font arrives late.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => searchPlaceholder()).observe(dom.search);
+  document.fonts?.ready?.then(() => searchPlaceholder());
   document.getElementById('header-list').addEventListener('click', () => dom.shortlistOnly.click());
   for (const button of document.querySelectorAll('[data-points-step]')) button.addEventListener('click', () => {
     dom.points.value = String(Math.min(45, Math.max(24, (Number(dom.points.value) || 36) + Number(button.dataset.pointsStep))));
@@ -155,6 +179,7 @@ export function syncRound2(dom, state, active, saved) {
   document.getElementById('budget-value').textContent = amounts.length > 1 ? `· ${amounts.length}` : amounts.length ? t(state.myLiving !== null ? 'r2_budget_living' : 'r2_budget_ceiling', { amount: new Intl.NumberFormat(getLanguage() === 'sk' ? 'sk-SK' : 'en-IE').format(amounts[0]) }) : '';
   document.getElementById('dd-budget').classList.toggle('is-set', amounts.length > 0);
   syncSegments();
+  searchPlaceholder();
   for (const { select, inputs } of radios) for (const input of inputs) input.checked = input.value === select.value;
   for (const [id, on] of [['deadline', state.deadlineWindow !== 'any'], ['exam', state.exam !== null]]) {
     const facet = document.getElementById(`dd-${id}`); facet.classList.toggle('is-set', on); facet.querySelector('.scalar-count').textContent = on ? '· 1' : '';

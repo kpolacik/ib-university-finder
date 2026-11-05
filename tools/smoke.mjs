@@ -2556,6 +2556,122 @@ async function runBatch3C(base) {
   }
 }
 
+// Alignment audit fixes (2026-11-05, Leon: "all is aligned"): header, the
+// phone Filters sheet, My list, setup and the FAQ. Each check measures the
+// layout in Chrome at the widths and languages the audit named.
+async function runAlignChromeSetup(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-align-fix-b/smoke';
+  await mkdir(shots, { recursive: true });
+  const { UI } = await import('../js/i18n.js');
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const shoot = async (page, name) => {
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  // A fresh page in one state: language, touch, saved programmes, setup seen.
+  const open = async (width, height, lang, { touch = width < 600, saves = 0, onboarding = 'dismissed', query = '' } = {}) => {
+    const page = await openPage(`${base}?ui=${lang}`, width, height);
+    try {
+      await page.waitFor(ready, 15000, 'page');
+      if (touch) {
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      }
+      const ids = await page.ev(`[...document.querySelectorAll('#results>li.item')].slice(0,${saves}).map(n=>n.dataset.id)`);
+      await page.ev(`localStorage.clear();${onboarding ? `localStorage.setItem('ibuf.onboarding.v1','${onboarding}');` : ''}localStorage.setItem('ib-university-finder:language','${lang}');localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(${JSON.stringify(ids)}));window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=${lang}${query}'`);
+      await page.waitFor(ready, 15000, 'reloaded page');
+      page.ids = ids;
+      return page;
+    } catch (err) { await page.close(); throw err; }
+  };
+  // A text's own box (a Range), not its element's.
+  const textBox = `(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()}`;
+
+  // Header: the Search hint is never cut off. The long one shows exactly where
+  // it fits whole, in both languages (re-measured after a language switch).
+  for (const [width, touch] of [[600, false], [700, false], [850, false], [1024, false], [1280, false], [768, true]]) {
+    const page = await open(width, 800, 'en', { touch });
+    try {
+      for (const lang of ['en', 'sk', 'en']) {
+        await check(width, 'AL-H1 search hint', `(${lang}${touch ? ', touch' : ''}): the hint fits its field; the long one shows whenever it fits`, async () => {
+          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:'language'})`, 3000, 'language');
+          await settle(page);
+          const m = await page.ev(`(()=>{const i=document.querySelector('#f-search'),s=getComputedStyle(i),w=(text)=>{const n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;n.textContent=text;document.body.append(n);const x=n.getBoundingClientRect().width;n.remove();return x};
+            return {ph:i.placeholder,room:i.offsetWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)-parseFloat(s.borderLeftWidth)-parseFloat(s.borderRightWidth),shown:w(i.placeholder),long:w(${JSON.stringify(UI[lang].r2_searchph)}),over:s.textOverflow}})()`);
+          if (lang === 'sk' || width === 600) {
+            const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height: 60, scale: 2 } });
+            await writeFile(`${shots}/search-${width}-${lang}${touch ? '-touch' : ''}.png`, Buffer.from(data, 'base64'));
+          }
+          assert(m.shown <= m.room + 0.5, `hint cut off: ${JSON.stringify(m)}`);
+          assert((m.long <= m.room) === (m.ph === UI[lang].r2_searchph) && [UI[lang].r2_searchph, UI[lang].search_2].includes(m.ph), `wrong hint: ${JSON.stringify(m)}`);
+          assert(m.over === 'ellipsis', `no ellipsis safety net: ${m.over}`);
+        });
+      }
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // Phones: one hairline under the header, and the Filters sheet's points field
+  // and bottom actions.
+  for (const [width, lang] of [[390, 'en'], [320, 'sk'], [320, 'en']]) {
+    const page = await open(width, 844, lang);
+    try {
+      await check(width, 'AL-H2 header hairline', `(${lang}): between the header and the count row only white, no grey stripe`, async () => {
+        const m = await page.ev(`(()=>{const hd=document.querySelector('.hd').getBoundingClientRect(),st=document.querySelector('.status').getBoundingClientRect(),panel=getComputedStyle(document.querySelector('.hd')).backgroundColor;
+          const bg=(n)=>{for(;n;n=n.parentElement){const c=getComputedStyle(n).backgroundColor;if(c!=='rgba(0, 0, 0, 0)')return c}return 'none'};const bad=[];
+          for(let y=Math.ceil(hd.bottom);y<Math.floor(st.top)+1;y++)for(const x of [1,innerWidth/2,innerWidth-1]){const c=bg(document.elementFromPoint(x,y+0.5));if(c!==panel)bad.push([x,y,c])}
+          return {gap:st.top-hd.bottom,bad,fslot:getComputedStyle(document.querySelector('.fslot')).borderBottomWidth}})()`);
+        assert(m.bad.length === 0 && m.fslot === '0px' && m.gap <= 2, `stripe under the header: ${JSON.stringify(m)}`);
+      });
+      await check(width, 'AL-H3 Filters sheet', `(${lang}): the points hint fits; Edit my answers first; its text, Copy link and the help share the left edge`, async () => {
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet'})`, 3000, 'sheet');
+        await settle(page);
+        await shoot(page, `sheet-${width}-${lang}-top`);
+        const m = await page.ev(`(()=>{const tb=${textBox},b=document.querySelector('.sheet-b'),bs=getComputedStyle(b),edge=b.getBoundingClientRect().left+parseFloat(bs.paddingLeft);
+          const i=document.querySelector('#f-points'),s=getComputedStyle(i),n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+getComputedStyle(i,'::placeholder').fontWeight+' '+getComputedStyle(i,'::placeholder').fontSize+' '+s.fontFamily;n.textContent=i.placeholder;document.body.append(n);const ph=n.getBoundingClientRect().width;n.remove();
+          const edit=document.querySelector('.sheet-b .sheet-edit'),copy=document.querySelector('.sheet-b #f-copy'),help=document.querySelector('.sheet-b #f-copy-help');
+          const prev=[...b.querySelectorAll('.more-filters>*')].filter(x=>x.getBoundingClientRect().height>0).at(-1);
+          const box=document.querySelector('.sheet-b .f-pts');
+          return {edge,ph,room:i.offsetWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),first:b.querySelector('.more-filters>:not([hidden])')===edit,
+            edit:tb(edit).left,copy:copy.getBoundingClientRect().left,help:tb(help).left,gap:copy.getBoundingClientRect().top-prev.getBoundingClientRect().bottom,
+            boxOver:box.scrollWidth-box.clientWidth,boxH:box.getBoundingClientRect().height,sw:b.scrollWidth-b.clientWidth}})()`);
+        await page.ev(`document.querySelector('.sheet-b').scrollTop=1e5`);
+        await settle(page);
+        await shoot(page, `sheet-${width}-${lang}-bottom`);
+        assert(m.ph <= m.room + 0.5, `points hint cut off: ${JSON.stringify(m)}`);
+        assert(m.first, 'Edit my answers is not first in the sheet');
+        assert([m.edit, m.copy, m.help].every((x) => Math.abs(x - m.edge) <= 1), `left edges differ: ${JSON.stringify(m)}`);
+        assert(m.gap <= 17, `gap above Copy link: ${m.gap}`);
+        assert(m.boxOver <= 0 && m.sw <= 0, `overflow: ${JSON.stringify(m)}`);
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // Focus rings: the wordmark is not touched by the logo's ring; SK/EN keep
+  // theirs inside the button, clear of the pill's border.
+  for (const width of [1280, 390]) {
+    const page = await open(width, 800, 'en');
+    try {
+      await check(width, 'AL-H4 focus rings', 'logo ring clear of "Finder"; language ring inside its button', async () => {
+        await page.key('Shift', 'ShiftLeft', 16);
+        if (width >= 701) {
+          await page.ev(`document.querySelector('.hd .mark').focus()`);
+          const m = await page.ev(`(()=>{const k=document.querySelector('.hd .mark'),h=(${textBox})(k.querySelector('h1'));return {vis:k.matches(':focus-visible'),gap:k.getBoundingClientRect().right-h.right}})()`);
+          assert(m.vis && m.gap >= 4, `logo ring touches the wordmark: ${JSON.stringify(m)}`);
+        }
+        await page.ev(`document.querySelector('[data-language=sk]').focus()`);
+        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),s=getComputedStyle(b),r=b.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible'),offset:o,width:parseFloat(s.outlineWidth)}})()`);
+        assert(l.vis && l.offset + l.width <= 0, `language ring outside its button: ${JSON.stringify(l)}`);
+      });
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -2583,7 +2699,8 @@ async function main() {
     await runBatch2Followup(base);
     await runBatch3A(base);
     await runBatch3B(base);
-    await runBatch3C(base); }
+    await runBatch3C(base);
+    await runAlignChromeSetup(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
