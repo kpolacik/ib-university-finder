@@ -1237,6 +1237,12 @@ dialog.ob[open]::backdrop{opacity:1}
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
 .ob .note{border:0}
+/* Setup's FAQ link: small, blue because it is pressable, 44 px on touch. */
+.ob .ob-faq{justify-self:start;display:inline-flex;align-items:center;min-height:var(--tap);font-size:14px;color:var(--accent);text-underline-offset:3px}
+/* The FAQ link lands below the sticky bar: the count bar on phones, the
+   header from 600 px. */
+#faq{scroll-margin-top:calc(var(--count-height) + 8px)}
+@media (min-width: 600px){#faq{scroll-margin-top:calc(var(--header-visible) + 8px)}}
 .ob .btn{border-color:var(--hairline);border-radius:8px;font-size:15px;font-weight:400}
 .ob .btn-p{font-weight:600;border-color:var(--accent)}
 .ob .btn-q{border-color:transparent}

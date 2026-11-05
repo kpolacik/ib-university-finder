@@ -1128,7 +1128,7 @@ check('header and onboarding controls inherit Plex and tabular figures; UA font 
 check('round 2 moves search to the header and provenance/disclaimer/FAQ to the footer',
   elementSource(indexHtml, /<header class="hd">/).includes('id="f-search"')
   && elementSource(indexHtml, /<footer class="foot">/).includes('id="source-line"')
-  && elementSource(indexHtml, /<div class="faq">/).includes('<details>')
+  && elementSource(indexHtml, /<div class="faq" id="faq">/).includes('<details>')
   && !elementSource(indexHtml, /<main class="shell">/).includes(UI.en.r2_footer_p));
 
 const { syncSlider } = await import('../js/round2.js');

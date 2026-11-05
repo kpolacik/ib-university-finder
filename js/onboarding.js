@@ -38,6 +38,11 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     else if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     else document.getElementById('f-search').focus({ preventScroll: true });
   };
+  const showFaq = () => {
+    const faq = document.getElementById('faq');
+    faq.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    faq.querySelector('summary').focus({ preventScroll: true });
+  };
   const chips = (field, values, country = false) => {
     const box = el('div', 'chips');
     for (const value of values) {
@@ -60,7 +65,15 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     const section = el('section', `ob-step on${back ? ' back' : ''}`);
     const heading = el('h2', '', t(`r2_ob${step}h`)); heading.id = 'ob-title'; heading.tabIndex = -1;
     section.append(heading, el('p', '', t(`r2_ob${step}p`)));
-    if (step === 1) section.append(el('p', 'note', t('r2_ob1n')));
+    if (step === 1) {
+      // The FAQ sits at the very bottom of the page, where few people scroll
+      // (Leon, 2026-11-05). On step 1 nothing is answered yet, so leaving here
+      // is a plain dismissal, as Skip setup: no draft is lost and "Edit my
+      // answers" reopens setup later.
+      const faq = el('a', 'ob-faq', t('r2_ob_faq')); faq.href = '#faq';
+      faq.addEventListener('click', (event) => { event.preventDefault(); close(); showFaq(); });
+      section.append(el('p', 'note', t('r2_ob1n')), faq);
+    }
     if (step === 2) {
       const points = el('div', 'big-pts'), input = el('input');
       input.id = 'ob-points'; input.type = 'number'; input.min = '24'; input.max = '45'; input.step = '1'; input.inputMode = 'numeric'; input.placeholder = '—'; input.value = draft.myIbPoints ?? ''; input.setAttribute('aria-label', t('my_ib_points_2'));

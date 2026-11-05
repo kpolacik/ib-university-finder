@@ -837,6 +837,15 @@ async function runRound2(base) {
         assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
       });
+      await check(width,'R2M','the setup FAQ link dismisses setup without applying answers and lands on the FAQ below the sticky bar',async()=>{
+        await page.ev(`window.scrollTo(0,0)`);
+        await edit();
+        await page.click(`document.querySelector('#onboarding .ob-faq')`,'the FAQ link');
+        assert(await page.ev(`!document.querySelector('#onboarding').open && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && document.querySelector('#f-points').value===''`),'FAQ link applied answers or left setup open');
+        assert(await page.ev(`document.activeElement===document.querySelector('#faq summary')`),'focus is not on the first FAQ question');
+        await page.waitFor(`(()=>{const top=document.querySelector('#faq').getBoundingClientRect().top,bar=${width<600?"document.querySelector('.status').getBoundingClientRect().bottom":"document.querySelector('.hd').getBoundingClientRect().bottom"};return {ok:top>=bar-1 && top<innerHeight-40,why:JSON.stringify({top,bar})}})()`,5000,'the FAQ in view');
+        await page.ev(`window.scrollTo(0,0)`);
+      });
       await check(width,'R2B','answers apply once, typed budget exceeds slider, saved filters restore, URL wins without overwriting',async()=>{
         await edit(); await next();
         await page.click(`document.querySelector('#ob-points')`,'predicted points'); await page.type('38'); await next();
@@ -1101,7 +1110,7 @@ async function runReview2(base) {
         await page.ev(`document.querySelector('[data-edit]:not(.sheet-edit)')?.offsetParent ? document.querySelector('[data-edit]:not(.sheet-edit)').click() : document.querySelector('.sheet-edit').click()`);
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
         for (let i = 0; i < 5; i++) {
-          const ob = await small('#onboarding .ob-step.on .chip,#onboarding .ob-foot .btn,#onboarding .ob-step.on .big-pts .btn,#onboarding .ob-step.on .rng-top .inp,#onboarding .ob-step.on input[type=range]');
+          const ob = await small('#onboarding .ob-step.on .chip,#onboarding .ob-foot .btn,#onboarding .ob-step.on .big-pts .btn,#onboarding .ob-step.on .rng-top .inp,#onboarding .ob-step.on input[type=range],#onboarding .ob-step.on .ob-faq');
           assert(ob.length === 0, `onboarding step ${i + 1}: ${ob}`);
           if (i < 4) await page.ev(`document.querySelector('.ob-foot>.btn-p').click()`);
         }
