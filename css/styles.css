@@ -1477,6 +1477,8 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    than the line. "Jednostupňové magisterské štúdium (dlhý cyklus)" is 384 px on
    one line: nowrap stretched the pane past its edge and ran off a 320 px row. */
 .deg,.d-title .deg{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal}
+/* Faculty names need a whole-word minimum width beside the country badge. */
+.sub .identity{overflow-wrap:normal}
 /* A label above a tile starts where the tile's text starts, not at the tile's
    edge: the value sits inside the cell padding (4, 6 or 10 px), so plain cells
    had their label hanging out to the left and tinted ones did not. */

@@ -617,6 +617,8 @@ beside it; the fact names are 6.5rem up to 1023 px; Close, Save and Browse are
 its column still has to break (this Chrome hyphenates Slovak, Czech and German,
 not English). Rules: CSS section "Alignment fixes · list, detail, Compare";
 checks: smoke `runAlignListCompare`, check.mjs section of the same name.
+The independent review also keeps Charles faculty words whole in the summary
+row; regression checks cover EN/SK from 320 to 1440 px.
 
 **Round 2 (2026-11-05):** branch `redesign-round2-only` (a PR for `main`,
 without the Supabase switch-over) includes the approved white 56 px header,

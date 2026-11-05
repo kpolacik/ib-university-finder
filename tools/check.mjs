@@ -6846,6 +6846,8 @@ section('Alignment · list, detail, Compare');
   const block = cssText.slice(cssText.indexOf('.deg,.d-title .deg{'), cssText.indexOf('.r-main{grid-template-columns:minmax(0,1fr) auto auto;'));
   check('AL degree: wraps inside itself as one unit, never nowrap past the pane or the row (Slovak long-cycle degree, 384 px)',
     /\.deg,\.d-title \.deg\{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal\}/.test(block));
+  check('AL faculty identity wraps only between words instead of shrinking into word fragments',
+    /\.sub \.identity\{overflow-wrap:normal\}/.test(block));
   check('AL row labels start with the value text (the cell padding), the fee label ends with it',
     /\.row \.cell \.lab\{padding-left:inherit\}\s*\.row \.c-fee \.lab\{padding-left:0;padding-right:inherit\}/.test(block));
   check('AL row toggles centre on the title\'s first line, out-ranking the old -4 px margin',

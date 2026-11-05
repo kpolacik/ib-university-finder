@@ -2633,6 +2633,23 @@ async function runAlignListCompare(base) {
   }
   watchdog.refresh();
 
+  // Faculty labels share the flex row with the country badge. Their min-content
+  // width must be a whole word, not one character inherited from anywhere.
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}&q=Charles`, 320, 844);
+    try {
+      for (const width of [320, 390, 600, 700, 1024, 1280, 1440]) {
+        await check(`${width}/${ui}`, 'AL faculty', 'Charles faculty words stay whole without overflowing the row', async () => {
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: false });
+          await settle(page);
+          await page.ev(TEXT);
+          const m = await page.ev(`(()=>{const els=[...document.querySelectorAll('#results .identity')];return {count:els.length,issues:els.flatMap(e=>{e.closest('li.item').style.contentVisibility='visible';const box=e.closest('.r-main').getBoundingClientRect(),r=e.getBoundingClientRect();return __splits(e).length||r.right>box.right+1?[e.textContent]:[]}),page:${noOverflow}}})()`);
+          assert(m.count > 0 && !m.issues.length && m.page, JSON.stringify(m));
+        });
+      }
+    } finally { await page.close(); }
+  }
+
   // 2. The detail's Save and Compare (L2, L3, L9): each label on one line,
   // never split inside a word, side by side when both fit, otherwise stacked;
   // in both states; the two icons the same size.
