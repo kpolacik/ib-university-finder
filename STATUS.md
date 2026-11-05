@@ -49,7 +49,9 @@ follow-up from the translation plan.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
-**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Compare** 2 to 4 programmes side by side (`js/compare.js`; "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns at a time, swiped sideways), **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+
+**Compare** (batch 3, Leon 2026-11-05: "comparing something and saving something is not really the same intent") is its own set of up to four programmes, kept in this browser (`js/compare-set.js`, key `ib-university-finder:compare:v1`), independent of the saves, the filters and the address. Every row, phone card and detail has a scales toggle beside the save star; a fifth add changes nothing and says why, with "Open compare". On phones (and short windows) a bottom tray says "Compare n of 4 · Open"; from 600 px a header button beside My list does. The view works at any count (an empty state at 0, a prompt at 1); each column has a Save toggle and an "x" with Undo. "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns show at a time, with a "Programmes 1–2 of 3" line, arrows and an edge fade (`js/compare.js`).
 
 **Saves belong to one web address.** Browser storage is kept per site origin (scheme, host and port). Saves made on a test address (`localhost`, a preview host, Leon's old fork) are not on the live site at `kpolacik.github.io`, and the other way round; a different browser or device has its own list too. To move a list, use Share and open the link on the other address, then "Save these to my list".
 
@@ -506,9 +508,23 @@ plans/backlog/wording.md for the translation queue.
 
 ## Known gaps
 
-- **Round 2 L09 timing is unmeasured.** Re-run the baseline/build comparison
-  on AC power, a quiet machine and 4× CPU slowdown; the earlier round 1 timing
-  does not certify round 2. See *The look of it*.
+- **L09 timing, round 2 (measured 2026-11-05).** Paired run, live a6fed60 vs
+  round 2 90f71e1, 2,915 rows, AC power, gated load, 4× CPU, 20 samples each:
+  every forward filter change is under 150 ms on both (round 2 71–107 ms
+  medians); the reverse change (all to 548 rows) is about the same on both
+  and misses at 1920 px with the default Chrome (157 vs 164 ms). No
+  measurable round 2 regression. Batch 3's row Compare toggle adds about
+  1.6 ms to `update()` and 6–12 ms to the second frame (the builder's own
+  paired run, not independently repeated). Raw data: `/tmp/l09-r2/out` (local).
+
+- **Landscape phones lose the logo once scrolled.** At 844 x 390 the header
+  stops sticking (by design, to save height), so "home" is off screen after a
+  scroll. A sticky count row with the IB tile would cost about 45 of 390 px;
+  waiting for Leon's call.
+
+- **University names are cut with "…" in most rows** (about 91% at 390 px,
+  66% at 1280 px), city included. Showing them whole means two-line rows;
+  waiting for Leon's call.
 
 - **Rolling admission and "Not passed yet".** 21 of the 22 programmes whose notes
   mention rolling or ongoing admission also have a recorded deadline, so they drop
@@ -702,14 +718,41 @@ students, and where each rule lives:
   shared list; saved programmes are never in a filter link. A failed copy
   never says it worked and says what to do instead. On phones the message
   shows inside the Filters sheet. Rules: `copyLink()` in `js/app.js`.
-- *Compare (batch 2 B).* My list says "Save 2 or more programmes to compare up
-  to 4" until two are saved, then shows "Compare (n)", which opens with all
-  saved programmes ticked when there are 2 to 4.
+- *Compare (batch 2 B).* Replaced by batch 3: the hint, "Compare (n)" and the
+  My list picker are gone (see My list, above, and batch 3 below).
 - *Details (batch 2 C).* The official page and save buttons are an even pair,
   side by side when there is room and stacked when not. On wide screens
   (1200 px and up) clicking a row that is already open moves the keyboard
   focus into its details; narrower, it closes the row as before. It never
   opens the university's site by itself.
+- *Batch 3 (2026-11-05, branch `redesign-batch3`).* Compare is its own set
+  (above). The detail's official page link is full width, with Save and
+  Compare as a pair below it (stacked when they do not fit). On phones the
+  main view no longer shows a My list box; the header's "My list (n)" is the
+  way in. The phone My list toolbar has "Back to all programmes" top-left and
+  Share, Export CSV, Print and Clear my list as an even 2 x 2 grid, Clear
+  outlined. An empty My list opens with "Your list is empty", how to save and
+  a way back. Setup ends with Finish and a done screen ("Your answers are now
+  filters", the count, a large "Show my programmes" and an outlined "Read the
+  FAQ"); Skip never shows it, and step 1 no longer links to the FAQ. The logo
+  always goes home: it leaves My list, a shared list or Compare, drops
+  `list=`, keeps filters, search, sort, saves and the Compare set, and scrolls
+  to the top. The IB tile stays visible when scrolled (beside Filters from
+  600 px, in the stuck count row on phones). Rules: CSS sections "Batch 3 ·
+  A/B/C"; checks in check.mjs and smoke `runBatch3A/B/C`.
+- *Alignment audit (2026-11-05).* Five read-only Chrome audits (header, list
+  and detail, Compare, My list, setup and footer; EN and SK, 320 to 1440 px
+  and 844 x 390) found 2 high, 21 medium and about 38 low problems; all high
+  and medium ones are fixed except the landscape logo (Known gaps). Header,
+  My list and setup: Search shows its long hint only where it fits whole;
+  "Edit my answers" is first in the phone Filters sheet; the setup switch
+  label wraps; on phones setup's Next/Finish has its own full-width row with
+  Skip and Back below; all setup buttons are 44 px; desktop Clear my list is
+  an outlined button like Export; the CSV note is its own line and hides on a
+  shared list; Slovak "Clear my list" is "Vymazať zoznam" so phone labels fit
+  (Leon to confirm). Rules: CSS sections "Alignment fixes · header, My list,
+  setup" and "· list, detail, Compare"; smoke `runAlignChromeSetup`,
+  `runAlignListCompare`.
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
@@ -1087,7 +1130,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   A proper column, recording the meaning and the conversion separately, is in
   `plans/backlog/points-value-kind.md`.
 
-- **Compare is built, on the saved list** (Leon, 2026-11-03, superseding his
+- **Compare is built, on the saved list** (replaced on 2026-11-05 by the batch
+  3 call below; kept for the history) (Leon, 2026-11-03, superseding his
   2026-10-26 "draft only, ask Jakub first", registry Q9/F05). Pick 2 to 4
   saved programmes; the table uses the detail's own wording (`js/compare.js`,
   which `js/render.js` imports for the exam line, the countdown and the yearly
@@ -1105,6 +1149,14 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   iPhones get the fade only. The Czech fee note left the Language filter for
   the programme details. Slovak "Podľa školy" for the living-costs
   placeholder. "Edit my answers" stays permanently.
+
+- **Design round 2, batch 3 calls** (Leon, 2026-11-05). Compare is fully
+  independent of My list: its own set, at most 4, with a compare toggle on
+  every programme and a Save toggle and "x" in each Compare column. Phones
+  reach it through a bottom tray, wider screens through a header button. The
+  main-view My list box is hidden on phones. The detail's official link is
+  full width with Save and Compare below. Setup ends on a done screen with
+  "Show my programmes" and "Read the FAQ". The logo always goes home.
 
 - **The class's target programmes come later** (Leon, 2026-10-26, registry
   Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
