@@ -1401,6 +1401,8 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 2 · B: share and My list */
 
 /* Batch 2 · C: detail */
+.d-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px;flex-basis:100%}
+.d-actions .btn{min-height:44px;height:auto;white-space:normal;text-align:center;padding-block:10px}
 
 /* ------------------------------------------------- motion preferences */
 

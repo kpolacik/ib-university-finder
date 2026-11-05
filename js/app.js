@@ -1170,6 +1170,10 @@ function toggleRow(event) {
   const item = button.closest('li.item');
   const id = item.dataset.id;
   if (wideQuery.matches) {
+    if (id === selectedId && paneId === id) {
+      dom.pane.focus({ preventScroll: true });
+      return;
+    }
     selectRow(id);
   } else if (openIds.has(id)) {
     closeRow(item);

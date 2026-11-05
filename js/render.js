@@ -652,6 +652,7 @@ function notes(row, state, pointsSays) {
 
 function footer(row, saved) {
   const foot = el('footer', 'd-foot');
+  const actions = el('div', 'd-actions');
 
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
@@ -659,13 +660,14 @@ function footer(row, saved) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
     const identity = row.identity?.text || row.faculty?.name;
-    foot.append(externalLink('btn btn-p', t('official_admissions_page'), row.officialUrl,
+    actions.append(externalLink('btn btn-p', t('official_admissions_page'), row.officialUrl,
       t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' })));
   }
+  if (typeof saved === 'boolean') actions.append(saveButton(row, saved));
+  if (actions.childElementCount) foot.append(actions);
   if (row.studentLifeUrl) {
     foot.append(externalLink('lnk', t('student_life'), row.studentLifeUrl));
   }
-  if (typeof saved === 'boolean') foot.append(saveButton(row, saved));
 
   // Every card used to end "Gathered <date> · nobody has checked this yet".
   // Removed 2026-10-24 at Jakub's request: the source line at the top of the

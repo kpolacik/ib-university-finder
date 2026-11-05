@@ -672,7 +672,8 @@
       "pt cutoff",
       "option-count",
       ".d-head",
-      "sep"
+      "sep",
+      "d-actions"
     ],
     "js/shortlist.js": [
       "./cost.js",

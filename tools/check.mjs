@@ -5738,7 +5738,37 @@ section('Batch 2 · B');
 // batch 2 · B checks go here
 
 section('Batch 2 · C');
-// batch 2 · C checks go here
+{
+  const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
+    lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
+  const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false }));
+  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0];
+  equal('C1 actions contain official then save', actions.children.map((n) => [n.tagName, n.className]),
+    [['a', 'btn btn-p'], ['button', 'btn save']]);
+  check('C1 Student life and provenance stay outside actions',
+    actions.parent === foot && byClass(foot, 'lnk')[0]?.parent === foot && byClass(foot, 'ok')[0]?.parent === foot);
+  const solo = withStubDocument(() => renderDetail({ ...row, officialUrl: null }, noFilters(), { saved: false }));
+  equal('C1 no official URL leaves one action', byClass(solo, 'd-actions')[0]?.childElementCount, 1);
+  check('C1 actions use equal grid tracks and 10px gap',
+    /\.d-actions\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,15rem\),1fr\)\);gap:10px/.test(read('css/styles.css')));
+}
+appCheck('C2 second wide activation focuses the pane without navigation; narrow still toggles', ({ run, flip, click, pane, context, ids: [a] }) => {
+  let opened = false, changed = false;
+  context.window.open = () => { opened = true; };
+  context.history.replaceState = () => { changed = true; };
+  const href = context.location.href;
+  flip(true); click(a);
+  if (run('selectedId') !== a || stubDocument.activeElement === pane) return false;
+  changed = false;
+  click(a);
+  if (stubDocument.activeElement !== pane || run('selectedId') !== a || opened || changed || context.location.href !== href) return false;
+  flip(false);
+  // Crossing reopens the selected row inline; close it before the two-click pair.
+  click(a); click(a);
+  if (!run('openIds.has(fixture[0].id)')) return false;
+  click(a);
+  return !run('openIds.has(fixture[0].id)');
+});
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
