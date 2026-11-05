@@ -13,7 +13,7 @@ import {
   loadShortlist, saveShortlist, readStoredShortlist, SHORTLIST_KEY, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
   groupRows, groupHeadings, addressQuery,
 } from './shortlist.js';
-import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js';
+import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
@@ -107,11 +107,6 @@ const dom = {
   listTools: document.getElementById('ml-tools'),
   listOrigin: document.getElementById('ml-origin'),
   groupBy: document.getElementById('ml-group'),
-  comparePicker: document.getElementById('ml-compare'),
-  compareHint: document.getElementById('ml-compare-hint'),
-  compareOpen: document.getElementById('ml-compare-open'),
-  comparePicks: document.getElementById('ml-picks'),
-  compareGo: document.getElementById('ml-compare-go'),
   share: document.getElementById('ml-share'),
   sharePoints: document.getElementById('ml-share-points'),
   sharePointsHelp: document.getElementById('ml-share-points-help'),
@@ -121,8 +116,13 @@ const dom = {
   compare: document.getElementById('compare'),
   compareHeading: document.getElementById('cmp-h'),
   compareDiff: document.getElementById('cmp-diff'),
+  compareDiffLabel: document.getElementById('cmp-diff-label'),
   compareClose: document.getElementById('cmp-close'),
+  compareNote: document.getElementById('cmp-note'),
+  compareOne: document.getElementById('cmp-one'),
   compareBody: document.getElementById('cmp-body'),
+  compareEmpty: document.getElementById('cmp-empty'),
+  compareBrowse: document.getElementById('cmp-browse'),
   issues: document.getElementById('issues'),
   issuesSummary: document.getElementById('issues-summary'),
   issuesList: document.getElementById('issues-list'),
@@ -151,12 +151,11 @@ let listIds = [];
 let listHeadings = new Map();
 let listShown = 0;
 let saveFailed = false;
-// Compare: the picked ids (2 to 4), whether the table is open, and the key of
-// the list the picker was last built for.
-let comparePicks = [];
+// Compare: whether its view is open, "Show only differences", and where it was
+// opened from ({ trigger, scrollY }), so closing can go back there.
 let compareOpen = false;
 let onlyDifferences = false;
-let picksKey = null;
+let compareFrom = null;
 // The compare set (js/compare-set.js): up to four programme ids in the order
 // they were added, apart from the saves. compareFailed: the last write failed.
 let compareIds = loadCompare();
@@ -637,7 +636,7 @@ function onToggleStar(id) {
     changeShortlist((set) => { if (starred) set.delete(id); else set.add(id); });
     for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, !starred);
     syncListToSaves(); renderCounts(currentlyShown); if (selectedId === null) drawPane();
-    document.querySelector(`.row [data-save-id="${id}"]`)?.focus({ preventScroll: true });
+    (compareOpen ? dom.compareBody : document).querySelector(`${compareOpen ? 'th' : '.row'} [data-save-id="${id}"]`)?.focus({ preventScroll: true });
   });
   return starred;
 }
@@ -718,16 +717,18 @@ function onToggleCompare(id) {
   return result;
 }
 
-// Brings everything that shows the compare set up to date, in place.
+// Brings everything that shows the compare set up to date, in place, and
+// draws the compare view again if it is open.
 function syncCompareControls() {
   const inSet = new Set(compareIds);
   for (const button of document.querySelectorAll('[data-compare-id]')) setInCompare(button, inSet.has(button.getAttribute('data-compare-id')));
+  drawCompare();
 }
 
-// The list view's ids, counts and Compare picks from the saves as they are
-// now, without drawing the rows again. An unsaved row stays where it is
-// (onToggleStar), but the bar and Compare follow the real list at once.
-// Same scope as update().
+// The list view's ids and counts from the saves as they are now, without
+// drawing the rows again. An unsaved row stays where it is (onToggleStar), but
+// the bar follows the real list at once. Same scope as update(). Compare is
+// its own set, so nothing here touches it; its Save buttons change in place.
 function syncListToSaves() {
   if (!state.shortlistOnly || shared) return;
   const inScope = allRows.filter((row) => shortlist.has(row.id));
@@ -737,8 +738,6 @@ function syncListToSaves() {
   listShown = filtered.length;
   currentlyShown = onScreen.length;
   currentSummary = pointsSummaryParts(onScreen, state);
-  drawPicks();
-  drawCompare();
 }
 
 // The list bar's buttons and pickers. Everything here changes the view, never
@@ -771,37 +770,19 @@ function wireList() {
     sharedNote = t('added_list_count', { count: added });
     renderCounts(currentlyShown);
   });
-  dom.compareOpen.addEventListener('click', () => {
-    state.shortlistOnly = true;
-    listAll = false;
-    update();
-    dom.comparePicker.open = true;
-    if (listIds.length >= MIN_COMPARE && listIds.length <= MAX_COMPARE && comparePicks.length === 0) {
-      comparePicks = [...listIds];
-      syncPicks();
-    }
-    dom.comparePicks.querySelector('input')?.focus();
-  });
   dom.groupBy.addEventListener('change', () => {
     groupBy = dom.groupBy.value;
     update();
   });
-  dom.comparePicks.addEventListener('change', (event) => {
-    const input = event.target;
-    if (input.checked) comparePicks = [...comparePicks, input.value];
-    else comparePicks = comparePicks.filter((id) => id !== input.value);
-    comparePicks = prunePicks(comparePicks, listIds);
-    syncPicks();
-  });
-  dom.compareGo.addEventListener('click', () => {
-    if (comparePicks.length < MIN_COMPARE) return;
-    compareOpen = true;
-    dom.comparePicker.open = false;
-    drawCompare();
-    dom.compare.focus({ preventScroll: true });
-    dom.compare.scrollIntoView?.({ block: 'start' });
-  });
   dom.compareClose.addEventListener('click', () => closeCompare(true));
+  // A column's Save and "x"; Browse sits outside the table, in the empty state.
+  dom.compareBody.addEventListener('click', (event) => {
+    const save = event.target.closest('button[data-save-id]');
+    if (save) { onToggleStar(save.getAttribute('data-save-id')); return; }
+    const remove = event.target.closest('button[data-compare-remove]');
+    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'));
+  });
+  dom.compareBrowse.addEventListener('click', () => closeCompare(true));
   dom.compareDiff.addEventListener('change', () => {
     onlyDifferences = dom.compareDiff.checked;
     drawCompare();
@@ -853,63 +834,129 @@ async function copyShareLink() {
   showToast(success);
 }
 
-// The compare picker lists every programme in the list view (filters do not
-// narrow it), rebuilt only when that list changes, so ticking a box keeps
-// its focus.
-function drawPicks() {
-  const byId = new Map(allRows.map((row) => [row.id, row]));
-  const key = listIds.join(',');
-  comparePicks = prunePicks(comparePicks, listIds);
-  if (key !== picksKey) {
-    picksKey = key;
-    dom.comparePicks.replaceChildren(...listIds.map((id) => {
-      const row = byId.get(id);
-      const label = document.createElement('label');
-      label.className = 'option';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.value = id;
-      const text = document.createElement('span');
-      text.textContent = `${row.programme} · ${row.university}`;
-      label.append(input, text);
-      return label;
-    }));
-  }
-  syncPicks();
+// Opens the compare view at any count, from wherever the student is (the
+// list, My list or a shared list), which stays as it was underneath.
+function openCompare(trigger) {
+  if (!loaded) return;
+  if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
+  compareOpen = true;
+  syncCompareControls();
+  dom.compare.scrollIntoView?.({ block: 'start' });
+  dom.compareHeading.focus({ preventScroll: true });
 }
 
-// Ticks, the fifth box disabled at four, and the button's count.
-function syncPicks() {
-  const picked = new Set(comparePicks);
-  for (const input of dom.comparePicks.querySelectorAll('input')) {
-    input.checked = picked.has(input.value);
-    input.disabled = !input.checked && picked.size >= MAX_COMPARE;
-  }
-  const n = comparePicks.length;
-  dom.compareGo.disabled = n < MIN_COMPARE;
-  dom.compareGo.textContent = n >= MIN_COMPARE ? t('compare', { value1: n }) : t('compare_2');
-}
-
+// The compare set's programmes from the whole data, never the filtered list:
+// a filter never drops a column and a passed deadline still shows. Drawn again
+// on every change (a filter changes the points verdicts); focus and the
+// sideways scroll survive it (compareFocus).
 function drawCompare() {
   if (!compareOpen) return;
+  const focus = compareFocus();
+  const scroller = dom.compareBody.querySelector('.cmp-scroll');
+  const scrollLeft = scroller ? scroller.scrollLeft : 0;
   const byId = new Map(allRows.map((row) => [row.id, row]));
-  const rows = comparePicks.map((id) => byId.get(id)).filter(Boolean);
-  if (rows.length < MIN_COMPARE) { closeCompare(false); return; }
-  dom.compareHeading.textContent = t('compare_programmes', { value1: rows.length });
+  const rows = compareIds.map((id) => byId.get(id)).filter(Boolean);
+  const n = rows.length;
+  dom.compareHeading.textContent = n ? t('r3_cmp_heading', { count: n }) : t('compare_2');
   dom.compareDiff.checked = onlyDifferences;
-  renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences });
+  dom.compareDiffLabel.hidden = n < MIN_COMPARE;
+  dom.compareOne.hidden = n !== 1;
+  dom.compareEmpty.hidden = n !== 0;
+  const note = compareFailed ? t('r3_cmp_failed') : '';
+  if (dom.compareNote.textContent !== note) dom.compareNote.textContent = note;
+  dom.compareNote.hidden = !note;
+  if (n) {
+    renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences: onlyDifferences && n >= MIN_COMPARE, saved: shortlist });
+    const next = dom.compareBody.querySelector('.cmp-scroll');
+    if (next && scrollLeft) next.scrollLeft = scrollLeft;
+  } else dom.compareBody.replaceChildren();
   dom.compare.hidden = false;
   dom.split.hidden = true;
+  dom.shortlistBar.hidden = true;
+  if (focus) restoreCompareFocus(focus, rows.map((row) => row.id));
 }
 
-// returnFocus: from the Close button, focus goes back to the picker.
+// Where focus is in the compare view, as something a redraw cannot break: a
+// column's control by programme and kind (and its column, in case it goes),
+// a link by its address, or the sideways scroll box.
+function compareFocus() {
+  const active = document.activeElement;
+  if (!active || !dom.compareBody.contains(active)) return null;
+  const head = active.closest('th');
+  const id = head?.getAttribute('data-id');
+  if (id) {
+    const ids = [...dom.compareBody.querySelectorAll('th')].map((th) => th.getAttribute('data-id')).filter(Boolean);
+    return { id, kind: active.matches('[data-save-id]') ? 'save' : 'remove', index: ids.indexOf(id) };
+  }
+  const link = active.closest('a');
+  if (link) return { kind: 'link', href: link.getAttribute('href') };
+  return { kind: 'box' };
+}
+
+// The same control if its programme is still there; after an "x", the next
+// column's "x", else the previous one's, else Browse in the empty state.
+function restoreCompareFocus(focus, ids) {
+  const removeOf = (id) => dom.compareBody.querySelector(`[data-compare-remove="${id}"]`);
+  let target = null;
+  if (focus.kind === 'save' || focus.kind === 'remove') {
+    if (ids.includes(focus.id)) {
+      target = focus.kind === 'save' ? dom.compareBody.querySelector(`th [data-save-id="${focus.id}"]`) : removeOf(focus.id);
+    } else {
+      const at = Math.min(focus.index, ids.length);
+      target = ids.length ? removeOf(ids[at] ?? ids[at - 1]) : dom.compareBrowse;
+    }
+  } else if (focus.kind === 'link') {
+    target = [...dom.compareBody.querySelectorAll('a')].find((link) => link.getAttribute('href') === focus.href) ?? null;
+  }
+  target ??= dom.compareBody.querySelector('.cmp-scroll') ?? (ids.length ? null : dom.compareBrowse);
+  (target ?? dom.compareHeading).focus({ preventScroll: true });
+}
+
+// The column's "x": out of Compare, with Undo putting it back in its place
+// (restoreAt), or the limit toast if four have been added since.
+function removeFromCompare(id) {
+  const index = compareIds.indexOf(id);
+  changeCompare((ids) => ({ ids: ids.filter((x) => x !== id), result: 'removed' }));
+  syncCompareControls();
+  showToast(t('r3_cmp_removed'), t('r2_undo'), () => {
+    const result = changeCompare((ids) => restoreAt(ids, id, index, knownIds()));
+    if (result === 'full') {
+      if (compareOpen) dom.compareHeading.focus({ preventScroll: true });
+      showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+      return;
+    }
+    syncCompareControls();
+    // Focus moves to the programme it brought back before the toast goes.
+    const back = compareOpen ? dom.compareBody.querySelector(`[data-compare-remove="${id}"]`)
+      : document.querySelector(`.row [data-compare-id="${id}"]`);
+    back?.focus({ preventScroll: true });
+  });
+}
+
+// returnFocus true (Close, Browse, the header button): back where Compare was
+// opened, at the same scroll, focus on the button that opened it or the next
+// best entry. false (another view takes over): hide it and restore nothing.
 function closeCompare(returnFocus) {
   if (!compareOpen) return;
   compareOpen = false;
+  const from = compareFrom;
+  compareFrom = null;
   dom.compare.hidden = true;
   dom.split.hidden = false;
   dom.compareBody.replaceChildren();
-  if (returnFocus) dom.comparePicker.querySelector('summary').focus({ preventScroll: true });
+  renderListBar();
+  syncCompareControls();
+  if (!returnFocus) return;
+  window.scrollTo(window.scrollX, from.scrollY);
+  const target = [from.trigger, document.getElementById('header-compare'), document.getElementById('cmp-tray-open')].find(canShow) ?? dom.resultsSection;
+  target.focus({ preventScroll: true });
+}
+
+// In the page and not hidden by itself, an ancestor or the stylesheet.
+function canShow(node) {
+  if (!node || !document.body.contains(node)) return false;
+  for (let n = node; n; n = n.parentElement) if (n.hidden) return false;
+  return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
 }
 
 function clearAll() {
@@ -1030,8 +1077,6 @@ function update() {
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
-  if (state.shortlistOnly) drawPicks();
-  else closeCompare(false);
   drawCompare();
   keepAddress();
 }
@@ -1725,14 +1770,10 @@ function renderListBar() {
   const known = new Set(allRows.map((row) => row.id));
   const saved = [...shortlist].filter((id) => known.has(id)).length;
   const mode = !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine';
-  dom.shortlistBar.hidden = mode === 'main' && saved === 0 && !saveFailed;
+  // Compare hides the bar while it is open, whatever else changes.
+  dom.shortlistBar.hidden = compareOpen || (mode === 'main' && saved === 0 && !saveFailed);
   dom.shortlistBar.classList.toggle('is-list', mode !== 'main');
   dom.listTitle.textContent = mode === 'shared' ? t('shared_list') : t('my_list');
-  const n = mode === 'main' ? saved : listIds.length;
-  dom.compareHint.hidden = mode === 'shared' || n !== 1;
-  dom.compareOpen.hidden = mode !== 'main' || n < MIN_COMPARE;
-  dom.compareOpen.textContent = t('r2_compare_n', { count: n });
-  dom.comparePicker.querySelector('summary span').textContent = t('r2_compare_n', { count: n });
   const helpKey = shared ? 'r2_copy_help_shared' : 'r2_copy_help';
   dom.copyHelp.setAttribute('data-i18n', helpKey);
   dom.copyHelp.textContent = t(helpKey);
@@ -1777,7 +1818,6 @@ function renderListBar() {
   dom.listOrigin.hidden = mode !== 'mine';
   for (const node of dom.listTools.querySelectorAll('.ml-mine')) node.hidden = mode !== 'mine';
   dom.share.hidden = mode !== 'mine';
-  dom.comparePicker.hidden = listIds.length < MIN_COMPARE;
   if (dom.groupBy.value !== groupBy) dom.groupBy.value = groupBy;
   if (mode === 'mine' && dom.share.open) syncShare();
 }

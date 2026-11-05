@@ -762,6 +762,9 @@ export function setSaved(button, saved) {
   if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
   const words = button.querySelector('.save-t');
   if (words) words.textContent = saved ? t('saved_to_my_list') : t('save_to_my_list_2');
+  // A compare column's short "Save" / "Saved".
+  const short = button.querySelector('.save-s');
+  if (short) short.textContent = t(saved ? 'r3_cmp_saved' : 'r3_cmp_save');
 }
 
 // Batch 3 · A. The row's compare toggle, beside the save star and built the
@@ -803,7 +806,9 @@ export function setInCompare(button, on) {
 // The compare table: one column per programme, one row per fact
 // (compareTable in compare.js). Row headers are real <th scope=row>, and each
 // column is headed by the programme, so a screen reader names every cell.
-export function renderCompare(container, rows, table, { onlyDifferences = false } = {}) {
+// saved: the saved ids, for each column's Save toggle (batch 3 · A); every
+// column also has an "x" that takes it out of Compare.
+export function renderCompare(container, rows, table, { onlyDifferences = false, saved = new Set() } = {}) {
   const facts = visibleFacts(table, onlyDifferences);
   const wrap = el('div', 'cmp-scroll');
   wrap.setAttribute('tabindex', '0');
@@ -821,7 +826,8 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
     th.setAttribute('scope', 'col');
     const name = el('span', 'cmp-n', row.programme);
     if (row.languages.length === 1 && row.languages[0] === 'Czech') name.lang = 'cs';
-    th.append(name, el('span', 'cmp-u', row.university));
+    th.setAttribute('data-id', row.id);
+    th.append(name, el('span', 'cmp-u', row.university), compareActions(row, saved.has(row.id)));
     top.append(th);
   }
   head.append(top);
@@ -851,6 +857,26 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
   if (hidden) out.push(el('p', 'help cmp-same', t('facts_hidden_count', { count: hidden })));
   container.replaceChildren(...out);
   return facts.length;
+}
+
+// A column's own controls: Save (the bookmark, "Save" / "Saved", the same
+// toggle as the row's star) and the "x" that drops it from Compare, each a
+// 44 px target. Named by the programme, since every column has the same pair.
+function compareActions(row, saved) {
+  const box = el('div', 'cmp-acts');
+  const save = el('button', 'btn btn-s cmp-save');
+  save.type = 'button';
+  save.setAttribute('data-save-id', row.id);
+  save.append(icon(saved ? 'i-bookmark-fill' : 'i-bookmark', 'ic'), el('span', 'save-s'),
+    el('span', 'visually-hidden', `: ${row.programme}, ${row.university}`));
+  setSaved(save, saved);
+  const remove = el('button', 'cmp-x');
+  remove.type = 'button';
+  remove.setAttribute('data-compare-remove', row.id);
+  remove.setAttribute('aria-label', t('r3_cmp_remove_label', { programme: row.programme, university: row.university }));
+  remove.append(icon('i-x', 'ic'));
+  box.append(save, remove);
+  return box;
 }
 
 // ------------------------------------------------------------ filter chips

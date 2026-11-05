@@ -217,9 +217,7 @@ export const UI = {
     "enter_your_ib_points_above_to_include_them": "Enter your IB points above to include them.",
     "adds_your_points_to_the_link": "Adds your {value1} points to the link.",
     "copy_share_link": "Copy share link",
-    "compare": "Compare {value1}",
     "compare_2": "Compare",
-    "compare_programmes": "Compare {value1} programmes",
     "go_to_details": "Go to details",
     "copy_link": "Copy link",
     "university_z_a": "University Z–A",
@@ -456,7 +454,6 @@ export const UI = {
     "unknown_values_never_hide_a_programme": "Unknown values never hide a programme.",
     "save_these_to_my_list": "Save these to my list",
     "group_by": "Group by",
-    "pick_2_to_4_programmes": "Pick 2 to 4 programmes",
     "share": "Share",
     "include_my_ib_points": "Include my IB points",
     "link_to_your_list": "Link to your list",
@@ -570,8 +567,6 @@ export const UI = {
       "few": "Link copied, with {count} programmes and your IB points.",
       "other": "Link copied, with {count} programmes and your IB points."
     },
-    "r2_compare_hint": "Save 2 or more programmes to compare up to 4.",
-    "r2_compare_n": "Compare ({count})",
 
     // batch 2 · C
     "r2_czech_free": "Taught in Czech at a public university, so there is no tuition fee, whatever your nationality. Each university sets its own Czech language requirement; check the official page.",
@@ -580,6 +575,21 @@ export const UI = {
     "r3_cmp_add_label": "Add {programme}, {university}, to compare",
     "r3_cmp_add": "Add to compare",
     "r3_cmp_in": "In compare",
+    "r3_cmp_heading": {
+      "one": "Compare {count} programme",
+      "other": "Compare {count} programmes"
+    },
+    "r3_cmp_one": "Add at least one more programme to see them side by side.",
+    "r3_cmp_empty_h": "You haven't picked any programmes to compare yet.",
+    "r3_cmp_empty_p": "Use the scales button next to any programme to add it. You can compare up to 4 programmes side by side.",
+    "r3_cmp_browse": "Browse programmes",
+    "r3_cmp_remove_label": "Remove {programme}, {university}, from compare",
+    "r3_cmp_save": "Save",
+    "r3_cmp_saved": "Saved",
+    "r3_cmp_failed": "Your browser couldn't keep your compare selection. It may be lost when you leave.",
+    "r3_cmp_removed": "Removed from compare.",
+    "r3_cmp_full": "You can compare up to 4 programmes. Remove one first.",
+    "r3_cmp_open_label": "Open compare",
 
     // batch 3 · B
 
@@ -802,9 +812,7 @@ export const UI = {
     "enter_your_ib_points_above_to_include_them": "Ak ich chceš pridať, zadaj vyššie svoje IB body.",
     "adds_your_points_to_the_link": "Pridá do odkazu tvoje body ({value1}).",
     "copy_share_link": "Kopírovať odkaz na zdieľanie",
-    "compare": "Porovnať {value1}",
     "compare_2": "Porovnať",
-    "compare_programmes": "Porovnať {value1} programy",
     "go_to_details": "Prejsť na podrobnosti",
     "copy_link": "Kopírovať odkaz",
     "university_z_a": "Univerzita Z–A",
@@ -1041,7 +1049,6 @@ export const UI = {
     "unknown_values_never_hide_a_programme": "Neznáme hodnoty nikdy neskryjú program.",
     "save_these_to_my_list": "Uložiť tieto programy do môjho zoznamu",
     "group_by": "Zoskupiť podľa",
-    "pick_2_to_4_programmes": "Vyber 2 až 4 programy",
     "share": "Zdieľať",
     "include_my_ib_points": "Pridať moje IB body",
     "link_to_your_list": "Odkaz na tvoj zoznam",
@@ -1158,8 +1165,6 @@ export const UI = {
       "few": "Odkaz je skopírovaný. Obsahuje {count} programy a tvoje IB body.",
       "other": "Odkaz je skopírovaný. Obsahuje {count} programov a tvoje IB body."
     },
-    "r2_compare_hint": "Ulož si aspoň 2 programy, potom môžeš porovnať až 4 naraz.",
-    "r2_compare_n": "Porovnať ({count})",
 
     // batch 2 · C
     "r2_czech_free": "Za štúdium v češtine na verejnej vysokej škole sa neplatí školné, bez ohľadu na štátnu príslušnosť. Každá univerzita si určuje vlastnú požiadavku na češtinu; over si ju na oficiálnej stránke.",
@@ -1168,6 +1173,22 @@ export const UI = {
     "r3_cmp_add_label": "Pridať {programme}, {university}, do porovnania",
     "r3_cmp_add": "Pridať do porovnania",
     "r3_cmp_in": "V porovnaní",
+    "r3_cmp_heading": {
+      "one": "Porovnať {count} program",
+      "few": "Porovnať {count} programy",
+      "other": "Porovnať {count} programov"
+    },
+    "r3_cmp_one": "Pridaj aspoň ešte jeden program a uvidíš ich vedľa seba.",
+    "r3_cmp_empty_h": "Na porovnanie zatiaľ nemáš vybraný žiadny program.",
+    "r3_cmp_empty_p": "Program pridáš tlačidlom s váhami vedľa neho. Vedľa seba môžeš porovnať najviac 4 programy.",
+    "r3_cmp_browse": "Prezerať programy",
+    "r3_cmp_remove_label": "Odstrániť {programme}, {university}, z porovnania",
+    "r3_cmp_save": "Uložiť",
+    "r3_cmp_saved": "Uložené",
+    "r3_cmp_failed": "Prehliadač si nedokázal zapamätať tvoj výber na porovnanie. Keď odídeš, môže sa stratiť.",
+    "r3_cmp_removed": "Odstránené z porovnania.",
+    "r3_cmp_full": "Porovnať môžeš najviac 4 programy. Najprv jeden odstráň.",
+    "r3_cmp_open_label": "Otvoriť porovnanie",
 
     // batch 3 · B
 

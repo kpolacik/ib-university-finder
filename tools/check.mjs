@@ -4952,7 +4952,7 @@ await asyncAppCheck('real start: invalid budget and living in the address fill n
 section('My list: share link, shared links, address, groups, compare (2026-11-03)');
 {
   const { shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist, addressQuery, groupRows, groupHeadings } = shortlistMod;
-  const { compareTable, differs, visibleFacts, prunePicks, yearlyLine, money: euro } = compareMod;
+  const { compareTable, differs, visibleFacts, yearlyLine, money: euro } = compareMod;
   const costMod = await import(new URL('../js/cost.js', import.meta.url));
 
   // --- share link: the list, and points only when ticked
@@ -5095,16 +5095,16 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     check('compare points: the card’s lines, then the row’s verdict words while My IB points is set',
       lines[0].text === `${within.ibPointsMin} IB points, minimum` && lines.at(-1).text === 'Within your IB points' && lines.at(-1).verdict === 'fit', JSON.stringify(lines));
   }
-  equal('compare picks: list order, never more than 4, a pick no longer in the list dropped',
-    [prunePicks(['c', 'a', 'gone'], ['a', 'b', 'c']), prunePicks(['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'c', 'b', 'a'])], [['a', 'c'], ['e', 'd', 'c', 'b']]);
   {
     const rows = [live[0], live[1]];
     const table = compareTable(rows, noFilters());
     const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, table, { onlyDifferences: false }); return div; });
     const cols = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col');
     const facts = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'row');
-    check('compare table: one column header per programme naming it and its university; one row header per fact',
-      cols.length === 2 && cols[0].textContent === `${rows[0].programme}${rows[0].university}` && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
+    // Batch 3 · A: each column header also holds its Save toggle and "x".
+    check('compare table: one column header per programme naming it and its university, then its own controls; one row header per fact',
+      cols.length === 2 && cols[0].children.slice(0, 2).map((n) => n.textContent).join('|') === `${rows[0].programme}|${rows[0].university}`
+      && cols[0].children.length === 3 && cols[0].children[2].classList.contains('cmp-acts') && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
     const diffBox = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, [live[0], live[0]], compareTable([live[0], live[0]], noFilters()), { onlyDifferences: true }); return div; });
     const left = findAll(diffBox, (n) => n.tagName === 'tr' && n.getAttribute('data-fact'));
     check('compare table, only differences: identical facts are not drawn and a line says how many are hidden',
@@ -5168,22 +5168,16 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
 });
-appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts and Compare drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');
   fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  for (const box of boxes.filter((x) => x.value !== c)) { box.checked = true; fire(box, 'change'); }
-  if (get('ml-compare-go').textContent !== 'Compare 2') return false;
   const star = starOf(item(a)); star.focus();
   fire(star, 'click');
-  // Before any redraw: the row stays, the counts and the picker do not.
-  const picks = get('ml-picks').querySelectorAll('input');
+  // Before any redraw: the row stays, the counts do not.
   if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false'
-    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')
-    || picks.map((x) => x.value).sort().join() !== [b, c].sort().join() || run('comparePicks.join()') !== b
-    || !get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare') return false;
+    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')) return false;
   fire(starOf(item(b)), 'click');
-  if (!get('ml-compare').hidden || get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
+  if (get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
   fire(starOf(item(c)), 'click');
   run('update();');
   return run('state.shortlistOnly') === false && get('results').children.length === 3;
@@ -5221,37 +5215,42 @@ appCheck('blocked storage: once a write fails, changes go on this tab’s list, 
   return run('shortlist.size') === 2 && context.stored.length === 0
     && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
 });
-appCheck('compare: pick 2 to 4 from the list, open the table (list hidden), only-differences, close returns focus to the picker', ({ run, get, fire, context }) => {
-  run('for (const r of fixture) shortlist.add(r.id); update();');
-  fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  if (boxes.length !== 3 || !get('ml-compare-go').disabled || get('ml-compare').hidden) return false;
-  boxes[0].checked = true; fire(boxes[0], 'change');
-  if (!get('ml-compare-go').disabled) return false;
-  boxes[1].checked = true; fire(boxes[1], 'change');
-  if (get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare 2') return false;
-  fire(get('ml-compare-go'), 'click');
+// Batch 3 · A: Compare is its own set, opened from the header or the phone
+// tray at any count; the My list picker that fed it is gone.
+appCheck('compare view: opens from any view at any count, 2 columns hide the list, only-differences, close restores view, scroll and the trigger\'s focus', ({ run, get, fire, context, docBody, ids: [a, b] }) => {
+  const trigger = new ChromeNode('button'); docBody.append(trigger); context.cmpTrigger = trigger;
+  run(`compareIds = [${JSON.stringify(a)}, ${JSON.stringify(b)}]; update();`);
+  context.window.scrollY = 1234;
+  run('openCompare(cmpTrigger);');
   const cols = () => findAll(get('cmp-body'), (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col').length;
-  if (get('compare').hidden || !get('results').parent.parent.parent.hidden || cols() !== 2 || get('cmp-h').textContent !== 'Compare 2 programmes'
-    || stubDocument.activeElement !== get('compare')) return false;
-  const all = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  const facts = () => findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  if (get('compare').hidden || !get('results').parent.parent.parent.hidden || !get('shortlist-bar').hidden || cols() !== 2
+    || get('cmp-h').textContent !== 'Compare 2 programmes' || stubDocument.activeElement !== get('cmp-h') || get('cmp-diff-label').hidden
+    || !get('cmp-one').hidden || !get('cmp-empty').hidden) return false;
+  const all = facts();
   get('cmp-diff').checked = true; fire(get('cmp-diff'), 'change');
-  const fewer = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
-  // My living costs changes the compare table's totals at once.
+  if (facts() > all) return false;
+  // My living costs changes the totals at once, with the view still open.
   run('state.myLiving = 0; update();');
   const yearly = findAll(get('cmp-body'), (n) => n.getAttribute('data-fact') === 'yearly')[0];
+  if (get('compare').hidden || (yearly && !yearly.textContent.includes('your €0/month') && !yearly.textContent.includes('Not known'))) return false;
+  context.window.scrollY = 0;
   fire(get('cmp-close'), 'click');
-  return fewer <= all && (!yearly || yearly.textContent.includes('your €0/month') || yearly.textContent.includes('Not known'))
-    && get('compare').hidden && !get('results').parent.parent.parent.hidden
-    && stubDocument.activeElement === get('ml-compare').querySelector('summary');
-});
-appCheck('compare picker: a fifth pick is disabled at four', ({ run, get, fire, context }) => {
-  context.fixture.push(...context.live.slice(1, 3));
-  run('allRows = fixture; for (const r of fixture) shortlist.add(r.id); update();');
+  if (!get('compare').hidden || get('results').parent.parent.parent.hidden || stubDocument.activeElement !== trigger || context.window.scrollY !== 1234) return false;
+  // From My list: back in the list view with its bar.
+  run(`shortlist.add(${JSON.stringify(a)}); update();`);
   fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  for (const box of boxes.slice(0, 4)) { box.checked = true; fire(box, 'change'); }
-  return boxes.length === 5 && boxes[4].disabled && !boxes[0].disabled && get('ml-compare-go').textContent === 'Compare 4';
+  run('openCompare(cmpTrigger);');
+  if (!get('shortlist-bar').hidden) return false;
+  run(`onToggleStar(${JSON.stringify(b)});`);
+  if (!get('shortlist-bar').hidden) return false;
+  fire(get('cmp-close'), 'click');
+  if (run('state.shortlistOnly') !== true || get('shortlist-bar').hidden || get('ml-tools').hidden) return false;
+  // At 0: an empty state whose Browse closes the view.
+  run('compareIds = []; openCompare(null);');
+  if (get('cmp-empty').hidden || cols() !== 0 || get('cmp-h').textContent !== 'Compare' || !get('cmp-diff-label').hidden) return false;
+  fire(get('cmp-browse'), 'click');
+  return get('compare').hidden && !get('results').parent.parent.parent.hidden;
 });
 appCheck('share: the link is ?list= of the saves only; no search, country or fee travels; points only with the tick', ({ run, get, fire, ids: [a, b] }) => {
   run("shortlist.add(fixture[1].id); shortlist.add(fixture[0].id); shortlist.add('gone-row'); state.search = 'x'; state.countries.add('Ireland'); state.maxTuition = 5000; state.myIbPoints = 36; update();");
@@ -6010,29 +6009,6 @@ appCheck('B1 shared help and copy names stay truthful in EN and SK', ({ run, get
   }
   return true;
 });
-appCheck('B2 one save hints, two pre-tick through the CTA, five do not, shared never hints', ({ run, get, fire, context }) => {
-  run('allRows = live.slice(0,5); shortlist.add(allRows[0].id); update();');
-  if (get('ml-compare-hint').hidden || !get('ml-compare-open').hidden || !get('ml-note').hidden) return false;
-  run('shortlist.add(allRows[1].id); update();');
-  if (!get('ml-compare-hint').hidden || get('ml-compare-open').textContent !== 'Compare (2)') return false;
-  fire(get('ml-compare-open'), 'click');
-  if (!run('state.shortlistOnly') || !get('ml-compare').open || run('comparePicks.length') !== 2
-    || get('ml-compare-go').textContent !== 'Compare 2' || stubDocument.activeElement !== get('ml-picks').querySelector('input')) return false;
-  run("state.shortlistOnly = false; comparePicks = []; allRows.forEach(r => shortlist.add(r.id)); update();");
-  if (get('ml-compare-open').textContent !== 'Compare (5)') return false;
-  fire(get('ml-compare-open'), 'click');
-  if (run('comparePicks.length') !== 0) return false;
-  return true;
-});
-appCheck('B2 Slovak Compare labels and hint, shared hint exclusion', ({ run, get }) => {
-  get('ml-compare-hint').setAttribute('data-i18n', parseHtml(read('index.html')).querySelector('#ml-compare-hint').getAttribute('data-i18n'));
-  run("switchLanguage('sk'); shortlist.add(fixture[0].id); update();");
-  if (get('ml-compare-hint').textContent !== t('r2_compare_hint') || get('ml-compare-hint').hidden) return false;
-  run('shortlist.add(fixture[1].id); update();');
-  if (get('ml-compare-open').textContent !== 'Porovnať (2)') return false;
-  run('shared = { ids: [fixture[0].id], unknown: [] }; state.shortlistOnly = true; update();');
-  return get('ml-compare-hint').hidden;
-});
 check('B1 tablet Share panel anchors within its toolbar only at 600–1023 px', (() => {
   const rules = cssTree(cssRules);
   const tablet = '@media(min-width:600px) and (max-width:1023.98px)';
@@ -6222,6 +6198,86 @@ appCheck('A2 programmes already in Compare draw pressed: a slot opened later, th
   flip(true);
   return pane.querySelector('button.cmpb')?.getAttribute('aria-pressed') === 'true';
 });
+const cmpCols = (get) => findAll(get('cmp-body'), (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col');
+const cmpColIds = (get) => cmpCols(get).map((th) => th.getAttribute('data-id'));
+const cmpX = (get, id) => get('cmp-body').querySelector(`[data-compare-remove="${id}"]`);
+const cmpSave = (get, id) => get('cmp-body').querySelector(`th [data-save-id="${id}"]`);
+// Seeds this tab and its storage alike: every change re-reads storage first.
+const cmpSet = (ids) => `compareIds = ${JSON.stringify(ids)}; saveCompare(compareIds);`;
+appCheck('A3 three columns: "x" on the middle one leaves two with focus on the new middle "x" and an Undo toast; Undo puts it back in its place', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  if (cmpColIds(get).join() !== [a, b, c].join()) return false;
+  const x = cmpX(get, b); x.focus(); fire(x, 'click');
+  const toast = context.toasts.at(-1);
+  if (cmpColIds(get).join() !== [a, c].join() || stubDocument.activeElement !== cmpX(get, c) || toast.message !== 'Removed from compare.' || toast.label !== 'Undo'
+    || cmpStored(context).join() !== [a, c].join() || get('compare').hidden) return false;
+  toast.action();
+  return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
+});
+appCheck('A3 two, one, none: one column asks for another and hides "Show only differences"; none is the empty state with focus on Browse, which closes the view', ({ run, get, fire, ids: [a, b] }) => {
+  run(`${cmpSet([a, b])} update(); openCompare(null);`);
+  cmpX(get, b).focus(); fire(cmpX(get, b), 'click');
+  if (cmpColIds(get).join() !== a || get('cmp-one').hidden || !get('cmp-diff-label').hidden || get('compare').hidden
+    || get('cmp-h').textContent !== 'Compare 1 programme' || stubDocument.activeElement !== cmpX(get, a)) return false;
+  cmpX(get, a).focus(); fire(cmpX(get, a), 'click');
+  if (cmpCols(get).length !== 0 || get('cmp-empty').hidden || !get('cmp-one').hidden || stubDocument.activeElement !== get('cmp-browse') || get('compare').hidden) return false;
+  fire(get('cmp-browse'), 'click');
+  return get('compare').hidden && !get('results').parent.parent.parent.hidden;
+});
+appCheck('A3 a column\'s Save toggles the saves with the row star both ways, in place: focus and the hidden bar stay, Compare never changes', ({ run, get, fire, item, ids: [a, b] }) => {
+  run(`${cmpSet([a, b])} update(); openCompare(null);`);
+  const save = cmpSave(get, a); save.focus(); fire(save, 'click');
+  if (save.getAttribute('aria-pressed') !== 'true' || save.querySelector('.save-s').textContent !== 'Saved' || cmpSave(get, a) !== save
+    || stubDocument.activeElement !== save || !get('shortlist-bar').hidden || starOf(item(a)).getAttribute('aria-pressed') !== 'true'
+    || run('compareIds.join()') !== [a, b].join()) return false;
+  fire(starOf(item(a)), 'click');
+  return save.getAttribute('aria-pressed') === 'false' && save.querySelector('.save-s').textContent === 'Save' && run('shortlist.size') === 0
+    && run('compareIds.join()') === [a, b].join() && !get('compare').hidden;
+});
+appCheck('A3 redraws keep focus and the sideways scroll: a filter (columns come from all programmes), another tab dropping the focused column, the language', ({ run, get, fireWindow, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  get('cmp-body').querySelector('.cmp-scroll').scrollLeft = 120;
+  cmpSave(get, b).focus();
+  run("state.search = 'zzzz-no-match'; update();");
+  if (cmpColIds(get).join() !== [a, b, c].join() || stubDocument.activeElement !== cmpSave(get, b) || get('cmp-body').querySelector('.cmp-scroll').scrollLeft !== 120) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([a, c]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  if (cmpColIds(get).join() !== [a, c].join() || stubDocument.activeElement !== cmpX(get, c)) return false;
+  run("switchLanguage('sk');");
+  const ok = stubDocument.activeElement === cmpX(get, c) && get('cmp-body').querySelector('.cmp-scroll').scrollLeft === 120
+    && get('cmp-h').textContent === 'Porovnať 2 programy' && cmpSave(get, a).querySelector('.save-s').textContent === 'Uložiť';
+  run("switchLanguage('en');");
+  return ok;
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+appCheck('A3 a passed deadline stays in Compare, with its label, while the list filters it out', ({ run, get, context, ids: [a] }) => {
+  context.past = { ...context.fixture[0], id: 'past-fixture', deadline: new Date('2026-01-15'), deadlinePassed: true, daysUntilDeadline: -30, isUrgent: false };
+  run(`allRows = [...fixture, past]; ${cmpSet(['past-fixture', a])} state.deadlineWindow = 'open'; update(); openCompare(null);`);
+  const deadline = findAll(get('cmp-body'), (n) => n.getAttribute('data-fact') === 'deadline')[0];
+  return !run("shownRows.has('past-fixture')") && cmpColIds(get).join() === ['past-fixture', a].join()
+    && deadline.children[1].textContent.includes('Passed, check next cycle');
+});
+appCheck('A3 closeCompare(false) hides the view and moves neither focus nor the page', ({ run, get, context, ids: [a] }) => {
+  run(`${cmpSet([a])} update(); openCompare(null);`);
+  context.window.scrollY = 500;
+  const log = stubDocument.focusLog.length, active = stubDocument.activeElement;
+  run('closeCompare(false);');
+  return get('compare').hidden && stubDocument.focusLog.length === log && stubDocument.activeElement === active && context.window.scrollY === 500;
+});
+await asyncAppCheck('A3 a shared list stays open, with ?list= in the address, after Compare closes', async ({ run, get, fire, context, settle }) => {
+  const [a, b] = [context.fixture[0].id, context.fixture[1].id];
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  context.location.search = `?list=${a}`;
+  run('applyUrlFields();');
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  run(`${cmpSet([b])} openCompare(null); state.search = 'x'; update();`);
+  fire(get('cmp-close'), 'click');
+  return run('state.shortlistOnly') === true && run('shared') !== null && !get('shortlist-bar').hidden && get('ml-title').textContent === 'Shared list'
+    && urls.length > 0 && urls.every((u) => u.startsWith(`/?list=${a}`));
+}, { boot: true });
+equal('A3 the heading counts in both languages: Slovak 1 program, 2 and 4 programy, 5 programov',
+  [1, 2, 4, 5].map((count) => i18n.inLanguage('sk', () => t('r3_cmp_heading', { count }))).concat([1, 2].map((count) => t('r3_cmp_heading', { count }))),
+  ['Porovnať 1 program', 'Porovnať 2 programy', 'Porovnať 4 programy', 'Porovnať 5 programov', 'Compare 1 programme', 'Compare 2 programmes']);
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.
