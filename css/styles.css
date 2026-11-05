@@ -1497,6 +1497,38 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .ob-foot.ob-done-foot>.btn-p{margin-left:0}
 }
 
+/* C2: the logo goes home and stays reachable while scrolled. From 600 px the
+   tile stays in the compact header with Filters beside it; only the wordmark
+   cross-fades, on the same 160/240 ms timing. The slot keeps one width in both
+   states, so Search never moves. While compact the link shrinks to the tile, so
+   its hit area and focus ring do not reach under Filters. */
+.mark h1{transition:opacity 160ms,transform 240ms var(--ease-out)}
+body.compact .mark{opacity:1;transform:none;pointer-events:auto}
+body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
+@media (min-width:701px){
+ body.compact .mark{width:30px}
+ .filters-btn{left:38px}
+}
+@media (min-width:701px) and (pointer:coarse){
+ body.compact .mark{width:44px}
+ .filters-btn{left:52px}
+}
+/* A touch screen's 44 px Filters hung 8 px below the 36 px slot; the logo is
+   lifted by 4 px for the same reason, so both share one centre line. */
+@media (min-width:600px) and (pointer:coarse){.filters-btn{top:-4px}}
+/* 600–700 px: tile 44 + 6 + icon-only Filters 44 = 94 px in both states. */
+@media (min-width:600px) and (max-width:700px){
+ .slot{width:94px}
+ .mark{width:44px;justify-content:center}
+ .filters-btn{left:50px;width:44px}
+}
+/* Phones: the header scrolls away, so the stuck count row gets the same tile
+   first: [IB][count][Filters]. Hidden everywhere else. */
+.home-tile{display:none}
+@media (max-width:599.98px){
+ .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
+}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and

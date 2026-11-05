@@ -3764,6 +3764,8 @@ const motionAllowed = {
   '.hd': 'transition:transform 240ms var(--ease-out)',
   '.hd-in': 'transition:transform 240ms var(--ease-out)',
   '.mark,.filters-btn': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
+  // Batch 3 C2: in the compact header only the wordmark fades; the tile stays.
+  '.mark h1': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
   '.row,.btn,.inp,.option,.dropdown>summary': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.cols button': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.item:not(.is-sel)>.row:hover': 'transition:background-color var(--t-fast) var(--ease-out)',
@@ -5792,34 +5794,47 @@ function withGlobals(globals, fn) {
   }
 }
 const fakeObserver = class { observe() {} };
-function logoClick(init, { reduced = false } = {}) {
+// Batch 3 C2: the logo and the phone tile ([data-home]) go home, then scroll
+// to the top and focus the logo; `home` counts goHome() calls and `order`
+// records what happened in which order.
+function logoClick(init, { reduced = false, target = 'mark' } = {}) {
+  const order = [];
   const fake = (extra = {}) => ({ listeners: {}, tabIndex: 0, style: { setProperty() {} }, classList: { toggle() {} }, contains: () => false,
     addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }, getBoundingClientRect: () => ({ height: 0, bottom: 0 }), ...extra });
-  const mark = fake(), header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
+  const doc = { activeElement: null };
+  const mark = fake({ tabIndex: -1, focus(options) { doc.activeElement = mark; order.push(['focus', options]); } }), tile = fake();
+  const header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
   const scrolls = [], location = { hash: '', search: '?country=Ireland' };
+  let home = 0;
   const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...init };
   withGlobals({
-    document: { querySelector: (s) => parts[s], getElementById: () => fake(), body: fake(), activeElement: null, addEventListener() {} },
+    document: Object.assign(doc, { querySelector: (s) => parts[s], querySelectorAll: (s) => (s === '[data-home]' ? [tile] : []), getElementById: () => fake(), body: fake(), addEventListener() {} }),
     window: { addEventListener() {} }, innerWidth: 1280, innerHeight: 900, ResizeObserver: fakeObserver, IntersectionObserver: fakeObserver,
-    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => scrolls.push(options),
+    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => { scrolls.push(options); order.push(['scroll']); },
     matchMedia: (query) => ({ matches: reduced && query === '(prefers-reduced-motion: reduce)' }),
   }, () => {
-    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() });
-    for (const fn of mark.listeners.click) fn(event);
+    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() }, { goHome() { home++; order.push(['home']); } });
+    for (const fn of (target === 'tile' ? tile : mark).listeners.click) fn(event);
   });
-  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search };
+  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search, home, focused: doc.activeElement === mark, tabIndex: mark.tabIndex, order };
 }
+// Batch 3 C2: the name changes from "back to top" to going home, on both links.
 check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
-  /<a class="mark" href="#top-marker" aria-label="University Finder, back to top" data-i18n-attr="aria-label:r2_home_label">/.test(read('index.html'))
-  && UI.en.r2_home_label === 'University Finder, back to top' && UI.sk.r2_home_label === 'University Finder, späť na začiatok');
-equal('a plain logo click scrolls to the top and leaves the address alone, so #top-marker cannot reach a copied link',
-  logoClick({}), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland' });
+  /<a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label">/.test(read('index.html'))
+  && /<a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB<\/span><\/a>/.test(read('index.html'))
+  && UI.en.r3_home_label === 'University Finder, all programmes' && UI.sk.r3_home_label === 'University Finder, všetky programy'
+  && !('r2_home_label' in UI.en) && !('r2_home_label' in UI.sk));
+// Batch 3 C2 changed this: the click now also goes home (goHome, which the app
+// harness checks below), and focus lands on the logo after the scroll starts.
+for (const target of ['mark', 'tile']) equal(`a plain ${target === 'mark' ? 'logo' : 'phone home tile'} click goes home, scrolls to the top, focuses the logo and leaves the address alone, so #top-marker cannot reach a copied link`,
+  logoClick({}, { target }), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland', home: 1, focused: true, tabIndex: 0,
+    order: [['home'], ['scroll'], ['focus', { preventScroll: true }]] });
 equal('with reduced motion the logo scroll is instant',
   logoClick({}, { reduced: true }).scrolls, [{ top: 0, behavior: 'instant' }]);
 check('a modified or middle click on the logo keeps the browser\'s own behaviour',
   [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }].every((init) => {
     const click = logoClick(init);
-    return click.prevented === false && click.scrolls.length === 0;
+    return click.prevented === false && click.scrolls.length === 0 && click.home === 0 && !click.focused;
   }));
 
 // ChromeNode's dataset is a read-only copy; the real radio builder writes to it.
@@ -6212,6 +6227,37 @@ check('B3C1 the done screen stacks full width on phones, primary first; 44 px bu
   && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
   && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
 check('B3C1 the app apply callback returns the shown count for the done screen', /preferencesDirty = true; update\(\);\s*\/\/[^\n]*\n\s*return currentlyShown;/.test(appSrc));
+
+// C2: the logo goes home (Leon, 2026-11-05). goHome() leaves My list, a shared
+// list and Compare; filters, search, sort, saves and the pane's pick stay.
+// Batch 2 A2 kept the list view; this reverses it. The scroll, the hash and the
+// focus on .mark are checked on the real handler above (logoClick).
+appCheck('B3C2 home from My list: the main list, with filters, sort, saves and the pick unchanged', ({ run, ids: [a, b] }) => {
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.myIbPoints = 36; state.sort = 'name'; state.dir = 'desc'; state.shortlistOnly = true; update(); selectedId = '${a}';`);
+  if (run('state.shortlistOnly') !== true) return false;
+  run('goHome();');
+  return run('state.shortlistOnly') === false && run('listAll') === false && run('state.myIbPoints') === 36 && run('state.sort') === 'name' && run('state.dir') === 'desc'
+    && run('shortlist.size') === 2 && run('selectedId') === a && run('currentlyShown') === 3;
+});
+appCheck('B3C2 home from a shared list: shared is gone and list= leaves the address, filters stay', ({ run, context, ids: [a, b] }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); context.location.search = new URL(u, 'http://localhost').search; };
+  run(`shared = { ids: ['${a}', '${b}'], unknown: [] }; state.shortlistOnly = true; state.myIbPoints = 36; update();`);
+  if (!urls.at(-1)?.includes('list=')) return false;
+  run('goHome();');
+  return run('shared') === null && run('state.shortlistOnly') === false && !urls.at(-1).includes('list=') && urls.at(-1).includes('points=36') && !urls.at(-1).includes('#');
+});
+appCheck('B3C2 home from Compare: the view closes and the list shows; open panels close', ({ run, get }) => {
+  run('compareOpen = true; dom.compare.hidden = false; dom.split.hidden = true;');
+  get('ml-share').open = true; get('dd-countries').open = true;
+  run('goHome();');
+  return run('dom.compare.hidden') === true && run('dom.split.hidden') === false && get('ml-share').open === false && get('dd-countries').open === false;
+});
+check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
+check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
+check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
+  /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
+  && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
+  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

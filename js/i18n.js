@@ -538,7 +538,6 @@ export const UI = {
     "unclassified": "Unclassified",
 
     // batch 2 · A
-    "r2_home_label": "University Finder, back to top",
     "r2_deadline_open_note": "Uses the recorded deadline dates. Programmes with no recorded date stay in the list.",
 
     // batch 2 · B
@@ -592,6 +591,7 @@ export const UI = {
     "r3_ob_done_h_none": "You haven't added any setup answers.",
     "r3_ob_done_p_none": "Your existing filters still apply. You can change them any time in Filters.",
     "r3_ob_faq": "Read the FAQ",
+    "r3_home_label": "University Finder, all programmes",
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1134,7 +1134,6 @@ export const UI = {
     "unclassified": "Nezaradené",
 
     // batch 2 · A
-    "r2_home_label": "University Finder, späť na začiatok",
     "r2_deadline_open_note": "Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.",
 
     // batch 2 · B
@@ -1190,6 +1189,7 @@ export const UI = {
     "r3_ob_done_h_none": "V nastavení si nepridal žiadne odpovede.",
     "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
     "r3_ob_faq": "Prečítaj si časté otázky",
+    "r3_home_label": "University Finder, všetky programy",
   }
 };
 

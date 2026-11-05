@@ -1293,7 +1293,8 @@ async function runBatch2A(base) {
       await resize(page, width, 844);
       await check(width, 'R4B', `the logo is named and the page keeps its h1 (${lang})`, async () => {
         const link = await axNode(page, '.mark'), heading = await axNode(page, '.mark h1');
-        const name = lang === 'sk' ? 'University Finder, späť na začiatok' : 'University Finder, back to top';
+        // Batch 3 C2: the logo now goes home, so its name says so.
+        const name = lang === 'sk' ? 'University Finder, všetky programy' : 'University Finder, all programmes';
         assert(link.role?.value === 'link' && link.name?.value === name, `link: ${link.role?.value} "${link.name?.value}"`);
         assert(!heading.ignored && heading.role?.value === 'heading' && heading.name?.value === 'University Finder', `heading: ${JSON.stringify([heading.ignored, heading.role?.value, heading.name?.value])}`);
         const m = await page.ev(`(()=>{const h=document.querySelector('.mark h1'),r=h.getBoundingClientRect(),s=getComputedStyle(h);return {w:r.width,h:r.height,display:s.display,clip:s.clipPath,text:h.textContent,sw:document.documentElement.scrollWidth,iw:innerWidth}})()`);
@@ -1778,14 +1779,18 @@ async function runBatch2Followup(base) {
             }
             assert(!m.over && !m.badgeOver, `Filters collides with Search: ${JSON.stringify(m)}`);
             assert(m.missed.length === 0, `Filters covered at a corner by ${m.missed}`);
-            assert(Math.abs(m.btn[1] - m.slot) <= 0.5 && m.btn[1] >= (coarse ? 44 : 36) && m.btn[2] >= (coarse ? 44 : 36), `button ${m.btn} in a ${m.slot} slot`);
+            // Batch 3 C2: the logo tile stays beside it, so the slot is 44 + 6 + 44 = 94 px
+            // in both states and the button is 44 px wide (it filled a 36/44 px slot).
+            assert(Math.abs(m.slot - 94) <= 0.5 && Math.abs(m.btn[1] - 44) <= 0.5 && m.btn[2] >= (coarse ? 44 : 36), `button ${m.btn} in a ${m.slot} slot`);
             assert(m.badgeShown && m.badgeInside && m.badgeText === '2', `count badge: ${JSON.stringify(m)}`);
             // The label is hidden on purpose, not cut: it stays the button's name.
             // (The badge sticks out over the corner by design, so scrollWidth is no test.)
             assert(m.label[0] <= 1 && m.label[1] <= 1 && !m.iconCut, `label shows or icon cut: ${JSON.stringify(m)}`);
             assert(name.includes(lang === 'sk' ? 'Filtre' : 'Filters') && name.includes('2'), `accessible name "${name}"`);
             assert(Math.abs(m.search[0] - before[0]) < 0.5 && Math.abs(m.search[1] - before[1]) < 0.5, `Search moved: ${before} → ${m.search}`);
-            assert(m.search[1] >= 200, `Search only ${m.search[1]} wide`);
+            // Batch 3 C2: the 94 px slot (tile + Filters) costs Search 58 px at 600 px;
+            // the batch 3 plan sets 160 px as the floor (it was 200).
+            assert(m.search[1] >= 160, `Search only ${m.search[1]} wide`);
             assert(m.h === 56, `header ${m.h}`);
             assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
           });
@@ -1922,6 +1927,130 @@ async function runBatch3C(base) {
         await page.key('Escape', 'Escape', 27);
         assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Esc on the done screen lost the answers');
       });
+    } finally { await page.close(); }
+  }
+  // C2: the logo goes home from anywhere, keeps the filters, and can be reached
+  // while scrolled: in the compact header from 600 px, in the stuck count row on
+  // phones.
+  const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
+  const clickAt = async (page, x, y) => {
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  };
+  const centre = (sel) => `(()=>{const r=document.querySelector('${sel}').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`;
+  const openHome = async (query, width, height) => {
+    const page = await openPage(`${base}${query}`, width, height);
+    await page.waitFor(ready, 15000, 'home page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'home page reloaded');
+    return page;
+  };
+  const landedHome = (page, filters) => page.waitFor(`(()=>{const q=location.search;return {ok:scrollY===0&&document.querySelector('#header-list').getAttribute('aria-pressed')==='false'&&!q.includes('list=')&&${JSON.stringify(filters)}.every(f=>q.includes(f))&&location.hash===''&&document.activeElement===document.querySelector('.hd .mark'),
+    why:JSON.stringify({y:scrollY,q,hash:location.hash,list:document.querySelector('#header-list').getAttribute('aria-pressed'),active:document.activeElement.className})}})()`, 8000, 'home');
+
+  for (const width of [1280, 390]) {
+    const page = await openHome('?ui=en&country=Ireland&points=36', width, width < 600 ? 844 : 900);
+    try {
+      const ids = await page.ev(`[...document.querySelectorAll('#results>li.item')].slice(0,2).map(n=>n.dataset.id)`);
+      await check(width, 'R4B logo click', 'from My list: the main list at the top, filters kept', async () => {
+        await page.ev(`localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(${JSON.stringify(ids)}));window.__oldPage=true;location.reload()`);
+        await page.waitFor(ready, 15000, 'reloaded with saves');
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelector('#header-list').getAttribute('aria-pressed')==='true'&&document.querySelectorAll('#results>li.item').length===2,why:'not in My list'})`, 5000, 'My list');
+        await page.click(`document.querySelector('.hd .mark')`, 'the logo');
+        await landedHome(page, ['country=Ireland', 'points=36']);
+        assert(await page.ev(`document.querySelectorAll('#results>li.item').length>2 && JSON.parse(localStorage.getItem('ib-university-finder:shortlist:v1')).length===2`), 'main list not back or saves lost');
+      });
+      await check(width, 'R4B logo click', 'from a shared ?list= link: the main list, list= dropped, filters kept', async () => {
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en&country=Ireland&points=36&list=${ids.join(',')}'`);
+        await page.waitFor(ready, 15000, 'shared list');
+        await page.waitFor(`({ok:location.search.includes('list=')&&document.querySelector('#header-list').getAttribute('aria-pressed')==='true',why:location.search})`, 5000, 'shared view');
+        await page.click(`document.querySelector('.hd .mark')`, 'the logo');
+        await landedHome(page, ['country=Ireland', 'points=36']);
+      });
+    } finally { await page.close(); }
+  }
+
+  // Wide: scrolled until compact, the tile sits beside Filters, Search does not
+  // move, and a real click on the tile goes home.
+  for (const [width, coarse] of [[1280, false], [768, false], [768, true]]) {
+    const page = await openHome('?ui=en&country=Ireland&points=36', width, 900);
+    try {
+      for (const lang of ['en', 'sk']) {
+        await check(width, 'R4B logo click', `compact (${lang}, ${coarse ? 'touch' : 'mouse'}): the tile shows beside Filters, Search stays put, a real click goes home`, async () => {
+          watchdog.refresh();
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: coarse });
+          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.waitFor(`({ok:document.documentElement.lang==='${lang}'&&innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, 'language and width');
+          await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
+          await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'compact at top'})`, 3000, 'expanded');
+          await settle(page);
+          const before = await page.ev(`(()=>{const q=document.querySelector('#f-search').getBoundingClientRect(),s=document.querySelector('.slot').getBoundingClientRect();return {search:q.left,slot:s.width}})()`);
+          await page.ev(`scrollTo({top:2400,behavior:'instant'})`);
+          await page.waitFor(`({ok:document.body.classList.contains('compact'),why:'not compact'})`, 3000, 'compact');
+          await settle(page);
+          const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.hd .mono'),k=box('.hd .mark'),f=box('#compact-filters'),q=box('#f-search'),s=box('.slot'),c=${centre('.hd .mono')};
+            const hit=document.elementFromPoint(c.x,c.y);return {tile:[t.left,t.width],mark:[k.left,k.right,k.width,k.height],opacity:getComputedStyle(document.querySelector('.hd .mark')).opacity,h1:getComputedStyle(document.querySelector('.mark h1')).opacity,
+            filters:[f.left,f.right],midline:Math.abs((t.top+t.bottom)/2-(f.top+f.bottom)/2),over:hits(k,f),fOver:hits(f,q),inSlot:f.right<=s.right+0.5,search:q.left,slot:s.width,hit:document.querySelector('.hd .mark').contains(hit),sw:document.documentElement.scrollWidth,w:innerWidth}})()`);
+          const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: await page.ev('scrollY'), width, height: 140, scale: 2 } });
+          await writeFile(`${shots}/header-compact-${width}-${lang}${coarse ? '-touch' : ''}.png`, Buffer.from(data, 'base64'));
+          assert(m.opacity === '1' && m.h1 === '0' && m.tile[1] >= 30 && m.hit, `tile not visible or not hit: ${JSON.stringify(m)}`);
+          assert(m.midline <= 1, `tile and Filters off one centre line: ${JSON.stringify(m)}`);
+          assert(!m.over && !m.fOver && m.inSlot && m.filters[0] > m.tile[0] + m.tile[1], `Filters overlaps: ${JSON.stringify(m)}`);
+          assert(Math.abs(m.search - before.search) <= 0.5 && Math.abs(m.slot - before.slot) <= 0.5, `Search moved: ${JSON.stringify([before, m])}`);
+          if (coarse) assert(m.mark[2] >= 44 && m.mark[3] >= 44, `touch target ${m.mark}`);
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          const c = await page.ev(centre('.hd .mono'));
+          await clickAt(page, c.x, c.y);
+          await landedHome(page, ['country=Ireland', 'points=36']);
+          await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'still compact at the top'})`, 3000, 'header expanded at the top');
+          await page.ev(`document.activeElement.blur()`);
+        });
+      }
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    } finally { await page.close(); }
+  }
+
+  // Phones: the header scrolls away, so the stuck count row carries the tile.
+  for (const [width, lang] of [[390, 'en'], [375, 'en'], [375, 'sk'], [320, 'sk'], [320, 'en']]) {
+    const page = await openHome(`?ui=${lang}&country=Ireland&points=36`, width, 844);
+    try {
+      const stick = async () => {
+        await page.ev(`document.activeElement.blur();scrollTo({top:2400,behavior:'instant'})`);
+        await page.waitFor(`({ok:document.querySelector('.status').classList.contains('is-stuck'),why:'not stuck'})`, 3000, 'stuck row');
+        await settle(page);
+      };
+      await check(width, 'R4B logo click', `phone (${lang}): the stuck row shows [IB][count][Filters], 44 px, hit-testable, nothing overlaps`, async () => {
+        await stick();
+        const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.home-tile'),n=box('.status .cshort'),f=box('#f-more'),c=${centre('.home-tile')};
+          return {tile:[t.left,t.top,t.width,t.height],hit:document.querySelector('.home-tile').contains(document.elementFromPoint(c.x,c.y)),overlaps:[hits(t,n),hits(n,f),hits(t,f)],order:t.right<=n.left&&n.right<=f.left,inside:t.left>=0&&f.right<=innerWidth,sw:document.documentElement.scrollWidth,w:innerWidth,row:box('.status').height}})()`);
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: await page.ev('scrollY'), width, height: 120, scale: 2 } });
+        await writeFile(`${shots}/stuck-row-${width}-${lang}.png`, Buffer.from(data, 'base64'));
+        assert(m.tile[2] >= 44 && m.tile[3] >= 44 && m.hit, `tile ${JSON.stringify(m)}`);
+        assert(!m.overlaps.some(Boolean) && m.order && m.inside, `overlap ${JSON.stringify(m)}`);
+        assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+      });
+      if (width === 390 || width === 320) await check(width, 'R4B logo click', `phone (${lang}): a real tap on the stuck tile goes to the top with focus on the logo, in view`, async () => {
+        await stick();
+        const c = await page.ev(centre('.home-tile'));
+        await clickAt(page, c.x, c.y);
+        await landedHome(page, ['country=Ireland', 'points=36']);
+        assert(await page.ev(`(()=>{const r=document.querySelector('.hd .mark').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.width>=44})()`), 'the logo is not in view');
+      });
+      if (width === 390) await check(width, 'R4B logo click', 'phone keyboard: Enter on the stuck tile, then a visible focus ring on the logo; reduced motion is instant', async () => {
+        for (const reduced of [false, true]) {
+          if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+          try {
+            await stick();
+            await page.ev(`document.querySelector('.home-tile').focus()`);
+            await page.key('Enter', 'Enter', 13, [], '\r');
+            if (reduced) assert(await page.ev(`scrollY`) === 0, 'reduced motion: the scroll was not instant');
+            await landedHome(page, ['country=Ireland', 'points=36']);
+            assert(await page.ev(`document.querySelector('.hd .mark').matches(':focus-visible') && getComputedStyle(document.querySelector('.hd .mark')).outlineStyle!=='none'`), 'no visible focus on the logo');
+          } finally { if (reduced) await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+        }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
     } finally { await page.close(); }
   }
 }
