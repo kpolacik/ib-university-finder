@@ -390,7 +390,7 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
-**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The Language dropdown opens with a note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement (U5).
+**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
 
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
@@ -522,6 +522,12 @@ plans/backlog/wording.md for the translation queue.
   every programme's admission section was searched and none sets a school
   subject, so the cards say "No particular IB subjects" (see *IB subject
   requirements* under Decisions).
+- **The Czech fee note assumes a public university.** It says Czech-taught
+  study at a *public* university is free, but the code only checks country,
+  teaching language and a zero EU fee. That is true today: all 371 rows that get
+  the note are at the five public universities (Charles, Masaryk, ČVUT, VUT,
+  VŠE). Whoever adds a private Czech university must make sure the note can't
+  appear on it (a free private programme would be wrongly explained).
 - **Three Czech deadlines fall before Christmas**: VUT Design and Volné umění
   (30 Nov 2026, portfolio by 3 Dec) and ČVUT Architektura a urbanismus (30 Nov).
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
@@ -629,6 +635,51 @@ No new L09 numbers or performance acceptance are claimed. EN/SK review-fix
 screenshots and viewport measurements are in the local review artifact folder
 `scratchpad/design-round2/fix-r1/`; real catalogue rows and existing uncertainty
 wording are preserved, rather than substituted with the mockup's sample data.
+
+**Round 2 fixes, batches 1 and 2 (2026-11-05,** local branches
+`redesign-batch2` and `batch2-followup`, not yet in `main`). What changed for
+students, and where each rule lives:
+
+- *Setup (batch 1).* The points stepper is centred and Skip setup lines up with
+  Back and Next. The "Your answers are now filters" toast appears only when an
+  answer was actually chosen. The first step links to the FAQ
+  (`js/onboarding.js`).
+- *Help (batch 1).* On phones the inline help opens and closes with the same
+  small slide and fade as the desktop bubble, and the sheet's Budget, Subject
+  area… rows open with a short height animation. Browsers that can't animate
+  to an automatic height (every iPhone today) fade the help in and open those
+  rows at once; Leon kept it that way. The desktop help bubble is now only as wide as its
+  text (up to 260 px). CSS: the `@supports (interpolate-size…)` block.
+- *My list on phones (batch 1)* is one even toolbar joined to the list.
+- *Header (batch 2 A).* On phones and touch screens the logo tile is 36 px in a
+  44 px tap area that stays off Search. The logo has a translated name and
+  takes you back to the top without changing filters or the address. Up to
+  700 px wide the "University Finder" heading is hidden visually but still read by
+  screen readers. From 600 to 700 px the compact header's Filters button is
+  an icon (with the filter count on its corner), because the labelled button
+  did not fit beside Search; screen readers still hear "Filters". Rules: CSS
+  section "Batch 2 · A", `wireCompactHeader` in `js/round2.js`.
+- *Filter rows (batch 2 A).* Budget is the last control of the second row;
+  controls wrap whole, with one 8 px gap. Two rows at 1024 px wide is the aim,
+  more rows are fine for Slovak, long selections and zoom. The count and "Edit
+  my answers" sit on one line at one size. The "Not passed yet" deadline
+  option says it goes by the recorded dates (Known gaps: rolling admission).
+  The Slovak living-costs placeholder is "Podľa školy", since "Podľa
+  univerzity" was cut off in its 112 px field.
+- *Copy link (batch 2 B).* The buttons say what they copy ("Copy link to these
+  filters", "Copy share link"). The message after copying is built from the
+  same state as the link and says what it includes: filters, IB points, a
+  shared list; saved programmes are never in a filter link. A failed copy
+  never says it worked and says what to do instead. On phones the message
+  shows inside the Filters sheet. Rules: `copyLink()` in `js/app.js`.
+- *Compare (batch 2 B).* My list says "Save 2 or more programmes to compare up
+  to 4" until two are saved, then shows "Compare (n)", which opens with all
+  saved programmes ticked when there are 2 to 4.
+- *Details (batch 2 C).* The official page and save buttons are an even pair,
+  side by side when there is room and stacked when not. On wide screens
+  (1200 px and up) clicking a row that is already open moves the keyboard
+  focus into its details; narrower, it closes the row as before. It never
+  opens the university's site by itself.
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
@@ -1012,6 +1063,18 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   which `js/render.js` imports for the exam line, the countdown and the yearly
   estimate). The compare view is not in the address; the shared list is.
   `plans/backlog/compare-architecture.md` is the old sketch.
+
+- **Design round 2, batch 2 calls** (Leon, 2026-11-05). Copy link has no
+  pop-up window: the button copies at once and the message says truthfully
+  what the link holds, or that copying failed. Compare stays at 2 to 4
+  programmes, made easier to find with the hint and "Compare (n)", which
+  pre-ticks all saves when there are 2 to 4. Passed deadlines stay visible;
+  the "Not passed yet" option carries a note instead, and rolling admission is
+  fixed in the data, not the filter. A second click on an open row focuses
+  its details on wide screens. The phone help keeps its height animation;
+  iPhones get the fade only. The Czech fee note left the Language filter for
+  the programme details. Slovak "Podľa školy" for the living-costs
+  placeholder. "Edit my answers" stays permanently.
 
 - **The class's target programmes come later** (Leon, 2026-10-26, registry
   Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
