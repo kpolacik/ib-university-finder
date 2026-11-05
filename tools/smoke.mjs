@@ -1373,6 +1373,21 @@ async function runBatch2A(base) {
       assert(await page.ev(`(()=>{const f=[...document.querySelectorAll('#filter-sheet .frow>.dropdown')],tops=f.map((n)=>n.getBoundingClientRect().top);return f.at(-1).id==='dd-budget' && tops.every((t,i)=>!i||t>tops[i-1])})()`), 'sheet order');
       await page.key('Escape', 'Escape', 27);
     });
+    await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet open'})`, 5000, 'the sheet to close');
+    // Text boxes, so this proves a shared centre line and not a baseline; the
+    // baseline is looked at on a screenshot of the same row.
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      for (const width of [600, 800, 1280]) {
+        await resize(page, width, 900);
+        await check(width, 'R4D', `status line (${lang}): the count and Edit my answers read as one line at one size`, async () => {
+          const m = await page.ev(`(()=>{const rect=(n)=>{const r=document.createRange();r.selectNodeContents(n);return [...r.getClientRects()].at(-1)},lead=document.querySelector('.status .count-lead'),edit=document.querySelector('.status .edit-answers'),a=rect(lead.lastChild),b=rect(edit.firstChild);
+            return {centre:Math.abs((a.top+a.bottom)-(b.top+b.bottom))/2,bottom:Math.abs(a.bottom-b.bottom),lead:getComputedStyle(lead).fontSize,edit:getComputedStyle(edit).fontSize,weight:getComputedStyle(edit).fontWeight}})()`);
+          assert(m.centre <= 1 && m.bottom <= 1, JSON.stringify(m));
+          assert(m.lead === '15px' && m.edit === '15px' && m.weight === '600', JSON.stringify(m));
+        });
+      }
+    }
   } finally { await page.close(); }
 }
 async function runBatch2B(base) {}

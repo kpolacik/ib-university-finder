@@ -1429,6 +1429,14 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  #budget-value:empty{display:none}
 }
 
+/* The count sat in an 18 px line box beside fixed-height buttons, so it read
+   lower and smaller than "Edit my answers" (item 8). .cfull, not .count: .cshort
+   shares that class and display:flex would show it beside the full sentence. The
+   clipped full sentence on a stuck phone bar must not keep the height. */
+.status .cfull{display:flex;align-items:center;min-height:var(--ctl);line-height:20px}
+.status .count .count-lead,.status .btn{font-size:15px;line-height:20px}
+@media (max-width:599.98px){.status.is-stuck .cfull{min-height:0}}
+
 /* Batch 2 · B: share and My list */
 
 /* Batch 2 · C: detail */
