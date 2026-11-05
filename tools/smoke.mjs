@@ -2874,6 +2874,10 @@ async function runAlignListCompare(base) {
           const { data: png } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: 794, height: Math.min(4000, cssContentSize.height), scale: 1 } });
           await writeFile(`${shots}/print-compare-${ui}.png`, Buffer.from(png, 'base64'));
         } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+      });
+    } finally { await page.close(); }
+  }
+}
 
 // Alignment audit fixes (2026-11-05, Leon: "all is aligned"): header, the
 // phone Filters sheet, My list, setup and the FAQ. Each check measures the
