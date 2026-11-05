@@ -3784,6 +3784,8 @@ const motionAllowed = {
   '.hd': 'transition:transform 240ms var(--ease-out)',
   '.hd-in': 'transition:transform 240ms var(--ease-out)',
   '.mark,.filters-btn': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
+  // Batch 3 C2: in the compact header only the wordmark fades; the tile stays.
+  '.mark h1': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
   '.row,.btn,.inp,.option,.dropdown>summary': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.cols button': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.item:not(.is-sel)>.row:hover': 'transition:background-color var(--t-fast) var(--ease-out)',
@@ -4720,7 +4722,8 @@ equal('fee sorting uses EU fee in both directions',
   [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
 for (const [key, text] of [
   ['your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave', 'Your browser could not save your list. It may be lost when you leave this page.'],
-  ['no_programmes_are_saved_here', 'No programmes are saved here.'],
+  // Batch 3 B3: the empty My list's hint says how to save (was 'no_programmes_are_saved_here').
+  ['r3_list_empty_hint', 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'],
   ['no_programmes_are_available', 'No programmes are available.'],
   ['no_programmes_match_your_filters', 'No programmes match your filters.'],
   ['search', 'Search: {value1}'], ['my_ib_points', 'My IB points: {value1}'],
@@ -5173,7 +5176,10 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
 });
-appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
+// Batch 3 B3 rewrote this check: Compare no longer follows the saves (A adds
+// its own check), and the last unsave leaves an empty list view instead of
+// silently closing it (Leon, 2026-11-05: an empty My list did nothing).
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts drop it at once; the last unsave leaves an empty list view', ({ run, get, item, fire, ids: [a, b, c] }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');
   fire(get('f-shortlist-only'), 'click');
   const star = starOf(item(a)); star.focus();
@@ -5185,7 +5191,8 @@ appCheck('list view: unsaving keeps the row (and focus) until the list is redraw
   if (get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
   fire(starOf(item(c)), 'click');
   run('update();');
-  return run('state.shortlistOnly') === false && get('results').children.length === 3;
+  return run('state.shortlistOnly') === true && get('results').children.length === 0 && !get('empty-state').hidden
+    && get('empty-title').textContent === 'Your list is empty.' && !get('empty-back').hidden && get('ml-tools').hidden;
 });
 appCheck('two tabs: each save or unsave goes on the list as stored now, so the other tab’s changes survive; its storage events update this tab', ({ run, get, item, fire, fireWindow, context, ids: [a, b, c] }) => {
   // This tab loaded with a saved; a second tab has since saved c.
@@ -5413,37 +5420,60 @@ appCheck('heading sort cycles include the default order, announced next state an
   get('f-sort').value='points:desc'; fire(get('f-sort'),'change');
   return run('state.sort')==='points' && run('state.dir')==='desc';
 });
-for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, ({get,fire,context,resultsSection}) => {
+// The real setup dialog on the app harness's page. apply() returns the number
+// shown, as app.js's callback does; matchMedia is only read by the FAQ button.
+function realSetup({get,fire,context,resultsSection}, {shown = 7, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[];
-  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args)};
-  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
-  setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
-  const dialog=get('onboarding'), next=()=>fire(dialog.querySelector('.ob-foot .btn-p'),'click');
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return shown;},results:resultsSection,closeSheet(){},firstVisit:true});
+  const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
+  // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
+  const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
+    text:section.textContent,focused:stubDocument.activeElement===get('ob-title'),noStep:!dialog.querySelector('.ob-n'),bar:dialog.querySelector('.ob-bar i').style.transform,barShown:!dialog.querySelector('.ob-bar').hidden,
+    buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
+  return {writes,applied,toasts,dialog,primary,next,doneScreen,api};
+}
+// Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
+// done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
+for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {
+  const {get,fire,resultsSection}=h, {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h);
   if(!dialog.querySelector('.ob-bar').hidden || dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0)')return false;
   next(); const points=get('ob-points'); points.value='38'; fire(points,'input'); next();
   if(dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0.5)')return false;
-  if(outcome==='apply'){next();next();next();}
+  if(outcome==='apply'){
+    next();next();
+    if(dialog.querySelector('.ob-foot .btn-p').textContent!==t('r3_ob_finish'))return false;
+    next();
+    const d=doneScreen();
+    if(!dialog.open||!d||d.heading!==t('r2_answers_applied')||!d.focused||!d.noStep||d.bar!=='scaleX(1)'||!d.barShown)return false;
+    if(JSON.stringify(d.buttons)!==JSON.stringify([t('r2_show_mine'),t('r3_ob_faq')])||dialog.querySelector('.skipwrap'))return false;
+    if(writes.length!==1||writes[0][1]!=='completed'||applied.length!==1)return false;
+    next();
+  }
   else if(outcome==='skip')fire(dialog.querySelector('.skipwrap button'),'click');
   else fire(dialog,'cancel');
   return !dialog.open && writes.length===1 && writes[0][1]===(outcome==='apply'?'completed':'dismissed')
-    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===(outcome==='apply'?1:0)
+    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===0 && !dialog.querySelector('.ob-done')===(outcome!=='apply')
     && stubDocument.activeElement===(outcome==='apply'?resultsSection:get('f-search'))
     && !(stubDocument.scrolls??[]).some(s=>s.node===resultsSection);
 });
 // Leon, 2026-11-05: finishing setup with nothing chosen still said "Your answers are now filters".
-appCheck('real onboarding handlers: clicking through with no answers applies but shows no toast', ({get,fire,context,resultsSection}) => {
-  const applied=[], toasts=[];
-  const env={document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem(){}},syncSlider(){},showToast:(...args)=>toasts.push(args)};
-  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',env);
-  setup({state:savedState.validateFilters({}),facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>applied.push(answers),results:resultsSection,closeSheet(){},firstVisit:true});
-  const dialog=get('onboarding');
-  for(let i=0;i<5;i++)fire(dialog.querySelector('.ob-foot .btn-p'),'click');
-  return !dialog.open && applied.length===1 && toasts.length===0;
+appCheck('real onboarding handlers: clicking through with no answers shows the no-answers done screen and no toast', (h) => {
+  const {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h,{shown:2915});
+  for(let i=0;i<5;i++)next();
+  const d=doneScreen();
+  return dialog.open && applied.length===1 && toasts.length===0 && writes.length===1 && writes[0][1]==='completed'
+    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown.' && d.text.includes(t('r3_ob_done_p_none'))
+    && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
-check('onboarding completion toast uses the compact Edit action and native maths shares the segmented label',
-  read('js/onboarding.js').includes("t('r2_edit_short')") && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
+// Was "onboarding completion toast uses the compact Edit action…": the toast is
+// gone (the done screen says it), and r2_edit_short with it. The native maths
+// half still stands.
+check('setup ends with no toast and no Edit toast key; native maths shares the segmented label',
+  !read('js/onboarding.js').includes('showToast') && !('r2_edit_short' in UI.en) && !('r2_edit_short' in UI.sk)
+  && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
 
 
 section('Review round 1 presentation regressions');
@@ -5790,34 +5820,47 @@ function withGlobals(globals, fn) {
   }
 }
 const fakeObserver = class { observe() {} };
-function logoClick(init, { reduced = false } = {}) {
+// Batch 3 C2: the logo and the phone tile ([data-home]) go home, then scroll
+// to the top and focus the logo; `home` counts goHome() calls and `order`
+// records what happened in which order.
+function logoClick(init, { reduced = false, target = 'mark' } = {}) {
+  const order = [];
   const fake = (extra = {}) => ({ listeners: {}, tabIndex: 0, style: { setProperty() {} }, classList: { toggle() {} }, contains: () => false,
     addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }, getBoundingClientRect: () => ({ height: 0, bottom: 0 }), ...extra });
-  const mark = fake(), header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
+  const doc = { activeElement: null };
+  const mark = fake({ tabIndex: -1, focus(options) { doc.activeElement = mark; order.push(['focus', options]); } }), tile = fake();
+  const header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
   const scrolls = [], location = { hash: '', search: '?country=Ireland' };
+  let home = 0;
   const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...init };
   withGlobals({
-    document: { querySelector: (s) => parts[s], getElementById: () => fake(), body: fake(), activeElement: null, addEventListener() {} },
+    document: Object.assign(doc, { querySelector: (s) => parts[s], querySelectorAll: (s) => (s === '[data-home]' ? [tile] : []), getElementById: () => fake(), body: fake(), addEventListener() {} }),
     window: { addEventListener() {} }, innerWidth: 1280, innerHeight: 900, ResizeObserver: fakeObserver, IntersectionObserver: fakeObserver,
-    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => scrolls.push(options),
+    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => { scrolls.push(options); order.push(['scroll']); },
     matchMedia: (query) => ({ matches: reduced && query === '(prefers-reduced-motion: reduce)' }),
   }, () => {
-    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() });
-    for (const fn of mark.listeners.click) fn(event);
+    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() }, { goHome() { home++; order.push(['home']); } });
+    for (const fn of (target === 'tile' ? tile : mark).listeners.click) fn(event);
   });
-  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search };
+  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search, home, focused: doc.activeElement === mark, tabIndex: mark.tabIndex, order };
 }
+// Batch 3 C2: the name changes from "back to top" to going home, on both links.
 check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
-  /<a class="mark" href="#top-marker" aria-label="University Finder, back to top" data-i18n-attr="aria-label:r2_home_label">/.test(read('index.html'))
-  && UI.en.r2_home_label === 'University Finder, back to top' && UI.sk.r2_home_label === 'University Finder, späť na začiatok');
-equal('a plain logo click scrolls to the top and leaves the address alone, so #top-marker cannot reach a copied link',
-  logoClick({}), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland' });
+  /<a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label">/.test(read('index.html'))
+  && /<a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB<\/span><\/a>/.test(read('index.html'))
+  && UI.en.r3_home_label === 'University Finder, all programmes' && UI.sk.r3_home_label === 'University Finder, všetky programy'
+  && !('r2_home_label' in UI.en) && !('r2_home_label' in UI.sk));
+// Batch 3 C2 changed this: the click now also goes home (goHome, which the app
+// harness checks below), and focus lands on the logo after the scroll starts.
+for (const target of ['mark', 'tile']) equal(`a plain ${target === 'mark' ? 'logo' : 'phone home tile'} click goes home, scrolls to the top, focuses the logo and leaves the address alone, so #top-marker cannot reach a copied link`,
+  logoClick({}, { target }), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland', home: 1, focused: true, tabIndex: 0,
+    order: [['home'], ['scroll'], ['focus', { preventScroll: true }]] });
 equal('with reduced motion the logo scroll is instant',
   logoClick({}, { reduced: true }).scrolls, [{ top: 0, behavior: 'instant' }]);
 check('a modified or middle click on the logo keeps the browser\'s own behaviour',
   [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }].every((init) => {
     const click = logoClick(init);
-    return click.prevented === false && click.scrolls.length === 0;
+    return click.prevented === false && click.scrolls.length === 0 && click.home === 0 && !click.focused;
   }));
 
 // ChromeNode's dataset is a read-only copy; the real radio builder writes to it.
@@ -6571,8 +6614,206 @@ appCheck('A1 saves, unsaves, Clear my list and Clear all never change the compar
 }
 
 section('Batch 3 · B');
+// B1 (Leon, Q2): on a phone the main view's My list box was a half-empty
+// second row above the cards. The stub has no layout, so the state is checked
+// here and the computed display:none in smoke "B3B main top".
+check('B3B1 on a phone the main-view My list bar is hidden unless a failure note shows', (() => {
+  const phone = ruleAt(cssText, '.mylist:not(.is-list):not(:has(.ml-note:not([hidden])))', '(max-width: 599.98px)');
+  return /display:none/.test(phone);
+})());
+appCheck('B3B1 with 3 saved and no note the main-view bar carries no note (so the phone rule hides it); a failed save shows the note', ({ run, get, item, fire, context, ids: [a] }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  const bar = get('shortlist-bar');
+  if (bar.hidden || bar.classList.contains('is-list') || !get('ml-note').hidden) return false;
+  context.saveWorks = false;
+  fire(starOf(item(a)), 'click');
+  return !bar.hidden && !bar.classList.contains('is-list') && !get('ml-note').hidden && get('ml-note').textContent !== '';
+});
+// B2 (Leon, 2026-11-05): the phone list toolbar. The back button keeps its
+// chevron because the text goes in its own span; a language switch wrote the
+// whole button's textContent before, which would wipe the icon.
+appCheck('B3B2 the back button text sits in .ml-open-t beside its chevron, through a language switch; Clear my list keeps its trash icon', ({ run, get, fire }) => {
+  const back = get('f-shortlist-only'), clear = get('clear-shortlist');
+  const icons = () => back.querySelector('use')?.getAttribute('href') === '#i-chevron' && clear.querySelector('use')?.getAttribute('href') === '#i-trash';
+  run('shortlist.add(fixture[0].id); update();');
+  if (back.querySelector('.ml-open-t').textContent !== 'Open my list' || !icons()) return false;
+  fire(back, 'click');
+  if (back.querySelector('.ml-open-t').textContent !== 'Back to all programmes' || !icons()) return false;
+  try {
+    run("switchLanguage('sk')");
+    // (The harness strips data-i18n, so Clear's static label is left to the HTML i18n check.)
+    return back.querySelector('.ml-open-t').textContent === UI.sk.back_to_all_programmes && icons();
+  } finally { run("switchLanguage('en')"); }
+});
+check('B3B2 the back chevron shows only in the list view, pointing left; the trash icon and the outlined Clear only below 600 px', (() => {
+  const phone = '(max-width: 599.98px)';
+  return /display:none/.test(ruleAt(cssText, '.ml-open>.ic'))
+    && /display:block/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic')) && /rotate\(90deg\)/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic'))
+    && /display:none/.test(ruleAt(cssText, '#clear-shortlist>.ic')) && /display:block/.test(ruleAt(cssText, '#clear-shortlist>.ic', phone))
+    && /border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist', phone))
+    && /order:-1/.test(ruleAt(cssText, '.mylist.is-list .ml-open', phone))
+    // The old quiet-text Clear rules are gone (they made it look like an empty cell).
+    && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
+})());
+// B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
+// turned an empty list view straight off. The header button is wired in
+// round2.js, which the harness stubs, so the real wireRound2 runs here.
+appCheck('B3B3 with 0 saves the real header My list opens an empty list view that says how to save (EN, SK); its button goes back with focus on the header', ({ run, get, fire }) => {
+  const header = get('header-list');
+  // The stand-in nodes lack prepend, which wireRound2 uses before it wires the
+  // header, and click(), which its handler calls; lent for this check only.
+  const hadPrepend = Object.hasOwn(ChromeNode.prototype, 'prepend');
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadPrepend) ChromeNode.prototype.prepend = function (node) { this.append(node); };
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try {
+    withGlobals({ window: { addEventListener() {} }, innerWidth: 390, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) },
+      () => realRound2.wireRound2(run('dom')));
+  } catch { /* Only the header listener (attached early) is needed; later stand-in gaps are not this check's subject. */ } finally {
+    if (!hadPrepend) delete ChromeNode.prototype.prepend;
+  }
+  try { return emptyListFlow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function emptyListFlow() {
+  if (run('shortlist.size') !== 0 || run('state.shortlistOnly') !== false) return false;
+  fire(header, 'click');
+  const texts = () => [get('empty-title').textContent, get('empty-hint').textContent, get('empty-back').textContent];
+  if (run('state.shortlistOnly') !== true || get('empty-state').hidden || get('empty-back').hidden
+    || JSON.stringify(texts()) !== JSON.stringify([UI.en.your_list_is_empty, UI.en.r3_list_empty_hint, UI.en.back_to_all_programmes])
+    || !get('empty-clear').hidden || !get('empty-tips').hidden || get('shortlist-bar').hidden || !get('shortlist-bar').classList.contains('is-list')
+    || !get('ml-tools').hidden || !get('ml-origin').hidden || !get('ml-show-all').hidden || get('shortlist-count-text').textContent !== '0 saved') return false;
+  try {
+    run("switchLanguage('sk')");
+    if (JSON.stringify(texts()) !== JSON.stringify([UI.sk.your_list_is_empty, UI.sk.r3_list_empty_hint, UI.sk.back_to_all_programmes])) return false;
+  } finally { run("switchLanguage('en')"); }
+  fire(get('empty-back'), 'click');
+  return run('state.shortlistOnly') === false && stubDocument.activeElement === header && get('empty-state').hidden
+    && get('results').children.length === 3;
+  }
+});
+appCheck('B3B3 Clear my list still returns to all programmes', ({ run, get, fire, context }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  context.window.confirm = () => true;
+  fire(get('clear-shortlist'), 'click');
+  return run('shortlist.size') === 0 && run('state.shortlistOnly') === false && get('empty-state').hidden;
+});
+await asyncAppCheck('B3B3 a shared link whose programmes have all gone keeps its own message, with no back button in the empty state', async ({ run, get, context, settle }) => {
+  context.location.search = '?list=ghost';
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('empty-title').textContent === 'None of the programmes in this link are listed any more.'
+    && get('empty-hint').textContent === UI.en.close_the_shared_list_to_see_every_programme && get('empty-back').hidden;
+}, { boot: true });
+check('B3B3 the empty-list hint exists in EN and SK',
+  UI.en.r3_list_empty_hint === 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'
+  && UI.sk.r3_list_empty_hint === 'Program sem uložíš záložkou vedľa neho. Tvoj zoznam zostane v tomto prehliadači.');
 
 section('Batch 3 · C');
+// C1: setup ends on a done screen (Leon, 2026-11-05), replacing step 1's FAQ
+// link and the completion toast.
+{
+  const sk = (key, count) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, { count }); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('B3C1 done screen EN copy', [t('r3_ob_finish'), t('r3_ob_done_count', { count: 1 }), t('r3_ob_done_count', { count: 3 }), t('r3_ob_shown_count', { count: 1 }), t('r3_ob_shown_count', { count: 0 }), t('r3_ob_done_p'), t('r3_ob_done_h_none'), t('r3_ob_done_p_none'), t('r3_ob_faq'), t('r2_show_mine'), t('r2_answers_applied')],
+    ['Finish', '1 programme matches your answers.', '3 programmes match your answers.', '1 programme shown.', '0 programmes shown.', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
+  equal('B3C1 done screen SK plurals for 1, 3, 312 and 0 (0 takes "other")',
+    [1, 3, 312, 0].flatMap((n) => [sk('r3_ob_done_count', n), sk('r3_ob_shown_count', n)]),
+    ['Tvojim odpovediam zodpovedá 1 program.', 'Zobrazený je 1 program.', 'Tvojim odpovediam zodpovedajú 3 programy.', 'Zobrazené sú 3 programy.',
+      'Tvojim odpovediam zodpovedá 312 programov.', 'Zobrazených je 312 programov.', 'Tvojim odpovediam zodpovedá 0 programov.', 'Zobrazených je 0 programov.']);
+  equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení si nepridal žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+  check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
+}
+appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {
+  const {dialog,next,doneScreen,applied,writes}=realSetup(h);
+  if (dialog.querySelector('.ob-faq') || dialog.querySelector('a')) return false;
+  next(); next(); h.fire(dialog.querySelector('.skipwrap button'), 'click');
+  return !dialog.open && !doneScreen() && applied.length === 0 && writes[0][1] === 'dismissed';
+});
+appCheck('B3C1 Esc on the done screen keeps the answers and writes "completed" once', (h) => {
+  const {get,fire,resultsSection}=h, {dialog,next,doneScreen,applied,writes}=realSetup(h,{shown:1});
+  next(); const points=get('ob-points'); points.value='40'; fire(points,'input'); next(); next(); next(); next();
+  const d=doneScreen();
+  if (!d || d.count !== '1 programme matches your answers.') return false;
+  fire(dialog, 'cancel');
+  return !dialog.open && applied.length === 1 && applied[0].myIbPoints === 40 && writes.length === 1 && writes[0][1] === 'completed'
+    && stubDocument.activeElement === resultsSection;
+});
+appCheck('B3C1 a second Finish click applies nothing more; the done screen formats the count', (h) => {
+  const {dialog,next,doneScreen,applied,primary}=realSetup(h,{shown:2915,state:savedState.validateFilters({countries:['Ireland']})});
+  for (let i = 0; i < 4; i++) next();
+  const finish = primary(); h.fire(finish, 'click'); h.fire(finish, 'click');
+  // The second click of a double-click (detail 2) lands on "Show my programmes".
+  h.fire(primary(), 'click', { detail: 2 });
+  return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes match your answers.';
+});
+appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
+  const {get}=h, {dialog,next,writes}=realSetup(h);
+  for (let i = 0; i < 5; i++) next();
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed'
+    && (stubDocument.scrolls ?? []).some((s) => s.node === get('faq')) && stubDocument.activeElement === get('faq').querySelector('summary');
+});
+// Found by smoke R2M: Finish re-renders the list, which fills in after the FAQ
+// scroll starts, so a quick tap landed mid-list. The FAQ aims once more when the
+// list stops growing; never every frame (a restarted smooth scroll crawls), and
+// not at all once the reader scrolls.
+for (const [name, grow, input] of [['aims once more after the list grows', true, false], ['does not aim again when nothing grew', false, false], ['stops when the reader scrolls', true, true]]) appCheck(`B3C1 the done screen FAQ ${name}`, (h) => {
+  const {get}=h, frames=new Map(); let id=0;
+  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+  for (let i = 0; i < 5; i++) next();
+  stubDocument.scrolls = [];
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  const aims = () => stubDocument.scrolls.filter((s) => s.node === get('faq')).length;
+  if (aims() !== 1) return false;
+  if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
+  for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
+  return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+});
+appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
+  const {dialog,next,doneScreen,api,writes}=realSetup(h);
+  for (let i = 0; i < 6; i++) next();
+  if (dialog.open) return false;
+  api.open(null);
+  const ok = dialog.open && !doneScreen() && dialog.querySelector('.ob-foot .btn-p').textContent === t('r2_start')
+    && !!dialog.querySelector('.skipwrap') && !dialog.querySelector('.ob-foot').classList.contains('ob-done-foot');
+  h.fire(dialog, 'cancel');
+  return ok && writes.at(-1)[1] === 'dismissed';
+});
+check('B3C1 the done screen stacks full width on phones, primary first; 44 px buttons',
+  /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
+  && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
+  && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
+check('B3C1 the app apply callback returns the shown count for the done screen', /preferencesDirty = true; update\(\);\s*\/\/[^\n]*\n\s*return currentlyShown;/.test(appSrc));
+
+// C2: the logo goes home (Leon, 2026-11-05). goHome() leaves My list, a shared
+// list and Compare; filters, search, sort, saves and the pane's pick stay.
+// Batch 2 A2 kept the list view; this reverses it. The scroll, the hash and the
+// focus on .mark are checked on the real handler above (logoClick).
+appCheck('B3C2 home from My list: the main list, with filters, sort, saves and the pick unchanged', ({ run, ids: [a, b] }) => {
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.myIbPoints = 36; state.sort = 'name'; state.dir = 'desc'; state.shortlistOnly = true; update(); selectedId = '${a}';`);
+  if (run('state.shortlistOnly') !== true) return false;
+  run('goHome();');
+  return run('state.shortlistOnly') === false && run('listAll') === false && run('state.myIbPoints') === 36 && run('state.sort') === 'name' && run('state.dir') === 'desc'
+    && run('shortlist.size') === 2 && run('selectedId') === a && run('currentlyShown') === 3;
+});
+appCheck('B3C2 home from a shared list: shared is gone and list= leaves the address, filters stay', ({ run, context, ids: [a, b] }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); context.location.search = new URL(u, 'http://localhost').search; };
+  run(`shared = { ids: ['${a}', '${b}'], unknown: [] }; state.shortlistOnly = true; state.myIbPoints = 36; update();`);
+  if (!urls.at(-1)?.includes('list=')) return false;
+  run('goHome();');
+  return run('shared') === null && run('state.shortlistOnly') === false && !urls.at(-1).includes('list=') && urls.at(-1).includes('points=36') && !urls.at(-1).includes('#');
+});
+appCheck('B3C2 home from Compare: the view closes and the list shows; open panels close', ({ run, get }) => {
+  run('compareOpen = true; dom.compare.hidden = false; dom.split.hidden = true;');
+  get('ml-share').open = true; get('dd-countries').open = true;
+  run('goHome();');
+  return run('dom.compare.hidden') === true && run('dom.split.hidden') === false && get('ml-share').open === false && get('dd-countries').open === false;
+});
+check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
+check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
+check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
+  /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
+  && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
+  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

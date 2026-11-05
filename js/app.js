@@ -86,6 +86,8 @@ const dom = {
   emptyTitle: document.getElementById('empty-title'),
   emptyHint: document.getElementById('empty-hint'),
   emptyClear: document.getElementById('empty-clear'),
+  emptyBack: document.getElementById('empty-back'),
+  headerList: document.getElementById('header-list'),
   emptyTips: document.getElementById('empty-tips'),
   pointsError: document.getElementById('f-points-error'),
   tuitionError: document.getElementById('f-tuition-error'),
@@ -97,6 +99,7 @@ const dom = {
   shortlistCount: document.getElementById('shortlist-count-text'),
   sourceLine: document.getElementById('source-line'),
   shortlistOnly: document.getElementById('f-shortlist-only'),
+  shortlistOnlyText: document.getElementById('f-shortlist-only').querySelector('.ml-open-t'),
   exportCsv: document.getElementById('export-csv'),
   print: document.getElementById('print-shortlist'),
   clearShortlist: document.getElementById('clear-shortlist'),
@@ -277,7 +280,7 @@ async function start() {
   syncSort();
   wireInputs();
   wireRound2(dom);
-  wireCompactHeader(dom);
+  wireCompactHeader(dom, { goHome });
   for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
     const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
     const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
@@ -340,6 +343,8 @@ async function start() {
       apply(answers) {
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
+        // Setup's done screen says how many programmes this leaves.
+        return currentlyShown;
       },
     });
   } catch (err) {
@@ -836,6 +841,12 @@ function wireList() {
     closeCompare(false);
     update();
   });
+  // The empty list's own way back. The list exit restores no focus, and this
+  // button disappears with the empty state, so focus goes to the header's My list.
+  dom.emptyBack.addEventListener('click', () => {
+    dom.shortlistOnly.click();
+    dom.headerList.focus();
+  });
   dom.listShowAll.addEventListener('click', () => {
     listAll = state.shortlistOnly ? !listAll : true;
     state.shortlistOnly = true;
@@ -1111,6 +1122,19 @@ function canShow(node) {
   return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
 }
 
+// The logo goes home (Leon, 2026-11-05): the main list, out of My list, a
+// shared list or Compare. Filters, search, sort, saves, the Compare set and the
+// pane's pick all stay. update() then drops list= from the address. The logo's
+// handler (wireCompactHeader) scrolls to the top and moves focus.
+function goHome() {
+  closeCompare(false);
+  shared = null;
+  state.shortlistOnly = false;
+  listAll = false;
+  for (const panel of document.querySelectorAll('.ml-pop,.dropdown')) if (panel.open) panel.open = false;
+  update();
+}
+
 function clearAll() {
   preferencesDirty = false; writeSaved(null);
   for (const key of FACET_FIELDS) editedFacets.add(key);
@@ -1177,10 +1201,8 @@ function update() {
     dataDay = localDay(now);
   }
 
-  // Turning off an empty list view belongs here, before rendering — not as a
-  // side effect hidden inside the count update. A shared link's view stays,
-  // even empty: it says what happened to its programmes.
-  if (state.shortlistOnly && !shared && shortlist.size === 0) state.shortlistOnly = false;
+  // An empty list view stays open (batch 3 B3): its empty state says how to
+  // save. It used to turn itself off, so "My list (0)" did nothing.
   if (!state.shortlistOnly) listAll = false;
 
   // The list view: the saved (or shared) programmes, with the page's filters
@@ -1941,8 +1963,10 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
+  // An empty My list shows only its title, "0 saved" and the back button (B3).
+  const emptyMine = mode === 'mine' && listIds.length === 0;
   const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
-  if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
+  if (emptyMine) { /* nothing is shown or hidden */ } else if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
   else {
     parts.push(t('shown', { value1: shown }));
     if (hidden > 0) parts.push(t('hidden_by_your_filters', { value1: hidden }));
@@ -1951,10 +1975,11 @@ function renderListBar() {
   if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
 
   const filtersOff = listAll && mode !== 'main';
-  dom.listShowAll.hidden = !filtersOff && hidden <= 0;
+  dom.listShowAll.hidden = emptyMine || (!filtersOff && hidden <= 0);
   dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
-  dom.shortlistOnly.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
+  // The text has its own span so the back chevron survives (batch 3 B2).
+  dom.shortlistOnlyText.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
 
   const notes = [];
   if (saveFailed) notes.push(t('your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave'));
@@ -1963,13 +1988,13 @@ function renderListBar() {
     if (missing) notes.push(missing);
     if (sharedNote) notes.push(sharedNote);
   }
-  if (mode !== 'main' && groupBy === 'points' && state.myIbPoints === null) notes.push(t('enter_your_ib_points_to_group_the_list_by_them'));
+  if (mode !== 'main' && !emptyMine && groupBy === 'points' && state.myIbPoints === null) notes.push(t('enter_your_ib_points_to_group_the_list_by_them'));
   const note = notes.join(' ');
   if (dom.listNote.textContent !== note) dom.listNote.textContent = note;
   dom.listNote.hidden = note === '';
 
-  dom.listTools.hidden = mode === 'main';
-  dom.listOrigin.hidden = mode !== 'mine';
+  dom.listTools.hidden = mode === 'main' || emptyMine;
+  dom.listOrigin.hidden = mode !== 'mine' || emptyMine;
   for (const node of dom.listTools.querySelectorAll('.ml-mine')) node.hidden = mode !== 'mine';
   dom.share.hidden = mode !== 'mine';
   if (dom.groupBy.value !== groupBy) dom.groupBy.value = groupBy;
@@ -1995,11 +2020,18 @@ function renderEmptyState(shown) {
   }
   dom.empty.hidden = false;
   dom.emptyClear.hidden = true;
+  dom.emptyBack.hidden = true;
   dom.emptyTips.hidden = true;
 
-  if (state.shortlistOnly && listIds.length === 0) {
-    dom.emptyTitle.textContent = shared ? t('none_of_the_programmes_in_this_link_are_listed_any_more') : t('your_list_is_empty');
-    dom.emptyHint.textContent = shared ? t('close_the_shared_list_to_see_every_programme') : t('no_programmes_are_saved_here');
+  if (state.shortlistOnly && listIds.length === 0 && shared) {
+    dom.emptyTitle.textContent = t('none_of_the_programmes_in_this_link_are_listed_any_more');
+    dom.emptyHint.textContent = t('close_the_shared_list_to_see_every_programme');
+  } else if (state.shortlistOnly && listIds.length === 0) {
+    // An empty My list says how to save, with a way back (B3).
+    dom.emptyTitle.textContent = t('your_list_is_empty');
+    dom.emptyHint.textContent = t('r3_list_empty_hint');
+    dom.emptyBack.hidden = false;
+    dom.emptyBack.textContent = t('back_to_all_programmes');
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
