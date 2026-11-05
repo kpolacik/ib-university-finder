@@ -1287,6 +1287,93 @@ async function runBatch2A(base) {
       });
     }
   } finally { await page.close(); }
+
+  // Only the visible direct children of a row, and nothing inside compound controls
+  // or closed panels: those have their own gaps and do not wrap as whole controls.
+  const rowsNow = `(()=>{const shown=(n)=>!n.hidden&&getComputedStyle(n).display!=='none',box=(n)=>n.getBoundingClientRect(),bad=[];
+    const kids=[...document.querySelectorAll('.fbar .more-filters>.frow')].flatMap((row)=>[...row.children].filter(shown));
+    const lines=[];for(const n of kids){const r=box(n),line=lines.find((l)=>Math.abs(l.top-r.top)<=2);if(line)line.items.push(n);else lines.push({top:r.top,items:[n]})}
+    for(const n of kids){const r=box(n);if(r.left<0||r.right>innerWidth)bad.push('outside: '+n.id+' '+Math.round(r.left)+'-'+Math.round(r.right))}
+    lines.forEach((line,i)=>{line.items.sort((a,b)=>box(a).left-box(b).left);
+      line.items.forEach((n,k)=>{if(k){const gap=box(n).left-box(line.items[k-1]).right;if(Math.abs(gap-8)>1)bad.push('gap '+gap.toFixed(1)+' before '+(n.id||n.className))}});
+      if(i){const before=Math.max(...lines[i-1].items.map((n)=>box(n).bottom)),gap=line.top-before;if(Math.abs(gap-8)>1)bad.push('line gap '+gap.toFixed(1)+' above '+(line.items[0].id||line.items[0].className))}});
+    for(const n of kids.flatMap((k)=>[...k.querySelectorAll('summary,label,button')]).filter((n)=>shown(n)&&!n.closest('.dropdown-panel')&&n.offsetWidth)){
+      if(n.scrollWidth>n.clientWidth+1)bad.push('clipped: '+n.textContent.trim().slice(0,30));
+      if(getComputedStyle(n).textOverflow==='ellipsis')bad.push('ellipsis: '+n.textContent.trim().slice(0,30))}
+    return {bad,lines:lines.length,budgetLast:document.querySelector('.facets-row').lastElementChild.id==='dd-budget',sw:document.documentElement.scrollWidth,w:innerWidth}})()`;
+  // Panels open one at a time, after the toggle event has placed them, with their
+  // opening animation finished so the scale is not measured.
+  const panelsNow = `(async()=>{const frame=()=>new Promise((done)=>requestAnimationFrame(()=>setTimeout(done))),bad=[];window.scrollTo({top:0,behavior:'instant'});
+    for(const d of document.querySelectorAll('.fbar .frow>.dropdown')){d.open=true;await frame();await frame();const panel=d.querySelector('.dropdown-panel');
+      for(const a of panel.getAnimations())a.finish();const r=panel.getBoundingClientRect();
+      if(r.left<0||r.right>innerWidth||r.bottom>innerHeight)bad.push(d.id+' panel at '+[r.left,r.right,r.bottom].map(Math.round));
+      if(panel.scrollWidth>panel.clientWidth+1)bad.push(d.id+' panel overflows sideways');
+      for(const n of panel.querySelectorAll('.option,.pop-f'))if(n.offsetWidth&&n.scrollWidth>n.clientWidth+1)bad.push(d.id+' clipped: '+n.textContent.trim().slice(0,30));
+      for(const n of panel.querySelectorAll('.option *,.pop-f *,.fld *')){const b=n.getBoundingClientRect();if(b.width&&(b.right>r.right-1||b.left<r.left+1))bad.push(d.id+' outside its panel: '+n.textContent.trim().slice(0,30))}
+      d.open=false;await frame()}
+    return bad})()`;
+  const placeholderNow = `(()=>{const n=document.querySelector('#f-points'),s=getComputedStyle(n),p=getComputedStyle(n,'::placeholder'),c=document.createElement('canvas').getContext('2d');c.font=p.font;
+    return {text:n.placeholder,need:c.measureText(n.placeholder).width,room:n.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)}})()`;
+  const long = 'subject=Law&subject=Psychology&subject=Economics&country=Ireland&country=Germany&country=Netherlands&fee=12000&living=900&deadline=60';
+  for (const [state, query] of [['no filters', ''], ['long selections', `&${long}`]]) {
+    page = await open(`?ui=en${query}`, 1280, 900);
+    try {
+      if (query) assert(await page.ev(`document.querySelector('#dd-subjects-count-number').textContent==='3' && document.querySelector('#dd-countries-count-number').textContent==='3' && document.querySelector('#budget-value').textContent==='· 2' && document.querySelector('#dd-deadline .scalar-count').textContent==='· 1'`), 'the long selections did not apply');
+      for (const lang of ['en', 'sk']) {
+        await language(page, lang);
+        for (const [width, height] of [[600, 900], [640, 450], [700, 900], [800, 900], [1023, 900], [1024, 900], [1100, 900], [1199, 900], [1200, 900], [1280, 900], [1440, 900]]) {
+          await resize(page, width, height);
+          await check(width, 'R4C', `filter rows (${lang}, ${state}): whole controls, even gaps, nothing clipped`, async () => {
+            // A closed panel stays drawn for its 250 ms exit, so the last one measured at
+            // the previous width can widen the page for a moment; a real overflow stays.
+            await page.waitFor(`({ok:document.documentElement.scrollWidth===innerWidth,why:'page is '+document.documentElement.scrollWidth+' wide at '+innerWidth})`, 1000, 'no sideways scroll');
+            const m = await page.ev(rowsNow);
+            assert(m.bad.length === 0, m.bad.join(' | '));
+            assert(m.budgetLast, 'Budget is not the last facet in the second row');
+            if (lang === 'en' && !query && width >= 1024) assert(m.lines === 2, `${m.lines} rows`);
+            if (width === 1024 || width === 1100) {
+              const p = await page.ev(placeholderNow);
+              assert(p.need <= p.room, `"${p.text}" needs ${p.need.toFixed(1)}, has ${p.room}`);
+            }
+            const panels = await page.ev(panelsNow);
+            assert(panels.length === 0, panels.join(' | '));
+          });
+        }
+      }
+    } finally { await page.close(); }
+  }
+  page = await open('?ui=en', 1280, 900);
+  try {
+    for (const lang of ['en', 'sk']) {
+      await language(page, lang);
+      for (const width of [1024, 1200, 1280, 1440]) {
+        await resize(page, width, 900);
+        await check(width, 'R4C', `Budget panel by keyboard (${lang}): opens inside the right edge, reaches its fields, Escape returns`, async () => {
+          await page.ev(`window.scrollTo({top:0,behavior:'instant'});document.querySelector('#dd-exam summary').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement===document.querySelector('#dd-budget summary')`), 'Tab did not reach the Budget summary');
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`(()=>{const d=document.querySelector('#dd-budget'),p=d.querySelector('.dropdown-panel'),r=p.getBoundingClientRect();return {ok:d.open&&!p.getAnimations().some((a)=>a.playState==='running')&&r.left>=0&&r.right<=innerWidth,why:JSON.stringify([d.open,r.left,r.right,innerWidth])}})()`, 5000, 'the Budget panel inside the viewport');
+          const reached = [];
+          for (let i = 0; i < 6 && !reached.includes('f-living'); i++) {
+            await page.key('Tab', 'Tab', 9);
+            reached.push(await page.ev(`document.activeElement.id`));
+          }
+          assert(reached.includes('f-tuition') && reached.includes('f-living'), `Tab reached ${reached}`);
+          await page.key('Escape', 'Escape', 27);
+          assert(await page.ev(`!document.querySelector('#dd-budget').open && document.activeElement===document.querySelector('#dd-budget summary')`), 'Escape did not close Budget and return to its summary');
+          await page.ev(`document.activeElement.blur()`);
+        });
+      }
+    }
+    await resize(page, 390, 844);
+    await check(390, 'R4C', 'Budget is the last facet in the phone sheet', async () => {
+      await page.click(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 5000, 'the sheet');
+      assert(await page.ev(`(()=>{const f=[...document.querySelectorAll('#filter-sheet .frow>.dropdown')],tops=f.map((n)=>n.getBoundingClientRect().top);return f.at(-1).id==='dd-budget' && tops.every((t,i)=>!i||t>tops[i-1])})()`), 'sheet order');
+      await page.key('Escape', 'Escape', 27);
+    });
+  } finally { await page.close(); }
 }
 async function runBatch2B(base) {}
 async function runBatch2C(base) {}

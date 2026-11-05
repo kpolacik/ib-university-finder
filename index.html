@@ -157,34 +157,7 @@
             <option value="AA SL" data-i18n="aa_sl">AA SL</option>
             <option value="AI HL" data-i18n="ai_hl">AI HL</option>
             <option value="AI SL" data-i18n="ai_sl">AI SL</option>
-          </select><div class="seg" id="maths-seg" role="group" aria-label="My maths" data-i18n-attr="aria-label:my_maths_2"><button type="button" data-maths="" aria-pressed="true" data-i18n="r2_any_maths">Any maths</button><button type="button" data-maths="AA HL" aria-pressed="false" data-i18n="r2_aa_hl">AA HL</button><button type="button" data-maths="AA SL" aria-pressed="false" data-i18n="r2_aa_sl">AA SL</button><button type="button" data-maths="AI HL" aria-pressed="false" data-i18n="r2_ai_hl">AI HL</button><button type="button" data-maths="AI SL" aria-pressed="false" data-i18n="r2_ai_sl">AI SL</button></div></div><details class="dropdown budget-facet" id="dd-budget"><summary class="inp"><span data-i18n="r2_budget">Budget</span><span id="budget-value"></span><span class="dd-chev" aria-hidden="true"><svg class="ic"><use href="#i-chevron"/></svg></span></summary><div class="dropdown-panel budget-panel"><div class="budget"><div class="fld f-fee">
-        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-tuition" data-i18n="max_eu_fee">Max EU fee</label>
-        <span class="affix">
-          <input class="inp" type="number" id="f-tuition" name="tuition" min="0" step="1"
-                 inputmode="numeric" placeholder="No limit"
-                 aria-describedby="f-unknown-help f-tuition-error" data-i18n-attr="placeholder:r2_no_limit">
-          <span class="unit" data-i18n="year_3">&euro;/year</span>
-        </span>
-        <p class="err" id="f-tuition-error" aria-live="polite"></p>
-      <input type="range" data-number="f-tuition" min="0" max="20000" step="500" value="20000" aria-label="Max EU fee" data-i18n-attr="aria-label:max_eu_fee"></div><div class="fld f-budget">
-        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-budget" data-i18n="r2_max_year">Max yearly cost (fee + living)</label>
-        <span class="affix">
-          <input class="inp" type="number" id="f-budget" name="budget" min="0" step="1"
-                 inputmode="numeric" placeholder="No limit"
-                 aria-describedby="f-budget-help f-unknown-help f-budget-error" data-i18n-attr="placeholder:r2_no_limit">
-          <span class="unit" data-i18n="year_3">&euro;/year</span>
-        </span>
-        <p class="err" id="f-budget-error" aria-live="polite"></p>
-      <input type="range" data-number="f-budget" min="0" max="40000" step="500" value="40000" aria-label="Max yearly cost" data-i18n-attr="aria-label:max_yearly_cost_2"></div><div class="fld f-living">
-        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-living" data-i18n="my_living_costs">My living costs</label>
-        <span class="affix">
-          <input class="inp" type="number" id="f-living" name="living" min="0" step="1"
-                 inputmode="numeric" placeholder="University's"
-                 aria-describedby="f-living-error" data-i18n-attr="placeholder:university_s">
-          <span class="unit" data-i18n="r2_per_month">€/month</span>
-        </span>
-        <p class="err" id="f-living-error" aria-live="polite"></p>
-      <input type="range" data-number="f-living" min="0" max="2000" step="50" value="0" aria-label="My living costs" data-i18n-attr="aria-label:my_living_costs"></div></div></div></details></div><div class="frow facets-row"><details class="dropdown" id="dd-subjects">
+          </select><div class="seg" id="maths-seg" role="group" aria-label="My maths" data-i18n-attr="aria-label:my_maths_2"><button type="button" data-maths="" aria-pressed="true" data-i18n="r2_any_maths">Any maths</button><button type="button" data-maths="AA HL" aria-pressed="false" data-i18n="r2_aa_hl">AA HL</button><button type="button" data-maths="AA SL" aria-pressed="false" data-i18n="r2_aa_sl">AA SL</button><button type="button" data-maths="AI HL" aria-pressed="false" data-i18n="r2_ai_hl">AI HL</button><button type="button" data-maths="AI SL" aria-pressed="false" data-i18n="r2_ai_sl">AI SL</button></div></div></div><div class="frow facets-row"><details class="dropdown" id="dd-subjects">
           <summary class="inp"><span data-i18n="subject_area">Subject area</span><span class="dropdown-count" id="dd-subjects-count" hidden><span aria-hidden="true">· </span><span id="dd-subjects-count-number"></span><span class="visually-hidden" data-i18n="selected"> selected</span></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
           <div class="dropdown-panel" role="group" aria-label="Subject area" data-i18n-attr="aria-label:subject_area">
             <div class="options" id="f-subjects"></div>
@@ -219,7 +192,34 @@
             <option value="" data-i18n="any">Any</option>
             <option value="none" data-i18n="no_exam">No exam</option>
             <option value="skippable" data-i18n="none_or_skippable">None or skippable</option>
-          </select></div></details></div><p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p><p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p><p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p><p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p><button type="button" class="btn btn-a sheet-edit" data-edit data-i18n="r2_edit">Edit my answers</button><div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div></div></form>
+          </select></div></details><details class="dropdown budget-facet" id="dd-budget"><summary class="inp"><span data-i18n="r2_budget">Budget</span><span id="budget-value"></span><span class="dd-chev" aria-hidden="true"><svg class="ic"><use href="#i-chevron"/></svg></span></summary><div class="dropdown-panel budget-panel"><div class="budget"><div class="fld f-fee">
+        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-tuition" data-i18n="max_eu_fee">Max EU fee</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-tuition" name="tuition" min="0" step="1"
+                 inputmode="numeric" placeholder="No limit"
+                 aria-describedby="f-unknown-help f-tuition-error" data-i18n-attr="placeholder:r2_no_limit">
+          <span class="unit" data-i18n="year_3">&euro;/year</span>
+        </span>
+        <p class="err" id="f-tuition-error" aria-live="polite"></p>
+      <input type="range" data-number="f-tuition" min="0" max="20000" step="500" value="20000" aria-label="Max EU fee" data-i18n-attr="aria-label:max_eu_fee"></div><div class="fld f-budget">
+        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-budget" data-i18n="r2_max_year">Max yearly cost (fee + living)</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-budget" name="budget" min="0" step="1"
+                 inputmode="numeric" placeholder="No limit"
+                 aria-describedby="f-budget-help f-unknown-help f-budget-error" data-i18n-attr="placeholder:r2_no_limit">
+          <span class="unit" data-i18n="year_3">&euro;/year</span>
+        </span>
+        <p class="err" id="f-budget-error" aria-live="polite"></p>
+      <input type="range" data-number="f-budget" min="0" max="40000" step="500" value="40000" aria-label="Max yearly cost" data-i18n-attr="aria-label:max_yearly_cost_2"></div><div class="fld f-living">
+        <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-living" data-i18n="my_living_costs">My living costs</label>
+        <span class="affix">
+          <input class="inp" type="number" id="f-living" name="living" min="0" step="1"
+                 inputmode="numeric" placeholder="University's"
+                 aria-describedby="f-living-error" data-i18n-attr="placeholder:university_s">
+          <span class="unit" data-i18n="r2_per_month">€/month</span>
+        </span>
+        <p class="err" id="f-living-error" aria-live="polite"></p>
+      <input type="range" data-number="f-living" min="0" max="2000" step="50" value="0" aria-label="My living costs" data-i18n-attr="aria-label:my_living_costs"></div></div></div></details></div><p class="help filter-help" id="f-points-help" data-i18n="hides_programmes_above_your_total">Hides programmes above your total.</p><p class="help" id="f-maths-help" data-i18n="25_points_on_irish_courses">+25 points on Irish courses</p><p class="help filter-help" id="f-unknown-help" data-i18n="unknown_values_never_hide_a_programme">Unknown values never hide a programme.</p><p class="help filter-help" id="f-budget-help" data-i18n="keeps_programmes_whose_lowest_estimate_fits">Keeps programmes whose lowest estimate fits</p><button type="button" class="btn btn-a sheet-edit" data-edit data-i18n="r2_edit">Edit my answers</button><div id="applied-filters" role="group" aria-label="Applied filters" hidden data-i18n-attr="aria-label:applied_filters"></div></div></form>
 </div>
 
 <div id="source-banner" hidden></div>

@@ -1094,9 +1094,6 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 .sheet-b .pts .step{width:52px}
 .sheet-b .budget>.fld{width:auto}
 .sheet-b .dropdown>summary.inp{width:100%}
-@media (min-width:1024px) and (max-width:1199px){
- .frow{gap:6px}.pts input.inp{width:64px}.pts .step{width:26px}.pts>label{font-size:14px;padding-left:8px}.f-hl>label.switch{font-size:14px}.f-hl .switch .aside{max-width:104px;white-space:normal;line-height:1.1}.seg button{padding:0 6px}
-}
 @media (max-width: 1023px){.maths-control>select{display:block;min-width:148px}.maths-control>.seg{display:none}}
 @media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .copy{margin-top:12px}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
 @media (pointer: coarse),(max-width:599px){.info,.step{min-width:44px;min-height:44px}.chipbox{height:44px}.seg{height:44px}.dropdown>summary.inp{min-height:44px}.pop-f .btn{min-height:44px}.option{min-height:44px}}
@@ -1417,6 +1414,19 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    clipped instead: no space taken, still read and still reachable (item 2). */
 @media (max-width:700px){
  .mark h1{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+
+/* One gap inside and between the filter rows. Controls wrap whole; extra rows are
+   fine for Slovak, long selections and zoom (item 3). Two rows at 1024 px is the
+   target, and measured without help it misses: row 1 in Slovak by 13 px and row 2
+   in English by 42 px. So only here, and never the gap or the points field: the
+   maths buttons keep the tighter padding they had, and a closed facet's chevron
+   gives up its 6 px empty count slot. From 1100 px everything fits as drawn. */
+.fbar .more-filters{gap:8px}
+@media (min-width:1024px) and (max-width:1099.98px){
+ .seg button{padding:0 6px}
+ .fbar .dropdown>summary:has(.dropdown-count[hidden]) .dd-chev,.fbar .dropdown>summary:has(.scalar-count:empty) .dd-chev{margin-left:0}
+ #budget-value:empty{display:none}
 }
 
 /* Batch 2 · B: share and My list */

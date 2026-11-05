@@ -4411,9 +4411,10 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
 // Two wrap rows preserve every filter and contain all facet panels.
 {
   const row = elementSource(indexHtml, /<div class="frow facets-row">/);
-  const valid = (source) => ['subjects','countries','languages','cities','degrees','deadline','exam'].every((id) => source.includes(`id="dd-${id}"`));
-  check('round 2 puts seven facets in the second row, maths in the first; a missing facet fails',
-    valid(row) && !valid(row.replace('id="dd-exam"', 'id="missing"')) && formSrc.includes('id="maths-seg"'));
+  const valid = (source) => ['subjects','countries','languages','cities','degrees','deadline','exam','budget'].every((id) => source.includes(`id="dd-${id}"`));
+  check('round 2 puts eight facets in the second row with Budget last, maths in the first; a missing facet fails',
+    valid(row) && !valid(row.replace('id="dd-exam"', 'id="missing"')) && formSrc.includes('id="maths-seg"')
+    && formSrc.indexOf('id="dd-budget"') > formSrc.indexOf('id="dd-exam"') && !formSrc.slice(0, formSrc.indexOf('class="frow facets-row"')).includes('id="dd-budget"'));
 }
 appCheck('my-list export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
   run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
@@ -5468,9 +5469,13 @@ check('reviewed chrome keeps phone search short, the wordmark clipped but readab
   && !read('index.html').includes('data-sort="deadline" class="r"')
   && read('index.html').includes('data-i18n="r2_fee_heading"') && cssRules.includes('.row{gap:10px 12px;')
   && cssRules.includes('.faq summary>.ic{width:16px;height:16px;') && cssRules.includes('.foot{margin-top:48px}'));
-check('1024px controls keep two compact filter rows without clipping the points placeholder',
-  cssRules.includes('@media (min-width:1024px) and (max-width:1199px)')
-  && cssRules.includes('.pts input.inp{width:64px}') && cssRules.includes('.seg button{padding:0 6px}'));
+// The old 1024-1199 rule also narrowed the points field and the row gap. What is
+// left is measured in smoke R4C, which also proves the placeholder is not clipped.
+check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px, never the row gap or the points field',
+  !cssRules.includes('(max-width:1199px)') && cssRules.includes('.frow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}')
+  && cssRules.includes('.fbar .more-filters{gap:8px}') && !cssRules.includes('.frow{gap:6px}')
+  && cssRules.includes('.pts input.inp{width:68px;') && !cssRules.includes('.pts input.inp{width:64px}')
+  && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules));
 section('Review round 2 regressions');
 check('the facet panel is not still hidden when its toggle event focuses the search',
   cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
