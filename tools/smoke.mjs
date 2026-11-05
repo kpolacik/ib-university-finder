@@ -2259,20 +2259,23 @@ async function runBatch3B(base) {
           assert(Math.max(...m.widths) - Math.min(...m.widths) <= 1 && m.heights.every((x) => x >= 44)
             && Math.abs(m.heights[0] - m.heights[1]) <= 1 && Math.abs(m.heights[2] - m.heights[3]) <= 1, `uneven tools: ${JSON.stringify(m)}`);
           assert(m.cols === 2 && m.rows === 2 && m.order.every(Boolean), `not a 2 x 2 grid: ${JSON.stringify(m)}`);
-          assert(m.clearBorder >= 1 && m.clearIcon > 0, `Clear my list not a bordered button: ${JSON.stringify(m)}`);
+          // Under 360 px the tool icons go, so every label fits on one line (alignment audit).
+          assert(m.clearBorder >= 1 && (width < 360 ? m.clearIcon === 0 : m.clearIcon > 0), `Clear my list not a bordered button: ${JSON.stringify(m)}`);
           assert(m.labels.length === 0, `labels overflow: ${m.labels}`);
           assert(m.sw === 0, `page overflows by ${m.sw}`);
         });
       }
-      // Desktop is unchanged apart from the chevron: shown in the list, never in the main view.
-      await check(`1280/${ui}`, 'B3B list toolbar', `${n} saved: desktop back button gains only the chevron`, async () => {
+      // Desktop gains the chevron: shown in the list, never in the main view.
+      // Clear my list is a small outlined button there too, without the phone's
+      // trash icon (alignment audit, 2026-11-05).
+      await check(`1280/${ui}`, 'B3B list toolbar', `${n} saved: desktop back button gains only the chevron; Clear is outlined, no icon`, async () => {
         await resize(page, 1280, 900);
-        const list = await page.ev(`(()=>{const i=document.querySelector('#f-shortlist-only svg'),c=document.querySelector('#clear-shortlist');return {chev:i.getBoundingClientRect().width,clearIcon:c.querySelector('svg').getBoundingClientRect().width,clearBorder:getComputedStyle(c).borderTopColor}})()`);
+        const list = await page.ev(`(()=>{const i=document.querySelector('#f-shortlist-only svg'),c=document.querySelector('#clear-shortlist');return {chev:i.getBoundingClientRect().width,clearIcon:c.querySelector('svg').getBoundingClientRect().width,clearBorder:getComputedStyle(c).borderTopColor,clearWidth:getComputedStyle(c).borderTopWidth,edge:getComputedStyle(document.querySelector('#export-csv')).borderTopColor}})()`);
         await page.click(`document.querySelector('#f-shortlist-only')`, 'Back to all programmes');
         await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'still the list view'})`, 5000, 'the main view');
         const main = await page.ev(`document.querySelector('#f-shortlist-only svg').getBoundingClientRect().width`);
         assert(list.chev > 0 && main === 0, `chevron list ${list.chev}, main ${main}`);
-        assert(list.clearIcon === 0 && list.clearBorder === 'rgba(0, 0, 0, 0)', `desktop Clear changed: ${JSON.stringify(list)}`);
+        assert(list.clearIcon === 0 && list.clearWidth === '1px' && list.clearBorder === list.edge, `desktop Clear not an outlined button like Export: ${JSON.stringify(list)}`);
       });
     } finally { await page.close(); }
   }
