@@ -554,16 +554,13 @@ html:has(.sheet[open]){overflow:hidden}
   /* One tidy toolbar (Leon, 2026-11-05: wrapped buttons, a lone Clear row and a
      detached Sort box). Group by reads like the Sort by strip below it: label
      left at the same 6rem, select right, so the two selects line up. The
-     actions are an even two-column grid; Clear my list is quiet centred text in
-     it, filling the fourth cell when Compare is hidden (fewer than two saved). */
+     actions are an even two-column grid (batch 3 B2 styles them). */
   .ml-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center}
   .ml-group{grid-column:1/-1;width:auto;display:flex;align-items:center;gap:8px}
   .ml-group>label,.listp>.f-sort>label{flex:0 0 6rem;white-space:normal}
   .ml-group>.inp{flex:1 1 auto;width:auto;min-width:0;max-width:22rem}
   .ml-tools>.btn,.ml-pop>summary{width:100%}
-  .ml-tools>.help,.ml-tools>.btn-q{grid-column:1/-1}
-  .ml-tools>.btn-q{font-weight:400}
-  .ml-tools:has(#ml-compare[hidden])>.btn-q{grid-column:auto}
+  .ml-tools>.help{grid-column:1/-1}
   /* In the list view the panel and the list are one card: the Sort by strip is
      the toolbar's last row, not a second box 12 px below. Not while Compare
      hides the list. */
@@ -1491,6 +1488,35 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 3 · A: Compare */
 
 /* Batch 3 · B: My list */
+/* B2: the back button's chevron points left, and only in the list view;
+   Clear my list's trash icon is for the phone toolbar only. */
+.ml-open>.ic{display:none}
+.mylist.is-list .ml-open>.ic{display:block;transform:rotate(90deg)}
+#clear-shortlist>.ic{display:none}
+@media (max-width: 599.98px) {
+  /* Leon, 2026-11-05: "Back to all programmes" sat misaligned at the end of
+     the title row. It is a quiet back control now, alone on the first row and
+     flush with the panel's left edge; the title and count follow. */
+  .mylist.is-list .ml-open{order:-1;flex:0 0 100%;justify-content:flex-start;margin-left:0;min-height:44px;padding:0;border-color:transparent;background:none;color:var(--ink-2);font-size:var(--fs-14)}
+  .mylist.is-list .ml-open:hover{background:var(--hover)}
+  /* The four tools are an even 2 x 2 block of 44 px buttons; 14 px text and
+     8 px gaps keep it compact without shrinking the touch targets. */
+  /* At 320 px "Vymazať môj zoznam" is wider than its half, so a label may wrap
+     to two lines; the row's cells then stretch to the same height. */
+  .mylist.is-list .ml-tools{gap:8px;align-items:stretch}
+  .mylist.is-list .ml-tools>.ml-group{align-self:center}
+  .mylist.is-list .ml-tools>.ml-pop:not([open]){display:flex;flex-direction:column}
+  .mylist.is-list .ml-tools>.ml-pop:not([open])>summary{flex:1 1 auto}
+  .mylist.is-list .ml-tools>.btn,.mylist.is-list .ml-tools>.ml-pop>summary{height:auto;min-height:44px;font-size:var(--fs-14);line-height:18px;white-space:normal;text-align:center}
+  /* Clear my list looked like an empty grid cell as underlined quiet text.
+     It is an outlined button like its neighbours, in secondary ink. */
+  .mylist.is-list .ml-tools>#clear-shortlist{border:1px solid var(--edge);background:var(--panel);color:var(--ink-2);text-decoration:none;padding:0 10px}
+  #clear-shortlist>.ic{display:block}
+  /* Until Compare leaves My list (workstream A deletes this line with the
+     picker), the picker takes its own full row above the 2 x 2 block. */
+  .mylist.is-list .ml-tools>#ml-compare{grid-column:1/-1}
+  .mylist.is-list .ml-tools>.help{font-size:var(--fs-13)}
+}
 
 /* Batch 3 · C: setup and home */
 

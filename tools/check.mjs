@@ -6127,6 +6127,32 @@ appCheck('B3B1 with 3 saved and no note the main-view bar carries no note (so th
   fire(starOf(item(a)), 'click');
   return !bar.hidden && !bar.classList.contains('is-list') && !get('ml-note').hidden && get('ml-note').textContent !== '';
 });
+// B2 (Leon, 2026-11-05): the phone list toolbar. The back button keeps its
+// chevron because the text goes in its own span; a language switch wrote the
+// whole button's textContent before, which would wipe the icon.
+appCheck('B3B2 the back button text sits in .ml-open-t beside its chevron, through a language switch; Clear my list keeps its trash icon', ({ run, get, fire }) => {
+  const back = get('f-shortlist-only'), clear = get('clear-shortlist');
+  const icons = () => back.querySelector('use')?.getAttribute('href') === '#i-chevron' && clear.querySelector('use')?.getAttribute('href') === '#i-trash';
+  run('shortlist.add(fixture[0].id); update();');
+  if (back.querySelector('.ml-open-t').textContent !== 'Open my list' || !icons()) return false;
+  fire(back, 'click');
+  if (back.querySelector('.ml-open-t').textContent !== 'Back to all programmes' || !icons()) return false;
+  try {
+    run("switchLanguage('sk')");
+    // (The harness strips data-i18n, so Clear's static label is left to the HTML i18n check.)
+    return back.querySelector('.ml-open-t').textContent === UI.sk.back_to_all_programmes && icons();
+  } finally { run("switchLanguage('en')"); }
+});
+check('B3B2 the back chevron shows only in the list view, pointing left; the trash icon and the outlined Clear only below 600 px', (() => {
+  const phone = '(max-width: 599.98px)';
+  return /display:none/.test(ruleAt(cssText, '.ml-open>.ic'))
+    && /display:block/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic')) && /rotate\(90deg\)/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic'))
+    && /display:none/.test(ruleAt(cssText, '#clear-shortlist>.ic')) && /display:block/.test(ruleAt(cssText, '#clear-shortlist>.ic', phone))
+    && /border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist', phone))
+    && /order:-1/.test(ruleAt(cssText, '.mylist.is-list .ml-open', phone))
+    // The old quiet-text Clear rules are gone (they made it look like an empty cell).
+    && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
+})());
 
 section('Batch 3 · C');
 

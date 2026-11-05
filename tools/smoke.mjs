@@ -1128,12 +1128,17 @@ async function runReview2(base) {
         await phone.waitFor(`({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'reload pending'})`, 15000, 'the reloaded page');
         await phone.click(`document.querySelector('#header-list')`, 'My list');
         await phone.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list') && !document.querySelector('#ml-tools').hidden,why:'list view not open'})`, 5000, 'the list view');
+        // Batch 3 B2 (Leon, 2026-11-05) edited this: Clear my list is now an
+        // outlined button in the even grid, not quiet text that may sit alone
+        // (it looked like an empty cell). The Compare picker, while it still
+        // exists (workstream A removes it), takes its own full row.
         const m = await phone.ev(`(()=>{const box=(n)=>n.getBoundingClientRect();
-          const tools=[...document.querySelectorAll('#ml-tools>.btn,#ml-tools>.ml-pop>summary')].filter(n=>n.offsetParent);
+          const all=[...document.querySelectorAll('#ml-tools>.btn,#ml-tools>.ml-pop>summary')].filter(n=>n.offsetParent);
+          const tools=all.filter(n=>!n.closest('#ml-compare'));
           const rows=new Map();for(const n of tools){const r=box(n),k=Math.round(r.top);rows.set(k,[...(rows.get(k)||[]),n])}
-          const plain=tools.filter(n=>!n.classList.contains('btn-q')).map(n=>Math.round(box(n).width));
+          const plain=tools.map(n=>Math.round(box(n).width));
           const g=box(document.querySelector('#ml-group')),s=box(document.querySelector('#f-sort'));
-          return {lone:[...rows.values()].filter(r=>r.length===1 && !r[0].classList.contains('btn-q')).map(r=>r[0].textContent.trim()),widths:[...new Set(plain)],short:tools.filter(n=>box(n).height<44).map(n=>n.textContent.trim()),
+          return {lone:[...rows.values()].filter(r=>r.length===1).map(r=>r[0].textContent.trim()),widths:[...new Set(plain)],short:all.filter(n=>box(n).height<44).map(n=>n.textContent.trim()),
             selects:[g.left-s.left,g.right-s.right],gap:box(document.querySelector('.listp')).top-box(document.querySelector('#shortlist-bar')).bottom,sw:document.documentElement.scrollWidth-innerWidth}})()`);
         assert(m.lone.length === 0 && m.widths.length === 1 && m.short.length === 0, `uneven actions: ${JSON.stringify(m)}`);
         assert(m.selects.every((d) => Math.abs(d) <= 1), `Group by and Sort by do not line up: ${JSON.stringify(m)}`);
@@ -1899,6 +1904,65 @@ async function runBatch3B(base) {
         const first = m.after.filter((n) => n !== 'count-summary' && n !== 'count count-summary')[0];
         assert(first === 'split', `first after the status row: ${JSON.stringify(m.after)}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
+      });
+    } finally { await page.close(); }
+  }
+
+  // B2 (Leon, 2026-11-05): on a phone "Back to all programmes" was misaligned
+  // and "Clear my list" looked like an empty grid cell.
+  const resize = async (page, width, height = 844) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===${width},why:'width '+innerWidth})`, 3000, `width ${width}`);
+    await settle(page);
+  };
+  for (const ui of ['en', 'sk']) for (const n of [1, 3]) {
+    const page = await open(`?ui=${ui}`, 390, 844);
+    try {
+      await seed(page, n);
+      await page.click(`document.querySelector('#header-list')`, 'header My list');
+      await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list') && !document.querySelector('#ml-tools').hidden,why:'list view not open'})`, 5000, 'the list view');
+      for (const width of [320, 390, 599]) {
+        await check(`${width}/${ui}`, 'B3B list toolbar', `${n} saved: back top-left, an even 2 x 2 grid, Clear outlined, 44 px, no overflow`, async () => {
+          await resize(page, width);
+          await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+          await settle(page);
+          const m = await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect();
+            const bar=document.querySelector('#shortlist-bar'),bs=getComputedStyle(bar),b=box(bar);
+            const contentLeft=b.left+parseFloat(bs.borderLeftWidth)+parseFloat(bs.paddingLeft);
+            const back=document.querySelector('#f-shortlist-only'),k=box(back),h=box(document.querySelector('#ml-h'));
+            const icon=back.querySelector('svg'),ir=box(icon);
+            const four=['#ml-share>summary','#export-csv','#print-shortlist','#clear-shortlist'].map(s=>document.querySelector(s));
+            const r4=four.map(box);
+            const labels=[back,...four].filter(n=>n.scrollWidth>n.clientWidth+1).map(n=>n.id||n.textContent.trim());
+            return {backLeft:k.left-contentLeft,backFirst:k.bottom<=h.top+1,backH:k.height,iconShown:ir.width>0,iconTurn:getComputedStyle(icon).transform,
+              widths:r4.map(r=>Math.round(r.width)),heights:r4.map(r=>Math.round(r.height)),
+              cols:[...new Set(r4.map(r=>Math.round(r.left)))].length,rows:[...new Set(r4.map(r=>Math.round(r.top)))].length,
+              order:[r4[0].top===r4[1].top,r4[2].top===r4[3].top,r4[0].left===r4[2].left],
+              clearBorder:parseFloat(getComputedStyle(four[3]).borderTopWidth),clearIcon:box(four[3].querySelector('svg')).width,
+              labels,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+          if (width !== 599) {
+            const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+            await writeFile(`${shots}/list-${n}saved-${width}-${ui}.png`, Buffer.from(data, 'base64'));
+          }
+          assert(Math.abs(m.backLeft) <= 1 && m.backFirst && m.backH >= 44, `back button: ${JSON.stringify(m)}`);
+          assert(m.iconShown && m.iconTurn !== 'none', `back chevron missing or not turned: ${JSON.stringify(m)}`);
+          assert(Math.max(...m.widths) - Math.min(...m.widths) <= 1 && m.heights.every((x) => x >= 44)
+            && Math.abs(m.heights[0] - m.heights[1]) <= 1 && Math.abs(m.heights[2] - m.heights[3]) <= 1, `uneven tools: ${JSON.stringify(m)}`);
+          assert(m.cols === 2 && m.rows === 2 && m.order.every(Boolean), `not a 2 x 2 grid: ${JSON.stringify(m)}`);
+          assert(m.clearBorder >= 1 && m.clearIcon > 0, `Clear my list not a bordered button: ${JSON.stringify(m)}`);
+          assert(m.labels.length === 0, `labels overflow: ${m.labels}`);
+          assert(m.sw === 0, `page overflows by ${m.sw}`);
+        });
+      }
+      // Desktop is unchanged apart from the chevron: shown in the list, never in the main view.
+      await check(`1280/${ui}`, 'B3B list toolbar', `${n} saved: desktop back button gains only the chevron`, async () => {
+        await resize(page, 1280, 900);
+        const list = await page.ev(`(()=>{const i=document.querySelector('#f-shortlist-only svg'),c=document.querySelector('#clear-shortlist');return {chev:i.getBoundingClientRect().width,clearIcon:c.querySelector('svg').getBoundingClientRect().width,clearBorder:getComputedStyle(c).borderTopColor}})()`);
+        await page.click(`document.querySelector('#f-shortlist-only')`, 'Back to all programmes');
+        await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'still the list view'})`, 5000, 'the main view');
+        const main = await page.ev(`document.querySelector('#f-shortlist-only svg').getBoundingClientRect().width`);
+        assert(list.chev > 0 && main === 0, `chevron list ${list.chev}, main ${main}`);
+        assert(list.clearIcon === 0 && list.clearBorder === 'rgba(0, 0, 0, 0)', `desktop Clear changed: ${JSON.stringify(list)}`);
       });
     } finally { await page.close(); }
   }

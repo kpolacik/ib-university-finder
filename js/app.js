@@ -96,6 +96,7 @@ const dom = {
   shortlistCount: document.getElementById('shortlist-count-text'),
   sourceLine: document.getElementById('source-line'),
   shortlistOnly: document.getElementById('f-shortlist-only'),
+  shortlistOnlyText: document.getElementById('f-shortlist-only').querySelector('.ml-open-t'),
   exportCsv: document.getElementById('export-csv'),
   print: document.getElementById('print-shortlist'),
   clearShortlist: document.getElementById('clear-shortlist'),
@@ -1693,7 +1694,8 @@ function renderListBar() {
   dom.listShowAll.hidden = !filtersOff && hidden <= 0;
   dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
-  dom.shortlistOnly.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
+  // The text has its own span so the back chevron survives (batch 3 B2).
+  dom.shortlistOnlyText.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
 
   const notes = [];
   if (saveFailed) notes.push(t('your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave'));
