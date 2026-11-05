@@ -5741,6 +5741,9 @@ section('Batch 2 · B');
 // batch 2 · B checks go here
 
 section('Batch 2 · C');
+// Verifier finding: the 44 px centred action block also printed; print keeps a plain left-aligned link.
+check('C1 print resets the detail actions to a plain left-aligned link',
+  /@media print\{\.d-actions\{display:block\}\.d-actions \.btn\{min-height:0;text-align:left\}\}/.test(cssText));
 {
   const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
     lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
