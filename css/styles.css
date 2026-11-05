@@ -550,9 +550,26 @@ html:has(.sheet[open]){overflow:hidden}
 .ml-panel .btn{justify-self:start}
 @media (max-width: 599.98px) {
   /* On a phone the panels open in place, full width, like the sheet's lists. */
-  .ml-pop[open]{flex-basis:100%}
+  .ml-pop[open]{grid-column:1/-1}
   .ml-panel{position:static;width:auto;max-width:none}
-  .ml-group{flex:1 1 10rem}
+  /* One tidy toolbar (Leon, 2026-11-05: wrapped buttons, a lone Clear row and a
+     detached Sort box). Group by reads like the Sort by strip below it: label
+     left at the same 6rem, select right, so the two selects line up. The
+     actions are an even two-column grid; Clear my list is quiet centred text in
+     it, filling the fourth cell when Compare is hidden (fewer than two saved). */
+  .ml-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center}
+  .ml-group{grid-column:1/-1;width:auto;display:flex;align-items:center;gap:8px}
+  .ml-group>label,.listp>.f-sort>label{flex:0 0 6rem;white-space:normal}
+  .ml-group>.inp{flex:1 1 auto;width:auto;min-width:0;max-width:22rem}
+  .ml-tools>.btn,.ml-pop>summary{width:100%}
+  .ml-tools>.help,.ml-tools>.btn-q{grid-column:1/-1}
+  .ml-tools>.btn-q{font-weight:400}
+  .ml-tools:has(#ml-compare[hidden])>.btn-q{grid-column:auto}
+  /* In the list view the panel and the list are one card: the Sort by strip is
+     the toolbar's last row, not a second box 12 px below. Not while Compare
+     hides the list. */
+  .mylist.is-list:has(~ .split:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
+  .mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp,.mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp>.f-sort{border-top-left-radius:0;border-top-right-radius:0}
 }
 
 /* The row's save star: above the row's whole-row button (its ::after covers

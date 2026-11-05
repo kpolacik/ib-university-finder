@@ -1109,6 +1109,29 @@ async function runReview2(base) {
       });
     } finally { await page.close(); }
   }
+  // Leon, 2026-11-05: on a phone My list wrapped its buttons unevenly, left
+  // Clear my list alone on a row and its Sort by box detached below.
+  for (const [ui, n] of [['sk', 1], ['sk', 3], ['en', 3]]) {
+    const phone = await open(`?ui=${ui}`, 390, 844);
+    try {
+      await check(390, 'R3H', `My list on a phone is one even toolbar (${ui.toUpperCase()}, ${n} saved)`, async () => {
+        await phone.ev(`(()=>{const ids=[...document.querySelectorAll('#results>li.item')].slice(0,${n}).map(li=>li.dataset.id);localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(ids));window.__oldPage=true;location.reload()})()`);
+        await phone.waitFor(`({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'reload pending'})`, 15000, 'the reloaded page');
+        await phone.click(`document.querySelector('#header-list')`, 'My list');
+        await phone.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list') && !document.querySelector('#ml-tools').hidden,why:'list view not open'})`, 5000, 'the list view');
+        const m = await phone.ev(`(()=>{const box=(n)=>n.getBoundingClientRect();
+          const tools=[...document.querySelectorAll('#ml-tools>.btn,#ml-tools>.ml-pop>summary')].filter(n=>n.offsetParent);
+          const rows=new Map();for(const n of tools){const r=box(n),k=Math.round(r.top);rows.set(k,[...(rows.get(k)||[]),n])}
+          const plain=tools.filter(n=>!n.classList.contains('btn-q')).map(n=>Math.round(box(n).width));
+          const g=box(document.querySelector('#ml-group')),s=box(document.querySelector('#f-sort'));
+          return {lone:[...rows.values()].filter(r=>r.length===1 && !r[0].classList.contains('btn-q')).map(r=>r[0].textContent.trim()),widths:[...new Set(plain)],short:tools.filter(n=>box(n).height<44).map(n=>n.textContent.trim()),
+            selects:[g.left-s.left,g.right-s.right],gap:box(document.querySelector('.listp')).top-box(document.querySelector('#shortlist-bar')).bottom,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        assert(m.lone.length === 0 && m.widths.length === 1 && m.short.length === 0, `uneven actions: ${JSON.stringify(m)}`);
+        assert(m.selects.every((d) => Math.abs(d) <= 1), `Group by and Sort by do not line up: ${JSON.stringify(m)}`);
+        assert(Math.abs(m.gap) <= 1 && m.sw === 0, `list panel detached or overflowing: ${JSON.stringify(m)}`);
+      });
+    } finally { await phone.close(); }
+  }
 }
 
 // --- Main -----------------------------------------------------------------------
