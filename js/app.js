@@ -954,15 +954,17 @@ function drawCompare() {
   const note = compareFailed ? t('r3_cmp_failed') : '';
   if (dom.compareNote.textContent !== note) dom.compareNote.textContent = note;
   dom.compareNote.hidden = !note;
+  // Shown before drawing: a hidden box can neither take back its scroll nor
+  // be measured for the phone cue.
+  dom.compare.hidden = false;
+  dom.split.hidden = true;
+  dom.shortlistBar.hidden = true;
   if (n) {
     renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences: onlyDifferences && n >= MIN_COMPARE, saved: shortlist });
     const next = dom.compareBody.querySelector('.cmp-scroll');
     if (next && scrollLeft) next.scrollLeft = scrollLeft;
     wireCompareCue(next);
   } else dom.compareBody.replaceChildren();
-  dom.compare.hidden = false;
-  dom.split.hidden = true;
-  dom.shortlistBar.hidden = true;
   if (focus) restoreCompareFocus(focus, rows.map((row) => row.id));
 }
 
@@ -1058,14 +1060,18 @@ function restoreCompareFocus(focus, ids) {
   (target ?? dom.compareHeading).focus({ preventScroll: true });
 }
 
-// The column's "x": out of Compare, with Undo putting it back in its place
-// (restoreAt), or the limit toast if four have been added since.
+// The column's "x": out of Compare, with Undo putting it back in its place,
+// before the programmes that came after it (another may have gone meanwhile),
+// or the limit toast if four have been added since.
 function removeFromCompare(id) {
-  const index = compareIds.indexOf(id);
+  const later = compareIds.slice(compareIds.indexOf(id) + 1);
   changeCompare((ids) => ({ ids: ids.filter((x) => x !== id), result: 'removed' }));
   syncCompareControls();
   showToast(t('r3_cmp_removed'), t('r2_undo'), () => {
-    const result = changeCompare((ids) => restoreAt(ids, id, index, knownIds()));
+    const result = changeCompare((ids) => {
+      const at = ids.findIndex((x) => later.includes(x));
+      return restoreAt(ids, id, at < 0 ? ids.length : at, knownIds());
+    });
     if (result === 'full') {
       if (compareOpen) dom.compareHeading.focus({ preventScroll: true });
       showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));

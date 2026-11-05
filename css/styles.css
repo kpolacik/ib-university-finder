@@ -1501,9 +1501,16 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-head .ml-note{flex-basis:100%;margin:0}
 #cmp-close .ic{width:16px;height:16px}
 #cmp-close{gap:6px}
-.cmp-t th.cmp-p{position:relative;padding-right:48px}
+/* The "x" sits in the cell's top-right corner; an empty float of its size
+   keeps only the first lines of the name clear of it, so a long name gets the
+   whole column below (reserving the corner down the whole cell broke phone
+   names mid-word). Save never breaks inside its word. */
+.cmp-t th.cmp-p{position:relative}
+.cmp-t th.cmp-p::before{content:"";float:right;width:36px;height:34px}
+.cmp-t th.cmp-p .cmp-n{overflow-wrap:break-word;hyphens:auto}
 .cmp-acts{margin-top:8px}
-.cmp-save{min-height:44px;height:auto;max-width:100%;white-space:normal;text-align:left;font-weight:400}
+.cmp-save{min-height:44px;height:auto;max-width:100%;padding:0 8px;gap:4px;overflow-wrap:normal;font-weight:400}
+@media (max-width:359.98px){.cmp-save .ic{display:none}}
 .cmp-save .ic{width:16px;height:16px;fill:none;flex:none}
 .cmp-save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
 .cmp-save[aria-pressed="true"] .ic{fill:currentColor}
@@ -1528,15 +1535,32 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @media (min-width:600px) and (min-height:501px){.cmp-tray{display:none}}
 body.has-tray{padding-bottom:var(--tray-h,0px)}
 html{scroll-padding-bottom:var(--tray-h,0px)}
+/* A wide but short window (500 px tall or less) has the tray and the pane:
+   the pane's end stays above it. */
+@media (min-width:1200px){body.has-tray .pane{max-height:calc(100dvh - var(--header-visible) - 24px - var(--tray-h,0px))}}
 .toasts{bottom:calc(24px + var(--tray-h,0px))}
+/* Print: no tray and no space kept for it. An open comparison prints instead
+   of the list, every column in full, each official link with its address. */
 @media print{
  body.has-tray{padding-bottom:0}
  html{scroll-padding-bottom:0}
+ .cmp:not([hidden]) ~ .split{display:none}
+ .cmp-scroll{overflow:visible}
+ .cmp-frame::after{display:none}
+ .cmp-t a.lnk::after{content:" — " attr(href);font-size:.85em;word-break:break-all}
+ .cmp-t .lnk svg{display:none}
 }
+/* The picker left My list, so the phone toolbar always has three actions:
+   Clear my list takes the cell beside Print, as it did when Compare was
+   hidden (that rule's :has(#ml-compare[hidden]) can no longer match). */
+@media (max-width:599.98px){.ml-tools>.btn-q{grid-column:auto}}
 /* Phones: Close is a 44 px icon at the heading's right; "Show only
    differences" takes the second row (Leon, 2026-11-05). From 600 px the head
    stays as it was. With three or four programmes, the arrows and the range say
    more columns are off to the side, and a fade marks the edge until the end. */
+/* A dashed "No minimum published" wraps in a narrow column instead of poking
+   past it, which kept the last column from ever scrolling fully into view. */
+.cmp-t .unk-t{white-space:normal}
 .cmp-frame{position:relative}
 .cmp-frame::after{content:"";position:absolute;top:0;right:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--panel));pointer-events:none}
 .cmp-frame.at-end::after{display:none}

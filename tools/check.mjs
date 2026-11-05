@@ -6219,6 +6219,16 @@ appCheck('A3 three columns: "x" on the middle one leaves two with focus on the n
   toast.action();
   return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
 });
+appCheck('A3 Undo after two removals puts the programme back before the ones that came after it', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  context.fixture.push(...context.live.slice(1, 2));
+  const d = context.fixture[3].id;
+  run(`allRows = fixture; ${cmpSet([a, b, c, d])} update(); openCompare(null);`);
+  fire(cmpX(get, b), 'click');
+  const undoB = context.toasts.at(-1).action;
+  fire(cmpX(get, a), 'click');
+  undoB();
+  return cmpColIds(get).join() === [b, c, d].join() && cmpStored(context).join() === [b, c, d].join();
+});
 appCheck('A3 two, one, none: one column asks for another and hides "Show only differences"; none is the empty state with focus on Browse, which closes the view', ({ run, get, fire, ids: [a, b] }) => {
   run(`${cmpSet([a, b])} update(); openCompare(null);`);
   cmpX(get, b).focus(); fire(cmpX(get, b), 'click');
@@ -6352,7 +6362,7 @@ check('A4 CSS: the header button hides where the tray serves; icon-only header b
   && /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\s*\.hb \.hb-l\{position:absolute;[^}]*clip-path:inset\(50%\)/.test(cssText)
   && /body\.has-tray\{padding-bottom:var\(--tray-h,0px\)\}/.test(cssText) && /html\{scroll-padding-bottom:var\(--tray-h,0px\)\}/.test(cssText)
   && /\.toasts\{bottom:calc\(24px \+ var\(--tray-h,0px\)\)\}/.test(cssText)
-  && /@media print\{\s*body\.has-tray\{padding-bottom:0\}\s*html\{scroll-padding-bottom:0\}\s*\}/.test(cssText)
+  && /@media print\{\s*body\.has-tray\{padding-bottom:0\}\s*html\{scroll-padding-bottom:0\}\s*\.cmp:not\(\[hidden\]\) ~ \.split\{display:none\}/.test(cssText)
   && appSrc.includes("matchMedia('(max-width: 599.98px), (max-height: 500px)')"));
 appCheck('A5 a fifth is refused: the set stays, the button is neither pressed nor disabled, and the limit toast opens Compare', ({ run, get, fire, context }) => {
   context.fixture.push(...context.live.slice(1, 3));
@@ -6493,6 +6503,19 @@ check('A6 CSS: below 600 px Close is a 44 px icon at the heading\'s right, its w
   /@media \(max-width:599\.98px\)\{\s*\.cmp-head\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;[^}]*\}\s*#cmp-h\{grid-column:1;grid-row:1\}\s*#cmp-close\{grid-column:2;grid-row:1;width:44px;height:44px;padding:0\}\s*\.cmp-close-t\{position:absolute;[^}]*clip-path:inset\(50%\)[^}]*\}\s*#cmp-diff-label\{grid-column:1\/-1;grid-row:2\}/.test(cssText)
   && /@media \(min-width:600px\)\{\.cmp-nav\{display:none\}\}/.test(cssText) && /\.cmp-frame\.at-end::after\{display:none\}/.test(cssText)
   && /\.cmp-frame::after\{[^}]*pointer-events:none\}/.test(cssText) && /<span class="cmp-close-t" data-i18n="close_compare">Close compare<\/span>/.test(read('index.html')));
+// Found in Chrome (smoke B3A): each has its browser check there too.
+check('A6 the view is shown before its table is drawn: a hidden box kept its sideways scroll at 0 and measured the phone cue as "1–3 of 3"',
+  (() => { const body = appSrc.slice(appSrc.indexOf('function drawCompare()'), appSrc.indexOf('function wireCompareCue'));
+    return body.indexOf('dom.compare.hidden = false;') > 0 && body.indexOf('dom.compare.hidden = false;') < body.indexOf('renderCompare(') && body.indexOf('renderCompare(') < body.indexOf('wireCompareCue(next)'); })());
+check('A6 a dashed unknown wraps inside a compare column (it poked 28 px past the last column, so the last snap never reached the end)',
+  /\.cmp-t \.unk-t\{white-space:normal\}/.test(cssText));
+check('A3 compare column names use the whole column below the "x" (a float spacer, not padding down the whole cell) and Save never breaks inside its word',
+  /\.cmp-t th\.cmp-p::before\{content:"";float:right;width:36px;height:34px\}/.test(cssText) && !/th\.cmp-p\{[^}]*padding-right:48px/.test(cssText)
+  && /\.cmp-save\{[^}]*overflow-wrap:normal/.test(cssText));
+check('A6 with the picker gone the phone My list toolbar keeps Clear my list beside Print, not Print alone on a row (smoke R3H)',
+  /@media \(max-width:599\.98px\)\{\.ml-tools>\.btn-q\{grid-column:auto\}\}/.test(cssText));
+check('A4 a wide but short window keeps the pane\'s end above the tray',
+  /@media \(min-width:1200px\)\{body\.has-tray \.pane\{max-height:calc\(100dvh - var\(--header-visible\) - 24px - var\(--tray-h,0px\)\)\}\}/.test(cssText));
 appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
   cmpToggle(run, a);
   // A second tab adds c before this tab hears of it.
