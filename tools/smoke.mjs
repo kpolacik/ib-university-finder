@@ -882,6 +882,53 @@ async function runRound2(base) {
         assert(await page.ev(`document.documentElement.scrollWidth===innerWidth`),'horizontal overflow');
         assert(page.errors.length===0,page.errors.map(e=>e.text).join(' | '));
       });
+      // Leon, 2026-11-05: phone help and the sheet's filter rows jumped open and
+      // shut; the desktop help bubble was a fixed 260 px at 13.5 px.
+      if(width<600)await check(width,'R2K','sheet help and filter rows animate open and closed, settle after re-toggling, and are instant with reduced motion',async()=>{
+        await page.click(`document.querySelector('#f-more')`,'phone Filters');
+        await page.waitFor(`({ok:document.querySelector('#filter-sheet').getAnimations({subtree:true}).length===0,why:'sheet still sliding'})`,3000,'settled sheet');
+        try {
+        const tip=`document.getElementById('f-points-help')`,info=`document.querySelector('.sheet-b .info[aria-controls="f-points-help"]')`,below=`document.querySelector('.sheet-b .f-hl').getBoundingClientRect().top`;
+        const props=`${tip}.getAnimations().map(a=>a.transitionProperty).sort().join()`;
+        const top=await page.ev(below);
+        await page.ev(`${info}.click()`);
+        const opening=await page.ev(props);
+        assert(['height','opacity','transform'].every(n=>opening.includes(n)),`help opens without its motion: ${opening}`);
+        await page.waitFor(`({ok:${tip}.getAnimations().length===0,why:'still opening'})`,3000,'help open');
+        await page.ev(`${info}.click()`);
+        const closing=await page.ev(`({p:${props},d:getComputedStyle(${tip}).display})`);
+        assert(closing.p.includes('height') && closing.p.includes('opacity') && closing.d==='block',`help closes in one frame: ${JSON.stringify(closing)}`);
+        for(let i=0;i<3;i++)await page.ev(`${info}.click()`);
+        await page.waitFor(`({ok:${tip}.getAnimations().length===0,why:'still moving'})`,3000,'re-toggled help');
+        assert(await page.ev(`${tip}.classList.contains('is-open') && ${info}.getAttribute('aria-expanded')==='true' && Math.abs(${tip}.getBoundingClientRect().height-${tip}.scrollHeight)<1`),'re-toggled help left stale state');
+        await page.ev(`${info}.click()`);
+        await page.waitFor(`({ok:getComputedStyle(${tip}).display==='none' && Math.abs(${below}-${top})<1,why:'row below at '+${below}+', not '+${top}})`,3000,'help closed, rows back');
+        // A ::details-content transition is not listed by getAnimations(), so read its computed style.
+        const content=`(()=>{const c=getComputedStyle(document.querySelector('#dd-budget'),'::details-content');return CSS.supports('interpolate-size','allow-keywords') && c.transitionProperty.split(', ')[0]==='height' && c.transitionDuration.split(', ')[0]==='0.26s'})()`;
+        await page.ev(`document.querySelector('#dd-budget summary').click()`);
+        assert(await page.ev(content),'Budget row opens without its height motion');
+        await page.ev(`document.querySelector('#dd-budget summary').click()`);
+        assert(await page.ev(content) && await page.ev(`getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height`)==='0px','Budget row closes without its height motion');
+        await page.ev(`document.querySelector('#dd-budget summary').click()`);
+        await page.waitFor(`({ok:document.getAnimations().length===0,why:'still moving'})`,3000,'re-toggled Budget');
+        assert(await page.ev(`document.querySelector('#dd-budget').open && document.querySelector('#dd-budget summary').getAttribute('aria-expanded')==='true'`),'re-toggled Budget left stale state');
+        await page.ev(`document.querySelector('#dd-budget').open=false`);
+        await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+        try {
+          await page.ev(`${info}.click()`);
+          assert(await page.ev(`${tip}.getAnimations().length===0 && getComputedStyle(${tip}).opacity==='1'`),'reduced motion still animates help');
+          await page.ev(`${info}.click()`);
+          assert(await page.ev(`getComputedStyle(${tip}).display==='none'`),'reduced motion help did not close at once');
+        } finally { await page.send('Emulation.setEmulatedMedia',{features:[]}); }
+        } finally { await page.ev(`document.querySelector('#filter-sheet').close()`); }
+      });
+      if(width>=600)await check(width,'R2L','the help bubble is sized to its text in small UI type',async()=>{
+        await page.ev(`window.scrollTo(0,0)`);
+        await page.click(`document.querySelector('.info[aria-controls="f-maths-help"]')`,'HL Maths help');
+        const m=await page.ev(`(()=>{const t=document.getElementById('f-maths-help'),c=getComputedStyle(t),r=document.createRange();r.selectNodeContents(t);return {w:t.getBoundingClientRect().width,text:r.getBoundingClientRect().width,fs:c.fontSize,pad:c.paddingLeft}})()`);
+        assert(m.w<=260 && m.w-m.text<=24 && m.fs==='12px',`help bubble too big: ${JSON.stringify(m)}`);
+        await page.key('Escape','Escape',27);
+      });
       if(width>=600)await check(width,'R2F','every open facet and Budget panel stays within the viewport',async()=>{
         await page.ev(`window.scrollTo(0,0)`);
         for(const id of ['dd-subjects','dd-countries','dd-languages','dd-cities','dd-degrees','dd-deadline','dd-exam','dd-budget']){

@@ -2967,7 +2967,8 @@ function cssTree(source, media = []) {
     const selector = source.slice(start, brace).trim(), body = source.slice(brace + 1, end - 1);
     // @starting-style nests rules like @media; keep it as ancestry too (Stage 6).
     // @container too (redesign revisions): the 900 px list query is ancestry.
-    if (selector.startsWith('@media') || selector.startsWith('@starting-style') || selector.startsWith('@container')) rules.push(...cssTree(body, [...media, selector]));
+    // @supports too (2026-11-05): the sheet's height motion is a progressive enhancement.
+    if (selector.startsWith('@media') || selector.startsWith('@starting-style') || selector.startsWith('@container') || selector.startsWith('@supports')) rules.push(...cssTree(body, [...media, selector]));
     else rules.push({ selector, body, media });
     start = end;
   }
@@ -3741,7 +3742,11 @@ const motionAllowed = {
   '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
   '.switch input::after': 'transition:transform 260ms var(--spring-snappy)',
   'input[type=range]::-webkit-slider-thumb': 'transition:transform 160ms var(--ease-out)',
-  '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),display 180ms allow-discrete',
+  '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
+  // Phone help and sheet rows grow to height:auto where the browser can (M .tip timing; M .faq's optional 260 ms height).
+  '.sheet-b .tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),height 180ms var(--ease-out),padding 180ms var(--ease-out),margin 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
+  '.sheet-b .dropdown::details-content': 'transition:height 260ms var(--ease-out),content-visibility 260ms allow-discrete',
+  '.sheet-b .dropdown[open]::details-content': 'transition:height 260ms var(--ease-out)',
   '.hd': 'transition:transform 240ms var(--ease-out)',
   '.hd-in': 'transition:transform 240ms var(--ease-out)',
   '.mark,.filters-btn': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
@@ -3760,7 +3765,7 @@ const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/
   const sel = r.selector.split(',').map((x) => x.trim()).join(',');
   if (legacyMotion.includes(r.selector.trim())) return false;
   const want = motionAllowed[sel];
-  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px/.test(m));
+  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px|^@supports \(interpolate-size:allow-keywords\)$/.test(m));
 }).map((r) => r.selector);
 check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
   transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)

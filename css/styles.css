@@ -1030,7 +1030,10 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;m
 input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft)}
 input[type=range].set::-webkit-slider-thumb,input[type=range].set::-moz-range-thumb{border-color:var(--accent)}
 input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
-.tip{display:none;position:absolute;z-index:45;width:260px;padding:10px 12px;border-radius:10px;background:var(--ink);color:var(--panel);font-size:13.5px;line-height:1.4;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),display 180ms allow-discrete}
+/* Sized to its text, up to M's 260 px: a fixed 260 px bubble at 13.5 px made a
+   four-word hint look like a banner (Leon, 2026-11-05). Visibility is in the
+   transition so closing fades too; without it the bubble vanished at once. */
+.tip{display:none;position:absolute;z-index:45;width:max-content;max-width:260px;padding:6px 10px;border-radius:8px;background:var(--ink);color:var(--panel);font-size:var(--fs-12);line-height:1.4;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete}
 .tip.is-open{display:block;opacity:1;visibility:visible;transform:none}
 @starting-style{.tip.is-open{opacity:0;transform:translateY(-4px)}}
 #f-unknown-help,#applied-filters{display:none}
@@ -1042,12 +1045,33 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 .status .copy{margin-left:0;display:inline-flex;border-color:var(--hairline)}
 .status .more{display:none}
 .sheet-b .more-filters{display:grid;gap:16px}
-.sheet-b .frow{display:flex;align-items:center;gap:12px}
+/* A column, not wrapping rows: every item is full width anyway, and only in a
+   column does a closed help tip's negative margin cancel the gap (a flex line
+   never gets shorter than zero). */
+.sheet-b .frow{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:12px}
 .sheet-b .dropdown{width:100%}
 .sheet-b .dropdown-panel{position:static;width:auto;max-width:none;max-height:none!important;overflow:visible;margin-top:8px}
 .sheet-b .budget-info{display:none}
-.sheet-b .tip{display:none;position:static;opacity:1;visibility:visible;transform:none;width:auto;color:var(--ink-2);background:var(--hover);padding:10px 12px;flex-basis:100%;border-radius:10px}
+/* Phone help sits in the sheet's flow and reveals with the same −4 px, 180 ms
+   motion as the bubble, opening and closing (it used to appear and vanish in
+   one frame). Font and width undo the desktop bubble's; flex:none because a
+   100% basis in the .frow column would override the animated height. */
+.sheet-b .tip{display:none;position:static;width:auto;max-width:none;color:var(--ink-2);background:var(--hover);padding:10px 12px;flex:none;border-radius:10px;font-size:13.5px}
 .sheet-b .tip.is-open{display:block}
+/* Where height:auto can animate, the help also grows from nothing, so the rows
+   below slide down rather than jump. Closed, its negative margin cancels the
+   12 px gap of the .frow column that a displayed tip adds. Elsewhere it only fades.
+   The sheet's Budget, Subject area… rows open the same way, with the footer
+   accordion's optional 260 ms height (M .faq). Plain CSS transitions reverse
+   from wherever they are, so quick re-toggling never jumps or leaves state. */
+@supports (interpolate-size:allow-keywords){
+ .sheet-b{interpolate-size:allow-keywords}
+ .sheet-b .tip{height:0;min-height:0;padding-block:0;margin-top:-12px;overflow:clip;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),height 180ms var(--ease-out),padding 180ms var(--ease-out),margin 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete}
+ .sheet-b .tip.is-open{height:auto;padding-block:10px;margin-top:0}
+ @starting-style{.sheet-b .tip.is-open{height:0;padding-block:0;margin-top:-12px}}
+ .sheet-b .dropdown::details-content{height:0;overflow:clip;transition:height 260ms var(--ease-out),content-visibility 260ms allow-discrete}
+ .sheet-b .dropdown[open]::details-content{height:auto;transition:height 260ms var(--ease-out)}
+}
 .sheet-b .frow>.chipbox{width:100%}
 .sheet-b .pts input.inp{flex:1;min-width:0}
 .sheet-b .pts .step{width:52px}
