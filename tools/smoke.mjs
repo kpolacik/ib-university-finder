@@ -1429,7 +1429,115 @@ async function runBatch2A(base) {
   } finally { await page.close(); }
 }
 async function runBatch2B(base) {}
-async function runBatch2C(base) {}
+async function runBatch2C(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-batch2-c-detail';
+  await mkdir(shots, { recursive: true });
+  console.log('Phase C Chrome version: ' + (await cdp.send('Browser.getVersion')).product);
+  const open = async (query, width) => {
+    const page = await openPage(base + query, width, 1000);
+    const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+    await page.waitFor(ready, 15000, 'Phase C page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'Phase C reload');
+    return page;
+  };
+  const screenshot = async (page, path, selector) => {
+    // A slot can still be growing after its buttons exist; capture its settled position.
+    await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    await page.ev(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
+    await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    assert(await page.ev(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()`), 'capture target outside viewport');
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile(path, Buffer.from(data, 'base64'));
+  };
+  const actionsPage = await open('?ui=en', 390);
+  try {
+    for (const width of [390, 600, 800, 1024, 1199, 1200, 1280, 1400, 1440]) {
+      for (const ui of ['en', 'sk']) {
+        const page = actionsPage;
+        await page.key('Escape', 'Escape', 27);
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
+        await page.ev(`document.querySelector('[data-language="${ui}"]').click();window.scrollTo(0,0)`);
+        const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
+        await check(width, 'R4H', 'detail actions have equal widths and even gaps (' + ui + ')', async () => {
+          await page.click(`document.querySelector('#results>li.item button.open')`, 'first programme');
+          await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions'),why:'detail not open'})`, 5000, 'detail actions');
+          const m = await page.ev(`(()=>{
+            const group=document.querySelector('${detail} .d-actions');
+            const buttons=[...group.children], boxes=buttons.map(n=>n.getBoundingClientRect());
+            const [a,b]=boxes, side=Math.abs(a.top-b.top)<1;
+            return {widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,
+              gap:side?b.left-a.right:b.top-a.bottom,aligned:Math.abs(a.left-b.left),
+              minHeight:Math.min(a.height,b.height),overflow:buttons.some(n=>n.scrollWidth>n.clientWidth+1),
+              order:buttons[0].matches('a.btn-p')&&buttons[1].matches('button.save'),
+              separate:!group.querySelector('.lnk,.ok,.tag'),
+              pageOverflow:document.documentElement.scrollWidth>innerWidth};
+          })()`);
+          assert(m.order && m.separate && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
+          assert(m.gap >= 8 && m.gap <= 12 && (m.side ? m.heights <= 1 : m.aligned <= 1), JSON.stringify(m));
+          if (width >= 1200) assert(!m.side, 'pane actions must stack');
+          if ([390, 800, 1400].includes(width)) {
+            await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
+          }
+        });
+        if ([1024, 1199, 1200, 1280].includes(width)) {
+          await check(width, 'R4I', 'second activation focuses pane or closes inline (' + ui + ')', async () => {
+            const before = await page.ev('location.href');
+            const tabs = (await cdp.send('Target.getTargets')).targetInfos.filter(t => t.type === 'page').length;
+            await page.click(`document.querySelector('#results>li.item button.open')`, 'same programme again');
+            if (width >= 1200) {
+              assert(await page.ev(`document.activeElement.id==='pane'`), 'pane not focused');
+              await page.key('Escape', 'Escape', 27);
+              assert(await page.ev(`document.activeElement===document.querySelector('#results>li.item button.open') && !document.querySelector('#results>li.is-sel')`), 'Escape did not restore row focus');
+            } else {
+              await page.waitFor(`({ok:!document.querySelector('#results>li.item .expand'),why:'inline still open'})`, 5000, 'inline close');
+            }
+            assert(await page.ev('location.href') === before, 'address changed');
+            assert((await cdp.send('Target.getTargets')).targetInfos.filter(t => t.type === 'page').length === tabs, 'tab opened');
+          });
+        }
+        assert(!page.errors.length && !page.exceptions.length, JSON.stringify([...page.errors, ...page.exceptions]));
+      }
+    }
+  } finally { await actionsPage.close(); }
+  for (const ui of ['en', 'sk']) {
+    const page = await open('?ui=' + ui + '&country=Czechia&lang=Czech', 1280);
+    try {
+      await check(1280, 'R4J', 'Czech note is in matching Language detail, absent from filter (' + ui + ')', async () => {
+        await page.click(`document.querySelector('#results>li.item button.open')`, 'Czech programme');
+        const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+        assert(await page.ev(`(()=>{
+          const n=document.querySelector('#pane .dd-note');
+          return n?.textContent.startsWith(${JSON.stringify(note)}) && n.closest('dd') &&
+            !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
+            !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
+        })()`), 'Czech note missing or Language help remains');
+        await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
+      });
+    } finally { await page.close(); }
+  }
+  // Real paid and non-Czech examples, without changing the dataset.
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  for (const [name, row] of [
+    ['paid-czech', data.find(r => r.country === 'Czechia' && r.tuitionEu > 0)],
+    ['non-czech', data.find(r => r.country !== 'Czechia')],
+  ]) {
+    const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
+    try {
+      await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
+        await page.waitFor(`({ok:!!document.querySelector('li[data-id="${row.id}"] button.open'),why:'programme not rendered'})`, 5000, 'programme');
+        await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
+        assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
+        await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
+      });
+    } finally { await page.close(); }
+  }
+}
 
 // --- Main -----------------------------------------------------------------------
 

@@ -448,7 +448,6 @@ export const UI = {
     "month_2": "€/month",
     "keeps_programmes_whose_lowest_estimate_fits": "Keeps programmes whose lowest estimate fits",
     "selected": "selected",
-    "degrees_taught_in_czech_at_public_universities_are_free_whatever_you": "Degrees taught in Czech at public universities are free, whatever your nationality. Each university sets its own language requirement; check the official page.",
     "pick_filters": "Subject area, country, language, deadline, maths, entrance exam, degree type and city",
     "my_maths_2": "My maths",
     "any_course": "Any course",
@@ -551,6 +550,7 @@ export const UI = {
     // batch 2 · B
 
     // batch 2 · C
+    "r2_czech_free": "Taught in Czech at a public university, so there is no tuition fee, whatever your nationality. Each university sets its own Czech language requirement; check the official page.",
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1000,7 +1000,6 @@ export const UI = {
     "month_2": "€/mesiac",
     "keeps_programmes_whose_lowest_estimate_fits": "Ponechá programy, ktorých najnižší odhad sa zmestí do rozpočtu",
     "selected": "vybrané",
-    "degrees_taught_in_czech_at_public_universities_are_free_whatever_you": "Štúdium v češtine na verejných vysokých školách je bezplatné bez ohľadu na štátnu príslušnosť. Každá univerzita si určuje vlastnú jazykovú požiadavku; over si ju na oficiálnej stránke.",
     "pick_filters": "Oblasť štúdia, krajina, jazyk, termín, matematika, prijímacia skúška, typ titulu a mesto",
     "my_maths_2": "Moja matematika",
     "any_course": "Akákoľvek",
@@ -1106,6 +1105,7 @@ export const UI = {
     // batch 2 · B
 
     // batch 2 · C
+    "r2_czech_free": "Za štúdium v češtine na verejnej vysokej škole sa neplatí školné, bez ohľadu na štátnu príslušnosť. Každá univerzita si určuje vlastnú požiadavku na češtinu; over si ju na oficiálnej stránke.",
   }
 };
 

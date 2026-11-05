@@ -672,7 +672,10 @@
       "pt cutoff",
       "option-count",
       ".d-head",
-      "sep"
+      "sep",
+      "d-actions",
+      "Czechia",
+      "dd-note"
     ],
     "js/shortlist.js": [
       "./cost.js",

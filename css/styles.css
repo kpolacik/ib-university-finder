@@ -1444,6 +1444,11 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 2 · B: share and My list */
 
 /* Batch 2 · C: detail */
+.d-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px;flex-basis:100%}
+.d-actions .btn{min-height:44px;height:auto;white-space:normal;text-align:center;padding-block:10px}
+.dd-note{display:block;font-size:13px;color:var(--ink-2);margin-top:4px}
+/* Print keeps the official link as a plain left-aligned line, as before C1. */
+@media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
 
 /* ------------------------------------------------- motion preferences */
 
