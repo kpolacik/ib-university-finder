@@ -110,8 +110,8 @@ export const UI = {
     "remove": "Remove ",
     "programme": "programme",
     "programmes": "programmes",
-    "this_site_is_a_starting_point_for_research_not_a_source_of_truth": " This site is a starting point for research, not a source of truth. ",
-    "check_requirements_eu_fees_and_deadlines_on_the_official_admissions": "Check requirements, EU fees and deadlines on the official admissions page before applying.",
+    "always_check_the_official_page_before_you_apply": " Always check the university's official page before you apply. ",
+    "requirements_fees_and_deadlines_can_change": "Requirements, fees and deadlines can change.",
     "an_unknown_date": "an unknown date",
     "could_not_load_the_latest_data_showing_a_saved_copy_from_requirement": "Could not load the latest data. Showing a saved copy from {value1}. Requirements, EU fees and deadlines may have changed.",
     "view_data_problems": "View data problems.",
@@ -405,7 +405,7 @@ export const UI = {
     "programme_details": "Programme details",
     "done": "Done",
     "loading_programmes": "Loading programmes…",
-    "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "Check requirements, EU fees and deadlines on the official admissions page before applying.\n    Students maintain this site, and details may change.",
+    "always_check_the_official_page_footer": "Always check the university's official page before you apply. Requirements, fees and deadlines can change.\n    Students maintain this site.",
     "show_english_original": "Show the English original",
     "hide_english_original": "Hide the English original",
     "untranslated_section": "In English, as published by the university.",
@@ -575,8 +575,8 @@ export const UI = {
     "remove": "Odstrániť ",
     "programme": "program",
     "programmes": "programov",
-    "this_site_is_a_starting_point_for_research_not_a_source_of_truth": " Táto stránka je východiskom na hľadanie informácií, nie zdrojom pravdy. ",
-    "check_requirements_eu_fees_and_deadlines_on_the_official_admissions": "Pred podaním prihlášky si over požiadavky, školné pre EÚ a termíny na oficiálnej stránke prijímacieho konania.",
+    "always_check_the_official_page_before_you_apply": " Pred podaním prihlášky si vždy over informácie na oficiálnej stránke univerzity. ",
+    "requirements_fees_and_deadlines_can_change": "Požiadavky, poplatky a termíny sa môžu meniť.",
     "an_unknown_date": "neznámeho dátumu",
     "could_not_load_the_latest_data_showing_a_saved_copy_from_requirement": "Najnovšie údaje sa nepodarilo načítať. Zobrazuje sa uložená kópia z {value1}. Požiadavky, školné pre EÚ a termíny sa mohli zmeniť.",
     "view_data_problems": "Zobraziť problémy v dátach.",
@@ -870,7 +870,7 @@ export const UI = {
     "programme_details": "Podrobnosti o programe",
     "done": "Hotovo",
     "loading_programmes": "Načítavam programy…",
-    "check_requirements_eu_fees_and_deadlines_on_the_official_admissions_2": "Pred podaním prihlášky si over požiadavky, školné pre EÚ a termíny na oficiálnej stránke prijímacieho konania.\n    Túto stránku spravujú študenti a údaje sa môžu zmeniť.",
+    "always_check_the_official_page_footer": "Pred podaním prihlášky si vždy over informácie na oficiálnej stránke univerzity. Požiadavky, poplatky a termíny sa môžu meniť.\n    Túto stránku spravujú študenti.",
     "show_english_original": "Zobraziť originál v angličtine",
     "hide_english_original": "Skryť originál",
     "untranslated_section": "V angličtine, ako to uvádza univerzita.",
@@ -937,7 +937,9 @@ export const UI = {
 
 export const LANGUAGE_KEY = 'ib-university-finder:language';
 const validLanguage = (value) => value === 'sk' || value === 'en';
-let language = 'sk';
+// English is the default (Jakub, 2026-11-04); Slovak is one click away and
+// a stored choice or ?ui=sk still wins.
+let language = 'en';
 let addressLanguage = false;
 
 export const getLanguage = () => language;
@@ -948,7 +950,7 @@ export function initLanguage(query = '', storage) {
   const fromUrl = new URLSearchParams(query).getAll('ui').find(validLanguage);
   let stored;
   try { stored = (storage ?? globalThis.localStorage)?.getItem(LANGUAGE_KEY); } catch { /* Private browsing. */ }
-  language = fromUrl || (validLanguage(stored) ? stored : 'sk');
+  language = fromUrl || (validLanguage(stored) ? stored : 'en');
   addressLanguage = Boolean(fromUrl);
   return language;
 }

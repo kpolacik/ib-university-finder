@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-**SK/EN infrastructure (2026-11-03).** Slovak is the default. The EN/SK buttons
+**SK/EN infrastructure (2026-11-03).** English is the default (Jakub, 2026-11-04; it was Slovak until then). The EN/SK buttons
 switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
 wins over this browser's stored choice. `lang=` stays the teaching-language
 filter only (`lang` was taken, hence `ui`). Share-list links never carry the UI language. All UI
@@ -24,7 +24,7 @@ stay plain. Each detail section containing untranslated data has one quiet
 lookup runs after parsing and inheritance; whole cells win, then list items.
 `tools/i18n-missing.mjs` reports missing/orphan rows without writes.
 
-Decisions: informal **ty**, Slovak default, decimal dots kept in data wording
+Decisions: informal **ty**, English default (changed from Slovak by Jakub on 2026-11-04), decimal dots kept in data wording
 (IELTS 6.5), quoted official text stays English. Data parsing, filtering,
 sorting, points and costs keep English source values; search matches both
 languages. CSV headings follow the language, data cells stay English.
@@ -419,8 +419,9 @@ plans/backlog/wording.md.
 IB points, EU fee, subject area, IB subjects and language requirement consistently.
 Points help is visible on phones; shared help in the extra filters explains
 that unknown figures, fees and deadlines stay visible. Irish detail fees say
-"Student contribution + levy". The masthead still says "This site is a starting
-point for research, not a source of truth." Data prose, saved snapshots and CAO
+"Student contribution + levy". The masthead says "Always check the university's
+official page before you apply. Requirements, fees and deadlines can change." (Jakub, 2026-11-04;
+it used to call the site "a starting point for research, not a source of truth"). Data prose, saved snapshots and CAO
 marker sentences were left for after the upstream merge (done 2026-11-02, so they can be reworded now); Slovak remains disabled. See
 plans/backlog/wording.md for the translation queue.
 
