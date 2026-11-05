@@ -5113,6 +5113,9 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     check('compare table: one column header per programme naming it and its university, then its own controls; one row header per fact',
       cols.length === 2 && cols[0].children.slice(0, 2).map((n) => n.textContent).join('|') === `${rows[0].programme}|${rows[0].university}`
       && cols[0].children.length === 3 && cols[0].children[2].classList.contains('cmp-acts') && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
+    check('compare column accessible names reference only the programme and university, excluding action labels',
+      cols.every((col) => col.getAttribute('aria-labelledby') === col.children.slice(0, 2).map((n) => n.id).join(' ')
+        && col.children.slice(0, 2).every((n) => Boolean(n.id))));
     const diffBox = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, [live[0], live[0]], compareTable([live[0], live[0]], noFilters()), { onlyDifferences: true }); return div; });
     const left = findAll(diffBox, (n) => n.tagName === 'tr' && n.getAttribute('data-fact'));
     check('compare table, only differences: identical facts are not drawn and a line says how many are hidden',
@@ -6217,6 +6220,8 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
     && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)
     && /<symbol id="i-compare" /.test(indexHtml) && /<symbol id="i-compare-on" /.test(indexHtml));
 }
+check('A2 both row actions retain 44 px targets with a mouse as well as touch',
+  /\.r-main>:(?:is|where)\(\.cmpi,\.star\)\{min-width:44px;min-height:44px\}/.test(cssText));
 const cmpOf = (node) => node.querySelector('button[data-compare-id]');
 appCheck('A2 a compare click toggles the row, its open slot and the pane together, and never opens or selects a row', ({ run, get, click, flip, item, fire, pane, ids: [a, b] }) => {
   click(b);
@@ -6505,6 +6510,14 @@ appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 l
     dispatchStub(buttonOf(third), { type: 'click' });
     advance(200);
     return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 hovering during toast exit cancels removal until the pointer leaves', toastPage(({ region, advance, show }) => {
+    show('Removed'); const toast = region.children[0];
+    advance(6000);
+    dispatchStub(toast, { type: 'mouseenter', bubbles: false }); advance(1000);
+    if (region.children[0] !== toast || toast.classList.contains('out')) return false;
+    dispatchStub(toast, { type: 'mouseleave', bubbles: false }); advance(6160);
+    return region.children.length === 0;
   }));
   check('A5 toasts: focus arriving during the exit keeps the toast; leaving it starts the timer again', toastPage(({ region, advance, focus, show, buttonOf }) => {
     show('Removed', 'Undo', () => {});

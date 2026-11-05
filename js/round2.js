@@ -195,7 +195,10 @@ export function showToast(message, actionLabel, action) {
     const button = document.createElement('button'); button.type = 'button'; button.textContent = actionLabel;
     button.addEventListener('click', () => { action(); retireToast(toast, { used: true }); }); toast.append(button);
   }
-  toast.addEventListener('mouseenter', () => { state.hover = true; clearTimeout(state.timer); });
+  toast.addEventListener('mouseenter', () => {
+    state.hover = true; clearTimeout(state.timer); clearTimeout(state.exit);
+    toast.classList.remove('out');
+  });
   toast.addEventListener('mouseleave', () => { state.hover = false; timeToast(toast); });
   toast.addEventListener('focusin', () => {
     clearTimeout(state.timer); clearTimeout(state.exit);

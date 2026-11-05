@@ -571,6 +571,8 @@
       "cmp-scroll",
       "cmp-t",
       "cmp-u",
+      "cmp-name-",
+      "cmp-university-",
       "col",
       "cond",
       "content",

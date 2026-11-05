@@ -590,6 +590,15 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Batch 3 Compare review (2026-11-05, local `batch3-a-compare`):** Compare
+has its own stored set of up to four programmes, separate from saves and URL
+filters. The header opens it on tall desktop windows; phones and short windows
+use the bottom tray. The old My list picker is retired. Row Compare and Save
+targets are both at least 44 px, including with a mouse. Comparison column
+headers are explicitly named by programme and university so their controls do
+not become part of the header name. Hovering a toast during its exit cancels
+that exit, just as focusing it does. These review fixes have regression checks.
+
 **Round 2 (2026-11-05):** branch `redesign-round2-only` (a PR for `main`,
 without the Supabase switch-over) includes the approved white 56 px header,
 two filter rows, custom budget sliders,

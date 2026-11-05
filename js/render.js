@@ -828,7 +828,12 @@ export function renderCompare(container, rows, table, { onlyDifferences = false,
     const name = el('span', 'cmp-n', row.programme);
     if (row.languages.length === 1 && row.languages[0] === 'Czech') name.lang = 'cs';
     th.setAttribute('data-id', row.id);
-    th.append(name, el('span', 'cmp-u', row.university), compareActions(row, saved.has(row.id)));
+    const university = el('span', 'cmp-u', row.university);
+    name.id = `cmp-name-${top.children.length}`;
+    university.id = `cmp-university-${top.children.length}`;
+    // Cell navigation announces the column's names, not its Save/Remove controls.
+    th.setAttribute('aria-labelledby', `${name.id} ${university.id}`);
+    th.append(name, university, compareActions(row, saved.has(row.id)));
     top.append(th);
   }
   head.append(top);

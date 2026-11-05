@@ -1886,7 +1886,7 @@ async function runBatch3A(base) {
   for (const [width, height] of [[1280, 900], [390, 844], [320, 640]]) for (const ui of ['en', 'sk']) {
     const page = await open(`?ui=${ui}&q=${encodeURIComponent(longest.programme)}`, width, height);
     try {
-      await check(`${width}/${ui}`, 'B3A row toggle', 'compare and save are separate 44 px (32 px with a mouse) targets beside the title; a click adds without opening the row', async () => {
+      await check(`${width}/${ui}`, 'B3A row toggle', 'compare and save are separate 44 px targets beside the title; a click adds without opening the row', async () => {
         await page.waitFor(`({ok:!!${rowOf(longest.id)},why:'row missing'})`, 10000, 'the longest row');
         const m = await page.ev(`(()=>{
           const li=${rowOf(longest.id)}; li.scrollIntoView({block:'center'});
@@ -1897,7 +1897,7 @@ async function runBatch3A(base) {
           return {c:[rc.width,rc.height],s:[rs.width,rs.height],hitC:hit(c,rc),hitS:hit(s,rs),cs:overlap(rc,rs),tc:overlap(rt,rc),ts:overlap(rt,rs),
             order:rc.right<=rs.left+0.5,overflow:document.documentElement.scrollWidth-innerWidth,name:c.textContent};
         })()`);
-        const min = width < 600 ? 44 : 32;
+        const min = 44;
         assert([...m.c, ...m.s].every((n) => n >= min - 0.5) && m.hitC && m.hitS && !m.cs && !m.tc && !m.ts && m.order && m.overflow <= 0, JSON.stringify(m));
         assert(m.name === say(ui, 'r3_cmp_add_label', { programme: longest.programme, university: longest.university }), 'name: ' + m.name);
         if (width !== 320) await shot(page, `row-toggle-${width}-${ui}`);
@@ -2057,6 +2057,11 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:document.querySelector('#toasts .toast')?.textContent.startsWith(${JSON.stringify(say('en', 'r3_cmp_added', { count: 1 }))}),why:'no add toast'})`, 5000, 'the add toast');
         await page.click(`document.querySelector('#header-compare')`, 'Compare (1)');
         await page.waitFor(`({ok:${shown('#cmp-one')} && document.querySelectorAll('#cmp-body th[scope=col]').length===1 && !${shown('#cmp-diff-label')},why:'not one column'})`, 5000, 'one column');
+        const { root: axDoc } = await page.send('DOM.getDocument', { depth: 0 });
+        const { nodeId: headerId } = await page.send('DOM.querySelector', { nodeId: axDoc.nodeId, selector: 'th.cmp-p' });
+        const { nodes: axNodes } = await page.send('Accessibility.getPartialAXTree', { nodeId: headerId, fetchRelatives: false });
+        const expectedName = await page.ev(`[...document.querySelectorAll('th.cmp-p .cmp-n, th.cmp-p .cmp-u')].map(n=>n.textContent).join(' ')`);
+        assert(axNodes[0]?.name?.value === expectedName, 'column header includes action labels: ' + axNodes[0]?.name?.value);
         await shot(page, 'compare-1-1280-en');
         await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
         await page.waitFor(`({ok:document.querySelector('#compare').hidden && document.activeElement.id==='header-compare',why:document.activeElement.id})`, 5000, 'focus back on the header');
