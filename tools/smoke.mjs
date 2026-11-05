@@ -1819,6 +1819,21 @@ async function runBatch2Followup(base) {
 
 // --- Main -----------------------------------------------------------------------
 
+// --- Batch 3 -------------------------------------------------------------------
+// One function per workstream (plans/design-round2/batch3-plan.md); each starts
+// with watchdog.refresh() because the whole run shares one 120 s watchdog.
+async function runBatch3A(base) {
+  watchdog.refresh();
+}
+
+async function runBatch3B(base) {
+  watchdog.refresh();
+}
+
+async function runBatch3C(base) {
+  watchdog.refresh();
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -1843,7 +1858,10 @@ async function main() {
     await runBatch2A(base);
     await runBatch2B(base);
     await runBatch2C(base);
-    await runBatch2Followup(base); }
+    await runBatch2Followup(base);
+    await runBatch3A(base);
+    await runBatch3B(base);
+    await runBatch3C(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

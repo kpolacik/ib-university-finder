@@ -1482,6 +1482,12 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Print keeps the official link as a plain left-aligned line, as before C1. */
 @media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
 
+/* Batch 3 · A: Compare */
+
+/* Batch 3 · B: My list */
+
+/* Batch 3 · C: setup and home */
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and

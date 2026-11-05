@@ -575,6 +575,12 @@ export const UI = {
 
     // batch 2 · C
     "r2_czech_free": "Taught in Czech at a public university, so there is no tuition fee, whatever your nationality. Each university sets its own Czech language requirement; check the official page.",
+
+    // batch 3 · A
+
+    // batch 3 · B
+
+    // batch 3 · C
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1154,6 +1160,12 @@ export const UI = {
 
     // batch 2 · C
     "r2_czech_free": "Za štúdium v češtine na verejnej vysokej škole sa neplatí školné, bez ohľadu na štátnu príslušnosť. Každá univerzita si určuje vlastnú požiadavku na češtinu; over si ju na oficiálnej stránke.",
+
+    // batch 3 · A
+
+    // batch 3 · B
+
+    // batch 3 · C
   }
 };
 

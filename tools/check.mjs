@@ -6109,5 +6109,11 @@ check('F2 Slovak living-costs placeholder is "Podľa školy" (smoke F2 measures 
   && /id="f-living"[^>]*data-i18n-attr="placeholder:university_s"/.test(read('index.html')));
 check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText));
 
+section('Batch 3 · A');
+
+section('Batch 3 · B');
+
+section('Batch 3 · C');
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
