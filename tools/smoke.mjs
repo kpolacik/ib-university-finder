@@ -827,6 +827,16 @@ async function runRound2(base) {
         await navigate();
         assert(await page.ev(`!document.querySelector('#onboarding').open`),'dismissed setup reopened');
       });
+      // Leon, 2026-11-05: the stepper sat left on wide screens, and Skip setup
+      // sat above Back/Next and right of its "Discards" hint (button padding).
+      await check(width,'R2J','setup stepper is centred; Skip text shares the Back/Next centre line and the hint edge',async()=>{
+        await edit(); await next();
+        const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector('.ob-foot>.btn-p'));
+          return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,lift:(next.top+next.height/2)-(skip.top+skip.height/2),indent:skip.left-hint.left};})()`);
+        assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
+        await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
+      });
       await check(width,'R2B','answers apply once, typed budget exceeds slider, saved filters restore, URL wins without overwriting',async()=>{
         await edit(); await next();
         await page.click(`document.querySelector('#ob-points')`,'predicted points'); await page.type('38'); await next();

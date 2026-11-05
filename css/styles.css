@@ -1175,13 +1175,22 @@ dialog.ob[open]::backdrop{opacity:1}
 .ob .chip:hover{border-color:var(--edge)}
 .ob .chip:active{transform:scale(.96)}
 .ob .chip[aria-pressed=true]{background:var(--accent-tint);border-color:var(--accent);color:var(--accent-press);font-weight:600}
-.big-pts{display:flex;align-items:center;gap:14px}
+/* Centred at every width, as on phones: left-aligned it read as a stray row
+   under the centred number on wide screens (Leon, 2026-11-05). */
+.big-pts{display:flex;align-items:center;justify-content:center;gap:14px}
 .big-pts output{font-size:44px;font-weight:700;letter-spacing:-.02em;min-width:2.2ch;text-align:center}
 .big-pts output.blank{color:var(--ink-3);font-weight:400}
 .big-pts .btn{width:44px;height:44px;justify-content:center;font-size:22px;padding:0}
-.ob-foot{display:flex;align-items:center;gap:8px;padding:14px 28px 20px;flex:none;border-top:1px solid var(--hairline)}
+/* Top-aligned, not centred: Skip setup and Back/Next are the same --ctl
+   height, so their text shares one centre line and the "Discards" hint hangs
+   below. Centring the whole skip column pushed Skip above Back/Next. */
+.ob-foot{display:flex;align-items:flex-start;gap:8px;padding:14px 28px 20px;flex:none;border-top:1px solid var(--hairline)}
 .ob-foot .sp{flex:1}
+/* 12 px = the Skip button's 11 px padding plus its 1 px border: the column
+   moves left by it and the hint is indented by it, so the Skip text, the hint
+   and the step text above all start on one line. Change all three together. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
+.skipwrap .btn.btn-q{padding-inline:11px}
 .skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:-4px}
 
 
@@ -1205,7 +1214,7 @@ html:has(.ob[open]){overflow:hidden}
 .sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
 @media (max-width: 599.98px){
  .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.mark h1{display:none}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
- .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}.ob .big-pts{justify-content:center}
+ .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}
 }
 @media (pointer: coarse),(max-width:599px){
  .switch{min-height:44px}.hd .btn,.hd .lang{height:44px}.hd .lang{padding:0}.hd .lang button{min-height:44px;min-width:44px;padding:0 8px}.hd .btn{min-width:44px}.seg{padding:0;height:44px}.seg button{min-height:44px;min-width:44px}
