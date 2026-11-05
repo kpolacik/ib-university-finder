@@ -8,6 +8,18 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
+PR for `main` without the Supabase switch-over. It ships the white 56 px
+header (also 56 px when compact), two filter rows with custom sliders, a
+filter-summary detail pane, saved filters and five-step onboarding. The
+progress bar is hidden at step 1, then shows 25/50/75/100%, while the label
+stays "Step n of 5". Column headings are sort buttons; the phone keeps its
+Sort select. The switch and unset slider thumb use a softer contrast outline.
+The footer says "Data comes from the universities' official pages." Data
+still loads from the CSVs, then `data/fallback.json`, as before. Rules and
+sources are under *The look of it*; the sort cycles and Leon's decisions are
+under *Decisions*.
+
 **SK/EN infrastructure (2026-11-03).** English is the default (Jakub, 2026-11-04; it was Slovak until then). The EN/SK buttons
 switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
 wins over this browser's stored choice. `lang=` stays the teaching-language
@@ -419,9 +431,12 @@ plans/backlog/wording.md.
 IB points, EU fee, subject area, IB subjects and language requirement consistently.
 Points help is visible on phones; shared help in the extra filters explains
 that unknown figures, fees and deadlines stay visible. Irish detail fees say
-"Student contribution + levy". The masthead says "Always check the university's
-official page before you apply. Requirements, fees and deadlines can change." (Jakub, 2026-11-04;
-it used to call the site "a starting point for research, not a source of truth"). Data prose, saved snapshots and CAO
+"Student contribution + levy". The footer says "Always check the university's
+official page before you apply. Requirements, fees and deadlines can change.
+Students maintain this site." (Jakub's wording, 2026-11-04; it used to call the
+site "a starting point for research, not a source of truth". Design round 2
+moved the warning from the masthead into the footer, and the source line there
+says only "Data comes from the universities' official pages."). Data prose, saved snapshots and CAO
 marker sentences were left for after the upstream merge (done 2026-11-02, so they can be reworded now); Slovak remains disabled. See
 plans/backlog/wording.md for the translation queue.
 
@@ -490,6 +505,10 @@ plans/backlog/wording.md for the translation queue.
    each university's own estimate.
 
 ## Known gaps
+
+- **Round 2 L09 timing is unmeasured.** Re-run the baseline/build comparison
+  on AC power, a quiet machine and 4× CPU slowdown; the earlier round 1 timing
+  does not certify round 2. See *The look of it*.
 
 - **Czech gaps** (424 rows): 61 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
@@ -560,8 +579,61 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
-**Rebuilt 2026-10-27 to 2026-11-01** (local branch `redesign`, not upstream
-yet). Leon took it as the working direction on 2026-11-02; he has not been
+**Round 2 (2026-11-05):** branch `redesign-round2-only` (a PR for `main`,
+without the Supabase switch-over) includes the approved white 56 px header,
+two filter rows, custom budget sliders,
+filter-summary pane, toast actions, footer FAQ, saved filters and five-step
+onboarding. The mockup/spec live in the main checkout's excluded
+`plans/design-round2/`: `proposal.md` is the spec, `mockup.html` is v4, and
+`review-r2.md` records the later outline decision. Later Leon decisions win
+over the mockup. The progress bar uses fourths (0/25/50/75/100%).
+`ui` remains the interface-language parameter and `lang` the teaching-language
+filter. Preferences use `ibuf.filters.v1`, separate from `ibuf.onboarding.v1`
+and the existing saved list. Any recognised URL filter/sort parameter or
+`?list=` uses URL state plus defaults, never merged with saved filters. A URL
+with only `?ui=` still restores saved filters. URL hydration leaves stored
+preferences alone; later explicit edits save validated filters, not sort,
+selection or list/compare/panel state. Clear all removes saved filters but
+keeps the separate onboarding flag, so setup does not replay. Full programme
+requirements remain in opened details; summary rows are compact. The phone
+Sort select and all My list tools remain available. Local source checks,
+contrast checks and Chrome smoke tests cover the change; this is not a
+merge into `main`, hosted test or human/device acceptance.
+
+
+The final Round 2 pass keeps the visible compact header and its offsets at
+56 px. Only the wordmark/Filters slot cross-fades; focused controls never
+move or disappear. The header sticks from 600 px wide, except at viewport
+heights of 500 px or less. Column headings sit below its visible height;
+the pane starts 12 px below it and its maximum height allows for the header.
+Skip and arrow targets clear the header plus column headings plus 8 px;
+below 600 px they clear the sticky count bar plus 8 px (A07). The build
+matches the 85dvh/320 ms phone sheet, 180 ms help reveal, right-edge
+popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
+page overflow. The phone maths control uses the mockup's native select.
+Onboarding headings return to the top of each step after scrolling the real
+subject vocabulary. Browser checks also exercise reduced motion, invalid
+answers, blocked preference storage and the 200% layout. Smoke tests check
+settled widening/narrowing of the country filter on all 2,915 rows. They do
+not certify L09 performance: the original yardstick remains AC power, a quiet
+machine and 4× CPU slowdown, with settled samples between country changes.
+The previous 1× CPU / three-HL-toggle timing claim did not meet that yardstick.
+The paired baseline versus Round 2 build measurement was deferred by Leon on
+2026-11-05 because AC power was unavailable.
+No new L09 numbers or performance acceptance are claimed. EN/SK review-fix
+screenshots and viewport measurements are in the local review artifact folder
+`scratchpad/design-round2/fix-r1/`; real catalogue rows and existing uncertainty
+wording are preserved, rather than substituted with the mockup's sample data.
+
+Round 1 corrections cover subject translations in setup and the pane, draft
+application and dismissal focus, cross-tab saves and Undo, compact unknowns,
+value-first row cells, status actions, phone help and 44 px controls, facet
+search/counts, selected rows, the pane close button, and the approved sort
+cycles. Programme sorts by its title; the third click restores deadline soonest.
+The phone select, URL parameters, sort arrows and announced next state agree.
+
+**Rebuilt 2026-10-27 to 2026-11-01** (branch `redesign`, live since Jakub
+merged PR #2 on 2026-11-04). Leon took it as the working direction on 2026-11-02; he has not been
 through the built site in detail, so refinements will follow. The full build
 brief is `plans/design-round1/design-spec.md` (with its 2026-10-28 amendment)
 and the picture is `plans/design-round1/full/mockup.html`. Both are local to
@@ -585,8 +657,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Blue only for interaction** (links, focus, the primary button, the
   selected row, active filters). **Red only** on the sample-data banner and
   the total-failure alert. Field errors and notes use ink and weight.
-- **Identity is not status.** The lavender masthead and the country badges
-  are the only other tints, and a badge always says the country's name in
+- **Identity is not status.** The header is now white; country badges
+  keep their identity tints, and a badge always says the country's name in
   words. Flags appear only inside the Country filter.
 - **One typeface: IBM Plex Sans,** self-hosted in `fonts/` (400, 600, 700;
   licence in `fonts/OFL.txt`). No Google Fonts request, so no visitor IPs go to
@@ -594,14 +666,18 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   no italics.
 - **Every colour is a token** in the one `:root` block of `css/styles.css`;
   never put a hex value anywhere else. `node tools/check-contrast.mjs` checks
-  every text and mark pair (65 today). Never lower its minimum.
+  every text and mark pair. Never lower its minimum. The global `--edge-soft`
+  token is a 1 px grey border only on the off switch and unset slider thumb:
+  at least 3:1 on white (currently 3.04:1). No grey border when on/set; the
+  accent fill/ring takes over.
 - **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light`
   is declared in `:root`, and it has to be: without it a browser on a dark OS
   renders form controls, scrollbars and the canvas dark underneath a light page.
   `tools/check-contrast.mjs` throws if a `prefers-color-scheme: dark` block
   reappears.
-- **Motion** is transform and opacity plus the one expand, 120–200 ms, and
-  none at all under `prefers-reduced-motion`. No reordering animation.
+- **Motion** follows round 2's approved timings (for example 250 ms popovers
+  and dialog, 280 ms step slides), with transform and opacity preferred.
+  None at all under `prefers-reduced-motion`. No reordering animation.
 - **Print** prints the filtered rows in order, ink on white (A08).
 - **Speed.** The first screen of rows is drawn at once and the rest in short
   8 ms chunks after it, so a filter change paints quickly (L09). A change also
@@ -819,9 +895,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   without its decorative full stop, and each "Official admissions page" link
   with the programme's name and a note that it opens a new tab. The filter bar
   no longer sticks to the top on a phone held sideways (it took half the
-  screen). Since the redesign nothing in the header sticks: only the count line
-  below 600 px and the column header from 600 px, and "Skip to results", Tab
-  and the arrow keys land below whichever one it is. `check.mjs` guards each.
+  screen). Round 2 adds a sticky 56 px header from 600 px, disabled at viewport
+  heights of 500 px or less; below 600 px only the count bar sticks.
+  "Skip to results", Tab and the arrow keys clear the visible sticky bands
+  (see *The look of it*). `check.mjs` guards each.
 
 - **Motion, print and the last screen-reader comma (fixed 2026-10-28, redesign
   stage 6, registry A05, A08, L09).** Traps worth knowing before touching them:
@@ -855,6 +932,35 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   evidence.
 
 ## Decisions already made, so they are not relitigated
+
+- **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
+  “Decided” and “Later changes vs mockup v4”):
+  - **Pane option (c):** reserve the pane from 1200 px; before a pick, show
+    the filter summary (or guidance) and verdict legend. Never auto-select a
+    programme: that would look like a recommendation.
+  - **Skip discards answers.** Onboarding edits a draft; only “Show my
+    programmes” applies it. Skip/Esc records dismissal without applying it.
+  - **Custom sliders:** thin track, white thumb, light-blue `--accent-tint`
+    when unset, accent fill/ring when set. Typed numbers remain authoritative:
+    blank is no limit, zero is valid, and values beyond the slider range work.
+  - **Interface language:** URL, then saved choice, then English (Jakub
+    made English the default on 2026-11-04, replacing round 2's Slovak
+    default). Points placeholder stays “napr. 36” / “e.g. 36”.
+  - **Progress in fourths:** step 1 has no bar, then 25/50/75/100%; the label
+    remains “Step n of 5”.
+  - **Compact stays 56 px:** only the wordmark/Filters cross-fade changes;
+    search spacing and sticky offsets keep the full header height.
+  - **Heading sort cycles:** Programme A–Z → Z–A → default; IB points and EU
+    fee lowest first → highest first → default. Default is deadline soonest
+    first; Deadline alternates soonest → latest → soonest. The default stays
+    out of the URL; other orders use `sort`/`dir`. Keep the phone Sort select,
+    arrows and accessible current/next-sort wording in sync.
+  - **One global soft outline** (`review-r2.md`, “Decided after round 2”):
+    `--edge-soft` reaches at least 3:1 on white, only for the off switch and
+    unset thumb. The grey border disappears when on/set; accent takes over.
+    Never lower the contrast check's minimum.
+  - **Footer data wording:** “Data comes from the universities' official
+    pages.” Do not claim weekly updates: the weekly job is not built.
 
 - **A programme's own signature is enough** (Leon, 2026-10-26, registry T01).
   A card says "Checked <date> by <initials>" when its programme row is signed,
@@ -1219,7 +1325,8 @@ hidden paths such as `.git/`: the first version listened on every network
 interface, so anyone on the same Wi-Fi could download the repository (X02). To
 try the site on a phone, use the live site or a deliberate tunnel, not this.
 
-`smoke.mjs` opens the real page in an invisible Chrome with a temporary profile
+`smoke.mjs` needs **Node 22 or newer** (it uses the built-in WebSocket). It
+opens the real page in an invisible Chrome with a temporary profile
 (never yours), clicks through it at phone and desktop widths, then deletes the
 profile; without Chrome it prints SKIP and changes nothing (L08).
 
