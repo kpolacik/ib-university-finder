@@ -1291,6 +1291,24 @@ async function runBatch2B(base) {
       });
     }finally{await page.close();}
   }
+  // Pre-existing at the base commit: left-aligned Share overflowed at 600px.
+  // One save hides Compare, so exercise both toolbar arrangements in both locales.
+  for (const width of [600,800]) for (const ui of ['en','sk']) {
+    const page = await openPage(`${base}?ui=${ui}&sort=deadline`,width,1000);
+    try {
+      await check(`${width}/${ui}`,'R4F Share gutter','Share stays within the 16 px gutter with 1 and 3 saves',async()=>{
+        for (const count of [1,3]) {
+          await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'loading'})`,15000,'Share gutter boot');
+          await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify([...document.querySelectorAll('#results>li.item')].slice(0,${count}).map(n=>n.dataset.id)));window.__oldPage=true;location.reload()`);
+          await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reload'})`,15000,'Share gutter saves');
+          await page.click(`document.querySelector('#f-shortlist-only')`,'My list for Share gutter');
+          await page.click(`document.querySelector('#ml-share>summary')`,'Share for gutter check');
+          await page.waitFor(`(()=>{const panel=document.querySelector('#ml-share>.ml-panel'),summary=document.querySelector('#ml-share>summary'),r=panel.getBoundingClientRect(),s=summary.getBoundingClientRect();return {ok:r.width>0&&r.left>=16&&r.right<=innerWidth-16&&r.top>=s.bottom&&document.documentElement.scrollWidth===innerWidth,why:JSON.stringify({panel:r.toJSON(),summary:s.toJSON(),viewport:innerWidth})}})()`,5000,'Share within its gutters');
+        }
+      });
+    }finally{await page.close();}
+  }
+
 }
 async function runBatch2C(base) {}
 

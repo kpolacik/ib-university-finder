@@ -5896,6 +5896,15 @@ appCheck('B2 Slovak Compare labels and hint, shared hint exclusion', ({ run, get
   run('shared = { ids: [fixture[0].id], unknown: [] }; state.shortlistOnly = true; update();');
   return get('ml-compare-hint').hidden;
 });
+check('B1 tablet Share panel anchors within its toolbar only at 600–1023 px', (() => {
+  const rules = cssTree(cssRules);
+  const tablet = '@media(min-width:600px) and (max-width:1023.98px)';
+  const contains = (selector, declarations) => rules.some(r => r.selector === selector
+    && r.media.length === 1 && r.media[0] === tablet && declarations.every(d => r.body.includes(d)));
+  return contains('.ml-tools', ['position:relative']) && contains('#ml-share', ['position:static'])
+    && contains('#ml-share>.ml-panel', ['left:auto', 'right:0', 'top:auto'])
+    && rules.filter(r => r.selector === '#ml-share>.ml-panel').every(r => r.media[0] === tablet);
+})());
 i18n.initLanguage('', { getItem: () => 'en' });
 
 

@@ -1411,6 +1411,14 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-cta{color:var(--accent);border-color:var(--accent);font-weight:600}
 @media(min-width:600px) and (max-width:1023.98px){.status .copy-long{display:none}.status .copy-short{display:inline}}
 @media(max-width:599.98px),(pointer:coarse){.cmp-cta{min-height:44px}}
+/* A tablet's wrapping toolbar can put Share near either edge. Anchor its
+   panel to the toolbar's right edge, keeping the summary's vertical position. */
+@media(min-width:600px) and (max-width:1023.98px){
+ .ml-tools{position:relative}
+ #ml-share{position:static}
+ #ml-share>.ml-panel{left:auto;right:0;top:auto}
+}
+
 
 
 /* Batch 2 · C: detail */
