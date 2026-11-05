@@ -1220,6 +1220,40 @@ async function runBatch2C(base) {
       }
     }
   } finally { await actionsPage.close(); }
+  for (const ui of ['en', 'sk']) {
+    const page = await open('?ui=' + ui + '&country=Czechia&lang=Czech', 1280);
+    try {
+      await check(1280, 'R4J', 'Czech note is in matching Language detail, absent from filter (' + ui + ')', async () => {
+        await page.click(`document.querySelector('#results>li.item button.open')`, 'Czech programme');
+        const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+        assert(await page.ev(`(()=>{
+          const n=document.querySelector('#pane .dd-note');
+          return n?.textContent.startsWith(${JSON.stringify(note)}) && n.closest('dd') &&
+            !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
+            !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
+        })()`), 'Czech note missing or Language help remains');
+        await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
+      });
+    } finally { await page.close(); }
+  }
+  // Real paid and non-Czech examples, without changing the dataset.
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  for (const [name, row] of [
+    ['paid-czech', data.find(r => r.country === 'Czechia' && r.tuitionEu > 0)],
+    ['non-czech', data.find(r => r.country !== 'Czechia')],
+  ]) {
+    const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
+    try {
+      await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
+        await page.waitFor(`({ok:!!document.querySelector('li[data-id="${row.id}"] button.open'),why:'programme not rendered'})`, 5000, 'programme');
+        await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
+        assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
+        await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
+      });
+    } finally { await page.close(); }
+  }
 }
 
 // --- Main -----------------------------------------------------------------------

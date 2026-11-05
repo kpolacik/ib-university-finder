@@ -673,7 +673,9 @@
       "option-count",
       ".d-head",
       "sep",
-      "d-actions"
+      "d-actions",
+      "Czechia",
+      "dd-note"
     ],
     "js/shortlist.js": [
       "./cost.js",

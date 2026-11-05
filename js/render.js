@@ -565,7 +565,13 @@ function applyingSection(row, state) {
   // Only with a living figure: without one there is no year to add up, and
   // the fee cell already says "Living cost not published".
   if (cost.monthlyMin !== null) reqRow(list, t('fee_12_months_living_estimate'), [yearlyText(row, cost)]);
-  if (row.languages.length) reqRow(list, t('language'), [row.languages.map(facetLabel).join(', ')]);
+  if (row.languages.length) {
+    const language = el('span', '', row.languages.map(facetLabel).join(', '));
+    if (row.country === 'Czechia' && row.languages.includes('Czech') && row.tuitionEu === 0) {
+      language.append(el('span', 'dd-note', t('r2_czech_free')));
+    }
+    reqRow(list, t('language'), [language]);
+  }
   if (row.applicationSystem) reqRow(list, t('apply_via'), [dataValue('application_system', row.applicationSystem)]);
   if (list.childElementCount === 0) return null;
 

@@ -2363,7 +2363,10 @@ function detailProblems(row, state, slot = false) {
   }
   const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
   if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
-  if (/Tuition \(EU\)|no tuition fee/.test(a.textContent)) say('old fee wording');
+  // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
+  const feeText = (node) => typeof node === 'string' ? node
+    : node.classList.contains('dd-note') ? '' : node.children.map(feeText).join('');
+  if (/Tuition \(EU\)/.test(a.textContent) || /no tuition fee/.test(feeText(a))) say('old fee wording');
   return { out, id: title?.id };
 }
 const liveRuns = [['empty', noFilters()], ['36', fstate(36)], ['36 ticked', fstate(36, true)], ['37', fstate(37)]];
@@ -4539,14 +4542,14 @@ const uniqueCharlesId = byClass(uniqueCharlesDOM, 'identity')[0];
 equal('U2 unique-title Charles row shows its faculty', uniqueCharlesId?.textContent, uniqueCharles.faculty.name);
 equal('U2 unique-title Charles row button is described by the faculty', byClass(uniqueCharlesDOM, 'open')[0].getAttribute('aria-describedby'), `degree-${uniqueCharles.id} ${uniqueCharlesId?.id}`);
 check('U2 every Charles row with a mapped faculty shows it on the row', charles.filter((r) => r.faculty).every((r) => byClass(d14Rows([r]), 'identity')[0]?.textContent.startsWith(r.faculty.name)));
-// U5: the Czech-language note sits inside the Language dropdown (not as a
-// fourth help line in the filter area) and describes that panel.
+// U5: the Czech note belongs to matching details, not the Language filter.
 {
-  const html = englishHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
+  const html = read('index.html');
   const panel = html.slice(html.indexOf('id="dd-languages"'), html.indexOf('</details>', html.indexOf('id="dd-languages"')));
-  check('U5 Language panel carries the Czech-taught note and is described by it',
-    panel.includes('aria-describedby="f-languages-help"') && /<p class="help dd-help" id="f-languages-help">Degrees taught in Czech at public universities are free, whatever your nationality\./.test(panel));
-  equal('U5 note appears once', html.split('id="f-languages-help"').length, 2);
+  check('U5 Language panel has no Czech help or description',
+    !/f-languages-help|aria-describedby|dd-help/.test(panel));
+  check('U5 old Czech note key is removed',
+    !read('js/i18n.js').includes('degrees_taught_in_czech_at_public_universities_are_free_whatever_you'));
 }
 for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r) => r.identity?.unresolved)]) {
   const rowDOM = d14Rows([row]);
@@ -5769,6 +5772,36 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
   click(a);
   return !run('openIds.has(fixture[0].id)');
 });
+{
+  const czech = live.find((r) => r.country === 'Czechia' && r.languages.includes('Czech') && r.tuitionEu === 0);
+  for (const lang of ['en', 'sk']) {
+    i18n.initLanguage('', { getItem: () => lang });
+    const note = t('r2_czech_free');
+    check('C3 free Czech detail note is in Language (' + lang + ')',
+      kvOf(detailOf(czech))[t('language')]?.textContent.includes(note));
+    for (const [name, row] of [
+      ['English taught', { ...czech, languages: ['English'] }],
+      ['paid', { ...czech, tuitionEu: 2000 }],
+      ['non-Czech', { ...czech, country: 'Austria' }],
+    ]) {
+      const detail = detailOf(row);
+      check('C3 no note for ' + name + ' (' + lang + ')', !detail.textContent.includes(note));
+      check('C3 note-free detail keeps the fee wording guard (' + name + ', ' + lang + ')',
+        !/Tuition \(EU\)|no tuition fee/.test(detail.textContent));
+    }
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
+  for (const [name, fee, defaultFee, expected] of [
+    ['inherited zero', '', '0', true], ['explicit zero', '0', '2000', true],
+    ['unknown override', '?', '0', false], ['blank unknown', '', '', false],
+    ['question unknown', '', '?', false], ['positive override', '2000', '0', false],
+  ]) {
+    const uni = 'university_id,name,city,country,tuition_eu_default,verified_by\nfx,Fixture,Prague,Czechia,' + defaultFee + ',AI-DRAFT\n';
+    const prog = 'programme_id,university_id,programme,language,tuition_eu,application_deadline,official_url,verified_by\np,fx,Fixture,Czech,' + fee + ',,https://example.org,AI-DRAFT\n';
+    const { programmes } = await load(uni, prog);
+    equal('C3 parser-to-render ' + name, detailOf(programmes[0]).textContent.includes(t('r2_czech_free')), expected);
+  }
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
