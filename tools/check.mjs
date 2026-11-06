@@ -3798,6 +3798,8 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   '.sheet': 'transition:transform 320ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete',
+  // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
+  '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
   '.sheet::backdrop': 'transition:opacity 240ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
