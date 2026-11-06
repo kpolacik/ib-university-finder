@@ -965,7 +965,12 @@ async function runRound2(base) {
         await page.ev(`document.querySelector('#dd-budget summary').click()`);
         assert(await page.ev(content),'Budget row opens without its height motion');
         await page.ev(`document.querySelector('#dd-budget summary').click()`);
-        assert(await page.ev(content) && await page.ev(`getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height`)==='0px','Budget row closes without its height motion');
+        // 2026-11-06: this read the height as 0px at once, which only held when
+        // no frame ran between the two clicks; otherwise the close reverses from
+        // part-way open (the 146da9d baseline showed 120-225 px too). Check the
+        // closing motion is set, then that it ends at 0.
+        assert(await page.ev(content),'Budget row closes without its height motion');
+        await page.waitFor(`({ok:getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height==='0px',why:'Budget row height '+getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height})`,3000,'the Budget row closed');
         await page.ev(`document.querySelector('#dd-budget summary').click()`);
         await page.waitFor(`({ok:document.getAnimations().length===0,why:'still moving'})`,3000,'re-toggled Budget');
         assert(await page.ev(`document.querySelector('#dd-budget').open && document.querySelector('#dd-budget summary').getAttribute('aria-expanded')==='true'`),'re-toggled Budget left stale state');
