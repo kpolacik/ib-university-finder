@@ -339,8 +339,17 @@
              column headings below replace it from there (CSS container query),
              so exactly one sort control is visible at any width. -->
         <div class="fld f-sort">
-          <label data-active-label=" · active" data-i18n-attr="data-active-label:active_label" for="f-sort" data-i18n="sort_by">Sort by</label>
-          <select class="inp" id="f-sort"></select>
+          <!-- The pick-list is the same one the filters use. The hidden select
+               stays the single source of the sort value: choosing an option
+               sets it and fires its change event (app.js, sortPick). -->
+          <span class="sort-l" id="sort-l" data-i18n="sort_by">Sort by</span>
+          <select class="inp" id="f-sort" hidden tabindex="-1" aria-hidden="true"></select>
+          <details class="dropdown sort-dd" id="dd-sort">
+            <summary class="inp"><span class="visually-hidden" data-i18n="sort_by">Sort by</span><span class="visually-hidden">: </span><span id="sort-current"></span><span class="dd-chev" aria-hidden="true"><svg class="ic" focusable="false"><use href="#i-chevron"/></svg></span></summary>
+            <div class="dropdown-panel right" role="radiogroup" aria-labelledby="sort-l">
+              <div class="options" id="sort-options"></div>
+            </div>
+          </details>
         </div>
         <div class="cols" role="group" aria-label="Sort programmes" data-i18n-attr="aria-label:sort_programmes">
           <span class="c1"><button type="button" data-sort="name" aria-pressed="false"><span data-i18n="programme_2">Programme</span><span class="sort-label" hidden data-i18n="university_a_z">University A–Z</span><span class="visually-hidden" data-i18n="sort_university_a_to_z">, sort University — A to Z.</span><svg class="sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></button></span>

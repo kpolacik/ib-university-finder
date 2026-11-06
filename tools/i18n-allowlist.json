@@ -299,7 +299,11 @@
       "scroll",
       "scrollend",
       "smooth",
-      "th.cmp-p"
+      "th.cmp-p",
+      "dd-sort",
+      "sort-current",
+      "sort-options",
+      "sort-pick"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -955,7 +959,8 @@
       "mouseleave",
       "canvas",
       "2d",
-      "function"
+      "function",
+      "dd-sort"
     ],
     "js/saved-state.js": [
       "./filters.js",

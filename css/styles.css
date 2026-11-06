@@ -1838,6 +1838,39 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
 }
 
+/* ------------------------------------------------- Leon's review, 2026-11-06 */
+
+/* University names are what students scan for, so the row never cuts them
+   off: the name wraps and the country tag follows it inline, not beside it. */
+.sub{display:block}
+.sub .uc{overflow:visible;white-space:normal}
+.sub .cc{vertical-align:1px}
+/* Phones: the header and the count row read as one white block (no line
+   between them, one line under both), and the list starts 12 px below it
+   instead of touching it. The IB tile's left edge sits on the page margin,
+   like the count and the list; its 44 px tap area reaches 4 px into the margin. */
+@media (max-width:599.98px){
+ .hd{border-bottom:0}
+ .status{border-bottom:1px solid var(--hairline);margin-bottom:12px}
+ .mark,.status.is-stuck .home-tile{margin-left:-4px}
+}
+
+/* Sort is the filters' pick-list (Leon: "reuse that"): label on the left,
+   the box fills the rest of the strip, the list opens under its right end.
+   Group by in My list is widened the same way so the two still line up. */
+.listp>.f-sort>.sort-l{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px;white-space:nowrap}
+.listp>.f-sort .sort-dd{flex:1 1 auto;min-width:0}
+.listp>.f-sort .sort-dd>summary.inp{width:100%;max-width:none}
+.listp>.f-sort .sort-dd>summary #sort-current{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.listp>.f-sort .sort-dd .dd-chev .ic{width:16px;height:16px;fill:none}
+.sort-dd .dropdown-panel{width:300px}
+.sort-dd .dropdown-panel>.options{max-height:none}
+@media (max-width:599.98px){
+ .listp>.f-sort>.sort-l{flex:0 0 6rem;white-space:normal}
+ .ml-group>.inp{max-width:none}
+}
+@media (max-width:359.98px){.listp>.f-sort>.sort-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and
@@ -1910,7 +1943,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 }
 
 /* One detail-level control and quiet notes keep source-language context local. */
-.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;justify-self:start;cursor:pointer}
+.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:8px;padding:6px 12px;justify-self:start;cursor:pointer}
 .english-note{font-size:var(--fs-14);color:var(--ink-2);margin-top:12px}
 .data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
 .data-original[hidden]{display:none}

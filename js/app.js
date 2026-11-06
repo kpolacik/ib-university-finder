@@ -1821,8 +1821,41 @@ async function copyLink() {
   } else showToast(message);
 }
 
+// The visible sort control: a filter-style pick-list mirroring the hidden
+// select's options. Rebuilt from the select, so language changes and
+// renderSortOptions need nothing extra beyond calling this.
+function sortPick() {
+  const box = document.getElementById('sort-options');
+  const details = document.getElementById('dd-sort');
+  const current = document.getElementById('sort-current');
+  if (!box || !details || !current) return;
+  const options = [...(dom.sort.options ?? [])];
+  const chosen = options.find((option) => option.selected);
+  if (current.textContent !== (chosen?.textContent ?? '')) current.textContent = chosen?.textContent ?? '';
+  box.replaceChildren(...options.map((option) => {
+    const label = document.createElement('label');
+    label.className = 'option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'sort-pick';
+    input.value = option.value;
+    input.checked = option.selected;
+    input.addEventListener('change', () => {
+      dom.sort.value = input.value;
+      dom.sort.dispatchEvent(new Event('change'));
+      details.open = false;
+      details.querySelector('summary').focus();
+    });
+    const text = document.createElement('span');
+    text.textContent = option.textContent;
+    label.append(input, text);
+    return label;
+  }));
+}
+
 function syncSort() {
   dom.sort.value = `${state.sort}:${state.dir}`;
+  sortPick();
   for (const button of dom.sortButtons) {
     const key = button.dataset.sort;
     const active = key === state.sort;

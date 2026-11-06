@@ -3063,7 +3063,7 @@ check('sort marks: one fixed 14x14 SVG box, the active heading changes colour no
     && /width:16px;height:16px/.test(paneRule('.chev')) && /transform:rotate\(180deg\)/.test(paneRule('.is-open .chev'))
     && !/::after\{content:""/.test(paneRule('.dropdown>summary::after')) && !/\.dir(?![\w-])/.test(cssRules)
     && !indexHtml.includes('class="dir"') && (indexHtml.match(/<svg class="sm" aria-hidden="true" focusable="false"><use href="#i-(?:sort|chevron-up)"\/><\/svg>/g) ?? []).length === 4
-    && (indexHtml.match(/<span class="dd-chev" aria-hidden="true">/g) ?? []).length === 8);
+    && (indexHtml.match(/<span class="dd-chev" aria-hidden="true">/g) ?? []).length === 9);
 check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
   /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
     && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
@@ -3446,7 +3446,7 @@ check('one copy of each control: every filter, sheet and copy id appears exactly
 const listpSrc = elementSource(indexHtml, /<div class="listp">/);
 check('.more-filters holds the fee, the five dropdowns, Deadline and Clear all, inside the filter form in the header; Sort sits in the list before the headings',
   moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-deadline"', 'id="dd-degrees"', 'id="dd-cities"'].every((s) => moreSrc.includes(s))
-    && !formSrc.includes('id="f-sort"') && /<div class="fld f-sort">\s*<label for="f-sort">Sort by<\/label>\s*<select class="inp" id="f-sort"><\/select>\s*<\/div>\s*<div class="cols"/.test(listpSrc)
+    && !formSrc.includes('id="f-sort"') && /<div class="fld f-sort">[\s\S]*?<select class="inp" id="f-sort" hidden[^>]*><\/select>\s*<details class="dropdown sort-dd" id="dd-sort">[\s\S]*?<\/details>\s*<\/div>\s*<div class="cols"/.test(listpSrc)
     && formSrc.includes(moreSrc) && elementSource(indexHtml, /<div class="fslot">/).includes(formSrc)
     && ['id="f-points"', 'id="f-maths"'].every((s) => moreSrc.includes(s)) && statusSrc.includes('id="f-more"'));
 check('.status holds the live count, its aria-hidden twin and Copy link after a 1 px sentinel; Sort has left it; the footer holds Show N',
@@ -6977,6 +6977,25 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
   && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
   /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
+
+section("Leon's review, 2026-11-06");
+// The last value set for a property across every plain rule for a selector:
+// later rules win, so an old nowrap above a later normal is fine.
+const lastValue = (selector, prop, query) => [...ruleAt(cssText, selector, query).matchAll(new RegExp(`(?:^|;)${prop}:([^;]+)`, 'g'))].at(-1)?.[1];
+check('LR1 rows never cut off the university name: the line wraps and the country tag follows inline',
+  lastValue('.sub', 'display') === 'block' && lastValue('.sub .uc', 'white-space') === 'normal' && lastValue('.sub .uc', 'overflow') === 'visible');
+check('LR2 phones: the header and count row are one block, and the list starts 12 px below it',
+  /border-bottom:0/.test(ruleAt(cssText, '.hd', '(max-width:599.98px)'))
+  && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
+check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
+  /margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && /margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
+check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
+  /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
+  && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
+  && /function syncSort\(\) \{\s*dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
+  && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
+check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
+  lastValue('.detail-originals', 'border-radius') === '8px');
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

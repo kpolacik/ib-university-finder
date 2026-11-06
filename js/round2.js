@@ -100,7 +100,8 @@ export function wireRound2(dom) {
         input.dispatchEvent(new Event(input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input', { bubbles: true }));
       }
     });
-    footer.append(hint, clear); panel.append(footer);
+    // Sort always has a value, so it gets no Clear and no unknown-values note.
+    if (d.id !== 'dd-sort') { footer.append(hint, clear); panel.append(footer); }
     const position = () => {
       if (!d.open || dom.sheet.contains(d)) return;
       const box = summary.getBoundingClientRect();
