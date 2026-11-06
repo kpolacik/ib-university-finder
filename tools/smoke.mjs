@@ -1159,7 +1159,7 @@ async function runReview2(base) {
           const tools=all.filter(n=>!n.closest('#ml-compare'));
           const rows=new Map();for(const n of tools){const r=box(n),k=Math.round(r.top);rows.set(k,[...(rows.get(k)||[]),n])}
           const plain=tools.map(n=>Math.round(box(n).width));
-          const g=box(document.querySelector('#ml-group')),s=box(document.querySelector('#f-sort'));
+          const g=box(document.querySelector('#ml-group')),s=box(document.querySelector('#dd-sort>summary'));
           return {lone:[...rows.values()].filter(r=>r.length===1).map(r=>r[0].textContent.trim()),widths:[...new Set(plain)],short:all.filter(n=>box(n).height<44).map(n=>n.textContent.trim()),
             selects:[g.left-s.left,g.right-s.right],gap:box(document.querySelector('.listp')).top-box(document.querySelector('#shortlist-bar')).bottom,sw:document.documentElement.scrollWidth-innerWidth}})()`);
         assert(m.lone.length === 0 && m.widths.length === 1 && m.short.length === 0, `uneven actions: ${JSON.stringify(m)}`);
@@ -1955,6 +1955,8 @@ async function runBatch3A(base) {
           await page.click(`document.querySelectorAll('#results button.cmpi')[${n - 1}]`, `compare toggle ${n}`);
           const want = say(ui, 'r3_tray_text', { count: n });
           await page.waitFor(`({ok:document.querySelector('#cmp-tray-text').textContent===${JSON.stringify(want)} && ${shown('#cmp-tray')},why:document.querySelector('#cmp-tray-text').textContent})`, 5000, `tray ${n}`);
+          // The tray slides up (Leon, 2026-11-06): measure it once it has landed.
+          await page.waitFor(`({ok:document.querySelector('#cmp-tray').getAnimations().every((a)=>a.playState!=='running'),why:'tray sliding'})`, 3000, 'tray settled');
           await frames(page);
           const m = await page.ev(`(()=>{
             const t=document.querySelector('#cmp-tray-text'), b=document.querySelector('#cmp-tray-open'), tray=document.querySelector('#cmp-tray');
@@ -1963,7 +1965,7 @@ async function runBatch3A(base) {
             return {inside:inside(rt)&&inside(rb),button:rb.height,clipped:t.scrollWidth>t.clientWidth+1,header:${shown('#header-compare')},
               pad:parseFloat(getComputedStyle(document.body).paddingBottom),tray:r.height,overflow:document.documentElement.scrollWidth-innerWidth};
           })()`);
-          assert(m.inside && m.button >= 44 && !m.clipped && !m.header && Math.abs(m.pad - m.tray) <= 1 && m.overflow <= 0, JSON.stringify(m));
+          assert(m.inside && m.button >= 44 && !m.clipped && !m.header && Math.abs(m.pad - m.tray - 24) <= 1 && m.overflow <= 0, JSON.stringify(m));
         }
         await shot(page, `tray-${width}x${height}-${ui}`);
         if (width === 1280) {
@@ -2866,8 +2868,8 @@ async function runAlignListCompare(base) {
         await page.ev(`(getComputedStyle(document.querySelector('#header-compare')).display!=='none'?document.querySelector('#header-compare'):document.querySelector('#cmp-tray-open')).click()`);
         await page.waitFor(`(()=>{const a=document.querySelector('#compare').getBoundingClientRect().top;const s=window.__lastTop;window.__lastTop=a;return {ok:s===a,why:'moving'}})()`, 5000, 'scroll settled');
         const m = await page.ev(`(()=>{const c=document.querySelector('#compare').getBoundingClientRect();const st=document.querySelector('.status');const stuck=${width < 600 ? `st.getBoundingClientRect().bottom` : `document.querySelector('.hd').getBoundingClientRect().bottom`};const hit=document.elementFromPoint(c.left+14,c.top+2);return {gap:c.top-stuck,isStuck:st.classList.contains('is-stuck'),corner:!!hit&&document.querySelector('#compare').contains(hit)}})()`);
-        // Phones: the count row sits right above it in the flow (gap 0) or is stuck over the page (gap 8).
-        assert(m.corner && (width < 600 ? (m.isStuck ? m.gap >= 7 && m.gap <= 9 : m.gap >= -0.5 && m.gap <= 9) : m.gap >= 7 && m.gap <= 9), JSON.stringify(m));
+        // Phones: the count row sits above it in the flow (its 12 px margin, Leon 2026-11-06) or is stuck over the page (gap 8).
+        assert(m.corner && (width < 600 ? (m.isStuck ? m.gap >= 7 && m.gap <= 9 : m.gap >= -0.5 && m.gap <= 13) : m.gap >= 7 && m.gap <= 9), JSON.stringify(m));
       });
     } finally { await page.close(); }
   }

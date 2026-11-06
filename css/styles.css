@@ -1884,8 +1884,10 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .cmp-tray .btn{min-height:44px;border-radius:10px}
 .cmp-tray[hidden]{transform:translateY(calc(100% + 24px));opacity:0}
 @starting-style{.cmp-tray:not([hidden]){transform:translateY(calc(100% + 24px));opacity:0}}
-body.has-tray{padding-bottom:calc(var(--tray-h,0px) + 24px)}
-html{scroll-padding-bottom:calc(var(--tray-h,0px) + 24px)}
+@media screen{
+ body.has-tray{padding-bottom:calc(var(--tray-h,0px) + 24px)}
+ html{scroll-padding-bottom:calc(var(--tray-h,0px) + 24px)}
+}
 @media (prefers-reduced-motion:reduce){.cmp-tray{transition:none}}
 
 /* Setup's done screen names the two row icons; the icons sit in the text. */
