@@ -3062,6 +3062,7 @@ async function runCompareHeaderR2(base) {
         assert(m.status === 'none', `count row shown: ${m.status}`);
         assert(m.cmp === 12 && m.hd <= 0, `Compare top ${m.cmp}, header bottom ${m.hd}`);
         assert(m.close[0] >= 12 && m.close[1] <= 844, `Close at ${m.close}`);
+        assert(await page.ev(`getComputedStyle(document.querySelector('#cmp-close')).borderTopLeftRadius==='8px'`), 'phone Close corners');
         assert(m.sw === 0, `page overflows by ${m.sw}`);
         await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
         await page.waitFor(`({ok:document.querySelector('#compare').hidden&&getComputedStyle(document.querySelector('.status')).display==='flex'&&document.activeElement===document.querySelector('#cmp-tray-open'),why:getComputedStyle(document.querySelector('.status')).display+' '+document.activeElement?.id})`, 5000, 'row back, focus on the tray');
@@ -3076,7 +3077,7 @@ async function runCompareHeaderR2(base) {
   for (const [width, height] of [[1440, 900], [1280, 800]]) {
     const page = await open('?ui=sk', width, height, { compare: ids.slice(0, 3) });
     try {
-      await check(`${width}x${height}/sk`, 'CH2 desktop Compare', 'the footer heading is 40 to 48 px under Compare, the last row is whole, and the list keeps its 48 px gap', async () => {
+      await check(`${width}x${height}/sk`, 'CH2 desktop Compare', 'the footer heading is 40 to 48 px under Compare, the last row is whole, the list keeps its 48 px gap; Close has 8 px corners', async () => {
         const list = await page.ev(`getComputedStyle(document.querySelector('.foot')).marginTop`);
         await page.click(`document.querySelector('#header-compare')`, 'Compare');
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
@@ -3088,6 +3089,10 @@ async function runCompareHeaderR2(base) {
         assert(list === '48px', `list footer gap ${list}`);
         assert(m.gap >= 40 && m.gap <= 48, `footer heading ${m.gap} px under Compare`);
         assert(m.last >= 0 && m.last <= 2, `last row cut or padded: ${m.last}`);
+        // 3. Close comparison is rounded like the other outlined buttons, and
+        // keeps its words and its 44 px height.
+        const close = await page.ev(`(()=>{const c=document.querySelector('#cmp-close'),s=getComputedStyle(c),t=getComputedStyle(c.querySelector('.cmp-close-t'));return [s.borderTopLeftRadius,s.borderBottomRightRadius,c.getBoundingClientRect().height,t.position]})()`);
+        assert(close[0] === '8px' && close[1] === '8px' && close[2] >= 44 && close[3] !== 'absolute', `close ${close}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));

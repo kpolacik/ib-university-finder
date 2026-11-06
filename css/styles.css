@@ -1965,6 +1965,11 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  body:has(#compare:not([hidden])) .foot{margin-top:24px}
 }
 
+/* "Close comparison" was "too angular" on desktop (4 px, the control token):
+   it gets the 8 px corners of the other outlined buttons ("Show the original",
+   the header's buttons). Phones already had them. */
+#cmp-close{border-radius:8px}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and

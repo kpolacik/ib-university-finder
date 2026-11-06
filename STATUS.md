@@ -612,7 +612,8 @@ tile and Filters over an empty gap, since the count hides in Compare) is
 gone: Compare starts 12 px from the top, its Close is the way back and the
 header's logo above it still goes home. From 600 px the footer sits 24 px
 under an open Compare instead of 48 (the footer heading is 44 px below it,
-was 68); under the list the gap is unchanged. Rules: CSS section "Compare and
+was 68); under the list the gap is unchanged. "Close comparison" has 8 px
+corners at every width, like "Show the original". Rules: CSS section "Compare and
 header, round 2, 2026-11-06"; checks: check.mjs section of the same name,
 smoke `runCompareHeaderR2`.
 

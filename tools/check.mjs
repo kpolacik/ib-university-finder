@@ -7107,6 +7107,8 @@ section('Compare and header, round 2, 2026-11-06');
   check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
     /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
     && lastValue('.foot', 'margin-top') === '48px');
+  check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
+    lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
