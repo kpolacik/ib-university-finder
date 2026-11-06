@@ -3098,6 +3098,47 @@ async function runCompareHeaderR2(base) {
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
   }
+  watchdog.refresh();
+
+  // 4. Phones: My list sits in the count row just before Filters, at the top
+  // and stuck, with its saved count, 44 px targets and no overflow; the header
+  // has no copy of it. From 600 px it is back in the header before Compare.
+  for (const width of [320, 360, 390, 430]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 844, { saves: ids.slice(0, 2) });
+    try {
+      await check(`${width}/${ui}`, 'CH4 phone My list', 'in the count row before Filters, top and stuck: 44 px, count shown, nothing overlaps or overflows, not in the header', async () => {
+        for (const y of [0, 1200]) {
+          await page.ev(`scrollTo({top:${y},behavior:'instant'})`);
+          await page.waitFor(`({ok:document.querySelector('.status').classList.contains('is-stuck')===${y > 0},why:'stuck '+document.querySelector('.status').className})`, 5000, 'row state');
+          await settle(page);
+          const m = await page.ev(`(()=>{const q=(s)=>document.querySelector(s),r=(s)=>q(s).getBoundingClientRect();const hl=r('#header-list'),b=r('#header-list .badge'),f=r('#f-more');
+            const parts=['.status .home-tile','.status .cfull','.status .cshort'].map(s=>r(s)).filter(x=>x.width>1&&x.height>1);
+            const overlap=(a,c)=>a.left<c.right-0.5&&c.left<a.right-0.5&&a.top<c.bottom-0.5&&c.top<a.bottom-0.5;
+            return {inRow:q('#header-list').parentElement===q('.status')&&q('#header-list').nextElementSibling===q('#f-more'),inHeader:!!q('.hd #header-list'),
+              size:[hl.width,hl.height,f.height],line:Math.abs((hl.top+hl.height/2)-(f.top+f.height/2))<=1,order:hl.right<=f.left,
+              badge:getComputedStyle(q('#header-list .badge')).display!=='none'&&q('#header-list .badge').textContent==='2'&&b.left>=hl.left-0.5&&b.right<=hl.right+0.5&&b.top>=hl.top-0.5&&b.bottom<=hl.bottom+0.5,
+              clear:!parts.some(p=>overlap(p,hl)||overlap(p,f)),inView:f.right<=innerWidth,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+          if (width === 390) await shot(page, `phone-mylist-row-${width}-${ui}-${y ? 'stuck' : 'top'}`);
+          assert(m.inRow && !m.inHeader, `placement ${JSON.stringify(m)}`);
+          assert(m.size.every((v) => v >= 44) && m.line && m.order, `size/line ${JSON.stringify(m)}`);
+          assert(m.badge, 'saved count not shown inside the button');
+          assert(m.clear && m.inView && m.sw === 0, `overlap/overflow ${JSON.stringify(m)}`);
+        }
+        const { root: doc } = await page.send('DOM.getDocument', { depth: 0 });
+        const { nodeId } = await page.send('DOM.querySelector', { nodeId: doc.nodeId, selector: '#header-list' });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+        const name = nodes[0]?.name?.value ?? '';
+        assert(name.includes(ui === 'sk' ? 'Môj zoznam' : 'My list') && name.includes('2'), 'accessible name: ' + name);
+        // Focus survives a rotation across 600 px, and the button goes back.
+        await page.ev(`document.querySelector('#header-list').focus()`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 700, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:document.querySelector('#header-list').nextElementSibling===document.querySelector('#header-compare')&&document.activeElement===document.querySelector('#header-list'),why:document.querySelector('#header-list').parentElement.className+' '+document.activeElement?.id})`, 5000, 'back in the header, focused');
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:document.querySelector('#header-list').parentElement===document.querySelector('.status')&&document.activeElement===document.querySelector('#header-list'),why:document.activeElement?.id})`, 5000, 'back in the row, focused');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 async function runAlignChromeSetup(base) {

@@ -1712,6 +1712,17 @@ function placeFilters() {
   const put = (parent, node, before = null) => {
     if (node.parentElement !== parent || node.nextElementSibling !== before) parent.insertBefore(node, before);
   };
+  // My list: on phones the header scrolls away, so the button sits in the
+  // sticky count row beside Filters (Leon, 2026-11-06); from 600 px it goes
+  // back before Compare in the header. One button, so its count, pressed state
+  // and handlers need no syncing. Moving a focused node drops its focus.
+  const listFocused = active === dom.headerList;
+  const headerRight = dom.headerCompare?.parentElement;
+  if (headerRight) {
+    if (bar) put(headerRight, dom.headerList, dom.headerCompare);
+    else put(dom.status, dom.headerList, dom.more);
+    if (listFocused && document.activeElement !== dom.headerList) dom.headerList.focus({ preventScroll: true });
+  }
   if (bar) {
     put(dom.form, dom.moreFilters);
     put(dom.status, dom.clear, dom.copy.parentElement === dom.status ? dom.copy : null);

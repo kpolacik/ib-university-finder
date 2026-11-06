@@ -613,7 +613,11 @@ gone: Compare starts 12 px from the top, its Close is the way back and the
 header's logo above it still goes home. From 600 px the footer sits 24 px
 under an open Compare instead of 48 (the footer heading is 44 px below it,
 was 68); under the list the gap is unchanged. "Close comparison" has 8 px
-corners at every width, like "Show the original". Rules: CSS section "Compare and
+corners at every width, like "Show the original". On phones My list is in
+the count row just before Filters (the header scrolls away; that row
+sticks): its bookmark and saved count, 44 px, the words kept for screen
+readers. It is the same button, moved by `placeFilters` in `js/app.js`, so
+the header has no copy below 600 px and Search gets the room. Rules: CSS section "Compare and
 header, round 2, 2026-11-06"; checks: check.mjs section of the same name,
 smoke `runCompareHeaderR2`.
 
@@ -753,7 +757,7 @@ students, and where each rule lives:
   (above). The detail's official page link is full width, with Save and
   Compare as a pair below it (stacked when they do not fit). On phones the
   main view no longer shows a My list box; the header's "My list (n)" is the
-  way in. The phone My list toolbar has "Back to all programmes" top-left and
+  way in (since 2026-11-06 it sits in the count row instead, see above). The phone My list toolbar has "Back to all programmes" top-left and
   Share, Export CSV, Print and Clear my list as an even 2 x 2 grid, Clear
   outlined. An empty My list opens with "Your list is empty", how to save and
   a way back. Setup ends with Finish and a done screen ("Your answers are now
