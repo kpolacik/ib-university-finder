@@ -551,6 +551,25 @@ async function interactions(page, at, want) {
   // first (A10) and A8 runs inside it.
   let sheetOpen = false;
   if (phone) {
+    // 2026-11-06: list-item rows that content-visibility had never drawn made
+    // showModal() stall ~500 ms (4x CPU) before the sheet moved. Rows are
+    // block and still list items to assistive tech; the sheet takes 240 ms up
+    // and 200 ms down, and none at all with reduced motion.
+    await check(at, 'A10', 'rows are display:block list items; the sheet takes 200 ms to close, none with reduced motion', async () => {
+      const row = await page.ev(`getComputedStyle(document.querySelector('#results>li.item')).display`);
+      assert(row === 'block', `a result row is display:${row}, expected block`);
+      const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>li.item')` });
+      const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+      assert(nodes[0]?.role?.value === 'listitem', `a result row's role is ${nodes[0]?.role?.value}, expected listitem`);
+      const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(s, '::backdrop').transitionDuration; })()`;
+      const closed = await page.ev(times);
+      assert(closed === '0.2s, 0.2s, 0.2s / 0.16s, 0.2s, 0.2s', `closed sheet transitions ${closed}`);
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      try {
+        const still = await page.ev(times);
+        assert(still === '0s / 0s', `reduced motion: sheet transitions ${still}, expected none`);
+      } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+    });
     sheetOpen = await check(at, 'A10', 'Filters sheet opens on a phone', async () => {
       await page.waitFor(visible('#f-more'), 5000, 'the Filters button');
       await page.click(`document.querySelector('#f-more')`, 'the Filters button');
@@ -561,6 +580,13 @@ async function interactions(page, at, want) {
         if (!document.querySelector('.sheet-b').contains(document.querySelector('#dd-countries'))) return { why: 'Country list is not in the sheet' };
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
+      const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
+      assert(opening === '0.24s, 0.24s, 0.24s / 0.2s, 0.24s, 0.24s', `open sheet transitions ${opening}`);
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      try {
+        const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
+        assert(still === '0s / 0s', `reduced motion: open sheet transitions ${still}, expected none`);
+      } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
     });
     // A sheet that opened but cannot be seen still makes the page behind it
     // inert, which would fail every later check for the same reason.

@@ -1120,7 +1120,8 @@ check('compact header keeps its full visible height and offsets; translated-head
     && !fullHeight(css + '.page.compact{--header-visible:44px}');
 })());
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 320ms')
+  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06).
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 240ms') && text.includes('transition:transform 200ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -2687,6 +2688,22 @@ check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
 check('off-screen rows are skipped on screen and printed in full',
   /content-visibility:\s*auto/.test(ruleBody('.item'))
     && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
+// Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
+// display:list-item that content-visibility has never drawn make every
+// inherited style change rebuild the whole list. showModal() makes the page
+// inert, which is such a change: the sheet froze ~500 ms (4x CPU) before it
+// moved. Rows are display:block, and no rule may turn them back.
+check('result rows are display:block beside content-visibility:auto, never list-item (sheet open/close stall)',
+  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /content-visibility:\s*auto/.test(ruleBody('.item'))
+    && (() => {
+      // Every rule whose selector ends on a result row (.item, li.item,
+      // .item.is-open, .results>li, ...) may only set display to block.
+      const rowSel = /(?:^|[\s>+~])(?:li)?(?:\.item|\.results\s*>\s*li)(?:[.:][\w-]+(?:\([^)]*\))?)*$/;
+      const rowBodies = [...cssRules.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter(([, sel]) => sel.split(',').some((x) => rowSel.test(x.trim()))).map(([, , body]) => body);
+      const ok = (bodies) => bodies.every((b) => b.split(';').filter((d) => /^\s*display\s*:/.test(d)).every((d) => /^\s*display\s*:\s*block\s*$/.test(d)));
+      return rowBodies.length >= 2 && ok(rowBodies) && !ok(['position:relative;display:list-item']) && rowSel.test('.results>.item.is-open') && rowSel.test('.results>li') && !rowSel.test('.item-x');
+    })());
 check('the sprite has the Phosphor i-ext, i-check and i-clock, and no old i-external',
   ['i-ext', 'i-check', 'i-clock', 'i-sort'].every((id) => indexHtml.includes(`<symbol id="${id}" viewBox="0 0 256 256">`))
     && !indexHtml.includes('id="i-external"') && !renderSrc.includes('i-external'));
@@ -3797,10 +3814,13 @@ const motionAllowed = {
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
-  '.sheet': 'transition:transform 320ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete',
+  // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
+  '.sheet': 'transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
+  '.sheet[open]': 'transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet::backdrop': 'transition:opacity 240ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete',
+  '.sheet::backdrop': 'transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
+  '.sheet[open]::backdrop': 'transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -3832,7 +3852,7 @@ check('sheet: slides from translateY(100%) with @starting-style and discrete dis
   /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
     && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
     && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet::backdrop')) && /opacity:1/.test(bodyOf('.sheet[open]::backdrop'))
-    && /transition:none/.test(bodyOf('.sheet', ['@media (min-width: 600px)'])) && /transition:none/.test(bodyOf('.sheet::backdrop', ['@media (min-width: 600px)']))
+    && ['.sheet', '.sheet[open]', '.sheet::backdrop', '.sheet[open]::backdrop'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
     && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
 // The old rule shortened every effect to 0.01ms: still a transition, still
 // firing its events late. Reduced motion is now none, backdrop included.
