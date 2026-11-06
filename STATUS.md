@@ -1073,6 +1073,20 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   `check.mjs` guards each, and `plans/finish-review/` (not in git) has the browser
   evidence.
 
+- **The phone Filters sheet stalled before it moved (fixed 2026-11-06).** A
+  tap on Filters or Done froze the page for about 580 ms (Chrome, 393 px, 4×
+  CPU slowdown) before the sheet started to slide. `showModal()` makes the
+  whole page inert, and in Chrome every such page-wide style change rebuilt
+  all 2,915 rows. That happens only while the rows keep the `<li>` default
+  `display: list-item` and `content-visibility` has never drawn them. The
+  rows are now `display: block`. They look the same, because the list has
+  no bullets, and Chrome's accessibility tree still lists them as list items. Tap to motion
+  is now about 150 ms at 4× (about 4× faster in paired runs). Most of what
+  is left is the inert update itself, spread over every mounted row. The
+  slide is also shorter: 240 ms up, 200 ms down (it was 320 ms both ways),
+  and reduced motion is still instant. Never give `.item` another display
+  value. `check.mjs` and smoke A10 guard this.
+
 ## Decisions already made, so they are not relitigated
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,

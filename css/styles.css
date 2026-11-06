@@ -449,11 +449,14 @@ svg:not(.sprite) {
    body scrolls. ::backdrop is the only scrim.
    It slides up and the scrim fades (spec §8). display and overlay switch at
    the end, so a closing sheet keeps its place on top until it is gone. A
-   browser without @starting-style or allow-discrete just opens and closes. */
-.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 320ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete}
-.sheet[open]{display:flex;flex-direction:column;transform:none}
-.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity 240ms var(--ease-out),display 320ms allow-discrete,overlay 320ms allow-discrete}
-.sheet[open]::backdrop{opacity:1}
+   browser without @starting-style or allow-discrete just opens and closes.
+   Leon 2026-11-06: 240 ms up, 200 ms down (was 320 ms both ways, which felt
+   sluggish). A transition uses the timing of the state it goes to, so the
+   closed rules carry the closing times and the [open] rules the opening ones. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
+.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
+.sheet[open]::backdrop{opacity:1;transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet[open]::backdrop{opacity:0}}
 html:has(.sheet[open]){overflow:hidden}
 .sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
@@ -625,7 +628,14 @@ html:has(.sheet[open]){overflow:hidden}
 .listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
 .listp>.f-sort>label{white-space:nowrap}
 .listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
-.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
+/* Rows are display:block, not the <li> default list-item. In Chrome a
+   list-item row that content-visibility has never drawn (nearly all 2,915)
+   makes every inherited style change rebuild the whole list: opening the
+   phone Filters sheet (showModal makes the page inert) froze the page for
+   ~500 ms at 4x CPU slowdown before the sheet moved; with block rows that
+   showModal() call takes ~90 ms (measured 2026-11-06, 393 px, Chrome 157).
+   The list has no markers (list-style:none), so nothing visible changes. */
+.item{display:block;position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
 .item+.item{border-top:1px solid var(--hairline)}
 .row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main main" "pts ddl fee";gap:8px;padding:12px}
 .row:hover{background:var(--hover)}
@@ -790,7 +800,7 @@ html:has(.sheet[open]){overflow:hidden}
      "Podľa univerzity €/mesiac"); they were cut off at 8 and 10.5rem. */
   .f-fee,.f-budget{flex:none;width:10rem}.f-living{flex:none;width:12.5rem}
   .fbar .more{display:none}
-  .sheet,.sheet::backdrop{transition:none}
+  .sheet,.sheet[open],.sheet::backdrop,.sheet[open]::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every
      stuck declaration is put back, in case .is-stuck is still on the bar. */
   .status{position:static;padding:12px var(--gut) 8px}
