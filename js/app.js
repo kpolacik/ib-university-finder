@@ -249,6 +249,9 @@ const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
   Italy: 'f-it', Netherlands: 'f-nl', Norway: 'f-no', Sweden: 'f-se', 'United Kingdom': 'f-gb',
 };
+// Language pick-list flags (Leon, 2026-11-06): the flag of the country most
+// associated with the language, only as a visual cue beside its name.
+const LANGUAGE_FLAGS = { English: 'f-gb', Czech: 'f-cz', German: 'f-de', French: 'f-fr', Italian: 'f-it' };
 let selectedId = null;
 let shownRows = new Map();
 let appliedWide = null;
@@ -268,7 +271,13 @@ async function start() {
   initLanguage(location.search);
   applyLanguage();
   for (const button of document.querySelectorAll('[data-language]')) {
-    button.addEventListener('click', () => switchLanguage(button.getAttribute('data-language')));
+    // Tapping the language already shown flips to the other one (Leon,
+    // 2026-11-06): nobody taps SK to stay in Slovak.
+    button.addEventListener('click', () => {
+      const other = [...button.parentElement.querySelectorAll('[data-language]')].find((b) => b !== button);
+      const pick = button.getAttribute('aria-pressed') === 'true' && other ? other : button;
+      switchLanguage(pick.getAttribute('data-language'));
+    });
   }
   dom.banner.addEventListener('click', openIssuesFromLink);
   crossBar();
@@ -480,7 +489,7 @@ function drawChips() {
   };
   renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area', counts: counts('subjectAreas') });
   renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') });
-  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages), { counts: counts('languages') });
+  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages), { flags: LANGUAGE_FLAGS, counts: counts('languages') });
   renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type', counts: counts('degreeType') });
   renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities), { counts: counts('city') });
 }

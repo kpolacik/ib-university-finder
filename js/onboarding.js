@@ -149,6 +149,24 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   // filters, so it says so, how many programmes that leaves, and offers the
   // list or the FAQ, which sits at the very bottom where few people scroll.
   // It replaces the toast setup used to end with, and step 1's FAQ link.
+  // The one moment every new student reads: say what the two row icons do,
+  // with the icons themselves in the sentence (Leon, 2026-11-06).
+  const toolsHint = () => {
+    const p = el('p', 'ob-tools');
+    for (const part of t('r4_ob_done_tools').split(/(\{bookmark\}|\{scales\})/)) {
+      if (part === '{bookmark}' || part === '{scales}') {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'ic');
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', part === '{bookmark}' ? '#i-bookmark' : '#i-compare');
+        svg.append(use);
+        const label = el('span', 'visually-hidden', t(part === '{bookmark}' ? 'r4_icon_bookmark' : 'r4_icon_scales'));
+        p.append(svg, label);
+      } else if (part) p.append(part);
+    }
+    return p;
+  };
   const drawDone = (answers, shown) => {
     fill.style.transform = 'scaleX(1)'; progress.hidden = false;
     const any = hasSetupAnswers(answers);
@@ -159,7 +177,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     const count = t(any ? 'r3_ob_done_count' : 'r3_ob_shown_count', { count: shown }).replace(/\d+/g, (value) => formatCount(Number(value)));
     // Without answers the count is whatever the page's own filters (search,
     // city…) leave, so it must not claim those rows match anything.
-    section.append(heading, el('p', 'ob-count', count), el('p', '', t(any ? 'r3_ob_done_p' : 'r3_ob_done_p_none')));
+    section.append(heading, el('p', 'ob-count', count), el('p', '', t(any ? 'r3_ob_done_p' : 'r3_ob_done_p_none')), toolsHint());
     body.replaceChildren(section); body.scrollTop = 0;
     // The primary comes first, so it is first in tab order and on top on phones;
     // from 600 px the row is reversed to put it on the right, as Next was.

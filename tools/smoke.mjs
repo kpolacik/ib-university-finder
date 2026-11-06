@@ -781,7 +781,7 @@ async function runI18n(base) {
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 'toggle did not reveal every original');
         // The same-language switch forces a real detail re-render.
-        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 're-render lost original state');
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-on.png`);
@@ -789,9 +789,9 @@ async function runI18n(base) {
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'toggle did not hide every original after re-render');
         await page.ev(`document.querySelector('${button}').click()`);
-        await page.ev(`document.querySelector('[data-language="en"]').click()`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
         assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .detail-originals, ${detail} .data-original, ${detail} .english-note')`), 'EN switch lost detail or retained Slovak controls');
-        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'language change did not reset originals');
         assert(page.errors.length === 0, page.errors.map((error) => error.text).join(' | '));
@@ -995,7 +995,7 @@ async function runRound2(base) {
       if(width>=600)await check(width,'R2I','200% layout keeps long SK controls and facet panels inside the viewport; non-scrolling lists have no fade',async()=>{
         await page.send('Emulation.setDeviceMetricsOverride',{width:640,height:450,deviceScaleFactor:1,mobile:false});
         try {
-          await page.ev(`document.querySelector('[data-language=sk]').click();window.scrollTo(0,0)`);
+          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=sk]'));window.scrollTo(0,0)`);
           await page.waitFor(`(()=>{const w=innerWidth,sw=document.documentElement.scrollWidth,display=getComputedStyle(document.querySelector('#f-mymaths')).display;return {ok:w===640 && sw===w && display!=='none',why:JSON.stringify({w,sw,display,dialogs:[...document.querySelectorAll('dialog[open]')].map(n=>n.id)})}})()`,5000,'zoomed controls');
           await page.click(`document.querySelector('#dd-languages summary')`,'zoomed language panel');
           await page.waitFor(`(()=>{const box=document.querySelector('#f-languages');return {ok:box.classList.contains('at-end')===(box.scrollTop+box.clientHeight>=box.scrollHeight-4),why:'fade cue disagrees with scroll extent'}})()`,5000,'fade cue');
@@ -1004,7 +1004,7 @@ async function runRound2(base) {
           await page.key('Escape','Escape',27);
         } finally {
           await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
-          await page.ev(`document.querySelector('[data-language=en]').click()`);
+          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=en]'))`);
         }
       });
       if(width>=600)await check(width,'R2D','compact header keeps its slot, focused controls stay still and short viewports do not stick',async()=>{
@@ -1190,7 +1190,7 @@ async function runBatch2A(base) {
     await settle(page);
   };
   const language = async (page, lang) => {
-    await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+    await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
     await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
     await settle(page);
   };
@@ -1640,7 +1640,7 @@ async function runBatch2C(base) {
         await page.key('Escape', 'Escape', 27);
         await page.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
         await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
-        await page.ev(`document.querySelector('[data-language="${ui}"]').click();window.scrollTo(0,0)`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="${ui}"]'));window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
         // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
         // Compare are an equal pair under it, the pane included. Since the
@@ -1746,7 +1746,7 @@ async function runBatch2Followup(base) {
   try {
     await page.send('Accessibility.enable');
     for (const lang of ['sk', 'en']) {
-      await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+      await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
       await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
       for (const coarse of [false, true]) {
         for (const width of [600, 650, 700]) {
@@ -2100,9 +2100,9 @@ async function runBatch3A(base) {
         const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
         await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').focus();localStorage.setItem(${JSON.stringify(KEY)},${JSON.stringify(JSON.stringify(ids.slice(1)))});dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(KEY)}}))`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus on the next x');
-        await page.ev(`document.querySelector('[data-language="sk"]').click()`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]') && document.querySelector('#cmp-h').textContent===${JSON.stringify(say('sk', 'r3_cmp_heading', { count: ids.length - 1 }))},why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus kept in Slovak');
-        await page.ev(`document.querySelector('[data-language="en"]').click()`);
+        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
         assert(!page.errors.length && !page.exceptions.length, JSON.stringify([...page.errors, ...page.exceptions]));
       });
     } finally { await page.close(); }
@@ -2489,7 +2489,7 @@ async function runBatch3C(base) {
           watchdog.refresh();
           await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
           await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: coarse });
-          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}'&&innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, 'language and width');
           await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
           await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'compact at top'})`, 3000, 'expanded');
@@ -2936,7 +2936,7 @@ async function runAlignChromeSetup(base) {
     try {
       for (const lang of ['en', 'sk', 'en']) {
         await check(width, 'AL-H1 search hint', `(${lang}${touch ? ', touch' : ''}): the hint fits its field; the long one shows whenever it fits`, async () => {
-          await page.ev(`document.querySelector('[data-language=${lang}]').click()`);
+          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:'language'})`, 3000, 'language');
           await settle(page);
           const m = await page.ev(`(()=>{const i=document.querySelector('#f-search'),s=getComputedStyle(i),w=(text)=>{const n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;n.textContent=text;document.body.append(n);const x=n.getBoundingClientRect().width;n.remove();return x};

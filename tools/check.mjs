@@ -6996,6 +6996,13 @@ check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
   && /function syncSort\(\) \{\s*dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
   && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
+check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
+  /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
+  && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
+check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
+  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /t\(any \? 'r3_ob_done_p' : 'r3_ob_done_p_none'\)\), toolsHint\(\)/.test(read('js/onboarding.js'))
+  && ['r4_faq_tools', 'r4_faq_stored'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
+  && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
 

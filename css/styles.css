@@ -106,6 +106,7 @@
   --flag-se-blue:#006aa7; --flag-se-yellow:#fecc02;
   --flag-fi-blue:#002f6c;
   --flag-no-red:#ba0c2f; --flag-no-blue:#00205b;
+  --flag-fr-blue:#000091; --flag-fr-red:#e1000f;
 
   /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
   --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -1886,6 +1887,9 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 body.has-tray{padding-bottom:calc(var(--tray-h,0px) + 24px)}
 html{scroll-padding-bottom:calc(var(--tray-h,0px) + 24px)}
 @media (prefers-reduced-motion:reduce){.cmp-tray{transition:none}}
+
+/* Setup's done screen names the two row icons; the icons sit in the text. */
+.ob-tools .ic{width:16px;height:16px;vertical-align:-3px;fill:none;color:var(--ink)}
 
 /* ------------------------------------------------- motion preferences */
 

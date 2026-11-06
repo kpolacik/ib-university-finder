@@ -613,6 +613,14 @@ export const UI = {
     "r3_ob_done_h_none": "You haven't added any setup answers.",
     "r3_ob_done_p_none": "Your existing filters still apply. You can change them any time in Filters.",
     "r3_ob_faq": "Read the FAQ",
+    // Leon's review, 2026-11-06: setup and the FAQ explain My list and Compare.
+    "r4_ob_done_tools": "Save programmes to My list with {bookmark} and compare up to 4 side by side with {scales}.",
+    "r4_icon_bookmark": "the bookmark",
+    "r4_icon_scales": "the scales",
+    "r4_faq_tools": "What's the difference between My list and Compare?",
+    "r4_faq_tools_a": "My list keeps every programme you save: you can group them, share them by link or export them as a CSV. Compare puts 2 to 4 programmes side by side. The two are separate, so saving a programme doesn't add it to Compare.",
+    "r4_faq_stored": "Where is my list saved?",
+    "r4_faq_stored_a": "Only in this browser on this device. To move it to another device or send it to someone, use Share in My list.",
     "r3_home_label": "University Finder, all programmes",
   },
   sk: {
@@ -1234,6 +1242,14 @@ export const UI = {
     "r3_ob_done_h_none": "V nastavení si nepridal žiadne odpovede.",
     "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
     "r3_ob_faq": "Prečítaj si časté otázky",
+    // Leon's review, 2026-11-06: setup and the FAQ explain My list and Compare.
+    "r4_ob_done_tools": "Tlačidlom {bookmark} si programy uložíš do Môjho zoznamu a tlačidlom {scales} porovnáš až 4 vedľa seba.",
+    "r4_icon_bookmark": "záložka",
+    "r4_icon_scales": "váhy",
+    "r4_faq_tools": "Aký je rozdiel medzi Mojím zoznamom a Porovnaním?",
+    "r4_faq_tools_a": "V Mojom zozname sú všetky programy, ktoré si uložíš: môžeš ich zoskupiť, poslať odkazom alebo stiahnuť ako CSV. Porovnanie ukáže 2 až 4 programy vedľa seba. Sú to dve oddelené veci, takže uložený program sa do porovnania sám nepridá.",
+    "r4_faq_stored": "Kde je môj zoznam uložený?",
+    "r4_faq_stored_a": "Len v tomto prehliadači na tomto zariadení. Ak ho chceš preniesť na iné zariadenie alebo niekomu poslať, použi Zdieľať v Mojom zozname.",
     "r3_home_label": "University Finder, všetky programy",
   }
 };

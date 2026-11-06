@@ -212,6 +212,8 @@ const CANONICAL = {
   "--flag-fi-blue": "#002f6c",
   "--flag-no-red": "#ba0c2f",
   "--flag-no-blue": "#00205b",
+  "--flag-fr-blue": "#000091",
+  "--flag-fr-red": "#e1000f",
   "--font": "'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif",
   "--fs-12": ".75rem",
   "--fs-13": ".8125rem",
