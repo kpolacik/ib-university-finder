@@ -3049,6 +3049,129 @@ async function runPhoneMyListCompare(base) {
   } finally { await page.close(); }
 }
 
+// Compare and header, round 2 (Leon, 2026-11-06). Phone Compare drops the
+// empty count row. Screenshots go to /tmp/ib-compare-header-r2/smoke.
+async function runCompareHeaderR2(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-compare-header-r2/smoke';
+  await mkdir(shots, { recursive: true });
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], saves = [], touch = width < 600 || height <= 500 } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    if (touch) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const shot = async (page, name) => {
+    await settle(page);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 6).map((r) => r.id);
+
+  // 1. Phone Compare: no count row above it; it starts 12 px from the top with
+  // Close in view; closing brings the row back.
+  for (const width of [320, 390]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 844, { compare: ids.slice(0, 3), saves: ids.slice(0, 1) });
+    try {
+      await check(`${width}/${ui}`, 'CH1 phone Compare', 'no count row while Compare is open; Compare starts 12 px from the top with Close in view; Close brings the row back', async () => {
+        await page.ev(`scrollTo({top:900,behavior:'instant'})`);
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await settle(page);
+        const m = await page.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect();return {status:getComputedStyle(document.querySelector('.status')).display,
+          cmp:Math.round(r('#compare').top),hd:Math.round(r('.hd').bottom),close:[r('#cmp-close').top,r('#cmp-close').bottom],sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await shot(page, `phone-compare-${width}-${ui}`);
+        assert(m.status === 'none', `count row shown: ${m.status}`);
+        assert(m.cmp === 12 && m.hd <= 0, `Compare top ${m.cmp}, header bottom ${m.hd}`);
+        assert(m.close[0] >= 12 && m.close[1] <= 844, `Close at ${m.close}`);
+        assert(await page.ev(`getComputedStyle(document.querySelector('#cmp-close')).borderTopLeftRadius==='8px'`), 'phone Close corners');
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden&&getComputedStyle(document.querySelector('.status')).display==='flex'&&document.activeElement===document.querySelector('#cmp-tray-open'),why:getComputedStyle(document.querySelector('.status')).display+' '+document.activeElement?.id})`, 5000, 'row back, focus on the tray');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 2. Desktop Compare: the footer heading sits at most 48 px under it (it
+  // was 68), nothing is cut off, and the list keeps its 48 px footer gap.
+  for (const [width, height] of [[1440, 900], [1280, 800]]) {
+    const page = await open('?ui=sk', width, height, { compare: ids.slice(0, 3) });
+    try {
+      await check(`${width}x${height}/sk`, 'CH2 desktop Compare', 'the footer heading is 40 to 48 px under Compare, the last row is whole, the list keeps its 48 px gap; Close has 8 px corners', async () => {
+        const list = await page.ev(`getComputedStyle(document.querySelector('.foot')).marginTop`);
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await settle(page);
+        const m = await page.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect();const rows=[...document.querySelectorAll('.cmp-t tbody tr')];
+          return {gap:Math.round(r('.foot h2').top-r('#compare').bottom),last:Math.round(r('#compare').bottom-rows.at(-1).getBoundingClientRect().bottom),sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await page.ev(`scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'})`);
+        await shot(page, `desktop-compare-bottom-${width}`);
+        assert(list === '48px', `list footer gap ${list}`);
+        assert(m.gap >= 40 && m.gap <= 48, `footer heading ${m.gap} px under Compare`);
+        assert(m.last >= 0 && m.last <= 2, `last row cut or padded: ${m.last}`);
+        // 3. Close comparison is rounded like the other outlined buttons, and
+        // keeps its words and its 44 px height.
+        const close = await page.ev(`(()=>{const c=document.querySelector('#cmp-close'),s=getComputedStyle(c),t=getComputedStyle(c.querySelector('.cmp-close-t'));return [s.borderTopLeftRadius,s.borderBottomRightRadius,c.getBoundingClientRect().height,t.position]})()`);
+        assert(close[0] === '8px' && close[1] === '8px' && close[2] >= 44 && close[3] !== 'absolute', `close ${close}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 4. Phones: My list sits in the count row just before Filters, at the top
+  // and stuck, with its saved count, 44 px targets and no overflow; the header
+  // has no copy of it. From 600 px it is back in the header before Compare.
+  for (const width of [320, 360, 390, 430]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 844, { saves: ids.slice(0, 2) });
+    try {
+      await check(`${width}/${ui}`, 'CH4 phone My list', 'in the count row before Filters, top and stuck: 44 px, count shown, nothing overlaps or overflows, not in the header', async () => {
+        for (const y of [0, 1200]) {
+          await page.ev(`scrollTo({top:${y},behavior:'instant'})`);
+          await page.waitFor(`({ok:document.querySelector('.status').classList.contains('is-stuck')===${y > 0},why:'stuck '+document.querySelector('.status').className})`, 5000, 'row state');
+          await settle(page);
+          const m = await page.ev(`(()=>{const q=(s)=>document.querySelector(s),r=(s)=>q(s).getBoundingClientRect();const hl=r('#header-list'),b=r('#header-list .badge'),f=r('#f-more');
+            const parts=['.status .home-tile','.status .cfull','.status .cshort'].map(s=>r(s)).filter(x=>x.width>1&&x.height>1);
+            const overlap=(a,c)=>a.left<c.right-0.5&&c.left<a.right-0.5&&a.top<c.bottom-0.5&&c.top<a.bottom-0.5;
+            return {inRow:q('#header-list').parentElement===q('.status')&&q('#header-list').nextElementSibling===q('#f-more'),inHeader:!!q('.hd #header-list'),
+              size:[hl.width,hl.height,f.height],line:Math.abs((hl.top+hl.height/2)-(f.top+f.height/2))<=1,order:hl.right<=f.left,
+              badge:getComputedStyle(q('#header-list .badge')).display!=='none'&&q('#header-list .badge').textContent==='2'&&b.left>=hl.left-0.5&&b.right<=hl.right+0.5&&b.top>=hl.top-0.5&&b.bottom<=hl.bottom+0.5,
+              clear:!parts.some(p=>overlap(p,hl)||overlap(p,f)),inView:f.right<=innerWidth,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+          if (width === 390) await shot(page, `phone-mylist-row-${width}-${ui}-${y ? 'stuck' : 'top'}`);
+          assert(m.inRow && !m.inHeader, `placement ${JSON.stringify(m)}`);
+          assert(m.size.every((v) => v >= 44) && m.line && m.order, `size/line ${JSON.stringify(m)}`);
+          assert(m.badge, 'saved count not shown inside the button');
+          assert(m.clear && m.inView && m.sw === 0, `overlap/overflow ${JSON.stringify(m)}`);
+        }
+        const { root: doc } = await page.send('DOM.getDocument', { depth: 0 });
+        const { nodeId } = await page.send('DOM.querySelector', { nodeId: doc.nodeId, selector: '#header-list' });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+        const name = nodes[0]?.name?.value ?? '';
+        assert(name.includes(ui === 'sk' ? 'Môj zoznam' : 'My list') && name.includes('2'), 'accessible name: ' + name);
+        // Focus survives a rotation across 600 px, and the button goes back.
+        await page.ev(`document.querySelector('#header-list').focus()`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 700, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:document.querySelector('#header-list').nextElementSibling===document.querySelector('#header-compare')&&document.activeElement===document.querySelector('#header-list'),why:document.querySelector('#header-list').parentElement.className+' '+document.activeElement?.id})`, 5000, 'back in the header, focused');
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:document.querySelector('#header-list').parentElement===document.querySelector('.status')&&document.activeElement===document.querySelector('#header-list'),why:document.activeElement?.id})`, 5000, 'back in the row, focused');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3369,7 +3492,8 @@ async function main() {
     await runBatch3C(base);
     await runAlignListCompare(base);
     await runAlignChromeSetup(base);
-    await runPhoneMyListCompare(base); }
+    await runPhoneMyListCompare(base);
+    await runCompareHeaderR2(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

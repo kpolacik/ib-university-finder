@@ -3546,28 +3546,32 @@ check('country options get an aria-hidden flag between the tick and the name; an
 // Real handlers on the real markup. Each would pass with a wrong target only
 // if the app code were wrong in the same way, so every outcome is asserted.
 const kids = (n) => n.children.filter((c) => typeof c !== 'string');
-appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
+appCheck('actual 600 crossings move .more-filters, Clear all, Copy link and My list as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
   run('facets = buildFacets(allRows); drawChips();');
   // Batch 2 B1 moves the copy help and live status alongside the unchanged controls.
   const help = get('f-copy-help'), feedback = get('f-copy-status');
   const more = tree.querySelector('.more-filters'), clear = get('f-clear'), copy = get('f-copy'), show = get('sheet-show');
   const sheetB = tree.querySelector('.sheet-b'), sheetF = tree.querySelector('.sheet-f'), form = get('filter-form'), status = tree.querySelector('.status');
+  // Since 2026-11-06 My list sits before Filters in the phone count row and
+  // before Compare in the header from 600 px (CH4), so a crossing moves 6 nodes.
+  const list = get('header-list'), compare = get('header-compare'), filtersButton = get('f-more');
   const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy, help, feedback].join() && kids(sheetB)[1] === copy
-    && clear.parent === sheetF && clear.nextElementSibling === show;
-  const wideOk = () => more.parent === form && kids(form).at(-1) === more && clear.parent === status && kids(status).slice(-3).join() === [copy, help, feedback].join();
+    && clear.parent === sheetF && clear.nextElementSibling === show && list.parent === status && list.nextElementSibling === filtersButton;
+  const wideOk = () => more.parent === form && kids(form).at(-1) === more && clear.parent === status && kids(status).slice(-3).join() === [copy, help, feedback].join()
+    && list.nextElementSibling === compare && list.parent === compare.parent;
   if (!narrowOk()) return false;
   const box = get('dd-countries'), tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox');
   box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
   stubDocument.moved = (n) => { moves++; hook(n); };
   flip600(true);
-  if (!wideOk() || moves !== 5) return false;
+  if (!wideOk() || moves !== 6) return false;
   flip600(true); run('placeFilters();');
-  if (moves !== 5) return false;
+  if (moves !== 6) return false;
   // A fresh placement (page load at 600 or wider) finds every node in place:
   // nothing moves, so a control focused before the script ran keeps focus.
   get('f-tuition').focus(); run('appliedBar = null; placeFilters();');
-  if (moves !== 5 || stubDocument.activeElement !== get('f-tuition')) return false;
+  if (moves !== 6 || stubDocument.activeElement !== get('f-tuition')) return false;
   for (let i = 0; i < 10; i++) { flip600(i % 2 === 0 ? false : true); if (!(i % 2 === 0 ? narrowOk() : wideOk())) return false; }
   return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition:desc'
     && get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox') === tick && tree.querySelectorAll('.more-filters').filter((n) => n.parent === form || n.parent === sheetB).length === 1
@@ -7110,6 +7114,34 @@ check('LR7 setup\'s done screen names the bookmark and scales icons in both vers
   && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
+
+section('Compare and header, round 2, 2026-11-06');
+// Leon's second look at Compare and the header. Layout is measured in Chrome
+// by smoke runCompareHeaderR2; these pin the rules.
+{
+  const phone = '(max-width:599.98px)';
+  const chCss = css.slice(css.indexOf('/* ------------------------------------------------- Compare and header, round 2, 2026-11-06 */'),
+    css.indexOf('/* ------------------------------------------------- motion preferences */'));
+  check('CH0 the section sits just above the motion preferences', chCss.length > 0
+    && css.indexOf('Compare and header, round 2, 2026-11-06 */') > css.indexOf("Leon's review, 2026-11-06 */"));
+  check('CH1 phones: while Compare is open the count row is gone, Compare keeps its 12 px gap and opens with it at the top',
+    /display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status', phone))
+    && /margin-top:12px;scroll-margin-top:12px/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.cmp', phone))
+    && !/display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status')));
+  check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
+    /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
+    && lastValue('.foot', 'margin-top') === '48px');
+  check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
+    lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
+  check('CH4 phones: the one My list button moves into the count row before Filters, and back before Compare from 600 px; focus survives the move',
+    /if \(bar\) put\(headerRight, dom\.headerList, dom\.headerCompare\);\s*else put\(dom\.status, dom\.headerList, dom\.more\);/.test(appSrc)
+    && /if \(listFocused && document\.activeElement !== dom\.headerList\) dom\.headerList\.focus/.test(appSrc)
+    && (read('index.html').match(/id="header-list"/g) ?? []).length === 1);
+  check('CH5 phones: in the count row My list is 44 px tall with Filters\' hairline and corners, takes the free space before Filters, and keeps its words for screen readers',
+    /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
+    && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))
+    && /display:block;position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(ruleAt(cssText, '.status #header-list>.hb-l', phone)));
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

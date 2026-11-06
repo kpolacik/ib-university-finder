@@ -1955,6 +1955,44 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 /* Setup's done screen names the two row icons; the icons sit in the text. */
 .ob-tools .ic{width:16px;height:16px;vertical-align:-3px;fill:none;color:var(--ink)}
 
+/* ------------------------------------------------- Compare and header, round 2, 2026-11-06 */
+
+/* Phone Compare (Leon: "either keep navbar … or make it take up more space").
+   While Compare is open the count is hidden, so the count row was an IB tile
+   and Filters over an empty gap. The row goes, and Compare starts at the top
+   of the screen; its own Close is the way back, and the header's logo above
+   it still goes home. --count-height follows the row (round2.js), but the
+   scroll on opening happens first, so the scroll margin is set here too. */
+@media (max-width:599.98px){
+ .stream:has(>#compare:not([hidden]))>.status{display:none}
+ .stream:has(>#compare:not([hidden]))>.cmp{margin-top:12px;scroll-margin-top:12px}
+}
+
+/* Desktop Compare (Leon: "a lil too much space under it"). Compare is short
+   next to the list, so the footer's 48 px gap, made for the end of a long
+   list, left an empty band under it. While Compare is open the gap is 24 px. */
+@media (min-width:600px){
+ body:has(#compare:not([hidden])) .foot{margin-top:24px}
+}
+
+/* "Close comparison" was "too angular" on desktop (4 px, the control token):
+   it gets the 8 px corners of the other outlined buttons ("Show the original",
+   the header's buttons). Phones already had them. */
+#cmp-close{border-radius:8px}
+
+/* Phones: My list sits in the count row, just before Filters (app.js,
+   placeFilters), since the header scrolls away and that row sticks. It shows
+   its bookmark and saved count; the words stay for screen readers (the
+   header's display:none had dropped them from its name). Same height,
+   hairline and corners as Filters; at 360 px and under the count moves to
+   the icon's corner (the older #header-list rules). */
+@media (max-width:599.98px){
+ .status #header-list{flex:none;height:44px;margin-left:auto;padding:0 10px;gap:6px;border-color:var(--hairline);border-radius:8px}
+ .status #header-list~.more{margin-left:0}
+ .status #header-list>.hb-l{display:block;position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+@media (max-width:360px){.status #header-list{padding:0}}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and
