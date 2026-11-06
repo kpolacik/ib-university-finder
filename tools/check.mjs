@@ -7091,5 +7091,20 @@ check('LR7 setup\'s done screen names the bookmark and scales icons in both vers
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
 
+section('Compare and header, round 2, 2026-11-06');
+// Leon's second look at Compare and the header. Layout is measured in Chrome
+// by smoke runCompareHeaderR2; these pin the rules.
+{
+  const phone = '(max-width:599.98px)';
+  const chCss = css.slice(css.indexOf('/* ------------------------------------------------- Compare and header, round 2, 2026-11-06 */'),
+    css.indexOf('/* ------------------------------------------------- motion preferences */'));
+  check('CH0 the section sits just above the motion preferences', chCss.length > 0
+    && css.indexOf('Compare and header, round 2, 2026-11-06 */') > css.indexOf("Leon's review, 2026-11-06 */"));
+  check('CH1 phones: while Compare is open the count row is gone, Compare keeps its 12 px gap and opens with it at the top',
+    /display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status', phone))
+    && /margin-top:12px;scroll-margin-top:12px/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.cmp', phone))
+    && !/display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status')));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

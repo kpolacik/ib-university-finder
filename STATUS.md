@@ -606,6 +606,14 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Compare and header, round 2 (2026-11-06, local `compare-header-r2`):**
+Leon's second look. On phones, while Compare is open, the count row (an IB
+tile and Filters over an empty gap, since the count hides in Compare) is
+gone: Compare starts 12 px from the top, its Close is the way back and the
+header's logo above it still goes home. Rules: CSS section "Compare and
+header, round 2, 2026-11-06"; checks: check.mjs section of the same name,
+smoke `runCompareHeaderR2`.
+
 **Phone My list and Compare (2026-11-06, local `fix-phone-mylist-compare`):**
 Leon, on an iPhone 16 (393 x 852), found the phone My list box took half the
 screen and Compare looked rough. My list's box is now Back with a "More" /

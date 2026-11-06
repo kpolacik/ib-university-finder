@@ -3018,6 +3018,60 @@ async function runPhoneMyListCompare(base) {
   } finally { await page.close(); }
 }
 
+// Compare and header, round 2 (Leon, 2026-11-06). Phone Compare drops the
+// empty count row. Screenshots go to /tmp/ib-compare-header-r2/smoke.
+async function runCompareHeaderR2(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-compare-header-r2/smoke';
+  await mkdir(shots, { recursive: true });
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], saves = [], touch = width < 600 || height <= 500 } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    if (touch) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const shot = async (page, name) => {
+    await settle(page);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 6).map((r) => r.id);
+
+  // 1. Phone Compare: no count row above it; it starts 12 px from the top with
+  // Close in view; closing brings the row back.
+  for (const width of [320, 390]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, 844, { compare: ids.slice(0, 3), saves: ids.slice(0, 1) });
+    try {
+      await check(`${width}/${ui}`, 'CH1 phone Compare', 'no count row while Compare is open; Compare starts 12 px from the top with Close in view; Close brings the row back', async () => {
+        await page.ev(`scrollTo({top:900,behavior:'instant'})`);
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await settle(page);
+        const m = await page.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect();return {status:getComputedStyle(document.querySelector('.status')).display,
+          cmp:Math.round(r('#compare').top),hd:Math.round(r('.hd').bottom),close:[r('#cmp-close').top,r('#cmp-close').bottom],sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await shot(page, `phone-compare-${width}-${ui}`);
+        assert(m.status === 'none', `count row shown: ${m.status}`);
+        assert(m.cmp === 12 && m.hd <= 0, `Compare top ${m.cmp}, header bottom ${m.hd}`);
+        assert(m.close[0] >= 12 && m.close[1] <= 844, `Close at ${m.close}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden&&getComputedStyle(document.querySelector('.status')).display==='flex'&&document.activeElement===document.querySelector('#cmp-tray-open'),why:getComputedStyle(document.querySelector('.status')).display+' '+document.activeElement?.id})`, 5000, 'row back, focus on the tray');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3338,7 +3392,8 @@ async function main() {
     await runBatch3C(base);
     await runAlignListCompare(base);
     await runAlignChromeSetup(base);
-    await runPhoneMyListCompare(base); }
+    await runPhoneMyListCompare(base);
+    await runCompareHeaderR2(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
