@@ -839,6 +839,17 @@ export function renderCompare(container, rows, table, { onlyDifferences = false,
   head.append(top);
   const body = el('tbody');
   for (const fact of facts) {
+    // Phones show the fact's name on its own line above the values (styles.css,
+    // "Phone My list and Compare"): in a 6.5rem column the long Slovak names
+    // wrapped to five lines. It is a copy for the eye; the row header below
+    // still names every cell for screen readers, so this one is hidden from them.
+    const caption = el('tr', 'cmp-lr');
+    caption.setAttribute('aria-hidden', 'true');
+    const captionCell = el('td');
+    captionCell.setAttribute('colspan', String(rows.length + 1));
+    captionCell.append(el('span', '', fact.label));
+    caption.append(captionCell);
+    body.append(caption);
     const tr = el('tr');
     tr.setAttribute('data-fact', fact.key);
     const th = el('th', '', fact.label);

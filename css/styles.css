@@ -1839,6 +1839,58 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
 }
 
+/* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */
+
+/* My list on phones (Leon, iPhone 16, 393 x 852: "My list menu on phones is
+   50% the top box. this is WAYYY too much"). The box is three short lines:
+   Back with More at its right, the title and count, then Group by. More
+   (js/app.js, listMoreOpen) shows Share, Export, Print and Clear in the same
+   2 x 2 grid as before, and the two footnotes. A shared or empty list has no
+   More. Back takes the room More leaves (its words wrap before More would),
+   and the ::before is an empty full-width item that ends that first line,
+   so the title never moves up beside More. From 600 px More is never shown
+   and nothing is held back. */
+.ml-more{display:none}
+@media (max-width:599.98px){
+ .mylist.is-list .ml-row{gap:2px 8px}
+ .mylist.is-list .ml-row:has(>.ml-more:not([hidden]))::before{content:"";flex:0 0 100%;height:0}
+ .mylist.is-list .ml-open{flex:1 1 0;min-width:0;white-space:normal;text-align:left}
+ .mylist.is-list .ml-more:not([hidden]){order:-1;display:inline-flex;flex:none;gap:4px;height:44px;padding:0 8px 0 10px;border-color:var(--hairline);border-radius:8px;font-size:var(--fs-14)}
+ .mylist.is-list .ml-more[aria-expanded="true"]{border-color:var(--accent)}
+ .mylist.is-list .ml-more[aria-expanded="true"] .ic{transform:rotate(180deg)}
+ .mylist.is-list:not(.ml-more-open) :is(#ml-share,.ml-tools>.ml-mine,#ml-origin){display:none}
+}
+
+/* Compare on phones (Leon: "a lil ugly"). Close looks like the header's
+   buttons (hairline, 8 px corners) instead of a heavy square. Each fact's name
+   is a line above its values (render.js, tr.cmp-lr), so the values get the
+   full width and "Školné + životné náklady na 12 mesiacov (odhad)" is one
+   line, not five in a 6.5rem column. That column is still there for screen
+   readers, at zero width. The arrows for three or four programmes match
+   Close. Save and the "x" share one line at the foot of
+   each programme's header, so the "x" sits by its programme, not at the far
+   edge above it. Rows, header and hint all start 12 px in. */
+.cmp-lr{display:none}
+@media (max-width:599.98px){
+ #cmp-close,.cmp-nav .btn{border-color:var(--hairline);border-radius:8px}
+ .cmp-head{padding-left:12px}
+ .cmp-one{padding:10px 12px;border-bottom:1px solid var(--hairline);font-size:var(--fs-13);color:var(--ink-2)}
+ .cmp .cmp-t tbody th,.cmp .cmp-t .cmp-c{width:0;padding:0;border:0;overflow:hidden;white-space:nowrap;clip-path:inset(50%)}
+ .cmp-scroll{scroll-padding-left:0}
+ .cmp-t[data-n="3"]{width:150%}
+ .cmp-t[data-n="4"]{width:200%}
+ .cmp-t tr.cmp-lr{display:table-row}
+ .cmp .cmp-t tr.cmp-lr>td{padding:10px 0 0;border-bottom:0}
+ /* Sticky, so the name stays in view while three or four programmes scroll sideways. */
+ .cmp-lr span{position:sticky;left:0;display:inline-block;box-sizing:border-box;max-width:calc(100vw - 2 * var(--gut) - 2px);padding:0 12px;font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
+ .cmp .cmp-t tbody tr:not(.cmp-lr)>td{padding:4px 12px 10px}
+ .cmp .cmp-t th.cmp-p{padding:10px 12px 62px}
+ .cmp .cmp-t th.cmp-p .cmp-acts{position:absolute;left:12px;right:12px;bottom:8px;display:flex;align-items:center;gap:4px}
+ .cmp .cmp-t th.cmp-p .cmp-save{position:static;flex:none;width:min(calc(100% - 48px),5.75rem);padding:0 8px;border-color:var(--hairline);border-radius:8px;font-size:var(--fs-13)}
+ .cmp .cmp-t th.cmp-p .cmp-save[aria-pressed="true"]{border-color:var(--accent)}
+ .cmp .cmp-t th.cmp-p .cmp-x{position:static;flex:none;border-radius:8px}
+}
+
 /* ------------------------------------------------- Leon's review, 2026-11-06 */
 
 /* University names are what students scan for, so the row never cuts them

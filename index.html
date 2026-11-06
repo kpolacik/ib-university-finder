@@ -277,6 +277,10 @@
         <button type="button" id="ml-show-all" class="btn btn-q" hidden data-i18n="show_all_saves">Show all saves</button>
         <button type="button" id="ml-save-shared" class="btn btn-p btn-s" hidden data-i18n="save_these_to_my_list">Save these to my list</button>
         <button type="button" id="f-shortlist-only" class="btn btn-s ml-open"><svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg><span class="ml-open-t" data-i18n="open_my_list">Open my list</span></button>
+        <!-- Phones only (styles.css, "Phone My list and Compare"): Share, Export,
+             Print, Clear and the two footnotes wait behind this, so the list
+             starts near the top of the screen. -->
+        <button type="button" id="ml-more" class="btn btn-s ml-more" aria-expanded="false" aria-controls="ml-tools" hidden><span data-i18n="ml_more">More</span><svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       </div>
       <p class="ml-note" id="ml-note" hidden></p>
       <div class="ml-tools" id="ml-tools" hidden>

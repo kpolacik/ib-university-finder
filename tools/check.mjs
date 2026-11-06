@@ -6980,6 +6980,91 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
   /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
 
+section("Phone My list and Compare, 2026-11-06");
+// Leon (iPhone 16, 393 x 852): the phone My list box took half the screen,
+// and Compare looked rough. Layout is measured in Chrome by smoke
+// runPhoneMyListCompare; these pin the markup, the state and the rules.
+{
+  const phone = '(max-width:599.98px)';
+  const rawHtml = read('index.html');
+  const pmCss = css.slice(css.indexOf('/* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */'),
+    css.indexOf("/* ------------------------------------------------- Leon's review, 2026-11-06 */"));
+  check('PM0 the section sits just above Leon\'s review', pmCss.length > 0
+    && css.indexOf('Phone My list and Compare, 2026-11-06 */') < css.indexOf("Leon's review, 2026-11-06 */"));
+  check('PM1 My list has a phone-only More toggle in its first row, closed, controlling the tools, in EN and SK',
+    /<div class="ml-row">[\s\S]*?<button type="button" id="ml-more" class="btn btn-s ml-more" aria-expanded="false" aria-controls="ml-tools" hidden><span data-i18n="ml_more">More<\/span>[\s\S]*?<\/div>\s*<p class="ml-note"/.test(rawHtml)
+    && UI.en.ml_more === 'More' && UI.sk.ml_more === 'Viac'
+    && /display:none/.test(ruleAt(cssText, '.ml-more')) && /display:inline-flex/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone)));
+  check('PM2 phones: while More is closed Share, Export, Print, Clear and both footnotes are hidden; Group by never is',
+    /@media \(max-width:599\.98px\)\{[^@]*\.mylist\.is-list:not\(\.ml-more-open\) :is\(#ml-share,\.ml-tools>\.ml-mine,#ml-origin\)\{display:none\}/.test(pmCss)
+    && /class="btn btn-s ml-mine"[^>]*id="export-csv"|id="export-csv" class="btn btn-s ml-mine"/.test(rawHtml)
+    && /id="print-shortlist" class="btn btn-s ml-mine"/.test(rawHtml) && /id="clear-shortlist" class="btn btn-q ml-mine"/.test(rawHtml)
+    && /class="help ml-mine ml-export-note"/.test(rawHtml) && !/ml-group/.test(pmCss));
+  check('PM3 phones: Back and More share the first line (Back gives way, never More), and the title starts the next',
+    /flex:1 1 0;min-width:0/.test(ruleAt(cssText, '.mylist.is-list .ml-open', phone))
+    && /order:-1/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone)) && /flex:none/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone))
+    && /content:"";flex:0 0 100%;height:0/.test(ruleAt(cssText, '.mylist.is-list .ml-row:has(>.ml-more:not([hidden]))::before', phone)));
+}
+appCheck('PM4 More opens and closes the list tools, closes Share with it, and is shut and hidden again outside the own list', ({ run, get, fire }) => {
+  const more = get('ml-more'), bar = get('shortlist-bar');
+  const state = () => [more.hidden, more.getAttribute('aria-expanded'), bar.classList.contains('ml-more-open')].join();
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  if (!more.hidden) return false;
+  fire(get('f-shortlist-only'), 'click');
+  if (state() !== 'false,false,false') return false;
+  fire(more, 'click');
+  if (state() !== 'false,true,true') return false;
+  get('ml-share').open = true;
+  fire(more, 'click');
+  if (state() !== 'false,false,false' || get('ml-share').open) return false;
+  fire(more, 'click');
+  fire(get('f-shortlist-only'), 'click');
+  if (run('state.shortlistOnly') !== false || state() !== 'true,false,false') return false;
+  fire(get('f-shortlist-only'), 'click');
+  return state() === 'false,false,false';
+});
+appCheck('PM5 an empty My list has no More', ({ run, get, fire }) => {
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  fire(get('ml-more'), 'click');
+  run('shortlist.clear(); update();');
+  return run('state.shortlistOnly') === true && get('ml-more').hidden && get('ml-more').getAttribute('aria-expanded') === 'false'
+    && !get('shortlist-bar').classList.contains('ml-more-open');
+});
+await asyncAppCheck('PM6 a shared list has no More (none of its tools apply)', async ({ run, get, context, settle }) => {
+  context.location.search = `?list=${context.fixture[0].id}`;
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('ml-title').textContent === 'Shared list' && get('ml-more').hidden;
+}, { boot: true });
+{
+  const rows = [live[0], live[1], live[2]];
+  const table = compareMod.compareTable(rows, noFilters());
+  const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, table, { onlyDifferences: false }); return div; });
+  const body = findAll(box, (n) => n.tagName === 'tbody')[0];
+  const trs = body.children;
+  const pairs = table.map((fact, i) => [trs[2 * i], trs[2 * i + 1], fact]);
+  check('PM7 Compare draws each fact\'s name as an aria-hidden line spanning every column, just before the fact\'s own row; the row headers stay',
+    trs.length === 2 * table.length && pairs.every(([caption, row, fact]) => caption.classList.contains('cmp-lr') && caption.getAttribute('aria-hidden') === 'true'
+      && caption.children.length === 1 && caption.children[0].tagName === 'td' && caption.children[0].getAttribute('colspan') === '4'
+      && caption.textContent === fact.label && row.getAttribute('data-fact') === fact.key
+      && row.children[0].tagName === 'th' && row.children[0].getAttribute('scope') === 'row' && row.children[0].textContent === fact.label));
+  const phone = '(max-width:599.98px)';
+  check('PM8 the fact-name line shows only on phones, where the name column shrinks to zero width but stays in the table',
+    /display:none/.test(ruleAt(cssText, '.cmp-lr')) && /display:table-row/.test(ruleAt(cssText, '.cmp-t tr.cmp-lr', phone))
+    && /width:0;padding:0;border:0;overflow:hidden;white-space:nowrap;clip-path:inset\(50%\)/.test(ruleAt(cssText, '.cmp .cmp-t tbody th', phone))
+    && /width:0/.test(ruleAt(cssText, '.cmp .cmp-t .cmp-c', phone)) && !/display:none/.test(ruleAt(cssText, '.cmp .cmp-t tbody th', phone))
+    && /position:sticky;left:0/.test(ruleAt(cssText, '.cmp-lr span', phone))
+    && /width:150%/.test(ruleAt(cssText, '.cmp-t[data-n="3"]', phone)) && /width:200%/.test(ruleAt(cssText, '.cmp-t[data-n="4"]', phone))
+    && /scroll-padding-left:0/.test(ruleAt(cssText, '.cmp-scroll', phone)));
+  check('PM9 phones: Save and the "x" share one line at the foot of the programme\'s header; Close and the arrows are quiet like the header buttons',
+    /position:absolute;left:12px;right:12px;bottom:8px;display:flex/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-acts', phone))
+    && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-save', phone)) && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-x', phone))
+    && /padding:10px 12px 62px/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p', phone))
+    && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone))
+    && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.cmp-nav .btn', phone))
+    && /border-bottom:1px solid var\(--hairline\)/.test(ruleAt(cssText, '.cmp-one', phone)));
+}
+
 section("Leon's review, 2026-11-06");
 // The last value set for a property across every plain rule for a selector:
 // later rules win, so an old nowrap above a later normal is fine.

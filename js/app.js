@@ -109,6 +109,7 @@ const dom = {
   listNote: document.getElementById('ml-note'),
   listTools: document.getElementById('ml-tools'),
   listOrigin: document.getElementById('ml-origin'),
+  listMore: document.getElementById('ml-more'),
   groupBy: document.getElementById('ml-group'),
   share: document.getElementById('ml-share'),
   sharePoints: document.getElementById('ml-share-points'),
@@ -154,6 +155,9 @@ const persistPreferences = debounce(() => {
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
 let groupBy = 'deadline';
+// Phones: whether My list's More is open (Share, Export, Print, Clear and the
+// footnotes; styles.css hides them otherwise). Closed again on leaving the list.
+let listMoreOpen = false;
 // Ids of the programmes in the list view, the rows on screen that carry a
 // group heading, and whether the last save failed.
 let listIds = [];
@@ -875,6 +879,12 @@ function wireList() {
   dom.groupBy.addEventListener('change', () => {
     groupBy = dom.groupBy.value;
     update();
+  });
+  dom.listMore.addEventListener('click', () => {
+    listMoreOpen = !listMoreOpen;
+    // An open Share panel would otherwise show again with the next More.
+    if (!listMoreOpen) dom.share.open = false;
+    syncListMore();
   });
   dom.compareClose.addEventListener('click', () => closeCompare(true));
   // A column's Save and "x"; Browse sits outside the table, in the empty state.
@@ -2045,6 +2055,15 @@ function renderListBar() {
   dom.share.hidden = mode !== 'mine';
   if (dom.groupBy.value !== groupBy) dom.groupBy.value = groupBy;
   if (mode === 'mine' && dom.share.open) syncShare();
+  // More holds only the own list's tools, so a shared or empty list has none.
+  dom.listMore.hidden = mode !== 'mine' || emptyMine;
+  if (dom.listMore.hidden) listMoreOpen = false;
+  syncListMore();
+}
+
+function syncListMore() {
+  dom.listMore.setAttribute('aria-expanded', String(listMoreOpen));
+  dom.shortlistBar.classList.toggle('ml-more-open', listMoreOpen);
 }
 
 // The "set" look on a field whose value is in force: valid, so fee 0 counts and

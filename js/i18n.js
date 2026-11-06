@@ -622,6 +622,7 @@ export const UI = {
     "r4_faq_stored": "Where is my list saved?",
     "r4_faq_stored_a": "Only in this browser on this device. To move it to another device or send it to someone, use Share in My list.",
     "r3_home_label": "University Finder, all programmes",
+    "ml_more": "More",
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1251,6 +1252,7 @@ export const UI = {
     "r4_faq_stored": "Kde je môj zoznam uložený?",
     "r4_faq_stored_a": "Len v tomto prehliadači na tomto zariadení. Ak ho chceš preniesť na iné zariadenie alebo niekomu poslať, použi Zdieľať v Mojom zozname.",
     "r3_home_label": "University Finder, všetky programy",
+    "ml_more": "Viac",
   }
 };
 
