@@ -1958,6 +1958,13 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .stream:has(>#compare:not([hidden]))>.cmp{margin-top:12px;scroll-margin-top:12px}
 }
 
+/* Desktop Compare (Leon: "a lil too much space under it"). Compare is short
+   next to the list, so the footer's 48 px gap, made for the end of a long
+   list, left an empty band under it. While Compare is open the gap is 24 px. */
+@media (min-width:600px){
+ body:has(#compare:not([hidden])) .foot{margin-top:24px}
+}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and

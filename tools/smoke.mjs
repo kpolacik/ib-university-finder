@@ -3070,6 +3070,29 @@ async function runCompareHeaderR2(base) {
     } finally { await page.close(); }
   }
   watchdog.refresh();
+
+  // 2. Desktop Compare: the footer heading sits at most 48 px under it (it
+  // was 68), nothing is cut off, and the list keeps its 48 px footer gap.
+  for (const [width, height] of [[1440, 900], [1280, 800]]) {
+    const page = await open('?ui=sk', width, height, { compare: ids.slice(0, 3) });
+    try {
+      await check(`${width}x${height}/sk`, 'CH2 desktop Compare', 'the footer heading is 40 to 48 px under Compare, the last row is whole, and the list keeps its 48 px gap', async () => {
+        const list = await page.ev(`getComputedStyle(document.querySelector('.foot')).marginTop`);
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await settle(page);
+        const m = await page.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect();const rows=[...document.querySelectorAll('.cmp-t tbody tr')];
+          return {gap:Math.round(r('.foot h2').top-r('#compare').bottom),last:Math.round(r('#compare').bottom-rows.at(-1).getBoundingClientRect().bottom),sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await page.ev(`scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'})`);
+        await shot(page, `desktop-compare-bottom-${width}`);
+        assert(list === '48px', `list footer gap ${list}`);
+        assert(m.gap >= 40 && m.gap <= 48, `footer heading ${m.gap} px under Compare`);
+        assert(m.last >= 0 && m.last <= 2, `last row cut or padded: ${m.last}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 async function runAlignChromeSetup(base) {

@@ -7104,6 +7104,9 @@ section('Compare and header, round 2, 2026-11-06');
     /display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status', phone))
     && /margin-top:12px;scroll-margin-top:12px/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.cmp', phone))
     && !/display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status')));
+  check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
+    /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
+    && lastValue('.foot', 'margin-top') === '48px');
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
