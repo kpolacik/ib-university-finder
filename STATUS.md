@@ -606,6 +606,19 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Phone My list and Compare (2026-11-06, local `fix-phone-mylist-compare`):**
+Leon, on an iPhone 16 (393 x 852), found the phone My list box took half the
+screen and Compare looked rough. My list's box is now Back with a "More" /
+"Viac" button beside it, the title and count, and Group by (146 px, was
+330). More shows Share, Export, Print and Clear in the old 2 x 2 grid plus
+both footnotes; a shared or empty list has no More; from 600 px nothing
+changes. In phone Compare each fact's name is a line above its values (an
+aria-hidden copy; the row header stays for screen readers at zero width),
+Save and the "x" share one line under the programme's name, and Close and
+the arrows have the header buttons' hairline and 8 px corners. Rules: CSS
+section "Phone My list and Compare, 2026-11-06"; checks: check.mjs section
+of the same name, smoke `runPhoneMyListCompare`.
+
 **Alignment review (2026-11-05, local `align-fix-chrome-setup`):** Search
 keeps its short hint if canvas measurement is unavailable. On phones the
 setup footer's keyboard order follows its new layout: Next, Skip, Back.

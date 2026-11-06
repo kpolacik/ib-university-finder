@@ -614,6 +614,7 @@ export const UI = {
     "r3_ob_done_p_none": "Your existing filters still apply. You can change them any time in Filters.",
     "r3_ob_faq": "Read the FAQ",
     "r3_home_label": "University Finder, all programmes",
+    "ml_more": "More",
   },
   sk: {
     "r2_programme_asc": "Program — od A po Z",
@@ -1235,6 +1236,7 @@ export const UI = {
     "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
     "r3_ob_faq": "Prečítaj si časté otázky",
     "r3_home_label": "University Finder, všetky programy",
+    "ml_more": "Viac",
   }
 };
 

@@ -678,6 +678,8 @@ async function interactions(page, at, want) {
         return { ok: r.right <= innerWidth + 1 && r.width > 0, why: 'the second programme is off screen' };
       })()`, 5000, 'a two-column compare table');
       await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+      // Phones keep Share behind My list's More (2026-11-06).
+      if (at < 600) await page.click(`document.querySelector('#ml-more')`, 'More');
       await page.click(`document.querySelector('#ml-share summary')`, 'Share');
       // The link is filled on the panel's toggle event, just after the click.
       const { url } = await page.waitFor(`({ ok: document.querySelector('#ml-share-url').value !== '', url: document.querySelector('#ml-share-url').value, why: 'no link yet' })`, 5000, 'the share link');
@@ -1150,6 +1152,8 @@ async function runReview2(base) {
         await phone.waitFor(`({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'reload pending'})`, 15000, 'the reloaded page');
         await phone.click(`document.querySelector('#header-list')`, 'My list');
         await phone.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list') && !document.querySelector('#ml-tools').hidden,why:'list view not open'})`, 5000, 'the list view');
+        // The tools wait behind More since 2026-11-06 (runPhoneMyListCompare).
+        await phone.click(`document.querySelector('#ml-more')`, 'More');
         // Batch 3 B2 (Leon, 2026-11-05) edited this: Clear my list is now an
         // outlined button in the even grid, not quiet text that may sit alone
         // (it looked like an empty cell). The Compare picker, while it still
@@ -1545,6 +1549,8 @@ async function runBatch2B(base) {
         await page.waitFor(`({ok:${el('header-list-count')}.textContent==='3',why:'header count '+${el('header-list-count')}.textContent})`,5000,'three saves');
         if (width===600) return;
         await page.click(el('header-list'),'Open My list');
+        // Phones keep Share behind My list's More (2026-11-06).
+        if (width < 600) await page.click(el('ml-more'),'More');
         await page.click(`document.querySelector('#ml-share > summary')`,'Share panel');
         await page.waitFor(rendered('#ml-share-help'),5000,'share help');
         assert(await page.ev(`${el('ml-share-help')}.textContent===${JSON.stringify(text.r2_share_help)}`),'wrong share help');
@@ -2236,6 +2242,9 @@ async function runBatch3B(base) {
       await seed(page, n);
       await page.click(`document.querySelector('#header-list')`, 'header My list');
       await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list') && !document.querySelector('#ml-tools').hidden,why:'list view not open'})`, 5000, 'the list view');
+      // Since 2026-11-06 the phone tools wait behind More (runPhoneMyListCompare);
+      // opened once here, they stay open through the widths below.
+      await page.click(`document.querySelector('#ml-more')`, 'More');
       for (const width of [320, 390, 599]) {
         await check(`${width}/${ui}`, 'B3B list toolbar', `${n} saved: back top-left, an even 2 x 2 grid, Clear outlined, 44 px, no overflow`, async () => {
           await resize(page, width);
@@ -2785,7 +2794,9 @@ async function runAlignListCompare(base) {
         assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));
         assert(m.room.right >= 4 && m.room.top >= 4, 'x room ' + JSON.stringify(m.room));
         assert(m.heights.every((h) => h === 44), 'heights ' + JSON.stringify(m.heights));
-        assert(m.base <= 1.5 && m.linkBase <= 1.5 && m.links.every(Boolean), 'baselines/link ' + JSON.stringify([m.base, m.linkBase, m.links]));
+        // Below 600 px the fact names are a line above the values (2026-11-06,
+        // runPhoneMyListCompare), so a shared baseline applies from 600 px only.
+        assert((width < 600 || (m.base <= 1.5 && m.linkBase <= 1.5)) && m.links.every(Boolean), 'baselines/link ' + JSON.stringify([m.base, m.linkBase, m.links]));
         if (width < 1024) assert(m.label <= 6.5 * 16 + 20 + 0.5, 'label column ' + m.label);
         assert(m.page, 'the page scrolls sideways');
         // Saving changes the word, never the width.
@@ -2899,6 +2910,112 @@ async function runAlignListCompare(base) {
 // Alignment audit fixes (2026-11-05, Leon: "all is aligned"): header, the
 // phone Filters sheet, My list, setup and the FAQ. Each check measures the
 // layout in Chrome at the widths and languages the audit named.
+// Phone My list and Compare (Leon, iPhone 16, 393 x 852, 2026-11-06). My list's
+// box took half the screen: it now keeps Back, More, the title and Group by,
+// and More opens the other tools. Compare puts each fact's name above its
+// values, Save and "x" on one line, and a quiet Close. Measured at 320, 375 and
+// 393 px in EN and SK; screenshots go to /tmp/ib-phone-mlc/smoke.
+async function runPhoneMyListCompare(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-phone-mlc/smoke';
+  await mkdir(shots, { recursive: true });
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], saves = [] } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'phone page');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'phone reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const shot = async (page, name) => {
+    await page.ev(`scrollTo({top:0,behavior:'instant'})`);
+    await settle(page);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 6).map((r) => r.id);
+  const visible = `(s)=>{const n=document.querySelector(s);return !!n&&getComputedStyle(n).display!=='none'&&n.getBoundingClientRect().height>0}`;
+
+  for (const [width, height] of [[320, 700], [375, 812], [393, 852]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, height, { saves: ids });
+    try {
+      await check(`${width}x${height}/${ui}`, 'PM My list', 'the box is at most a quarter of an 852 px screen; Back and More share its first line; More shows and hides every tool', async () => {
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'list view not open'})`, 5000, 'the list view');
+        await settle(page);
+        const tools = ['#ml-share>summary', '#export-csv', '#print-shortlist', '#clear-shortlist', '.ml-export-note', '#ml-origin'];
+        const m = await page.ev(`(()=>{const v=${visible},r=(s)=>{const b=document.querySelector(s).getBoundingClientRect();return {top:b.top,bottom:b.bottom,left:b.left,right:b.right,width:b.width,height:b.height}};
+          return {bar:Math.round(r('#shortlist-bar').height),back:r('#f-shortlist-only'),more:r('#ml-more'),title:r('#ml-h'),group:v('#ml-group'),
+            shown:${JSON.stringify(tools)}.filter(v),expanded:document.querySelector('#ml-more').getAttribute('aria-expanded'),sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await shot(page, `mylist-${width}-${ui}`);
+        assert(m.bar <= 852 / 4, `My list box ${m.bar} px`);
+        assert(Math.abs(m.back.top - m.more.top) <= 1 && m.more.height >= 44 && m.more.width >= 44 && m.back.right <= m.more.left && m.title.top >= m.more.bottom, `first line ${JSON.stringify(m)}`);
+        assert(m.group && m.shown.length === 0 && m.expanded === 'false', `closed: ${JSON.stringify(m)}`);
+        assert(m.sw === 0, `page overflows by ${m.sw}`);
+        await page.click(`document.querySelector('#ml-more')`, 'More');
+        await settle(page);
+        const o = await page.ev(`(()=>{const v=${visible};return {shown:${JSON.stringify(tools)}.filter(v),heights:['#ml-share>summary','#export-csv','#print-shortlist','#clear-shortlist'].map(s=>document.querySelector(s).getBoundingClientRect().height),expanded:document.querySelector('#ml-more').getAttribute('aria-expanded'),sw:document.documentElement.scrollWidth-innerWidth}})()`);
+        await shot(page, `mylist-more-${width}-${ui}`);
+        assert(o.shown.length === tools.length && o.heights.every((h) => h >= 44) && o.expanded === 'true' && o.sw === 0, `open: ${JSON.stringify(o)}`);
+        await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        await page.click(`document.querySelector('#ml-more')`, 'More (close)');
+        const c = await page.ev(`(()=>{const v=${visible};return {shown:${JSON.stringify(tools)}.filter(v),share:document.querySelector('#ml-share').open}})()`);
+        assert(c.shown.length === 0 && !c.share, `closed again: ${JSON.stringify(c)}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+
+    for (const n of [1, 2, 4]) {
+      const page = await open(`?ui=${ui}`, width, height, { compare: ids.slice(0, n), saves: ids.slice(0, 1) });
+      try {
+        await check(`${width}x${height}/${ui}/${n}`, 'PM Compare', 'fact names sit above their values; Save and "x" share a line under the name; Close is quiet; 44 px targets', async () => {
+          await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+          await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&document.querySelectorAll('th.cmp-p').length===${n},why:'compare not open'})`, 5000, 'compare');
+          await settle(page);
+          const m = await page.ev(`(()=>{const r=(n)=>n.getBoundingClientRect();
+            const cols=[...document.querySelectorAll('th.cmp-p')].map(th=>{const s=r(th.querySelector('.cmp-save')),x=r(th.querySelector('.cmp-x')),t=r(th),u=r(th.querySelector('.cmp-u'));
+              return {line:Math.abs((s.top+s.height/2)-(x.top+x.height/2))<=1,gap:Math.round(x.left-s.right),below:s.top>=u.bottom,inside:x.right<=t.right+0.5&&s.left>=t.left-0.5,h:[s.height,x.width,x.height]}});
+            const facts=[...document.querySelectorAll('.cmp-t tbody tr[data-fact]')].map(tr=>{const cap=tr.previousElementSibling,span=cap.querySelector('span'),th=tr.querySelector('th'),td=tr.querySelector('td');
+              return {cap:cap.classList.contains('cmp-lr')&&getComputedStyle(cap).display==='table-row'&&span.textContent===th.textContent,above:r(span).bottom<=r(td).top+0.5,th:r(th).width,left:Math.abs(r(span).left+parseFloat(getComputedStyle(span).paddingLeft)-(r(td).left+parseFloat(getComputedStyle(td).paddingLeft)))<=1}});
+            const close=document.querySelector('#cmp-close'),cs=getComputedStyle(close);
+            return {cols,facts,close:[r(close).width,r(close).height,cs.borderTopLeftRadius,cs.borderTopColor===getComputedStyle(document.querySelector('.cmp')).borderTopColor],
+              one:${n === 1}?getComputedStyle(document.querySelector('#cmp-one')).borderBottomWidth:null,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+          await shot(page, `compare-${n}-${width}-${ui}`);
+          assert(m.cols.every((c) => c.line && c.gap >= 0 && c.gap <= 12 && c.below && c.inside && c.h.every((h) => h >= 44)), 'columns ' + JSON.stringify(m.cols));
+          assert(m.facts.length > 0 && m.facts.every((f) => f.cap && f.above && f.th <= 1 && f.left), 'facts ' + JSON.stringify(m.facts));
+          assert(m.close[0] >= 44 && m.close[1] >= 44 && m.close[2] === '8px' && m.close[3], 'close ' + JSON.stringify(m.close));
+          assert(n !== 1 || m.one === '1px', 'one-programme hint ' + m.one);
+          assert(m.sw === 0, `page overflows by ${m.sw}`);
+          await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+          await page.waitFor(`({ok:document.querySelector('#compare').hidden&&document.activeElement===document.querySelector('#cmp-tray-open'),why:document.activeElement?.id})`, 5000, 'closed with focus back on the tray');
+        });
+        assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+      } finally { await page.close(); }
+    }
+    watchdog.refresh();
+  }
+  // From 600 px nothing changes: no More, and the fact names keep their column.
+  const page = await open('?ui=sk', 1280, 900, { compare: ids.slice(0, 2), saves: ids });
+  try {
+    await check('1280/sk', 'PM desktop', 'no More, every My list tool shown, no fact-name lines in Compare', async () => {
+      await page.click(`document.querySelector('#header-list')`, 'My list');
+      await settle(page);
+      const m = await page.ev(`(()=>{const v=${visible};return {more:v('#ml-more'),tools:['#ml-share>summary','#export-csv','#print-shortlist','#clear-shortlist'].every(v)}})()`);
+      assert(!m.more && m.tools, JSON.stringify(m));
+      await page.click(`document.querySelector('#header-compare')`, 'Compare');
+      await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+      assert(await page.ev(`[...document.querySelectorAll('tr.cmp-lr')].every(tr=>getComputedStyle(tr).display==='none')&&document.querySelector('.cmp-t tbody th').getBoundingClientRect().width>60`), 'desktop fact names');
+    });
+  } finally { await page.close(); }
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3055,6 +3172,8 @@ async function runAlignChromeSetup(base) {
     try {
       await check(width, 'AL-M3 phone tools', `(${lang}): four equal 44 px buttons, each label on one line${width < 360 ? ', no icons' : ''}`, async () => {
         await openList(page);
+        // The tools wait behind More on phones since 2026-11-06.
+        await page.click(`document.querySelector('#ml-more')`, 'More');
         const m = await page.ev(tools);
         await shoot(page, `mylist-${width}-${lang}`);
         assert(m.b.every((x) => x.lines === 1 && x.h >= 44 && Math.abs(x.h - m.b[0].h) <= 0.5), `labels wrap or heights differ: ${JSON.stringify(m.b)}`);
@@ -3216,7 +3335,8 @@ async function main() {
     await runBatch3B(base);
     await runBatch3C(base);
     await runAlignListCompare(base);
-    await runAlignChromeSetup(base); }
+    await runAlignChromeSetup(base);
+    await runPhoneMyListCompare(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
