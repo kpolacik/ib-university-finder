@@ -203,6 +203,8 @@ function pointsCell(row, state) {
 
 function pointsList(row) {
   const list = el('ul', 'plines');
+  // Safari and VoiceOver drop list semantics from a list without markers.
+  list.setAttribute('role', 'list');
   for (const line of pointsLines(row)) {
     const item = el('li');
     if (line.number === null) {

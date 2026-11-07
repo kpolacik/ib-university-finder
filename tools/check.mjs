@@ -722,7 +722,14 @@ check('language buttons expose both available choices, with their own language n
     && /data-language="en" lang="en"/.test(foundationHtml)
     && /data-language="sk" lang="sk"/.test(foundationHtml)
     && !/aria-disabled="true"|sk-later/.test(foundationHtml)
-    && foundationHtml.includes('(English)') && foundationHtml.includes('(Slovak)'));
+    && foundationHtml.includes('(English)') && foundationHtml.includes('(slovenčina)'));
+// Review of PR 1: the lang="sk" button's hidden text was English " (Slovak)"
+// in the English UI. Each button names its language in that language, so the
+// text matches the button's lang attribute whatever the UI language.
+check('each language button names its language in that language, in both UIs',
+  /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
+    && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
+    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -6827,7 +6834,7 @@ section('Batch 3 · C');
     ['Tvojim odpovediam zodpovedá 1 program.', 'Zobrazený je 1 program.', 'Tvojim odpovediam zodpovedajú 3 programy.', 'Zobrazené sú 3 programy.',
       'Tvojim odpovediam zodpovedá 312 programov.', 'Zobrazených je 312 programov.', 'Tvojim odpovediam zodpovedá 0 programov.', 'Zobrazených je 0 programov.']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
-    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení si nepridal žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
   check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
 }
 appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {
@@ -7218,6 +7225,39 @@ check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from t
     /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
     && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))
     && /display:block;position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(ruleAt(cssText, '.status #header-list>.hb-l', phone)));
+}
+
+section('Facts and copy, review of PR 1, 2026-11-07');
+{
+  const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  // The source FAQ said unchecked rows "are marked"; none are (every row is
+  // AI-DRAFT and only signed rows carry a badge). It now quotes the badge a
+  // signed row really shows, so the two cannot drift apart.
+  equal('FAQ source answer quotes the real "Checked" badge, names the CAO and no longer claims unchecked rows are marked',
+    ['en', 'sk'].map((lang) => inLang(lang, () => {
+      const a = t('r2_faq_source_a');
+      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), a.includes('CAO'), /are marked|sú označené/.test(a)];
+    })), [[true, true, false], [true, true, false]]);
+  check('FAQ CAO answer names the UCD exception in EN and SK',
+    /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
+  // On phones the points field is in the Filters sheet, not "above".
+  check('share help points to the filters, not "above", in EN and SK',
+    /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
+      && /vo filtroch/.test(UI.sk.enter_your_ib_points_above_to_include_them) && !/vyššie/.test(UI.sk.enter_your_ib_points_above_to_include_them));
+  equal('My list pane button uses Slovak plurals for 0, 1, 2, 4, 5 and 21 saved',
+    inLang('sk', () => [0, 1, 2, 4, 5, 21].map((count) => t('r2_pane_list', { count }))),
+    ['Môj zoznam · 0 uložených', 'Môj zoznam · 1 uložený', 'Môj zoznam · 2 uložené', 'Môj zoznam · 4 uložené', 'Môj zoznam · 5 uložených', 'Môj zoznam · 21 uložených']);
+  equal('Slovak sort, setup and done-screen grammar',
+    [inLang('sk', () => t('sorted_activate_to_sort', { value1: 'X', value2: t('r2_default_order') })), UI.sk.r2_ob2m, UI.sk.r3_ob_done_h_none,
+      UI.sk.r4_ob_done_tools.replace('{bookmark}', UI.sk.r4_icon_bookmark).replace('{scales}', UI.sk.r4_icon_scales)],
+    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'V nastavení nie sú žiadne odpovede.',
+      'Tlačidlom so záložkou si programy uložíš do Môjho zoznamu a tlačidlom s váhami porovnáš až 4 vedľa seba.']);
+  // WebKit and VoiceOver drop list semantics from a list with list-style:none
+  // (the results) or display:grid items (the points lines).
+  check('results and points-line lists keep an explicit list role for Safari',
+    /<ul class="results" id="results" role="list"/.test(read('index.html'))
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').filter((u) => u.className === 'plines').every((u) => u.getAttribute('role') === 'list')
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').some((u) => u.className === 'plines'));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
