@@ -6886,9 +6886,9 @@ section('Alignment · list, detail, Compare');
     /\.d-foot\{container:dfoot \/ inline-size\}\s*\.d-actions \.btn\{overflow-wrap:normal\}\s*\.d-actions :is\(\.save,\.cmpb\) \.ic\{width:18px;height:18px\}/.test(block)
     && /@container dfoot \(max-width: 449\.98px\)\{\.d-foot>\.d-actions\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(block)
     && /@container dfoot \(min-width: 330px\)\{\.d-foot>\.d-actions:lang\(en\)\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/.test(block));
-  check('AL compare Save sits at the foot of every header cell, one width; columns keep room for it from 600 px',
+  check('AL compare Save sits at the foot of every header cell on phones; from 600 px it follows its name at a fixed 12 px, one width',
     /\.cmp-t th\.cmp-p\{padding-bottom:62px\}/.test(block) && /\.cmp-t th\.cmp-p \.cmp-save\{position:absolute;left:12px;bottom:10px;/.test(block)
-    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px;border-radius:8px\}\s*\}/.test(block));
+    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px;padding-bottom:10px\}\s*\.cmp-t th\.cmp-p \.cmp-acts\{margin-top:12px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{position:static;width:86px;border-radius:8px\}\s*\}/.test(block));
   check('AL compare "x": its own strip below 1024 px, 4 px from the cell edge so its focus ring is not clipped',
     /@media \(max-width:1023\.98px\)\{\s*\.cmp \.cmp-t th\.cmp-p::before\{display:none\}\s*\.cmp-t th\.cmp-p\{padding-top:44px\}\s*\}/.test(block)
     && /\.cmp-x\{position:absolute;top:4px;right:4px;/.test(cssText));

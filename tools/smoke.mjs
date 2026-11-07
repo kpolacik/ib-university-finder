@@ -2809,7 +2809,7 @@ async function runAlignListCompare(base) {
             const needless=[...__splits(th.querySelector('.cmp-n')),...__splits(th.querySelector('.cmp-u'))].filter(p=>__wordWidth(p.el,p.word)<=content-0.5).map(p=>p.word);
             const textRects=[th.querySelector('.cmp-n'),th.querySelector('.cmp-u')].flatMap(e=>{const g=document.createRange();g.selectNodeContents(e);return [...g.getClientRects()]});
             const xOverText=textRects.some(q=>q.left<x.right&&x.left<q.right&&q.top<x.bottom&&x.top<q.bottom);
-            return {rad:[getComputedStyle(s).borderTopLeftRadius,getComputedStyle(th.querySelector('.cmp-x')).borderTopLeftRadius],top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
+            return {nameGap:Math.round(r.top-th.querySelector('.cmp-u').getBoundingClientRect().bottom),rad:[getComputedStyle(s).borderTopLeftRadius,getComputedStyle(th.querySelector('.cmp-x')).borderTopLeftRadius],top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
           const last=document.querySelectorAll('.cmp-x');const lx=last[last.length-1].getBoundingClientRect();
           const links=[...document.querySelectorAll('.cmp-t a.lnk')].map(a=>{const ic=a.querySelector('svg').getBoundingClientRect();const r=document.createRange();r.selectNodeContents(a.querySelector('.lnk-end').firstChild);const rs=[...r.getClientRects()];const lastLine=rs[rs.length-1];return Math.abs((ic.top+ic.height/2)-(lastLine.top+lastLine.height/2))<=6&&ic.left>=lastLine.right-0.5&&ic.left-lastLine.right<=8});
           const th=document.querySelector('.cmp-t tbody th'),td=th.nextElementSibling.querySelector('p');const a=document.createRange();a.selectNodeContents(th);const b=document.createRange();b.selectNodeContents(td);
@@ -2823,7 +2823,12 @@ async function runAlignListCompare(base) {
         // allowed when the word is wider than its column.
         const m = await page.ev(`(()=>{const s=document.createElement('style');s.id='al-nohyph';s.textContent='.cmp-t th.cmp-p :is(.cmp-n,.cmp-u){hyphens:manual!important}';document.head.append(s);try{return ${measure}}finally{s.remove()}})()`);
         const tops = new Set(m.cols.map((c) => c.top)), belows = new Set(m.cols.map((c) => c.below)), widths = new Set(m.cols.map((c) => c.w));
-        assert(tops.size === 1 && belows.size === 1 && m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save row ' + JSON.stringify(m.cols));
+        // Phones keep every Save on one line at the foot of the header; from
+        // 600 px Save follows its own name at a fixed 12 px (2026-11-07), so
+        // no column shows an empty gap above it, and Saves may sit one name line apart.
+        if (width < 600) assert(tops.size === 1 && belows.size === 1, 'Save row ' + JSON.stringify(m.cols));
+        else assert(m.cols.every((c) => c.nameGap === 12 && c.below === 10), 'Save gap under the name ' + JSON.stringify(m.cols.map((c) => [c.nameGap, c.below])));
+        assert(m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save inside ' + JSON.stringify(m.cols));
         assert(m.cols.every((c) => c.rad.every((v) => v === '8px')), 'Save and x corners ' + JSON.stringify(m.cols.map((c) => c.rad)));
         assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));
         assert(m.room.right >= 4 && m.room.top >= 4, 'x room ' + JSON.stringify(m.room));
