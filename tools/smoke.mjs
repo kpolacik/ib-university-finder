@@ -2823,11 +2823,10 @@ async function runAlignListCompare(base) {
         // allowed when the word is wider than its column.
         const m = await page.ev(`(()=>{const s=document.createElement('style');s.id='al-nohyph';s.textContent='.cmp-t th.cmp-p :is(.cmp-n,.cmp-u){hyphens:manual!important}';document.head.append(s);try{return ${measure}}finally{s.remove()}})()`);
         const tops = new Set(m.cols.map((c) => c.top)), belows = new Set(m.cols.map((c) => c.below)), widths = new Set(m.cols.map((c) => c.w));
-        // Phones keep every Save on one line at the foot of the header; from
-        // 600 px Save follows its own name at a fixed 12 px (2026-11-07), so
-        // no column shows an empty gap above it, and Saves may sit one name line apart.
-        if (width < 600) assert(tops.size === 1 && belows.size === 1, 'Save row ' + JSON.stringify(m.cols));
-        else assert(m.cols.every((c) => c.nameGap === 12) && Math.min(...m.cols.map((c) => c.below)) <= 11, 'Save gap under the name ' + JSON.stringify(m.cols.map((c) => [c.nameGap, c.below])));
+        // Every Save stays on one line at the foot of the header (Leon, 2026-11-07:
+        // per-name placement looked worse when names wrap), and the tallest name
+        // in the row sits 12 px above it, so no column has less room than that.
+        assert(tops.size === 1 && belows.size === 1 && Math.min(...m.cols.map((c) => c.nameGap)) === 12, 'Save row ' + JSON.stringify(m.cols.map((c) => [c.top, c.below, c.nameGap])));
         assert(m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save inside ' + JSON.stringify(m.cols));
         assert(m.cols.every((c) => c.rad.every((v) => v === '8px')), 'Save and x corners ' + JSON.stringify(m.cols.map((c) => c.rad)));
         assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));

@@ -1522,14 +1522,12 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @container dfoot (max-width: 449.98px){.d-foot>.d-actions{grid-template-columns:minmax(0,1fr)}}
 @container dfoot (min-width: 330px){.d-foot>.d-actions:lang(en){grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Compare. Phones: every column's Save sits at the foot of its header cell, so
-   the Saves form one line across the row whatever the names' lengths; the cell
-   keeps room for it. From 600 px (Leon, 2026-11-07: "trim the empty space
-   between the name and Save") Save follows its own name at a fixed 12 px
-   instead, so a short name no longer leaves a gap above a Save pinned to the
-   tallest column's foot; the cost is that Saves sit one name line apart where
-   names wrap differently. One width for Save and Saved, so toggling never shifts. */
-.cmp-t th.cmp-p{padding-bottom:62px}
+/* Compare. Every column's Save sits at the foot of its header cell, so the
+   Saves form one line across the row whatever the names' lengths; the cell
+   keeps room for it: 66 = 10 below Save + 44 Save + 12 above it, so the tallest
+   name sits 12 px over the Saves (Leon, 2026-11-07, was 8). One width for Save
+   and Saved, so toggling never shifts. */
+.cmp-t th.cmp-p{padding-bottom:66px}
 .cmp-t th.cmp-p .cmp-acts{margin:0}
 .cmp-t th.cmp-p .cmp-save{position:absolute;left:12px;bottom:10px;width:min(calc(100% - 24px),6.5rem);padding:0 8px}
 /* Out of flow, Save no longer widens its column, so a column keeps room for
@@ -1537,9 +1535,8 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    is that wide, whatever its column's width. Phone columns are equal anyway:
    there Save fills its column up to 6.5rem (and drops its icon below 360 px). */
 @media (min-width:600px){
- .cmp-t th.cmp-p{min-width:110px;padding-bottom:10px}
- .cmp-t th.cmp-p .cmp-acts{margin-top:12px}
- .cmp-t th.cmp-p .cmp-save{position:static;width:86px;border-radius:8px}
+ .cmp-t th.cmp-p{min-width:110px}
+ .cmp-t th.cmp-p .cmp-save{width:86px;border-radius:8px}
 }
 /* Below 1024 px a column is too narrow to share its first lines with the
    "x": a name broke beside it ("Nanobiolo / gy") although it fits the column.
