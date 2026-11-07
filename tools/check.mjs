@@ -7131,6 +7131,9 @@ section('Compare and header, round 2, 2026-11-06');
   check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
     /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
     && lastValue('.foot', 'margin-top') === '48px');
+  check('CH2b phones: an open Compare puts the footer 36 px lower so its heading sits 44 px under the card, as on desktop; the list keeps 48 px',
+    /margin-top:36px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', phone))
+    && lastValue('.foot', 'margin-top') === '48px');
   check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
     lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
   check('CH3b desktop Compare: Save and the "x" have the same 8 px corners as Close comparison (the table is not a rounded container, so no concentric inset applies); the card keeps --r-panel',

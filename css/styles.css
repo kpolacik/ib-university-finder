@@ -1979,6 +1979,13 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 @media (min-width:600px){
  body:has(#compare:not([hidden])) .foot{margin-top:24px}
 }
+/* Phones (2026-11-07: the heading sat 56 px under the card, desktop 44). On
+   phones 24 px measured 32 px under the card (the card's 12 px margin merges
+   into the footer's and the footer pads 8 px), so 36 px puts the heading the
+   same 44 px below the card as on desktop. */
+@media (max-width:599.98px){
+ body:has(#compare:not([hidden])) .foot{margin-top:36px}
+}
 
 /* "Close comparison" was "too angular" on desktop (4 px, the control token):
    it gets the 8 px corners of the other outlined buttons ("Show the original",

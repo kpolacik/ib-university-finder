@@ -3025,11 +3025,12 @@ async function runPhoneMyListCompare(base) {
               return {cap:cap.classList.contains('cmp-lr')&&getComputedStyle(cap).display==='table-row'&&span.textContent===th.textContent,above:r(span).bottom<=r(td).top+0.5,th:r(th).width,left:Math.abs(r(span).left+parseFloat(getComputedStyle(span).paddingLeft)-(r(td).left+parseFloat(getComputedStyle(td).paddingLeft)))<=1}});
             const close=document.querySelector('#cmp-close'),cs=getComputedStyle(close);
             return {cols,facts,close:[r(close).width,r(close).height,cs.borderTopLeftRadius,cs.borderTopColor===getComputedStyle(document.querySelector('.cmp')).borderTopColor],
-              one:${n === 1}?getComputedStyle(document.querySelector('#cmp-one')).borderBottomWidth:null,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+              foot:Math.round(r(document.querySelector('.foot h2')).top-r(document.querySelector('#compare')).bottom),one:${n === 1}?getComputedStyle(document.querySelector('#cmp-one')).borderBottomWidth:null,sw:document.documentElement.scrollWidth-innerWidth}})()`);
           await shot(page, `compare-${n}-${width}-${ui}`);
           assert(m.cols.every((c) => c.line && c.gap >= 0 && c.gap <= 12 && c.below && c.inside && c.h.every((h) => h >= 44)), 'columns ' + JSON.stringify(m.cols));
           assert(m.facts.length > 0 && m.facts.every((f) => f.cap && f.above && f.th <= 1 && f.left), 'facts ' + JSON.stringify(m.facts));
           assert(m.close[0] >= 44 && m.close[1] >= 44 && m.close[2] === '8px' && m.close[3], 'close ' + JSON.stringify(m.close));
+          assert(m.foot >= 40 && m.foot <= 48, `footer heading ${m.foot} px under Compare (phone, as desktop)`);
           assert(n !== 1 || m.one === '1px', 'one-programme hint ' + m.one);
           assert(m.sw === 0, `page overflows by ${m.sw}`);
           await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
