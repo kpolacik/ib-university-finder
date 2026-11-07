@@ -4,8 +4,8 @@ export const UI = {
     "r2_programme_asc": "Programme — A to Z",
     "r2_programme_desc": "Programme — Z to A",
     "r2_passed": "passed",
-    "r2_day": "in {count} day",
-    "r2_days": "in {count} days",
+    "r2_pts_test_in_cutoff": "Test in cutoff",
+    "r2_pts_no_ib_figure": "No IB figure",
     "r2_fee_heading": "EU fee / year",
     "r2_close_details": "Close details",
 
@@ -627,8 +627,8 @@ export const UI = {
     "r2_programme_asc": "Program — od A po Z",
     "r2_programme_desc": "Program — od Z po A",
     "r2_passed": "uplynul",
-    "r2_day": "o {count} deň",
-    "r2_days": "o {count} dní",
+    "r2_pts_test_in_cutoff": "Hranica s testom",
+    "r2_pts_no_ib_figure": "Bez údaja v IB",
     "r2_fee_heading": "Školné pre EÚ / rok",
     "r2_close_details": "Zavrieť podrobnosti",
 
