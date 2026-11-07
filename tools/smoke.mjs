@@ -808,10 +808,19 @@ async function runI18n(base) {
         await page.ev(`document.querySelector('${button}').click()`);
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 'toggle did not reveal every original');
-        // The same-language switch forces a real detail re-render.
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        // A redraw that keeps the language must keep the originals shown. This
+        // step tapped SK while SK was already on, which did nothing once a tap
+        // came to flip the language (Leon, 2026-11-06), so it re-rendered
+        // nothing. Changing the sort redraws the list and the detail; the old
+        // toggle is marked so a detail that was never rebuilt fails.
+        await page.ev(`document.querySelector('${button}').dataset.before = '1'`);
+        const sort = await page.ev(`document.querySelector('#f-sort').value`);
+        await page.ev(`(s=>{s.value=[...s.options].find(o=>o.value!==s.value).value;s.dispatchEvent(new Event('change',{bubbles:true}))})(document.querySelector('#f-sort'))`);
+        await page.waitFor(`({ok:!!document.querySelector('${button}') && !document.querySelector('${button}').dataset.before && document.documentElement.lang==='sk',why:'detail not redrawn'})`, 5000, 'detail redrawn');
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 're-render lost original state');
+        await page.ev(`(s=>{s.value=${JSON.stringify(sort)};s.dispatchEvent(new Event('change',{bubbles:true}))})(document.querySelector('#f-sort'))`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value===${JSON.stringify(sort)} && !!document.querySelector('${button}'),why:'sort not back'})`, 5000, 'sort back');
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-on.png`);
         await page.ev(`document.querySelector('${button}').click()`);
         result = await page.ev(status);
