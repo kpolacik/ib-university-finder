@@ -530,7 +530,7 @@ html:has(.sheet[open]){overflow:hidden}
 /* My list (js/shortlist.js): a panel under the count line. Outside the list
    view it is one line, "3 saved · 2 shown"; in it, a second row of tools.
    Blue only where you can press; the counts are ink. */
-.mylist{margin:0 0 12px;padding:8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
+.mylist{margin:0 0 12px;padding:8px 8px 8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
 :where(.mylist,.cmp) :where(button,input,select,summary){font:inherit;color:inherit}
 .ml-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .ml-h{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:var(--fs-14);font-weight:700;line-height:20px}

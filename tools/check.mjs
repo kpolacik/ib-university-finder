@@ -7160,7 +7160,9 @@ section('Compare and header, round 2, 2026-11-06');
 // Leon, 2026-11-07: corners nest concentrically, outer = inner + inset. The 8 px
 // controls sit 8 px into a panel's corner (Close comparison, phone Sort), so panels are 16 px.
 check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from the top and right of the list card',
-  /--r-panel:16px;/.test(cssText) && lastValue('.listp>.f-sort', 'padding') === '8px 8px 8px 12px');
+  /--r-panel:16px;/.test(cssText) && lastValue('.listp>.f-sort', 'padding') === '8px 8px 8px 12px'
+  // My list's Group by lines up with Sort below it (smoke R3H), so it has the same 8 px inset.
+  && lastValue('.mylist', 'padding') === '8px 8px 8px 12px');
   check('CH3b desktop Compare: Save and the "x" have the same 8 px corners as Close comparison (the table is not a rounded container, so no concentric inset applies); the card keeps --r-panel',
     /border-radius:8px/.test(ruleAt(cssText, '.cmp-t th.cmp-p .cmp-save', '(min-width:600px)'))
     && lastValue('.cmp-x', 'border-radius') === '8px' && lastValue('.cmp', 'border-radius') === 'var(--r-panel)');
