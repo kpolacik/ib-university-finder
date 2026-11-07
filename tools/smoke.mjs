@@ -3228,7 +3228,8 @@ async function runCompareHeaderR2(base) {
 
 // Review of PR 1 (2026-11-07). Setup with My list's "Show all saves" on kept
 // showing (and counting) saves above the student's points; setup ending under
-// an open Compare left the results hidden.
+// an open Compare left the results hidden; a focused Compare arrow and "Back
+// to all programmes" each dropped focus to the page.
 async function runSetupCompareReview(base) {
   watchdog.refresh();
   const SAVES = 'ib-university-finder:shortlist:v1', COMPARE = 'ib-university-finder:compare:v1';
@@ -3285,6 +3286,26 @@ async function runSetupCompareReview(base) {
     await page.waitFor(`({ok:document.querySelector('#compare').hidden&&!document.querySelector('.split').hidden&&document.activeElement.getAttribute('aria-labelledby')==='results-h'&&document.querySelector('#header-compare-count').textContent==='1',
       why:JSON.stringify({compare:!document.querySelector('#compare').hidden,focus:document.activeElement.tagName+'#'+document.activeElement.id,n:document.querySelector('#header-compare-count').textContent})})`, 5000, 'the results, Compare closed');
   });
+
+  await run('590-600/en', 'PR1 compare arrow focus', 'a focused "Next programme" arrow hands focus to the comparison when widening hides it', await open(590, 900, { compare: ids }), async (page) => {
+    await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&document.querySelectorAll('th.cmp-p').length===3,why:'compare not open'})`, 5000, 'compare');
+    await settle(page);
+    await page.ev(`document.querySelector('.cmp-next').focus()`);
+    assert(await page.ev(`document.activeElement.matches('.cmp-next')`), 'the arrow did not take focus');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 600, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===600&&getComputedStyle(document.querySelector('.cmp-nav')).display==='none'&&document.activeElement.id==='cmp-scroll',why:'focus on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on the comparison');
+  });
+
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    await run(`${width}/en`, 'PR1 list back focus', 'Enter on "Back to all programmes" leaves My list with focus on the My list button', await open(width, height, { saves: ids.slice(0, 2) }), async (page) => {
+      await page.click(`document.querySelector('#header-list')`, 'My list');
+      await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'list view not open'})`, 5000, 'the list view');
+      await page.ev(`document.querySelector('#f-shortlist-only').focus()`);
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list')&&document.activeElement.id==='header-list'&&document.activeElement.getClientRects().length>0,why:'focus on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on My list');
+    });
+  }
 }
 
 async function runAlignChromeSetup(base) {

@@ -265,6 +265,8 @@ let crossingFocus = null;
 // from 600 px, and the tools below 600 px unless More is open, and Chrome can
 // drop focus from a node that goes hidden before the change callback runs.
 let listFocus = null;
+// The same for a focused Compare arrow, which CSS hides from 600 px.
+let compareNavFocus = null;
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -858,7 +860,8 @@ function syncListToSaves() {
 function wireList() {
   window.addEventListener('storage', onStorage);
   dom.shortlistOnly.addEventListener('click', () => {
-    if (state.shortlistOnly) {
+    const leaving = state.shortlistOnly;
+    if (leaving) {
       // Back to all programmes; a shared link's view closes for good.
       shared = null;
       state.shortlistOnly = false;
@@ -866,6 +869,9 @@ function wireList() {
     listAll = false;
     closeCompare(false);
     update();
+    // Back hides with the list view and focus fell to the page (review of PR 1,
+    // 2026-11-07), so it goes to My list, as the empty list's own way back does.
+    if (leaving && !canShow(dom.shortlistOnly)) dom.headerList.focus();
   });
   // The empty list's own way back. The list exit restores no focus, and this
   // button disappears with the empty state, so focus goes to the header's My list.
@@ -1651,11 +1657,17 @@ function rememberFocus() {
   crossingFocus = snapshotFocus();
   listFocus = isListTool(document.activeElement) ? document.activeElement : null;
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+  compareNavFocus = isCompareNav(document.activeElement) ? document.activeElement : null;
 }
 
 function forgetFocus(event) {
   if (event.relatedTarget || appliedWide === wideQuery.matches) crossingFocus = null;
-  if (event.relatedTarget || appliedBar === barQuery.matches) { filterFocus = null; listFocus = null; }
+  if (event.relatedTarget || appliedBar === barQuery.matches) { filterFocus = null; listFocus = null; compareNavFocus = null; }
+}
+
+// Compare's phone arrows ("Previous/Next programme"), hidden from 600 px.
+function isCompareNav(node) {
+  return !!node && !!node.closest?.('.cmp-nav') && dom.compareBody.contains(node);
 }
 
 function isListTool(node) {
@@ -1718,6 +1730,7 @@ function placeFilters() {
   const active = document.activeElement;
   const was = active && active !== document.body ? active : filterFocus;
   const listWas = isListTool(active) ? active : listFocus;
+  const compareWas = isCompareNav(active) ? active : compareNavFocus;
   const moved = !!was && (dom.moreFilters.contains(was) || was === dom.clear || was === dom.copy);
   let target = null;
   if (moved) target = bar ? was : dom.more;
@@ -1758,7 +1771,16 @@ function placeFilters() {
   appliedBar = bar;
   if (target) target.focus({ preventScroll: true });
   else if (listWas) keepListFocus(listWas, bar);
+  else if (compareWas) keepCompareFocus(compareWas, bar);
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+}
+
+// Widening past 600 px hides Compare's arrows, and a focused arrow dropped
+// focus to the page (review of PR 1, 2026-11-07). The comparison's scroll box
+// is what the arrows move, and it stays shown and focusable.
+function keepCompareFocus(was, bar) {
+  if (!bar || !compareOpen || was.getClientRects().length) return;
+  dom.compareBody.querySelector('.cmp-scroll')?.focus({ preventScroll: true });
 }
 
 // Crossing 600 px hides the control that had focus in My list: More from 600
