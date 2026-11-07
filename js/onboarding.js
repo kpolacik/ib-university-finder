@@ -26,7 +26,7 @@ const button = (label, className, action) => {
   const node = el('button', className, t(label)); node.type = 'button'; node.addEventListener('click', action); return node;
 };
 
-export function setupOnboarding({ state, facets, flags, apply, results, closeSheet, firstVisit }) {
+export function setupOnboarding({ state, facets, flags, apply, results, closeSheet, closeCompare, firstVisit }) {
   const dialog = document.getElementById('onboarding');
   // done: Finish has applied the answers and the "you're set" screen is up. From
   // then on every way out (Show, FAQ, Esc) keeps them; Skip is gone.
@@ -43,11 +43,11 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     else foot.append(primary);
     if (active === primary) primary.focus({ preventScroll: true });
   };
-  phone.addEventListener('change', orderFooter);
+  phone.addEventListener('change', () => { orderFooter(); syncDoneNote(); });
   const close = (applied = false) => {
     if (!done) dismiss(applied ? 'completed' : 'dismissed');
     draft = null; done = false; dialog.close();
-    if (applied) results.focus({ preventScroll: true });
+    if (applied) { closeCompare(); results.focus({ preventScroll: true }); }
     else if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     else document.getElementById('f-search').focus({ preventScroll: true });
   };
@@ -89,9 +89,11 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   };
   const draw = (back = false) => {
     fill.style.transform = `scaleX(${(step - 1) / 4})`; progress.hidden = step === 1;
-    const label = el('p', 'ob-n', t('r2_step', { step }));
+    const label = el('p', 'ob-n', t('r2_step', { step })); label.id = 'ob-step-n';
     const section = el('section', `ob-step on${back ? ' back' : ''}`);
     const heading = el('h2', '', t(`r2_ob${step}h`)); heading.id = 'ob-title'; heading.tabIndex = -1;
+    // Focus lands on the heading, so "Step n of 5" is read with it.
+    heading.setAttribute('aria-describedby', label.id);
     section.append(heading, el('p', '', t(`r2_ob${step}p`)));
     if (step === 1) section.append(el('p', 'note', t('r2_ob1n')));
     if (step === 2) {
@@ -141,7 +143,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       if (step < 5) { step++; draw(); return; }
       if (done) return;
       const answers = validateFilters(draft, facets); done = true;
-      const shown = apply(answers); dismiss('completed'); drawDone(answers, shown);
+      const result = apply(answers); dismiss('completed'); drawDone(answers, result);
     });
     foot.replaceChildren(skip, spacer, previous, next); orderFooter(); heading.focus({ preventScroll: true });
   };
@@ -167,17 +169,33 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     }
     return p;
   };
-  const drawDone = (answers, shown) => {
+  // Where the filters are: the Filters button on phones, the bar above the
+  // list from 600 px, which has no Filters button (review of PR 1, 2026-11-07).
+  // "Your existing filters still apply" only when a filter is on.
+  let doneNote = null;
+  const noteKey = ({ any, filtered }) => {
+    const [narrow, wide] = any ? ['r3_ob_done_p', 'r5_ob_done_p_wide']
+      : filtered ? ['r3_ob_done_p_none', 'r5_ob_done_p_none_wide'] : ['r5_ob_done_p_empty', 'r5_ob_done_p_empty_wide'];
+    return phone.matches ? narrow : wide;
+  };
+  // done is true only while the done screen is up.
+  const syncDoneNote = () => { if (done && doneNote) doneNote.node.textContent = t(noteKey(doneNote)); };
+  const drawDone = (answers, { shown, summary = [], filtered = false }) => {
     fill.style.transform = 'scaleX(1)'; progress.hidden = false;
     const any = hasSetupAnswers(answers);
     const section = el('section', 'ob-step on ob-done');
     const heading = el('h2', '', t(any ? 'r2_answers_applied' : 'r3_ob_done_h_none')); heading.id = 'ob-title'; heading.tabIndex = -1;
-    // t() picks the plural from the number; only the number on screen is
-    // formatted ("2,915"), as the count line does.
-    const count = t(any ? 'r3_ob_done_count' : 'r3_ob_shown_count', { count: shown }).replace(/\d+/g, (value) => formatCount(Number(value)));
+    // "Shown", not "match": with IB points set, cutoffs reached only with HL
+    // Maths and rows without a figure stay in too, so the line splits them as
+    // the count line does. t() picks the plural from the number; only the
+    // numbers on screen are formatted ("2,915"), as the count line does.
+    const count = (any ? [t('r3_ob_done_count', { count: shown }), ...summary].join(' · ') : t('r3_ob_shown_count', { count: shown }))
+      .replace(/\d+/g, (value) => formatCount(Number(value)));
     // Without answers the count is whatever the page's own filters (search,
     // city…) leave, so it must not claim those rows match anything.
-    section.append(heading, el('p', 'ob-count', count), el('p', '', t(any ? 'r3_ob_done_p' : 'r3_ob_done_p_none')), toolsHint());
+    doneNote = { node: el('p', ''), any, filtered };
+    doneNote.node.textContent = t(noteKey(doneNote));
+    section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint());
     body.replaceChildren(section); body.scrollTop = 0;
     // The primary comes first, so it is first in tab order and on top on phones;
     // from 600 px the row is reversed to put it on the right, as Next was.

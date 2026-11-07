@@ -5521,23 +5521,25 @@ appCheck('heading sort cycles include the default order, announced next state an
 });
 // The real setup dialog on the app harness's page. apply() returns the number
 // shown, as app.js's callback does; media queries default to desktop.
-function realSetup({get,fire,context,resultsSection}, {shown = 7, state = savedState.validateFilters({}), env = {}} = {}) {
-  const writes=[], applied=[], toasts=[];
+// Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
+// closeCompare is counted; phone picks the narrow media query's answer.
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+  const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:false,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
-  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return shown;},results:resultsSection,closeSheet(){},firstVisit:true});
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
   // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
   const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
     text:section.textContent,focused:stubDocument.activeElement===get('ob-title'),noStep:!dialog.querySelector('.ob-n'),bar:dialog.querySelector('.ob-bar i').style.transform,barShown:!dialog.querySelector('.ob-bar').hidden,
     buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
-  return {writes,applied,toasts,dialog,primary,next,doneScreen,api};
+  return {writes,applied,toasts,compareCloses,dialog,primary,next,doneScreen,api};
 }
 // Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
 // done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
 for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {
-  const {get,fire,resultsSection}=h, {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h);
+  const {get,fire,resultsSection}=h, {writes,applied,toasts,compareCloses,dialog,next,doneScreen}=realSetup(h);
   if(!dialog.querySelector('.ob-bar').hidden || dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0)')return false;
   next(); const points=get('ob-points'); points.value='38'; fire(points,'input'); next();
   if(dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0.5)')return false;
@@ -5556,6 +5558,7 @@ for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handl
   return !dialog.open && writes.length===1 && writes[0][1]===(outcome==='apply'?'completed':'dismissed')
     && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===0 && !dialog.querySelector('.ob-done')===(outcome!=='apply')
     && stubDocument.activeElement===(outcome==='apply'?resultsSection:get('f-search'))
+    && compareCloses.length===(outcome==='apply'?1:0)
     && !(stubDocument.scrolls??[]).some(s=>s.node===resultsSection);
 });
 // Leon, 2026-11-05: finishing setup with nothing chosen still said "Your answers are now filters".
@@ -5564,7 +5567,7 @@ appCheck('real onboarding handlers: clicking through with no answers shows the n
   for(let i=0;i<5;i++)next();
   const d=doneScreen();
   return dialog.open && applied.length===1 && toasts.length===0 && writes.length===1 && writes[0][1]==='completed'
-    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown.' && d.text.includes(t('r3_ob_done_p_none'))
+    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown.' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
     && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
 // Was "onboarding completion toast uses the compact Edit action…": the toast is
@@ -6858,12 +6861,14 @@ section('Batch 3 · C');
 // link and the completion toast.
 {
   const sk = (key, count) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, { count }); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  // Review of PR 1, 2026-11-07: "match your answers" counted rows outside the
+  // student's IB points (HL-Maths-only, can't be compared); the count says "shown".
   equal('B3C1 done screen EN copy', [t('r3_ob_finish'), t('r3_ob_done_count', { count: 1 }), t('r3_ob_done_count', { count: 3 }), t('r3_ob_shown_count', { count: 1 }), t('r3_ob_shown_count', { count: 0 }), t('r3_ob_done_p'), t('r3_ob_done_h_none'), t('r3_ob_done_p_none'), t('r3_ob_faq'), t('r2_show_mine'), t('r2_answers_applied')],
-    ['Finish', '1 programme matches your answers.', '3 programmes match your answers.', '1 programme shown.', '0 programmes shown.', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
+    ['Finish', '1 programme shown', '3 programmes shown', '1 programme shown.', '0 programmes shown.', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
   equal('B3C1 done screen SK plurals for 1, 3, 312 and 0 (0 takes "other")',
     [1, 3, 312, 0].flatMap((n) => [sk('r3_ob_done_count', n), sk('r3_ob_shown_count', n)]),
-    ['Tvojim odpovediam zodpovedá 1 program.', 'Zobrazený je 1 program.', 'Tvojim odpovediam zodpovedajú 3 programy.', 'Zobrazené sú 3 programy.',
-      'Tvojim odpovediam zodpovedá 312 programov.', 'Zobrazených je 312 programov.', 'Tvojim odpovediam zodpovedá 0 programov.', 'Zobrazených je 0 programov.']);
+    ['1 zobrazený program', 'Zobrazený je 1 program.', '3 zobrazené programy', 'Zobrazené sú 3 programy.',
+      '312 zobrazených programov', 'Zobrazených je 312 programov.', '0 zobrazených programov', 'Zobrazených je 0 programov.']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
     ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení si nepridal žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
   check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
@@ -6878,7 +6883,7 @@ appCheck('B3C1 Esc on the done screen keeps the answers and writes "completed" o
   const {get,fire,resultsSection}=h, {dialog,next,doneScreen,applied,writes}=realSetup(h,{shown:1});
   next(); const points=get('ob-points'); points.value='40'; fire(points,'input'); next(); next(); next(); next();
   const d=doneScreen();
-  if (!d || d.count !== '1 programme matches your answers.') return false;
+  if (!d || d.count !== '1 programme shown') return false;
   fire(dialog, 'cancel');
   return !dialog.open && applied.length === 1 && applied[0].myIbPoints === 40 && writes.length === 1 && writes[0][1] === 'completed'
     && stubDocument.activeElement === resultsSection;
@@ -6889,7 +6894,7 @@ appCheck('B3C1 a second Finish click applies nothing more; the done screen forma
   const finish = primary(); h.fire(finish, 'click'); h.fire(finish, 'click');
   // The second click of a double-click (detail 2) lands on "Show my programmes".
   h.fire(primary(), 'click', { detail: 2 });
-  return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes match your answers.';
+  return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes shown';
 });
 appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
   const {get}=h, {dialog,next,writes}=realSetup(h);
@@ -6928,7 +6933,64 @@ check('B3C1 the done screen stacks full width on phones, primary first; 44 px bu
   /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
   && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
   && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
-check('B3C1 the app apply callback returns the shown count for the done screen', /preferencesDirty = true; update\(\);\s*\/\/[^\n]*\n\s*return currentlyShown;/.test(appSrc));
+// Was a source pin on "return currentlyShown". Review of PR 1 (2026-11-07):
+// with My list's "Show all saves" on, setup's answers did not filter the list
+// and the done screen counted a 42-point save for 24 points. apply() now ends
+// "Show all saves" and returns the count, the count line's points parts and
+// whether any filter is on.
+await asyncAppCheck('B3C1 the app apply callback ends "Show all saves" and returns the shown count, the points parts and whether a filter is on', async ({run,context,settle,ids:[a,b]}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.shortlistOnly = true; listAll = true; update();`);
+  if (run('listAll') !== true) return false;
+  const result = context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:24}));
+  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist).filter((row) => shortlist.has(row.id)), state).map((p) => p.text)');
+  return run('listAll') === false && result.shown === run('currentlyShown') && result.shown === run('applyFilters(allRows, state, shortlist).length')
+    && JSON.stringify(result.summary) === JSON.stringify(parts) && result.summary.length >= 1 && result.filtered === true;
+}, {boot:true});
+appCheck('B3C1 the done screen says "shown" and splits it as the count line does when IB points are set', (h) => {
+  const {get,fire}=h, summary=['10 within your IB points','2 only with HL Maths 4+','24 can’t be compared'];
+  const {next,doneScreen}=realSetup(h,{shown:36,summary});
+  next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
+  return doneScreen()?.count === '36 programmes shown · 10 within your IB points · 2 only with HL Maths 4+ · 24 can’t be compared';
+});
+// Review of PR 1 (2026-11-07): setup's last line named Filters, which only
+// phones have, and "Your existing filters still apply" showed with none on.
+for (const [name, opts, answers, key] of [
+  ['answers, from 600 px', {}, true, 'r5_ob_done_p_wide'], ['answers, phone', {phone:true}, true, 'r3_ob_done_p'],
+  ['no answers, a filter on, from 600 px', {filtered:true}, false, 'r5_ob_done_p_none_wide'], ['no answers, a filter on, phone', {filtered:true,phone:true}, false, 'r3_ob_done_p_none'],
+  ['no answers, no filter, from 600 px', {}, false, 'r5_ob_done_p_empty_wide'], ['no answers, no filter, phone', {phone:true}, false, 'r5_ob_done_p_empty'],
+]) appCheck(`B3C1 the done screen's filters line: ${name}`, (h) => {
+  const {get,fire}=h, {next,doneScreen}=realSetup(h,opts);
+  next(); if (answers) { const points=get('ob-points'); points.value='30'; fire(points,'input'); } next(); next(); next(); next();
+  const d=doneScreen(), still=['r3_ob_done_p_none','r5_ob_done_p_none_wide'].some((k)=>d?.text.includes(t(k)));
+  return !!d && d.text.includes(t(key)) && still === !!opts.filtered && !answers === (d.heading === t('r3_ob_done_h_none'));
+});
+appCheck('B3C1 the done screen\'s filters line follows a crossing of 600 px', (h) => {
+  const phone = { matches: false, addEventListener(type, listener) { this.change = listener; } };
+  const {next,doneScreen}=realSetup(h,{env:{matchMedia:()=>phone}});
+  for (let i = 0; i < 5; i++) next();
+  if (!doneScreen()?.text.includes(t('r5_ob_done_p_empty_wide'))) return false;
+  phone.matches = true; phone.change();
+  return doneScreen().text.includes(t('r5_ob_done_p_empty')) && !doneScreen().text.includes(t('r5_ob_done_p_empty_wide'));
+});
+appCheck('B3C1 each step heading is described by its "Step n of 5", so focus on it reads the step', (h) => {
+  const {dialog,next}=realSetup(h);
+  const steps=[];
+  for (let i = 0; i < 5; i++) { const head=dialog.querySelector('#ob-title'), label=dialog.querySelector('.ob-n'); steps.push(!!label && head.getAttribute('aria-describedby')===label.id && label.id==='ob-step-n' && stubDocument.activeElement===head && label.textContent===t('r2_step',{step:i+1})); next(); }
+  return steps.every(Boolean) && !dialog.querySelector('#ob-title').getAttribute('aria-describedby');
+});
+{
+  const sk = (key, vars) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, vars); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('B3C1 setup copy: step 2 says points hide programmes above the total; the filters line by width and filter (EN, SK)',
+    ['r2_ob2p', 'r5_ob_done_p_wide', 'r5_ob_done_p_none_wide', 'r5_ob_done_p_empty', 'r5_ob_done_p_empty_wide'].flatMap((k) => [t(k), sk(k)]),
+    ['We’ll hide programmes above your total and mark the rest.', 'Programy nad tvojím počtom bodov skryjeme, ostatné označíme.',
+      'You can change these filters any time above the list.', 'Tieto filtre môžeš kedykoľvek zmeniť nad zoznamom.',
+      'Your existing filters still apply. You can change them any time above the list.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť nad zoznamom.',
+      'You can set filters any time in Filters.', 'Filtre si môžeš kedykoľvek nastaviť vo Filtroch.',
+      'You can set filters any time above the list.', 'Filtre si môžeš kedykoľvek nastaviť nad zoznamom.']);
+  equal('B3C1 the points count with SK parts reads naturally', [sk('r3_ob_done_count', { count: 36 }), sk('within_your_ib_points_2', { value1: 10 })],
+    ['36 zobrazených programov', '10 v rámci tvojich IB bodov']);
+}
 
 // C2: the logo goes home (Leon, 2026-11-05). goHome() leaves My list, a shared
 // list and Compare; filters, search, sort, saves and the pane's pick stay.
@@ -7217,7 +7279,7 @@ check('LR6 the language buttons: tapping the one already shown switches to the o
   /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
   && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
-  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /t\(any \? 'r3_ob_done_p' : 'r3_ob_done_p_none'\)\), toolsHint\(\)/.test(read('js/onboarding.js'))
+  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\)\)/.test(read('js/onboarding.js'))
   && ['r4_faq_tools', 'r4_faq_stored'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
   && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',

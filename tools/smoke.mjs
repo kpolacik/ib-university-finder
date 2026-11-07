@@ -2470,8 +2470,10 @@ async function runBatch3C(base) {
           });
         }
       }
-      // With an answer: the heading says so and the count names the matches.
-      await check(width, 'B3C done screen', 'with an answer (sk): "Tvoje odpovede sú teraz filtre" and a matching count', async () => {
+      // With an answer: the heading says so and the count says how many are
+      // shown, then splits them by points as the count line does (review of
+      // PR 1, 2026-11-07: "zodpovedá" counted rows outside the points).
+      await check(width, 'B3C done screen', 'with an answer (sk): "Tvoje odpovede sú teraz filtre" and the shown count with its points parts', async () => {
         await page.ev(`localStorage.clear();localStorage.setItem('ib-university-finder:language','sk');window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=sk'`);
         await page.waitFor(ready, 15000, 'reloaded page');
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
@@ -2482,8 +2484,8 @@ async function runBatch3C(base) {
         await settle(page);
         const m = await page.ev(`({h:document.querySelector('.ob-done h2').textContent,count:document.querySelector('.ob-count').textContent,shown:document.querySelectorAll('#results>li.item').length,total:document.querySelector('#result-count b')?.textContent})`);
         await shoot(page, `done-${width}-sk-answers`);
-        assert(m.h === 'Tvoje odpovede sú teraz filtre' && /^Tvojim odpovediam zodpovedá|^Tvojim odpovediam zodpovedajú/.test(m.count), JSON.stringify(m));
-        assert(m.count.replace(/\D/g, '') === String(m.total).replace(/\D/g, ''), `count ${m.count} vs shown ${m.total}`);
+        assert(m.h === 'Tvoje odpovede sú teraz filtre' && /^[\d\s\u00a0]+ zobrazen(ý|é|ých) program(y|ov)? · [\d\s\u00a0]+ v rámci tvojich IB bodov/.test(m.count), JSON.stringify(m));
+        assert(m.count.split(' zobrazen')[0].replace(/\D/g, '') === String(m.total).replace(/\D/g, ''), `count ${m.count} vs shown ${m.total}`);
         await page.key('Escape', 'Escape', 27);
         assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`), 'Esc on the done screen lost the answers');
       });
@@ -3321,6 +3323,88 @@ async function runCompareHeaderR2(base) {
   }
 }
 
+// Review of PR 1 (2026-11-07). Setup with My list's "Show all saves" on kept
+// showing (and counting) saves above the student's points; setup ending under
+// an open Compare left the results hidden; a focused Compare arrow and "Back
+// to all programmes" each dropped focus to the page.
+async function runSetupCompareReview(base) {
+  watchdog.refresh();
+  const SAVES = 'ib-university-finder:shortlist:v1', COMPARE = 'ib-university-finder:compare:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (width, height, { compare = [], saves = [] } = {}) => {
+    const page = await openPage(`${base}?ui=en`, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const high = data.find((r) => r.ibPointsMin >= 40 && r.pointsKind !== 'cutoff');
+  const low = data.find((r) => r.ibPointsMin === 24 && r.pointsKind !== 'cutoff');
+  const ids = data.slice(0, 3).map((r) => r.id);
+  // Setup from "Edit my answers", keeping whatever points the filters hold
+  // unless points is given, through to the done screen.
+  const toDone = async (page, points) => {
+    await page.ev(`document.querySelector('.edit-answers').click()`);
+    await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup not open'})`, 5000, 'setup');
+    await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Start');
+    if (points) { await page.click(`document.querySelector('#ob-points')`, 'points'); await page.clearField(); await page.type(String(points)); }
+    for (let i = 0; i < 4; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, `step ${i + 2}`);
+    await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
+    await settle(page);
+  };
+  const run = async (where, id, name, page, fn) => {
+    try { await check(where, id, name, () => fn(page)); assert(!page.errors.length, page.errors.map((e) => e.text).join(' | ')); }
+    finally { await page.close(); }
+  };
+
+  await run('1440/en', 'PR1 setup list', 'setup with "Show all saves" on filters My list again: the done screen and the list leave out a save above the points', await open(1440, 900, { saves: [high.id, low.id] }), async (page) => {
+    assert(high && low, 'no 40+ and 24-point rows in the data');
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.click(`document.querySelector('#f-points')`, 'My IB points'); await page.type('24');
+    await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden,why:'Show all saves not offered'})`, 5000, 'Show all saves');
+    await page.click(`document.querySelector('#ml-show-all')`, 'Show all saves');
+    await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length===2,why:'rows '+document.querySelectorAll('#results>li.item').length})`, 5000, 'both saves shown');
+    await toDone(page);
+    const count = await page.ev(`document.querySelector('.ob-count').textContent`);
+    assert(count === '1 programme shown · 1 within your IB points', `done screen count "${count}"`);
+    await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    await page.waitFor(`({ok:[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()===${JSON.stringify(low.id)},why:'rows '+[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()})`, 5000, 'only the save within the points');
+  });
+
+  await run('1440/en', 'PR1 setup compare', '"Show my programmes" closes an open Compare, keeps its programme and focuses the results', await open(1440, 900, { compare: ids.slice(0, 1) }), async (page) => {
+    await page.click(`document.querySelector('#header-compare')`, 'Compare');
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+    await toDone(page, 36);
+    await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    await page.waitFor(`({ok:document.querySelector('#compare').hidden&&!document.querySelector('.split').hidden&&document.activeElement.getAttribute('aria-labelledby')==='results-h'&&document.querySelector('#header-compare-count').textContent==='1',
+      why:JSON.stringify({compare:!document.querySelector('#compare').hidden,focus:document.activeElement.tagName+'#'+document.activeElement.id,n:document.querySelector('#header-compare-count').textContent})})`, 5000, 'the results, Compare closed');
+  });
+
+  await run('590-600/en', 'PR1 compare arrow focus', 'a focused "Next programme" arrow hands focus to the comparison when widening hides it', await open(590, 900, { compare: ids }), async (page) => {
+    await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&document.querySelectorAll('th.cmp-p').length===3,why:'compare not open'})`, 5000, 'compare');
+    await settle(page);
+    await page.ev(`document.querySelector('.cmp-next').focus()`);
+    assert(await page.ev(`document.activeElement.matches('.cmp-next')`), 'the arrow did not take focus');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 600, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===600&&getComputedStyle(document.querySelector('.cmp-nav')).display==='none'&&document.activeElement.id==='cmp-scroll',why:'focus on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on the comparison');
+  });
+
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    await run(`${width}/en`, 'PR1 list back focus', 'Enter on "Back to all programmes" leaves My list with focus on the My list button', await open(width, height, { saves: ids.slice(0, 2) }), async (page) => {
+      await page.click(`document.querySelector('#header-list')`, 'My list');
+      await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'list view not open'})`, 5000, 'the list view');
+      await page.ev(`document.querySelector('#f-shortlist-only').focus()`);
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list')&&document.activeElement.id==='header-list'&&document.activeElement.getClientRects().length>0,why:'focus on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on My list');
+    });
+  }
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3805,7 +3889,8 @@ async function main() {
     await runPhoneMyListCompare(base);
     await runCompareHeaderR2(base);
     await runPrintFixes(base);
-    await runCssA11yFixes(base); }
+    await runCssA11yFixes(base);
+    await runSetupCompareReview(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

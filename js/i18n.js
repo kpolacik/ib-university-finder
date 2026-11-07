@@ -23,7 +23,7 @@ export const UI = {
     "r2_ob1p": "Four quick questions become your filters. Leave any answer blank. You can change your filters later.",
     "r2_ob1n": "Always check the university's official page before you apply. Requirements, fees and deadlines can change.",
     "r2_ob2h": "Your predicted IB points",
-    "r2_ob2p": "We’ll mark which programmes are within reach.",
+    "r2_ob2p": "We’ll hide programmes above your total and mark the rest.",
     "r2_ob2m": "I take HL Maths and expect 4 or more",
     "r2_ob2i": "Irish courses add 25 points for it.",
     "r2_ob3h": "What would you like to study?",
@@ -601,8 +601,8 @@ export const UI = {
     // batch 3 · C
     "r3_ob_finish": "Finish",
     "r3_ob_done_count": {
-      "one": "{count} programme matches your answers.",
-      "other": "{count} programmes match your answers."
+      "one": "{count} programme shown",
+      "other": "{count} programmes shown"
     },
     "r3_ob_shown_count": {
       "one": "{count} programme shown.",
@@ -611,6 +611,12 @@ export const UI = {
     "r3_ob_done_p": "You can change these filters any time in Filters.",
     "r3_ob_done_h_none": "You haven't added any setup answers.",
     "r3_ob_done_p_none": "Your existing filters still apply. You can change them any time in Filters.",
+    // Review of PR 1, 2026-11-07: from 600 px the filters sit above the list
+    // (no Filters button), and with no filter on there is nothing that "still applies".
+    "r5_ob_done_p_wide": "You can change these filters any time above the list.",
+    "r5_ob_done_p_none_wide": "Your existing filters still apply. You can change them any time above the list.",
+    "r5_ob_done_p_empty": "You can set filters any time in Filters.",
+    "r5_ob_done_p_empty_wide": "You can set filters any time above the list.",
     "r3_ob_faq": "Read the FAQ",
     // Leon's review, 2026-11-06: setup and the FAQ explain My list and Compare.
     "r4_ob_done_tools": "Save programmes to My list with {bookmark} and compare up to 4 side by side with {scales}.",
@@ -646,7 +652,7 @@ export const UI = {
     "r2_ob1p": "Štyri krátke otázky sa zmenia na tvoje filtre. Na čokoľvek môžeš neodpovedať. Filtre zmeníš kedykoľvek neskôr.",
     "r2_ob1n": "Pred podaním prihlášky si vždy over informácie na oficiálnej stránke univerzity. Požiadavky, poplatky a termíny sa môžu meniť.",
     "r2_ob2h": "Tvoje predpokladané IB body",
-    "r2_ob2p": "Označíme programy, na ktoré dosiahneš.",
+    "r2_ob2p": "Programy nad tvojím počtom bodov skryjeme, ostatné označíme.",
     "r2_ob2m": "Mám HL matematiku a čakám 4 alebo viac",
     "r2_ob2i": "Írske programy za ňu pridávajú 25 bodov.",
     "r2_ob3h": "Čo by si chcel(a) študovať?",
@@ -1228,9 +1234,9 @@ export const UI = {
     // batch 3 · C
     "r3_ob_finish": "Dokončiť",
     "r3_ob_done_count": {
-      "one": "Tvojim odpovediam zodpovedá {count} program.",
-      "few": "Tvojim odpovediam zodpovedajú {count} programy.",
-      "other": "Tvojim odpovediam zodpovedá {count} programov."
+      "one": "{count} zobrazený program",
+      "few": "{count} zobrazené programy",
+      "other": "{count} zobrazených programov"
     },
     "r3_ob_shown_count": {
       "one": "Zobrazený je {count} program.",
@@ -1240,6 +1246,12 @@ export const UI = {
     "r3_ob_done_p": "Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.",
     "r3_ob_done_h_none": "V nastavení si nepridal žiadne odpovede.",
     "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
+    // Review of PR 1, 2026-11-07: from 600 px the filters sit above the list
+    // (no Filters button), and with no filter on there is nothing that "still applies".
+    "r5_ob_done_p_wide": "Tieto filtre môžeš kedykoľvek zmeniť nad zoznamom.",
+    "r5_ob_done_p_none_wide": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť nad zoznamom.",
+    "r5_ob_done_p_empty": "Filtre si môžeš kedykoľvek nastaviť vo Filtroch.",
+    "r5_ob_done_p_empty_wide": "Filtre si môžeš kedykoľvek nastaviť nad zoznamom.",
     "r3_ob_faq": "Prečítaj si časté otázky",
     // Leon's review, 2026-11-06: setup and the FAQ explain My list and Compare.
     "r4_ob_done_tools": "Tlačidlom {bookmark} si programy uložíš do Môjho zoznamu a tlačidlom {scales} porovnáš až 4 vedľa seba.",
