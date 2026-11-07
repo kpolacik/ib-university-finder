@@ -7101,7 +7101,7 @@ await asyncAppCheck('PM6 a shared list has no More (none of its tools apply)', a
   check('PM9 phones: Save and the "x" share one line at the foot of the programme\'s header; Close and the arrows are quiet like the header buttons',
     /position:absolute;left:12px;right:12px;bottom:8px;display:flex/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-acts', phone))
     && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-save', phone)) && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-x', phone))
-    && /padding:10px 12px 62px/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p', phone))
+    && /padding:10px 12px 64px/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p', phone))
     && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone))
     && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.cmp-nav .btn', phone))
     && /border-bottom:1px solid var\(--hairline\)/.test(ruleAt(cssText, '.cmp-one', phone)));

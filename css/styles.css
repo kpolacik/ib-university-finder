@@ -1899,7 +1899,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  /* Sticky, so the name stays in view while three or four programmes scroll sideways. */
  .cmp-lr span{position:sticky;left:0;display:inline-block;box-sizing:border-box;max-width:calc(100vw - 2 * var(--gut) - 2px);padding:0 12px;font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
  .cmp .cmp-t tbody tr:not(.cmp-lr)>td{padding:4px 12px 10px}
- .cmp .cmp-t th.cmp-p{padding:10px 12px 62px}
+ .cmp .cmp-t th.cmp-p{padding:10px 12px 64px}
  .cmp .cmp-t th.cmp-p .cmp-acts{position:absolute;left:12px;right:12px;bottom:8px;display:flex;align-items:center;gap:4px}
  .cmp .cmp-t th.cmp-p .cmp-save{position:static;flex:none;width:min(calc(100% - 48px),5.75rem);padding:0 8px;border-color:var(--hairline);border-radius:8px;font-size:var(--fs-13)}
  .cmp .cmp-t th.cmp-p .cmp-save[aria-pressed="true"]{border-color:var(--accent)}
