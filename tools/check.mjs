@@ -6462,9 +6462,16 @@ appCheck('A4 the tray says it in Slovak: "Porovnanie: 3 zo 4", and Open is named
   return ok;
 });
 i18n.initLanguage('', { getItem: () => 'en' });
-check('A4 markup: the header button beside My list, the tray before the footer with text and button apart, one status line',
+// The tray is fixed to the bottom, but its place in the markup is its place
+// in Tab and screen-reader order. After </main> it came after every row
+// (about 8,700 stops on a phone), so it now sits right after the count row,
+// before My list, Compare and the results.
+check('A4 markup: the header button beside My list, the tray right after the count row (before the list) with text and button apart, one status line (regression)',
   /<button class="btn hb" id="header-list" type="button">[^]*?<span class="hb-l" data-i18n="my_list">My list<\/span><span id="header-list-count" class="badge">0<\/span><\/button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"\/><\/svg><span class="hb-l" data-i18n="compare_2">Compare<\/span><span id="header-compare-count" class="badge">0<\/span><\/button>/.test(read('index.html'))
-  && /<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
+  && /<p class="copy-status" id="f-copy-status" role="status" aria-live="polite"><\/p>\s*<\/div>\s*(?:<!--[^]*?-->\s*)?<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="count count-summary" id="count-summary"/.test(read('index.html'))
+  && (() => { const html = read('index.html'), at = (s) => html.indexOf(s);
+    return at('<div class="status">') < at('id="cmp-tray"') && at('id="cmp-tray"') < at('id="shortlist-bar"') && at('id="cmp-tray"') < at('id="results"') && at('id="cmp-tray"') < at('</main>'); })()
+  && /<\/dialog>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
 check('A4 CSS: the header button hides where the tray serves; icon-only header buttons at 600–1023; the tray reserves its height, scroll padding and the toasts\' lift, none in print',
   /@media \(max-width:599\.98px\),\(max-height:500px\)\{#header-compare\{display:none\}\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\s*\.hb \.hb-l\{position:absolute;[^}]*clip-path:inset\(50%\)/.test(cssText)
