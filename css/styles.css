@@ -1522,9 +1522,13 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @container dfoot (max-width: 449.98px){.d-foot>.d-actions{grid-template-columns:minmax(0,1fr)}}
 @container dfoot (min-width: 330px){.d-foot>.d-actions:lang(en){grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Compare. Every column's Save sits at the foot of its header cell, so the
-   Saves form one line across the row whatever the names' lengths; the cell
-   keeps room for it. One width for Save and Saved, so toggling never shifts. */
+/* Compare. Phones: every column's Save sits at the foot of its header cell, so
+   the Saves form one line across the row whatever the names' lengths; the cell
+   keeps room for it. From 600 px (Leon, 2026-11-07: "trim the empty space
+   between the name and Save") Save follows its own name at a fixed 12 px
+   instead, so a short name no longer leaves a gap above a Save pinned to the
+   tallest column's foot; the cost is that Saves sit one name line apart where
+   names wrap differently. One width for Save and Saved, so toggling never shifts. */
 .cmp-t th.cmp-p{padding-bottom:62px}
 .cmp-t th.cmp-p .cmp-acts{margin:0}
 .cmp-t th.cmp-p .cmp-save{position:absolute;left:12px;bottom:10px;width:min(calc(100% - 24px),6.5rem);padding:0 8px}
@@ -1533,8 +1537,9 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    is that wide, whatever its column's width. Phone columns are equal anyway:
    there Save fills its column up to 6.5rem (and drops its icon below 360 px). */
 @media (min-width:600px){
- .cmp-t th.cmp-p{min-width:110px}
- .cmp-t th.cmp-p .cmp-save{width:86px}
+ .cmp-t th.cmp-p{min-width:110px;padding-bottom:10px}
+ .cmp-t th.cmp-p .cmp-acts{margin-top:12px}
+ .cmp-t th.cmp-p .cmp-save{position:static;width:86px;border-radius:8px}
 }
 /* Below 1024 px a column is too narrow to share its first lines with the
    "x": a name broke beside it ("Nanobiolo / gy") although it fits the column.
@@ -1709,7 +1714,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-save .ic{width:16px;height:16px;fill:none;flex:none}
 .cmp-save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
 .cmp-save[aria-pressed="true"] .ic{fill:currentColor}
-.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:8px;background:none;color:var(--ink-2);cursor:pointer}
 .cmp-x:hover{background:var(--hover);color:var(--accent)}
 .cmp-x .ic{width:18px;height:18px}
 /* The entry: a header button beside My list where the header sticks, the
@@ -1976,6 +1981,13 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
    list, left an empty band under it. While Compare is open the gap is 24 px. */
 @media (min-width:600px){
  body:has(#compare:not([hidden])) .foot{margin-top:24px}
+}
+/* Phones (2026-11-07: the heading sat 56 px under the card, desktop 44). On
+   phones 24 px measured 32 px under the card (the card's 12 px margin merges
+   into the footer's and the footer pads 8 px), so 36 px puts the heading the
+   same 44 px below the card as on desktop. */
+@media (max-width:599.98px){
+ body:has(#compare:not([hidden])) .foot{margin-top:36px}
 }
 
 /* "Close comparison" was "too angular" on desktop (4 px, the control token):

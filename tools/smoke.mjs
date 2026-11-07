@@ -2809,7 +2809,7 @@ async function runAlignListCompare(base) {
             const needless=[...__splits(th.querySelector('.cmp-n')),...__splits(th.querySelector('.cmp-u'))].filter(p=>__wordWidth(p.el,p.word)<=content-0.5).map(p=>p.word);
             const textRects=[th.querySelector('.cmp-n'),th.querySelector('.cmp-u')].flatMap(e=>{const g=document.createRange();g.selectNodeContents(e);return [...g.getClientRects()]});
             const xOverText=textRects.some(q=>q.left<x.right&&x.left<q.right&&q.top<x.bottom&&x.top<q.bottom);
-            return {top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
+            return {nameGap:Math.round(r.top-th.querySelector('.cmp-u').getBoundingClientRect().bottom),rad:[getComputedStyle(s).borderTopLeftRadius,getComputedStyle(th.querySelector('.cmp-x')).borderTopLeftRadius],top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
           const last=document.querySelectorAll('.cmp-x');const lx=last[last.length-1].getBoundingClientRect();
           const links=[...document.querySelectorAll('.cmp-t a.lnk')].map(a=>{const ic=a.querySelector('svg').getBoundingClientRect();const r=document.createRange();r.selectNodeContents(a.querySelector('.lnk-end').firstChild);const rs=[...r.getClientRects()];const lastLine=rs[rs.length-1];return Math.abs((ic.top+ic.height/2)-(lastLine.top+lastLine.height/2))<=6&&ic.left>=lastLine.right-0.5&&ic.left-lastLine.right<=8});
           const th=document.querySelector('.cmp-t tbody th'),td=th.nextElementSibling.querySelector('p');const a=document.createRange();a.selectNodeContents(th);const b=document.createRange();b.selectNodeContents(td);
@@ -2823,7 +2823,13 @@ async function runAlignListCompare(base) {
         // allowed when the word is wider than its column.
         const m = await page.ev(`(()=>{const s=document.createElement('style');s.id='al-nohyph';s.textContent='.cmp-t th.cmp-p :is(.cmp-n,.cmp-u){hyphens:manual!important}';document.head.append(s);try{return ${measure}}finally{s.remove()}})()`);
         const tops = new Set(m.cols.map((c) => c.top)), belows = new Set(m.cols.map((c) => c.below)), widths = new Set(m.cols.map((c) => c.w));
-        assert(tops.size === 1 && belows.size === 1 && m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save row ' + JSON.stringify(m.cols));
+        // Phones keep every Save on one line at the foot of the header; from
+        // 600 px Save follows its own name at a fixed 12 px (2026-11-07), so
+        // no column shows an empty gap above it, and Saves may sit one name line apart.
+        if (width < 600) assert(tops.size === 1 && belows.size === 1, 'Save row ' + JSON.stringify(m.cols));
+        else assert(m.cols.every((c) => c.nameGap === 12) && Math.min(...m.cols.map((c) => c.below)) <= 11, 'Save gap under the name ' + JSON.stringify(m.cols.map((c) => [c.nameGap, c.below])));
+        assert(m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save inside ' + JSON.stringify(m.cols));
+        assert(m.cols.every((c) => c.rad.every((v) => v === '8px')), 'Save and x corners ' + JSON.stringify(m.cols.map((c) => c.rad)));
         assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));
         assert(m.room.right >= 4 && m.room.top >= 4, 'x room ' + JSON.stringify(m.room));
         assert(m.heights.every((h) => h === 44), 'heights ' + JSON.stringify(m.heights));
@@ -3019,11 +3025,12 @@ async function runPhoneMyListCompare(base) {
               return {cap:cap.classList.contains('cmp-lr')&&getComputedStyle(cap).display==='table-row'&&span.textContent===th.textContent,above:r(span).bottom<=r(td).top+0.5,th:r(th).width,left:Math.abs(r(span).left+parseFloat(getComputedStyle(span).paddingLeft)-(r(td).left+parseFloat(getComputedStyle(td).paddingLeft)))<=1}});
             const close=document.querySelector('#cmp-close'),cs=getComputedStyle(close);
             return {cols,facts,close:[r(close).width,r(close).height,cs.borderTopLeftRadius,cs.borderTopColor===getComputedStyle(document.querySelector('.cmp')).borderTopColor],
-              one:${n === 1}?getComputedStyle(document.querySelector('#cmp-one')).borderBottomWidth:null,sw:document.documentElement.scrollWidth-innerWidth}})()`);
+              foot:Math.round(r(document.querySelector('.foot h2')).top-r(document.querySelector('#compare')).bottom),one:${n === 1}?getComputedStyle(document.querySelector('#cmp-one')).borderBottomWidth:null,sw:document.documentElement.scrollWidth-innerWidth}})()`);
           await shot(page, `compare-${n}-${width}-${ui}`);
           assert(m.cols.every((c) => c.line && c.gap >= 0 && c.gap <= 12 && c.below && c.inside && c.h.every((h) => h >= 44)), 'columns ' + JSON.stringify(m.cols));
           assert(m.facts.length > 0 && m.facts.every((f) => f.cap && f.above && f.th <= 1 && f.left), 'facts ' + JSON.stringify(m.facts));
           assert(m.close[0] >= 44 && m.close[1] >= 44 && m.close[2] === '8px' && m.close[3], 'close ' + JSON.stringify(m.close));
+          assert(m.foot >= 40 && m.foot <= 48, `footer heading ${m.foot} px under Compare (phone, as desktop)`);
           assert(n !== 1 || m.one === '1px', 'one-programme hint ' + m.one);
           assert(m.sw === 0, `page overflows by ${m.sw}`);
           await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
@@ -3047,6 +3054,52 @@ async function runPhoneMyListCompare(base) {
       assert(await page.ev(`[...document.querySelectorAll('tr.cmp-lr')].every(tr=>getComputedStyle(tr).display==='none')&&document.querySelector('.cmp-t tbody th').getBoundingClientRect().width>60`), 'desktop fact names');
     });
   } finally { await page.close(); }
+
+  // Crossing 600 px must not drop keyboard focus in My list (code review,
+  // 2026-11-07). Widening hides More, so focus goes to the first tool still
+  // shown (Back); narrowing hides Share, Export and Print behind a closed
+  // More, so More opens and the tool keeps focus.
+  const crossTo = async (page, width, height) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===${width},why:'width '+innerWidth})`, 3000, `width ${width}`);
+    await settle(page);
+  };
+  const openList = async (page) => {
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'list view not open'})`, 5000, 'the list view');
+    await settle(page);
+  };
+  {
+    const page = await open('?ui=en', 390, 844, { saves: ids });
+    try {
+      await check('390-600/en', 'PM list focus widening', 'More has focus on a phone; widening past 600 px (More hidden) moves focus to Back, a shown tool, and narrowing again keeps it there', async () => {
+        await openList(page);
+        await page.ev(`document.querySelector('#ml-more').focus()`);
+        assert(await page.ev(`document.activeElement.id`) === 'ml-more', 'More did not take focus');
+        await crossTo(page, 600, 900);
+        await page.waitFor(`({ok:document.activeElement.id==='f-shortlist-only'&&(${visible})('#f-shortlist-only'),why:'focus is on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on Back after widening');
+        await crossTo(page, 599, 844);
+        assert(await page.ev(`document.activeElement.id`) === 'f-shortlist-only', 'focus lost narrowing again');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  for (const tool of ['#export-csv', '#print-shortlist', '#ml-share-copy']) {
+    const page = await open('?ui=en', 1280, 900, { saves: ids });
+    try {
+      await check(`1280-599/en${tool}`, 'PM list focus narrowing', `${tool} has focus on desktop; narrowing below 600 px keeps More open and focus on the tool; widening keeps it too`, async () => {
+        await openList(page);
+        if (tool === '#ml-share-copy') await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        await page.ev(`document.querySelector(${JSON.stringify(tool)}).focus()`);
+        assert(await page.ev(`document.activeElement===document.querySelector(${JSON.stringify(tool)})`), `${tool} did not take focus`);
+        await crossTo(page, 599, 844);
+        await page.waitFor(`({ok:document.activeElement===document.querySelector(${JSON.stringify(tool)})&&(${visible})(${JSON.stringify(tool)})&&document.querySelector('#ml-more').getAttribute('aria-expanded')==='true',why:'focus is on '+document.activeElement.tagName+'#'+document.activeElement.id+', More '+document.querySelector('#ml-more').getAttribute('aria-expanded')})`, 3000, 'focus kept narrowing');
+        await crossTo(page, 1280, 900);
+        assert(await page.ev(`document.activeElement===document.querySelector(${JSON.stringify(tool)})`), 'focus lost widening back');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 // Compare and header, round 2 (Leon, 2026-11-06). Phone Compare drops the

@@ -6904,9 +6904,9 @@ section('Alignment · list, detail, Compare');
     /\.d-foot\{container:dfoot \/ inline-size\}\s*\.d-actions \.btn\{overflow-wrap:normal\}\s*\.d-actions :is\(\.save,\.cmpb\) \.ic\{width:18px;height:18px\}/.test(block)
     && /@container dfoot \(max-width: 449\.98px\)\{\.d-foot>\.d-actions\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(block)
     && /@container dfoot \(min-width: 330px\)\{\.d-foot>\.d-actions:lang\(en\)\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/.test(block));
-  check('AL compare Save sits at the foot of every header cell, one width; columns keep room for it from 600 px',
+  check('AL compare Save sits at the foot of every header cell on phones; from 600 px it follows its name at a fixed 12 px, one width',
     /\.cmp-t th\.cmp-p\{padding-bottom:62px\}/.test(block) && /\.cmp-t th\.cmp-p \.cmp-save\{position:absolute;left:12px;bottom:10px;/.test(block)
-    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px\}\s*\}/.test(block));
+    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px;padding-bottom:10px\}\s*\.cmp-t th\.cmp-p \.cmp-acts\{margin-top:12px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{position:static;width:86px;border-radius:8px\}\s*\}/.test(block));
   check('AL compare "x": its own strip below 1024 px, 4 px from the cell edge so its focus ring is not clipped',
     /@media \(max-width:1023\.98px\)\{\s*\.cmp \.cmp-t th\.cmp-p::before\{display:none\}\s*\.cmp-t th\.cmp-p\{padding-top:44px\}\s*\}/.test(block)
     && /\.cmp-x\{position:absolute;top:4px;right:4px;/.test(cssText));
@@ -7152,12 +7152,21 @@ section('Compare and header, round 2, 2026-11-06');
   check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
     /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
     && lastValue('.foot', 'margin-top') === '48px');
+  check('CH2b phones: an open Compare puts the footer 36 px lower so its heading sits 44 px under the card, as on desktop; the list keeps 48 px',
+    /margin-top:36px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', phone))
+    && lastValue('.foot', 'margin-top') === '48px');
   check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
     lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
+  check('CH3b desktop Compare: Save and the "x" have the same 8 px corners as Close comparison (the table is not a rounded container, so no concentric inset applies); the card keeps --r-panel',
+    /border-radius:8px/.test(ruleAt(cssText, '.cmp-t th.cmp-p .cmp-save', '(min-width:600px)'))
+    && lastValue('.cmp-x', 'border-radius') === '8px' && lastValue('.cmp', 'border-radius') === 'var(--r-panel)');
   check('CH4 phones: the one My list button moves into the count row before Filters, and back before Compare from 600 px; focus survives the move',
     /if \(bar\) put\(headerRight, dom\.headerList, dom\.headerCompare\);\s*else put\(dom\.status, dom\.headerList, dom\.more\);/.test(appSrc)
     && /if \(listFocused && document\.activeElement !== dom\.headerList\) dom\.headerList\.focus/.test(appSrc)
     && (read('index.html').match(/id="header-list"/g) ?? []).length === 1);
+  check('CH6 crossing 600 px keeps focus in My list: widening moves it off the hidden More, narrowing opens More for a hidden tool (regression, smoke "PM list focus")',
+    /function keepListFocus\(was, bar\)/.test(appSrc) && /else if \(listWas\) keepListFocus\(listWas, bar\)/.test(appSrc)
+    && /listFocus = isListTool\(document\.activeElement\)/.test(appSrc) && /listMoreOpen = true;\s*syncListMore\(\);/.test(appSrc));
   check('CH5 phones: in the count row My list is 44 px tall with Filters\' hairline and corners, takes the free space before Filters, and keeps its words for screen readers',
     /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
     && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))

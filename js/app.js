@@ -261,6 +261,10 @@ let shownRows = new Map();
 let appliedWide = null;
 let paneId = null;
 let crossingFocus = null;
+// A My list tool that holds focus, for the 600 px crossing: CSS hides More
+// from 600 px, and the tools below 600 px unless More is open, and Chrome can
+// drop focus from a node that goes hidden before the change callback runs.
+let listFocus = null;
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -1636,12 +1640,17 @@ function restoreFocus(focus) {
 // Real focus moves or a blur within the current layout invalidate this record.
 function rememberFocus() {
   crossingFocus = snapshotFocus();
+  listFocus = isListTool(document.activeElement) ? document.activeElement : null;
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
 }
 
 function forgetFocus(event) {
   if (event.relatedTarget || appliedWide === wideQuery.matches) crossingFocus = null;
-  if (event.relatedTarget || appliedBar === barQuery.matches) filterFocus = null;
+  if (event.relatedTarget || appliedBar === barQuery.matches) { filterFocus = null; listFocus = null; }
+}
+
+function isListTool(node) {
+  return !!node && node !== document.body && (node === dom.listMore || dom.listTools.contains(node));
 }
 
 function isFilterControl(node) {
@@ -1699,6 +1708,7 @@ function placeFilters() {
   if (appliedBar === bar) return;
   const active = document.activeElement;
   const was = active && active !== document.body ? active : filterFocus;
+  const listWas = isListTool(active) ? active : listFocus;
   const moved = !!was && (dom.moreFilters.contains(was) || was === dom.clear || was === dom.copy);
   let target = null;
   if (moved) target = bar ? was : dom.more;
@@ -1738,7 +1748,24 @@ function placeFilters() {
   }
   appliedBar = bar;
   if (target) target.focus({ preventScroll: true });
+  else if (listWas) keepListFocus(listWas, bar);
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+}
+
+// Crossing 600 px hides the control that had focus in My list: More from 600
+// px up (focus goes to the first tool still shown, Back or Group by), and
+// Share, Export and Print below 600 px while More is closed (More opens so the
+// tool stays; it takes focus back if the browser already dropped it).
+function keepListFocus(was, bar) {
+  if (bar) {
+    if (was !== dom.listMore || dom.listMore.getClientRects().length) return;
+    const next = [dom.shortlistOnly, dom.groupBy].find((node) => node.getClientRects().length);
+    next?.focus({ preventScroll: true });
+  } else if (was !== dom.listMore && !listMoreOpen && !dom.listMore.hidden) {
+    listMoreOpen = true;
+    syncListMore();
+    if (document.activeElement !== was) was.focus({ preventScroll: true });
+  }
 }
 
 function crossBar() {
