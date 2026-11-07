@@ -722,7 +722,14 @@ check('language buttons expose both available choices, with their own language n
     && /data-language="en" lang="en"/.test(foundationHtml)
     && /data-language="sk" lang="sk"/.test(foundationHtml)
     && !/aria-disabled="true"|sk-later/.test(foundationHtml)
-    && foundationHtml.includes('(English)') && foundationHtml.includes('(Slovak)'));
+    && foundationHtml.includes('(English)') && foundationHtml.includes('(slovenčina)'));
+// Review of PR 1: the lang="sk" button's hidden text was English " (Slovak)"
+// in the English UI. Each button names its language in that language, so the
+// text matches the button's lang attribute whatever the UI language.
+check('each language button names its language in that language, in both UIs',
+  /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
+    && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
+    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -2154,8 +2161,8 @@ equal('D27 figure, flags and card line per row',
     [30, false, false, '30 IB points, minimum']]);
 equal('D27 compact figure says why there is none',
   ['ie-added', 'ie-unver'].map((id) => pts.pointsShort(d27Of(id)).unknown),
-  [{ verdict: 'No IB figure', reason: 'cutoff includes a test score' },
-    { verdict: 'No IB figure', reason: 'assessment required, IB equivalent unverified' }]);
+  [{ verdict: 'No IB figure', reason: 'cutoff includes a test score', cell: 'Test in cutoff' },
+    { verdict: 'No IB figure', reason: 'assessment required, IB equivalent unverified', cell: 'No IB figure' }]);
 const d27Filters = await import(new URL('../js/filters.js', import.meta.url));
 equal('D27 My points never hides them (unknown bucket)',
   ['ie-added', 'ie-unver'].map((id) => d27Filters.pointsBucket(d27Of(id), { myIbPoints: 24, hlMaths: false })), ['unknown', 'unknown']);
@@ -2776,9 +2783,9 @@ equal('pointsShort: mixed bonus labels stay per part; all bonus labels share an 
   ]);
 equal('pointsShort: null figures explain test, entrance exam or no minimum',
   ['fx-test-score', 'fx-entrance', 'fx-nothing'].map((id) => ptsShort(fxRow(id))), [
-    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'cutoff includes a test score' } },
-    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam' } },
-    { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null } },
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'cutoff includes a test score', cell: 'Test in cutoff' } },
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam', cell: 'Entrance exam' } },
+    { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null, cell: 'Not published' } },
   ]);
 check('pointsShort: every live figure matches the corresponding pointsLines number, and unknown is exclusive', live.every((row) => {
   const short = ptsShort(row), lines = pts.pointsLines(row);
@@ -2818,12 +2825,35 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
   ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points', '≈38 R1', null, null],
   ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
-  ['v-unk', 'Not published', null, null, null],
+  ['v-unk', 'Entrance exam', null, null, null],
   ['v-unk', 'Not published', null, null, null],
   ['v-none', null, '≈44 R1', null, 'with HL Maths 4+'],
   ['v-cond', 'Only with HL Maths 4+', '≈44 R1', null, null],
   ['v-fit', 'Within your IB points', '≈44 R1', null, null],
 ]);
+// Review of PR 1: every row with no figure said "Not published", even when
+// the reason is known (a test in the CAO cutoff, D27, or a Czech entrance
+// exam). The FAQ defines "Not published" as "the university does not publish
+// a figure", so those rows now say what they are, in both languages.
+const reasonRows = [['test', fxRow('fx-test-score')], ['unverified', d27Of('ie-unver')], ['exam', fxRow('fx-entrance')], ['none', bkRow('blank')]];
+const reasonCells = (lang) => {
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return reasonRows.map(([why, row]) => [why, ...rowPoints(row, fstate(36)).slice(0, 2)]); } finally { i18n.setLanguage('en', { setItem() {} }); }
+};
+equal('row points with no figure name the known reason, EN and SK', [reasonCells('en'), reasonCells('sk')], [
+  [['test', 'v-unk', 'Test in cutoff'], ['unverified', 'v-unk', 'No IB figure'], ['exam', 'v-unk', 'Entrance exam'], ['none', 'v-unk', 'Not published']],
+  [['test', 'v-unk', 'Hranica s testom'], ['unverified', 'v-unk', 'Bez údaja v IB'], ['exam', 'v-unk', 'Prijímacia skúška'], ['none', 'v-unk', 'Nezverejnené']],
+]);
+check('row points: no live row with a known reason says "Not published"', live.every((row) => {
+  const short = ptsShort(row);
+  return !short.unknown || !short.unknown.reason || rowPoints(row, fstate(36))[1] !== 'Not published';
+}));
+// The row cell is at most 108 px wide on a 320 px phone (css/styles.css) and
+// its verdict does not wrap; "Bez údaja v IB bodoch" overflowed it.
+check('row points reason labels stay as short as the longest existing one', ['en', 'sk'].every((lang) => {
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return ['r2_pts_test_in_cutoff', 'r2_pts_no_ib_figure', 'entrance_exam'].every((k) => i18n.t(k).length <= 17); } finally { i18n.setLanguage('en', { setItem() {} }); }
+}));
 check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
@@ -2835,12 +2865,30 @@ equal('row deadline: short plain date, countdowns, neutral passed and dashed unk
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
     const c = cellOf(rowOf(fxRow(id)), 'c-ddl');
     return [fillOf(c), byClass(c, 'verd')[0]?.textContent ?? null, byClass(c, 'fig')[0].textContent, byTag(c, 's').length];
-  }), [['', 'in 171 days', '1 Feb 2027', 0], ['v-time', 'in 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'in 1 day', '15 Aug 2026', 0],
-    ['v-time', 'in 0 days', '14 Aug 2026', 0], ['v-past', 'passed', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+  }), [['', 'in 171 days', '1 Feb 2027', 0], ['v-time', 'in 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'tomorrow', '15 Aug 2026', 0],
+    ['v-time', 'today', '14 Aug 2026', 0], ['v-past', 'passed', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+// Review of PR 1: the row countdown read "in 0 days" on the day itself,
+// "in 1 day" the day before, and Slovak "o 3 dní" (should be "o 3 dni").
+// The row now uses countdown(), as the detail does. Each case re-works the
+// days with applyToday, the way the app does at load and at midnight.
+const rowCountdown = (lang, daysBefore) => {
+  const row = { ...fxRow('fx-plain'), deadline: new Date('2026-11-30T00:00:00Z') };
+  applyToday([row], new Date(2026, 10, 30 - daysBefore, 10));
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return byClass(cellOf(rowOf(row), 'c-ddl'), 'verd')[0].textContent; } finally { i18n.setLanguage('en', { setItem() {} }); }
+};
+equal('row countdown: today, tomorrow, 2-4 and 5+ days, EN and SK',
+  ['en', 'sk'].map((lang) => [0, 1, 2, 3, 4, 5, 21].map((n) => rowCountdown(lang, n))), [
+    ['today', 'tomorrow', 'in 2 days', 'in 3 days', 'in 4 days', 'in 5 days', 'in 21 days'],
+    ['dnes', 'zajtra', 'o 2 dni', 'o 3 dni', 'o 4 dni', 'o 5 dní', 'o 21 dní'],
+  ]);
 check('compact Irish fees keep the detail-only contribution note out of rows',
   !byClass(rowOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
-equal('row date: November and December use short names', [11, 12].map((m) => byClass(rowOf({ ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) }), 'c-ddl')[0].textContent),
-  ['Deadline1 Nov 2026in 171 days', 'Deadline1 Dec 2026in 171 days']);
+equal('row date: November and December use short names', [11, 12].map((m) => {
+  const row = { ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) };
+  applyToday([row], new Date(2026, 9, 1, 10));
+  return byClass(rowOf(row), 'c-ddl')[0].textContent;
+}), ['Deadline1 Nov 2026in 31 days', 'Deadline1 Dec 2026in 61 days']);
 equal('row fee: known, zero, blank and ? keep distinct meanings',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => byClass(rowOf(fxRow(id)), 'c-fee')[0].textContent),
   ['EU fee / year€2,500Living €1,100/mo', 'EU fee / year€0 · No tuition feeLiving €1,100/mo',
@@ -6870,7 +6918,7 @@ section('Batch 3 · C');
     ['1 zobrazený program', 'Zobrazený je 1 program.', '3 zobrazené programy', 'Zobrazené sú 3 programy.',
       '312 zobrazených programov', 'Zobrazených je 312 programov.', '0 zobrazených programov', 'Zobrazených je 0 programov.']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
-    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení si nepridal žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
   check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
 }
 appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {
@@ -7326,6 +7374,39 @@ check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from t
     /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
     && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))
     && /display:block;position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(ruleAt(cssText, '.status #header-list>.hb-l', phone)));
+}
+
+section('Facts and copy, review of PR 1, 2026-11-07');
+{
+  const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  // The source FAQ said unchecked rows "are marked"; none are (every row is
+  // AI-DRAFT and only signed rows carry a badge). It now quotes the badge a
+  // signed row really shows, so the two cannot drift apart.
+  equal('FAQ source answer quotes the real "Checked" badge, names the CAO and no longer claims unchecked rows are marked',
+    ['en', 'sk'].map((lang) => inLang(lang, () => {
+      const a = t('r2_faq_source_a');
+      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), a.includes('CAO'), /are marked|sú označené/.test(a)];
+    })), [[true, true, false], [true, true, false]]);
+  check('FAQ CAO answer names the UCD exception in EN and SK',
+    /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
+  // On phones the points field is in the Filters sheet, not "above".
+  check('share help points to the filters, not "above", in EN and SK',
+    /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
+      && /vo filtroch/.test(UI.sk.enter_your_ib_points_above_to_include_them) && !/vyššie/.test(UI.sk.enter_your_ib_points_above_to_include_them));
+  equal('My list pane button uses Slovak plurals for 0, 1, 2, 4, 5 and 21 saved',
+    inLang('sk', () => [0, 1, 2, 4, 5, 21].map((count) => t('r2_pane_list', { count }))),
+    ['Môj zoznam · 0 uložených', 'Môj zoznam · 1 uložený', 'Môj zoznam · 2 uložené', 'Môj zoznam · 4 uložené', 'Môj zoznam · 5 uložených', 'Môj zoznam · 21 uložených']);
+  equal('Slovak sort, setup and done-screen grammar',
+    [inLang('sk', () => t('sorted_activate_to_sort', { value1: 'X', value2: t('r2_default_order') })), UI.sk.r2_ob2m, UI.sk.r3_ob_done_h_none,
+      UI.sk.r4_ob_done_tools.replace('{bookmark}', UI.sk.r4_icon_bookmark).replace('{scales}', UI.sk.r4_icon_scales)],
+    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'V nastavení nie sú žiadne odpovede.',
+      'Tlačidlom so záložkou si programy uložíš do Môjho zoznamu a tlačidlom s váhami porovnáš až 4 vedľa seba.']);
+  // WebKit and VoiceOver drop list semantics from a list with list-style:none
+  // (the results) or display:grid items (the points lines).
+  check('results and points-line lists keep an explicit list role for Safari',
+    /<ul class="results" id="results" role="list"/.test(read('index.html'))
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').filter((u) => u.className === 'plines').every((u) => u.getAttribute('role') === 'list')
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').some((u) => u.className === 'plines'));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');

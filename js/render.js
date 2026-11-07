@@ -203,6 +203,8 @@ function pointsCell(row, state) {
 
 function pointsList(row) {
   const list = el('ul', 'plines');
+  // Safari and VoiceOver drop list semantics from a list without markers.
+  list.setAttribute('role', 'list');
   for (const line of pointsLines(row)) {
     const item = el('li');
     if (line.number === null) {
@@ -312,7 +314,7 @@ function rowPointsCell(row, state) {
   const bucket = pointsBucket(row, state);
   let fill = 'v-none';
   let verdict = '';
-  if (short.unknown) [fill, verdict] = ['v-unk', t('not_published')];
+  if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.cell];
   else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? t('within_your_ib_points_then_hpat') : t('within_your_ib_points')];
   else if (bucket === 'maths') [fill, verdict] = ['v-cond', t('only_with_hl_maths_4')];
   else if (bucket === 'unknown') [fill, verdict] = ['v-unk', t('cutoff_may_include_test_marks')];
@@ -388,7 +390,7 @@ function deadlineCell(row, { compact = false } = {}) {
     const fig = el('span', 'fig');
     if (row.deadlinePassed) { cell.classList.add('v-past'); fig.append(el('s', '', date)); }
     else { fig.textContent = date; if (row.isUrgent) cell.classList.add('v-time'); }
-    cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : t(row.daysUntilDeadline === 1 ? 'r2_day' : 'r2_days', { count: row.daysUntilDeadline })));
+    cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : countdown(row.daysUntilDeadline).toLowerCase()));
   } else if (row.deadlinePassed) {
     // Neutral, never red and never dimmed: it is still a fact worth reading.
     cell.classList.add('v-past');
