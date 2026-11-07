@@ -3611,6 +3611,167 @@ async function runAlignChromeSetup(base) {
   }
 }
 
+// Review of PR 1 (CSS and accessibility fixes, 2026-11-07): reduced motion
+// on the pseudo-elements "*" misses, the sheet's clipped focus ring, the tray
+// over a landscape pick-list, 42 px Compare links and the count's empty gap.
+async function runCssA11yFixes(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-css-a11y/smoke';
+  await mkdir(shots, { recursive: true });
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], touch = width < 600 || height <= 500 } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    if (touch) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const shot = async (page, name) => {
+    await settle(page);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+  };
+  const openSheet = async (page) => {
+    await page.click(`document.querySelector('#f-more')`, 'Filters');
+    await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet'})`, 5000, 'sheet');
+    await settle(page);
+  };
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 3).map((r) => r.id);
+
+  // 1. Reduced motion reaches ::details-content (the sheet's lists grew for
+  // 260 ms) and the slider thumbs in their shadow root (160 ms scale).
+  {
+    const page = await open('?ui=sk', 390, 844);
+    try {
+      await check('390/sk', 'RF1 reduced motion', 'the sheet\'s lists open at full height at once and the slider thumbs have no transition', async () => {
+        await openSheet(page);
+        const lists = `getComputedStyle(document.querySelector('#dd-subjects'),'::details-content').transitionDuration`;
+        const moving = await page.ev(lists);
+        assert(moving !== '0s', `control: without reduced motion the list should move, got ${moving}`);
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        try {
+          assert(await page.ev(lists) === '0s', `::details-content transition ${await page.ev(lists)}`);
+          const grow = await page.ev(`(async()=>{const d=document.querySelector('#dd-subjects');d.open=true;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const a=d.getBoundingClientRect().height;await new Promise(r=>setTimeout(r,400));const b=d.getBoundingClientRect().height;d.open=false;return [a,b]})()`);
+          assert(Math.abs(grow[0] - grow[1]) <= 0.5, `the list still grows: ${grow}`);
+          await page.ev(`document.querySelector('#dd-budget').open=true`);
+          await page.send('DOM.enable'); await page.send('CSS.enable');
+          const { root: doc } = await page.send('DOM.getDocument', { depth: -1, pierce: true });
+          const thumbs = [];
+          (function walk(n) { if (n.attributes?.includes('thumb')) thumbs.push(n.nodeId); for (const k of ['children', 'shadowRoots']) for (const c of n[k] || []) walk(c); })(doc);
+          const times = [];
+          for (const nodeId of thumbs) times.push((await page.send('CSS.getComputedStyleForNode', { nodeId })).computedStyle.find((x) => x.name === 'transition-duration')?.value);
+          assert(times.length >= 2 && times.every((t) => t === '0s'), `slider thumbs: ${times}`);
+        } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 2. Edit my answers sits 1 px from the sheet's scrolling edge; its focus
+  // ring is drawn inside it, so none of it is cut off, and it does not move.
+  for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}`, 320, 844);
+    try {
+      await check(`320/${ui}`, 'RF2 sheet focus ring', 'Edit my answers: its whole focus ring is inside the sheet\'s scrolling edge', async () => {
+        await openSheet(page);
+        await page.key('Shift', 'ShiftLeft', 16);
+        await page.ev(`document.querySelector('.sheet-b .sheet-edit').focus()`);
+        const m = await page.ev(`(()=>{const e=document.querySelector('.sheet-b .sheet-edit'),s=getComputedStyle(e),b=document.querySelector('.sheet-b'),r=e.getBoundingClientRect(),reach=parseFloat(s.outlineOffset)+parseFloat(s.outlineWidth);
+          return {fv:e.matches(':focus-visible'),style:s.outlineStyle,ring:[r.left-reach,r.right+reach],clip:[b.getBoundingClientRect().left+b.clientLeft,b.getBoundingClientRect().left+b.clientLeft+b.clientWidth],text:r.left+parseFloat(s.borderLeftWidth)+parseFloat(s.paddingLeft),edge:b.getBoundingClientRect().left+parseFloat(getComputedStyle(b).paddingLeft)}})()`);
+        await shot(page, `sheet-focus-320-${ui}`);
+        assert(m.fv && m.style !== 'none', `no focus ring: ${JSON.stringify(m)}`);
+        assert(m.ring[0] >= m.clip[0] && m.ring[1] <= m.clip[1], `ring cut off: ${JSON.stringify(m)}`);
+        assert(Math.abs(m.text - m.edge) <= 1, `the text moved off the sheet's edge: ${JSON.stringify(m)}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 3. A phone on its side: the tray went over Budget's first field and over
+  // Sort's list. It hides while a pick-list floats open and comes back after.
+  for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}`, 844, 390, { compare: ids.slice(0, 1) });
+    try {
+      await check(`844x390/${ui}`, 'RF3 landscape tray', 'Budget and Sort open with nothing over their first field; the tray hides meanwhile and comes back', async () => {
+        await page.waitFor(`({ok:!document.querySelector('#cmp-tray').hidden,why:'no tray'})`, 5000, 'tray');
+        for (const id of ['dd-budget', 'dd-sort']) {
+          await page.click(`document.querySelector('#${id} summary')`, id);
+          await page.waitFor(`({ok:document.querySelector('#${id}').open,why:'closed'})`, 5000, `${id} open`);
+          await settle(page);
+          const m = await page.ev(`(()=>{const d=document.querySelector('#${id}'),f=d.querySelector('.dropdown-panel :is(input:not([type=hidden]),select,label)'),r=f.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,Math.min(r.top+r.height/2,innerHeight-1));
+            return {tray:document.querySelector('#cmp-tray').checkVisibility({opacityProperty:true,visibilityProperty:true}),first:[r.top,r.bottom],hit:!!hit&&d.contains(hit),has:document.body.classList.contains('has-tray')}})()`);
+          await shot(page, `landscape-${id}-844-${ui}`);
+          assert(!m.tray && !m.has, `tray still shown over ${id}: ${JSON.stringify(m)}`);
+          assert(m.hit, `${id}'s first field is covered: ${JSON.stringify(m)}`);
+          await page.click(`document.querySelector('#${id} summary')`, `${id} again`);
+          await page.waitFor(`({ok:!document.querySelector('#${id}').open&&!document.querySelector('#cmp-tray').hidden&&document.body.classList.contains('has-tray'),why:'tray not back'})`, 5000, 'tray back');
+        }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 4. Compare's official links: 44 px tall with a coarse pointer (they were
+  // 42: inline padding never counts), text where it was, icon on the last word.
+  for (const [width, height] of [[1280, 900], [390, 844], [320, 844]]) {
+    const page = await open('?ui=sk', width, height, { compare: ids, touch: true });
+    try {
+      await check(`${width}/sk`, 'RF4 compare link target', 'with a coarse pointer every official link is at least 44 px tall and a tap reaches 44 px of it; the text starts on the fact name\'s line', async () => {
+        await page.ev(`(document.querySelector('#header-compare').offsetParent?document.querySelector('#header-compare'):document.querySelector('#cmp-tray-open')).click()`);
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await page.ev(`document.querySelector('.cmp-t .lnk').scrollIntoView({block:'center',behavior:'instant'})`);
+        await settle(page);
+        const m = await page.ev(`(()=>{const links=[...document.querySelectorAll('.cmp-t .lnk')];return {coarse:matchMedia('(pointer:coarse)').matches,links:links.map(l=>{l.scrollIntoView({block:'center',inline:'center',behavior:'instant'});const r=l.getBoundingClientRect(),t=document.createRange();t.selectNodeContents(l);const line=t.getClientRects()[0];const th=l.closest('tr').querySelector('th'),h=document.createRange();h.selectNodeContents(th);
+          const end=document.createRange();end.selectNodeContents(l.querySelector('.lnk-end').firstChild);const word=[...end.getClientRects()].at(-1),icon=l.querySelector('.ic').getBoundingClientRect();
+          let hits=0;for(let y=Math.ceil(r.top);y<r.bottom;y++){const e=document.elementFromPoint(r.left+4,y+0.5);if(e&&(e===l||l.contains(e)))hits++}
+          return {h:r.height,hits,line:line.top,th:h.getClientRects()[0].top,icon:Math.abs((icon.top+icon.bottom)/2-(word.top+word.bottom)/2)<=6&&icon.left>=word.right-1}})}})()`);
+        await shot(page, `compare-links-${width}-sk`);
+        assert(m.coarse && m.links.length === 3, JSON.stringify(m));
+        for (const l of m.links) {
+          // On phones the fact name sits just above the value and keeps the
+          // top few pixels, so what is counted is the height a tap reaches.
+          assert(l.h >= 44 && l.hits >= 44, `link target ${JSON.stringify(l)}`);
+          assert(l.icon, `icon left its last word: ${JSON.stringify(l)}`);
+          if (width >= 600) assert(Math.abs(l.line - l.th) <= 1, `text moved off the fact name's line: ${JSON.stringify(l)}`);
+        }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 5. Desktop Compare: the hidden count kept its width, so "Edit my answers"
+  // sat after an empty gap. It now starts at the row's left edge.
+  for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}`, 1440, 900, { compare: ids });
+    try {
+      await check(`1440/${ui}`, 'RF5 compare count gap', 'while Compare is open the count takes no room and Edit my answers starts at the row\'s edge; closing brings the count back first', async () => {
+        const at = `(()=>{const s=document.querySelector('.status'),c=document.querySelector('#result-count'),e=document.querySelector('.status .edit-answers');return {edge:s.getBoundingClientRect().left+parseFloat(getComputedStyle(s).paddingLeft),count:c.getBoundingClientRect().width,shown:c.checkVisibility(),edit:e.getBoundingClientRect().left}})()`;
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await page.ev('scrollTo(0,0)');
+        const m = await page.ev(at);
+        await shot(page, `compare-count-1440-${ui}`);
+        assert(!m.shown && m.count === 0 && Math.abs(m.edit - m.edge) <= 1, JSON.stringify(m));
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden,why:'still open'})`, 5000, 'closed');
+        const back = await page.ev(at);
+        assert(back.shown && back.count > 0 && Math.abs(back.edit - back.edge) > back.count, JSON.stringify(back));
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -3643,7 +3804,8 @@ async function main() {
     await runAlignChromeSetup(base);
     await runPhoneMyListCompare(base);
     await runCompareHeaderR2(base);
-    await runPrintFixes(base); }
+    await runPrintFixes(base);
+    await runCssA11yFixes(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

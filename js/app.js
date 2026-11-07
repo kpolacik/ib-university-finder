@@ -792,14 +792,19 @@ function syncCompareEntry() {
 
 // The tray shows on phones (trayQuery) once a programme is in Compare. It
 // hides while Compare is open, while a field that brings up the on-screen
-// keyboard has focus, while a dialog is open and while printing.
+// keyboard has focus, while a dialog is open, while a pick-list floats open
+// from the filter bar and while printing. The pick-lists float only where the
+// window is short and wide (a phone on its side); with 390 px of height the
+// tray covered Budget's first field and Sort's list (review of PR 1), and
+// there is no room below them to give the list instead.
 // body.has-tray reserves its height at the end of the page; the height itself
 // comes from the ResizeObserver in wireTray, never read here, since a layout
 // read after the rows are rebuilt costs a full layout of the list (L09).
 function syncTray(focused = document.activeElement) {
   const count = shownCompare().length;
   const show = loaded && count > 0 && !compareOpen && trayQuery.matches && !printing && !opensKeyboard(focused)
-    && ![...document.querySelectorAll('dialog')].some((dialog) => dialog.open);
+    && ![...document.querySelectorAll('dialog')].some((dialog) => dialog.open)
+    && !dom.dropdowns.some((d) => d.open && !dom.sheet.contains(d));
   const text = t('r3_tray_text', { count });
   if (dom.trayText.textContent !== text) dom.trayText.textContent = text;
   if (dom.tray.hidden === show) dom.tray.hidden = !show;
@@ -821,6 +826,7 @@ function wireTray() {
   document.addEventListener('focusout', (event) => syncTray(event.relatedTarget));
   trayQuery.addEventListener('change', () => syncTray());
   for (const dialog of document.querySelectorAll('dialog')) dialog.addEventListener('close', () => syncTray());
+  for (const d of dom.dropdowns) d.addEventListener('toggle', () => syncTray());
   if (typeof ResizeObserver !== 'function') return;
   new ResizeObserver((entries) => {
     const height = Math.ceil(entries.at(-1).borderBoxSize?.[0]?.blockSize ?? dom.tray.offsetHeight);

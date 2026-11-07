@@ -3898,6 +3898,25 @@ const reducedBody = allCss.filter((r) => r.media.join() === '@media (prefers-red
 check('reduced motion is instant: transition and animation none !important on every element, pseudo-element and ::backdrop; no 0.01ms',
   /\*, \*::before, \*::after, ::backdrop\s*\{[^}]*transition: none !important;[^}]*animation: none !important;[^}]*scroll-behavior: auto !important/.test(reducedBody)
     && !/0\.01ms/.test(cssRules));
+// Review of PR 1: "*" never matches ::details-content or the slider thumb, so
+// under reduced motion the phone sheet's lists still grew for 260 ms and the
+// thumb still scaled. Every pseudo-element that has a transition anywhere
+// (other than ::before, ::after and ::backdrop, which the rule above covers)
+// needs its own rule there, alone, since one unknown pseudo-element would
+// drop a shared selector list.
+const motionPseudoGaps = (source) => {
+  const tree = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+  const reduced = tree.filter((r) => r.media.join() === '@media (prefers-reduced-motion: reduce)' && /transition: ?none !important/.test(r.body)).map((r) => r.selector.trim());
+  const moving = tree.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body));
+  const pseudos = new Set(moving.flatMap((r) => [...r.selector.matchAll(/::([\w-]+)/g)].map((m) => m[1])).filter((name) => !['before', 'after', 'backdrop'].includes(name)));
+  return [...pseudos].filter((name) => !reduced.some((sel) => !sel.includes(',') && new RegExp(`::${name}$`).test(sel)));
+};
+check('reduced motion also stops ::details-content and the slider thumbs, each in a rule of its own',
+  motionPseudoGaps(cssRules).length === 0
+    && ['::details-content', 'input[type=range]::-webkit-slider-thumb', 'input[type=range]::-moz-range-thumb'].every((sel) => /transition: none !important/.test(bodyOf(sel, ['@media (prefers-reduced-motion: reduce)'])))
+    && motionPseudoGaps(cssRules + '.x::marker{transition:color 1s}').join() === 'marker'
+    && motionPseudoGaps(cssRules.replace('::details-content { transition: none !important; }', '')).join() === 'details-content',
+  motionPseudoGaps(cssRules).join(', '));
 // A05: Chrome named a row "World Bachelor in Business , BSc" (and the pane
 // "Antropologie , Bc.") because the clipped, absolute ", " counted as its own
 // block. The title's separator is inline at zero size; the global utility is
@@ -6435,7 +6454,7 @@ appCheck('A4 the header Compare button counts the set and is pressed while the v
   run(`${cmpSet(['gone', a])} syncCompareControls();`);
   return get('header-compare-count').textContent === '1';
 });
-appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog and while printing; has-tray follows it', ({ run, get, fire, trayMedia, docBody, ids: [a, b] }) => {
+appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog, behind a pick-list floating from the bar and while printing; has-tray follows it', ({ run, get, fire, flip600, trayMedia, docBody, ids: [a, b] }) => {
   // The harness starts with focus on a stand-in text field, which counts as typing.
   stubDocument.activeElement = docBody;
   const tray = get('cmp-tray'), shown = () => !tray.hidden && docBody.classList.contains('has-tray');
@@ -6463,6 +6482,18 @@ appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden
   if (!gone()) return false;
   get('filter-sheet').close(); fire(get('filter-sheet'), 'close', { bubbles: false });
   if (!shown()) return false;
+  // Review of PR 1: a phone on its side has the tray and the bar's floating
+  // pick-lists, and the tray covered Budget's first field. It goes while one
+  // is open and comes back when it closes; a list left open in the closed
+  // sheet does not count.
+  const budget = get('dd-budget'), toggle = (open) => { budget.open = open; fire(budget, 'toggle', { bubbles: false }); };
+  toggle(true); if (!shown()) return false; toggle(false);
+  // Widening moves focus to the tuition field (a keyboard field); not what is tested here.
+  flip600(true); stubDocument.activeElement = docBody; toggle(true);
+  if (!gone()) return false;
+  toggle(false);
+  if (!shown()) return false;
+  flip600(false); stubDocument.activeElement = docBody;
   // Desktop: no tray. Printing: none.
   trayMedia.matches = false; for (const fn of trayMedia.listeners) fn({ matches: false });
   if (!gone()) return false;
@@ -6961,12 +6992,16 @@ section('Alignment · list, detail, Compare');
   check('AL compare fact names are 6.5rem from 600 to 1023 px; one programme sizes its column to its facts',
     /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\.cmp \.cmp-t tbody th,\.cmp \.cmp-t \.cmp-c\{width:6\.5rem;padding-inline:10px\}\}/.test(block)
     && /@media \(min-width:600px\)\{\.cmp-t\[data-n="1"\]\{width:auto\}\}/.test(block));
-  check('AL compare: shared first baseline, the link wraps as text, 44 px Close and Browse, landing clear of what sticks',
-    /\.cmp \.cmp-t tbody th\{line-height:20px\}/.test(block) && /\.cmp-t \.lnk\{display:inline;min-height:0;/.test(block) && /\.cmp-t \.lnk-end\{white-space:nowrap\}/.test(block)
+  // Review of PR 1: as display:inline its padding never counted, so the
+  // link was 42 px with a coarse pointer; it is an inline-block of --tap.
+  check('AL compare: shared first baseline, the link wraps as text in an inline-block at least --tap tall, 44 px Close and Browse, landing clear of what sticks',
+    /\.cmp \.cmp-t tbody th\{line-height:20px\}/.test(block) && /\.cmp-t \.lnk\{display:inline-block;min-height:var\(--tap\);padding-block:calc\(\(var\(--tap\) - 20px\) \/ 2\);margin-block:calc\(\(20px - var\(--tap\)\) \/ 2\);line-height:20px\}/.test(block) && /\.cmp-t \.lnk-end\{white-space:nowrap\}/.test(block)
     && /#cmp-close,#cmp-browse\{height:44px\}/.test(block) && /\.cmp\{scroll-margin-top:calc\(var\(--header-visible\) \+ 8px\)\}/.test(block)
     && /@media \(max-width:599\.98px\)\{\.cmp\{scroll-margin-top:calc\(var\(--count-height\) \+ 8px\)\}\}/.test(block));
-  check('AL while Compare is open the list count is hidden; toast actions are one line and 44 px wide; print keeps no room for Save',
-    /\.stream:has\(>#compare:not\(\[hidden\]\)\) :is\(#result-count,\.status \.cshort\)\{visibility:hidden\}/.test(block)
+  // Review of PR 1: visibility:hidden kept the count's width, a gap before
+  // "Edit my answers" on desktop; display:none takes it out of the row.
+  check('AL while Compare is open the list count is not shown and keeps no width; toast actions are one line and 44 px wide; print keeps no room for Save',
+    /\.stream:has\(>#compare:not\(\[hidden\]\)\) :is\(#result-count,\.status \.cshort\)\{display:none\}/.test(block) && !/visibility:hidden/.test(block)
     && /\.toast button\{flex:none;min-width:44px;white-space:nowrap\}/.test(block)
     && /@media print\{\.cmp \.cmp-t th\.cmp-p\{padding-block:10px\}\.cmp \.cmp-t \.lnk \.ic\{display:none\}\}/.test(block));
   // The section must sit before Batch 3 · A, whose later rules it does not
@@ -7015,6 +7050,10 @@ section('Alignment · header, My list, setup');
   check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
     /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
     && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+  // Review of PR 1: the -15 px margin puts the button 1 px from the sheet's
+  // scrolling edge, which cut off the left of its 2 px ring at offset 2.
+  check('AL-H4 Edit my answers in the sheet draws its focus ring inside the button, so the sheet does not clip it',
+    /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /outline-offset:-3px/.test(ruleAt(cssText, '.sheet-b .sheet-edit:focus-visible')));
 }
 
 {

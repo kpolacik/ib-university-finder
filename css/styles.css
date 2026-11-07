@@ -1560,8 +1560,12 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* The official link is a line of text: its icon follows the last word, the
    value starts on the first line, and on paper its address follows the words
    instead of squeezing them to one word per line. The padding keeps the tap
-   area without moving the text. */
-.cmp-t .lnk{display:inline;min-height:0;padding-block:calc((var(--tap) - 20px) / 2)}
+   area without moving the text: it was inline, whose padding never counts
+   toward the height, so with a coarse pointer the link was 42 px, not 44
+   (review of PR 1). An inline-block counts it, and the negative margins give
+   the room back to the line, so the text does not move; the words still wrap
+   inside it with the icon on the last word. */
+.cmp-t .lnk{display:inline-block;min-height:var(--tap);padding-block:calc((var(--tap) - 20px) / 2);margin-block:calc((20px - var(--tap)) / 2);line-height:20px}
 .cmp-t .lnk .ic{display:inline-block;margin-left:4px;vertical-align:-2px}
 .cmp-t .lnk-end{white-space:nowrap}
 /* The view's own buttons share one height: Close, Save and Browse are 44 px
@@ -1571,8 +1575,10 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp{scroll-margin-top:calc(var(--header-visible) + 8px)}
 @media (max-width:599.98px){.cmp{scroll-margin-top:calc(var(--count-height) + 8px)}}
 /* While Compare is open the count describes the hidden list ("2 of 2 saved
-   programmes" above "Compare 4 programmes"), so it is not shown. */
-.stream:has(>#compare:not([hidden])) :is(#result-count,.status .cshort){visibility:hidden}
+   programmes" above "Compare 4 programmes"), so it is not shown. display, not
+   visibility: a hidden count kept its width, an empty gap left of "Edit my
+   answers" on desktop (review of PR 1). */
+.stream:has(>#compare:not([hidden])) :is(#result-count,.status .cshort){display:none}
 .stream:has(>#compare:not([hidden]))>#count-summary{display:none}
 /* Toast actions: one line and a 44 px target ("Späť" was 41 px wide). */
 .toast button{flex:none;min-width:44px;white-space:nowrap}
@@ -1611,6 +1617,10 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    is .btn's 14 px padding plus its 1 px border. */
 .sheet-b .copy{margin:0}
 .sheet-b .sheet-edit{margin-left:-15px}
+/* That margin puts the button 1 px from the sheet's scrolling edge, which cut
+   off the left of its focus ring (review of PR 1, 320 px). The ring is drawn
+   inside the button instead, as on SK/EN; the button does not move. */
+.sheet-b .sheet-edit:focus-visible{outline-offset:-3px}
 
 /* My list (alignment audit). From 600 px Clear my list is a small outlined
    button like Share, Export and Print, in secondary ink, at the toolbar's
@@ -2015,6 +2025,13 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
     animation: none !important;
     scroll-behavior: auto !important;
   }
+  /* The universal selector above never reaches these pseudo-elements, so the
+     phone sheet's dropdowns still grew for 260 ms and the slider thumb still
+     scaled for 160 ms (review of PR 1). One rule each: a browser that does not
+     know one of them would drop a shared selector list whole. */
+  ::details-content { transition: none !important; }
+  input[type=range]::-webkit-slider-thumb { transition: none !important; }
+  input[type=range]::-moz-range-thumb { transition: none !important; }
 }
 
 /* ------------------------------------------------------------- printing */
