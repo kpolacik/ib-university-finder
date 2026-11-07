@@ -131,13 +131,14 @@ reopen any of them unless the user asks. The most load-bearing:
 - Irish fee is the Free Fees figure (contribution + levy)
 - Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
 - Jakub's data and choices win over the fork's older decisions (Leon, 2026-11-02, at the upstream merge); the UK is shown
-- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (2–4) and `?list=` share links; non-EU tuition not collected
+- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (its own set of up to 4) and `?list=` share links; non-EU tuition not collected
 
 The visual direction (one summary row per programme, colour only for
 verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
 round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
 in `plans/design-round2/proposal.md`, with mockup v4 in
 `plans/design-round2/mockup.html`; its later Leon decisions override the mockup.
+`plans/` is local only (not in git), so on another machine STATUS.md is the record.
 
 - Colours belong only in the `:root` tokens in `css/styles.css`. Colour is
   only for verdicts; blue is only for interaction (see STATUS.md for the

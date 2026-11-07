@@ -519,12 +519,8 @@ plans/backlog/wording.md for the translation queue.
 
 - **Landscape phones lose the logo once scrolled.** At 844 x 390 the header
   stops sticking (by design, to save height), so "home" is off screen after a
-  scroll. A sticky count row with the IB tile would cost about 45 of 390 px;
-  waiting for Leon's call.
-
-- **University names are cut with "…" in most rows** (about 91% at 390 px,
-  66% at 1280 px), city included. Showing them whole means two-line rows;
-  waiting for Leon's call.
+  scroll. A sticky row with the IB tile would cost about 57 of 390 px; Leon
+  kept it this way (2026-11-07).
 
 - **Rolling admission and "Not passed yet".** 21 of the 22 programmes whose notes
   mention rolling or ongoing admission also have a recorded deadline, so they drop
@@ -612,7 +608,7 @@ tile and Filters over an empty gap, since the count hides in Compare) is
 gone: Compare starts 12 px from the top, its Close is the way back and the
 header's logo above it still goes home. From 600 px the footer sits 24 px
 under an open Compare instead of 48 (the footer heading is 44 px below it,
-was 68); under the list the gap is unchanged. "Close comparison" has 8 px
+was 68); under the list the gap is unchanged. "Close compare" has 8 px
 corners at every width, like "Show the original". On phones My list is in
 the count row just before Filters (the header scrolls away; that row
 sticks): its bookmark and saved count, 44 px, the words kept for screen
@@ -725,8 +721,8 @@ students, and where each rule lives:
   rows at once; Leon kept it that way. The desktop help bubble is now only as wide as its
   text (up to 260 px). CSS: the `@supports (interpolate-size…)` block.
 - *My list on phones (batch 1)* is one even toolbar joined to the list.
-- *Header (batch 2 A).* On phones and touch screens the logo tile is 36 px in a
-  44 px tap area that stays off Search. The logo has a translated name and
+- *Header (batch 2 A).* On phones and touch screens the logo tile is 44 px, as
+  tall as Search (36 px with a mouse from 600 px; Leon, 2026-11-07), and stays off Search. The logo has a translated name and
   takes you back to the top without changing filters or the address. Up to
   700 px wide the "University Finder" heading is hidden visually but still read by
   screen readers. From 600 to 700 px the compact header's Filters button is
@@ -1183,7 +1179,7 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Design round 2, batch 2 calls** (Leon, 2026-11-05). Copy link has no
   pop-up window: the button copies at once and the message says truthfully
   what the link holds, or that copying failed. Compare stays at 2 to 4
-  programmes, made easier to find with the hint and "Compare (n)", which
+  programmes (replaced in batch 3: Compare is its own set of up to 4), made easier to find with the hint and "Compare (n)", which
   pre-ticks all saves when there are 2 to 4. Passed deadlines stay visible;
   the "Not passed yet" option carries a note instead, and rolling admission is
   fixed in the data, not the filter. A second click on an open row focuses
