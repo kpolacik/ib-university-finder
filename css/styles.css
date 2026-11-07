@@ -76,6 +76,7 @@
   /* ---------- Identity (lavender): the masthead and country badges only. Never a status. ---------- */
   --brand-fill:#ebe4f3;  /* masthead band. */
   --brand-ink:#47345d;   /* masthead title, tagline and language buttons. 8.83 on brand-fill; panel on it 10.95. */
+  --brand-accent:#7c55c4;/* the bookmark in the logo tile only. A graphic, 3:1 on brand-fill. */
   /* Country badges: one fill/ink pair per mapped country, and a neutral pair for any country not
      mapped yet (it needs no code change). Every pair is in tools/check-contrast.mjs (all above 7:1). */
   --cty-fill:#edf0f4; --cty-ink:#46515f;
@@ -958,6 +959,7 @@ html:has(.sheet[open]){overflow:hidden}
 .mark,.filters-btn{position:absolute;inset:0 auto 0 0;transition:opacity 160ms,transform 240ms var(--ease-out)}
 .mark{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
 .mono{width:30px;height:30px;border-radius:8px;background:var(--brand-fill);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.mono svg{width:100%;height:100%;display:block}
 .mark h1{font-size:17px;letter-spacing:-.01em;margin:0;white-space:nowrap}
 .filters-btn{opacity:0;visibility:hidden;transform:translateY(4px)}
 .search{flex:1;min-width:0;max-width:560px;margin:0 auto}

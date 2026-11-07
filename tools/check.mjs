@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -1214,8 +1214,26 @@ section('Tidy-up (M05-M07)');
 check('config.js no longer says the site runs on the sample files', !read('js/config.js').includes('sample files in /data'));
 check('the CSS header no longer mentions a dark palette or a 1080px rail',
   !/dark palette/.test(css.slice(0, 600)) && !/1080px/.test(css.slice(0, 600)));
-check('index.html declares an icon, so no favicon request 404s', /<link rel="icon" href="data:,">/.test(indexHtml));
+// The empty data: icon was replaced by the real logo (2026-11-07); declaring a real file still stops the 404.
+check('index.html declares an icon that exists, so no favicon request 404s',
+  /<link rel="icon" href="icons\/icon.svg" type="image\/svg\+xml">/.test(indexHtml) && existsSync(new URL('../icons/icon.svg', import.meta.url)));
 check('the unused fromCutoff converter is gone', !read('tools/lib/ireland.mjs').includes('fromCutoff'));
+
+
+// The logo (Leon, 2026-11-07): bookmark IB. Lilac tile with a violet bookmark in the page;
+// the tab icon switches to the solid plum version in dark mode; phones get the plum PNG.
+section('Logo');
+{
+  const tiles = indexHtml.match(/<span class="mono"[^]*?<\/span>/g) || [];
+  check('both logo tiles draw the bookmark mark, not the old IB text', tiles.length === 2 && tiles.every((t) => t.includes('<use href="#i-logo"/>') && !/>IB</.test(t)));
+  check('the logo symbol takes its colours from brand tokens, which are defined', /<symbol id="i-logo"[^]*?var\(--brand-accent\)[^]*?var\(--brand-ink\)[^]*?<\/symbol>/.test(indexHtml) && /--brand-accent:#[0-9a-f]{6}/.test(css));
+  check('the old monogram string is gone from both languages', !('r2_monogram' in UI.en) && !('r2_monogram' in UI.sk));
+  const icon = readFileSync(new URL('../icons/icon.svg', import.meta.url), 'utf8');
+  check('the tab icon switches to the plum tile in dark mode', /@media \(prefers-color-scheme:dark\)\{\.t\{fill:#47345d\}/.test(icon) && /\.t\{fill:#ebe4f3\}/.test(icon));
+  const png = readFileSync(new URL('../icons/apple-touch-icon.png', import.meta.url));
+  check('the home-screen icon is a 180 px PNG and index.html links it',
+    png.readUInt32BE(16) === 180 && png.readUInt32BE(20) === 180 && /<link rel="apple-touch-icon" href="icons\/apple-touch-icon.png">/.test(indexHtml));
+}
 
 // ---------------------------------------------------------------- maintainer lint
 
@@ -5880,7 +5898,7 @@ function logoClick(init, { reduced = false, target = 'mark' } = {}) {
 // Batch 3 C2: the name changes from "back to top" to going home, on both links.
 check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
   /<a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label">/.test(read('index.html'))
-  && /<a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB<\/span><\/a>/.test(read('index.html'))
+  && /<a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"\/><\/svg><\/span><\/a>/.test(read('index.html'))
   && UI.en.r3_home_label === 'University Finder, all programmes' && UI.sk.r3_home_label === 'University Finder, všetky programy'
   && !('r2_home_label' in UI.en) && !('r2_home_label' in UI.sk));
 // Batch 3 C2 changed this: the click now also goes home (goHome, which the app

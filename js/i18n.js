@@ -70,7 +70,6 @@ export const UI = {
     "r2_edit": "Edit my answers",
 
     "r2_wordmark": "University Finder",
-    "r2_monogram": "IB",
     "r2_footer_h": "Check before you apply",
     "r2_footer_data": "Data comes from the universities’ official pages.",
     "r2_footer_p": "Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.",
@@ -694,7 +693,6 @@ export const UI = {
     "r2_edit": "Upraviť moje odpovede",
 
     "r2_wordmark": "University Finder",
-    "r2_monogram": "IB",
     "r2_footer_h": "Over si údaje pred podaním prihlášky",
     "r2_footer_data": "Údaje pochádzajú z oficiálnych stránok univerzít.",
     "r2_footer_p": "Pred podaním prihlášky si vždy over informácie na oficiálnej stránke univerzity. Požiadavky, poplatky a termíny sa môžu meniť. Túto stránku spravujú študenti.",

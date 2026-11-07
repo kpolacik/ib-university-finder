@@ -9,9 +9,10 @@
 
 <link rel="preload" href="fonts/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font/woff2" crossorigin>
 
-<!-- An empty icon, so the browser does not ask for /favicon.ico and log a 404
-     on every load. A real icon belongs to the redesign. -->
-<link rel="icon" href="data:,">
+<!-- The tab icon switches with the browser's light/dark setting (Chrome, Firefox); Safari and
+     phone home screens use the solid plum PNG. Declaring both also stops a /favicon.ico 404. -->
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/styles.css">
 <!-- Without these the browser discovers the modules in three waves — app.js,
      then what it imports, then what those import — and only asks for the CSVs
@@ -106,6 +107,9 @@
   </symbol>
   <!-- Phosphor Regular arrow-square-out, @phosphor-icons/core 2.1.1, MIT. -->
   <!-- Phosphor Regular arrows-down-up, MIT, @phosphor-icons/core 2.1.1. -->
+  <!-- The logo (Leon, 2026-11-07): the I is a bookmark, because saving programmes to My list is
+       what the site is for. Same shapes as icons/icon.svg; colours come from the brand tokens. -->
+  <symbol id="i-logo" viewBox="0 0 36 36"><path d="M7.6 9.6a1.6 1.6 0 0 1 1.6-1.6h2.8a1.6 1.6 0 0 1 1.6 1.6V28l-3-3.1-3 3.1Z" style="fill:var(--brand-accent)"/><path d="M18.6 17V9.7h4a3.65 3.65 0 0 1 0 7.3ZM18.6 17h4.9a4.3 4.3 0 0 1 0 8.6h-4.9Z" fill="none" stroke-width="3.3" stroke-linejoin="round" style="stroke:var(--brand-ink)"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12m0-12L6 18" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
 <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 14 4-4m-5-2 2-2a4 4 0 0 1 6 6l-2 2m-6-4-2 2a4 4 0 0 0 6 6l2-2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
@@ -141,7 +145,7 @@
 <header class="hd">
   <div class="hd-in">
     <div class="slot">
-      <a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB</span><h1 data-i18n="r2_wordmark">University Finder</h1></a>
+      <a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"/></svg></span><h1 data-i18n="r2_wordmark">University Finder</h1></a>
       <button class="btn filters-btn" id="compact-filters" type="button" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span><span id="compact-count" class="badge">0</span></button>
     </div>
     <div class="fld f-q search">
@@ -255,7 +259,7 @@
          aria-hidden. -->
     <div class="stuck-mark" aria-hidden="true"></div>
     <div class="status">
-      <a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true" data-i18n="r2_monogram">IB</span></a>
+      <a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"/></svg></span></a>
       <p class="count cfull" id="result-count" aria-live="polite"></p>
       <p class="count cshort" aria-hidden="true"></p>
 <button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg><span data-i18n="filters_2">Filters</span></button><button type="button" class="btn btn-a edit-answers" data-edit data-i18n="r2_edit">Edit my answers</button><button type="button" id="f-clear" class="btn btn-q clear" data-i18n="clear_all_2">Clear all</button>      <button type="button" id="f-copy" class="btn btn-s copy" aria-label="Copy link to these filters" data-i18n-attr="aria-label:r2_copy_filters_link" aria-describedby="f-copy-help"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg><span class="copy-long" data-i18n="r2_copy_filters_link">Copy link to these filters</span><span class="copy-short" data-i18n="copy_link" aria-hidden="true">Copy link</span></button>
