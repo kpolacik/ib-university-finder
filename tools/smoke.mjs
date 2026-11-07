@@ -3515,8 +3515,8 @@ async function runAlignChromeSetup(base) {
 }
 
 // Review of PR 1 (CSS and accessibility fixes, 2026-11-07): reduced motion
-// on the pseudo-elements "*" misses, the sheet's clipped focus ring, 42 px
-// Compare links and the count's empty gap.
+// on the pseudo-elements "*" misses, the sheet's clipped focus ring, the tray
+// over a landscape pick-list, 42 px Compare links and the count's empty gap.
 async function runCssA11yFixes(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-css-a11y/smoke';
@@ -3592,6 +3592,31 @@ async function runCssA11yFixes(base) {
         assert(m.fv && m.style !== 'none', `no focus ring: ${JSON.stringify(m)}`);
         assert(m.ring[0] >= m.clip[0] && m.ring[1] <= m.clip[1], `ring cut off: ${JSON.stringify(m)}`);
         assert(Math.abs(m.text - m.edge) <= 1, `the text moved off the sheet's edge: ${JSON.stringify(m)}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 3. A phone on its side: the tray went over Budget's first field and over
+  // Sort's list. It hides while a pick-list floats open and comes back after.
+  for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}`, 844, 390, { compare: ids.slice(0, 1) });
+    try {
+      await check(`844x390/${ui}`, 'RF3 landscape tray', 'Budget and Sort open with nothing over their first field; the tray hides meanwhile and comes back', async () => {
+        await page.waitFor(`({ok:!document.querySelector('#cmp-tray').hidden,why:'no tray'})`, 5000, 'tray');
+        for (const id of ['dd-budget', 'dd-sort']) {
+          await page.click(`document.querySelector('#${id} summary')`, id);
+          await page.waitFor(`({ok:document.querySelector('#${id}').open,why:'closed'})`, 5000, `${id} open`);
+          await settle(page);
+          const m = await page.ev(`(()=>{const d=document.querySelector('#${id}'),f=d.querySelector('.dropdown-panel :is(input:not([type=hidden]),select,label)'),r=f.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,Math.min(r.top+r.height/2,innerHeight-1));
+            return {tray:document.querySelector('#cmp-tray').checkVisibility({opacityProperty:true,visibilityProperty:true}),first:[r.top,r.bottom],hit:!!hit&&d.contains(hit),has:document.body.classList.contains('has-tray')}})()`);
+          await shot(page, `landscape-${id}-844-${ui}`);
+          assert(!m.tray && !m.has, `tray still shown over ${id}: ${JSON.stringify(m)}`);
+          assert(m.hit, `${id}'s first field is covered: ${JSON.stringify(m)}`);
+          await page.click(`document.querySelector('#${id} summary')`, `${id} again`);
+          await page.waitFor(`({ok:!document.querySelector('#${id}').open&&!document.querySelector('#cmp-tray').hidden&&document.body.classList.contains('has-tray'),why:'tray not back'})`, 5000, 'tray back');
+        }
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }

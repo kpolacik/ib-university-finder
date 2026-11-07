@@ -6421,7 +6421,7 @@ appCheck('A4 the header Compare button counts the set and is pressed while the v
   run(`${cmpSet(['gone', a])} syncCompareControls();`);
   return get('header-compare-count').textContent === '1';
 });
-appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog and while printing; has-tray follows it', ({ run, get, fire, trayMedia, docBody, ids: [a, b] }) => {
+appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog, behind a pick-list floating from the bar and while printing; has-tray follows it', ({ run, get, fire, flip600, trayMedia, docBody, ids: [a, b] }) => {
   // The harness starts with focus on a stand-in text field, which counts as typing.
   stubDocument.activeElement = docBody;
   const tray = get('cmp-tray'), shown = () => !tray.hidden && docBody.classList.contains('has-tray');
@@ -6449,6 +6449,18 @@ appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden
   if (!gone()) return false;
   get('filter-sheet').close(); fire(get('filter-sheet'), 'close', { bubbles: false });
   if (!shown()) return false;
+  // Review of PR 1: a phone on its side has the tray and the bar's floating
+  // pick-lists, and the tray covered Budget's first field. It goes while one
+  // is open and comes back when it closes; a list left open in the closed
+  // sheet does not count.
+  const budget = get('dd-budget'), toggle = (open) => { budget.open = open; fire(budget, 'toggle', { bubbles: false }); };
+  toggle(true); if (!shown()) return false; toggle(false);
+  // Widening moves focus to the tuition field (a keyboard field); not what is tested here.
+  flip600(true); stubDocument.activeElement = docBody; toggle(true);
+  if (!gone()) return false;
+  toggle(false);
+  if (!shown()) return false;
+  flip600(false); stubDocument.activeElement = docBody;
   // Desktop: no tray. Printing: none.
   trayMedia.matches = false; for (const fn of trayMedia.listeners) fn({ matches: false });
   if (!gone()) return false;
