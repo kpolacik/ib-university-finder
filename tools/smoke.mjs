@@ -1246,10 +1246,10 @@ async function runBatch2A(base) {
       await language(page, lang);
       for (const width of [320, 390, 599]) {
         await resize(page, width, 800);
-        await check(width, 'R4A', `logo (${lang}): a 36 px tile in a 44 px hit area that stays off Search`, async () => {
+        await check(width, 'R4A', `logo (${lang}): a 44 px tile, as tall as Search, in a 44 px hit area that stays off Search`, async () => {
           const m = await page.ev(`(()=>{${hits}const box=(s)=>document.querySelector(s).getBoundingClientRect(),t=box('.mono'),k=box('.mark'),q=box('#f-search');
             return {tile:[t.width,t.height],mark:[k.width,k.height],left:k.left,over:hits(k,q),off:Math.abs((t.left+t.right)-(k.left+k.right))/2,offY:Math.abs((t.top+t.bottom)-(k.top+k.bottom))/2,sw:document.documentElement.scrollWidth,w:innerWidth,search:q.width}})()`);
-          assert(m.tile[0] === 36 && m.tile[1] === 36, `tile ${m.tile}`);
+          assert(m.tile[0] === 44 && m.tile[1] === 44, `tile ${m.tile}`);
           assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.left >= 0, `hit area ${m.mark} at ${m.left}`);
           assert(m.off <= 1 && m.offY <= 1, `tile not centred: ${m.off}, ${m.offY}`);
           assert(!m.over, 'the logo overlaps Search');
@@ -1269,7 +1269,7 @@ async function runBatch2A(base) {
           await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
           await resize(page, width, 800);
           const fine = await page.ev(`({h:document.querySelector('.hd').offsetHeight,tile:document.querySelector('.mono').offsetWidth,coarse:matchMedia('(pointer:coarse)').matches})`);
-          assert(!fine.coarse && fine.tile === 30, `fine pointer tile: ${JSON.stringify(fine)}`);
+          assert(!fine.coarse && fine.tile === 36, `fine pointer tile: ${JSON.stringify(fine)}`);
           await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
           await resize(page, width, 800, true);
           assert(await page.ev(`matchMedia('(pointer:coarse)').matches`), 'touch emulation did not give pointer:coarse');
@@ -1286,7 +1286,7 @@ async function runBatch2A(base) {
           assert(m.focused && m.style !== 'none' && m.grow > 0, `no focus ring: ${JSON.stringify(m)}`);
           assert(!m.over && !m.ringOver && m.inside, `ring or hit area collides: ${JSON.stringify(m)}`);
           assert(m.covered.length === 0, `covered by ${m.covered}`);
-          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.tile === 36, `sizes ${JSON.stringify(m)}`);
+          assert(m.mark[0] >= 44 && m.mark[1] >= 44 && m.tile === 44, `sizes ${JSON.stringify(m)}`);
           assert(m.h === fine.h, `header ${m.h}, fine pointer ${fine.h}`);
           assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
         });

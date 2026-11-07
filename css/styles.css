@@ -958,7 +958,7 @@ html:has(.sheet[open]){overflow:hidden}
 .slot{position:relative;width:196px;height:36px;flex:none}
 .mark,.filters-btn{position:absolute;inset:0 auto 0 0;transition:opacity 160ms,transform 240ms var(--ease-out)}
 .mark{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
-.mono{width:30px;height:30px;border-radius:8px;background:var(--brand-fill);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.mono{width:36px;height:36px;border-radius:10px;background:var(--brand-fill);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
 .mono svg{width:100%;height:100%;display:block}
 .mark h1{font-size:17px;letter-spacing:-.01em;margin:0;white-space:nowrap}
 .filters-btn{opacity:0;visibility:hidden;transform:translateY(4px)}
@@ -1399,9 +1399,10 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 /* Batch 2 · A: header and filter bar */
 /* The 30 px tile looked undersized beside the 44 px controls, and its 44 px hit
    area spilled 8 px over Search because the slot was only 36 px wide (item 1).
-   A fine pointer from 600 px keeps the smaller tile. */
+   Leon, 2026-11-07: the tile is as tall as Search and the language switch, with
+   Search's 10 px corners: 44 px here, 36 px with a fine pointer from 600 px. */
 @media (max-width:599.98px),(pointer:coarse){
- .mono{width:36px;height:36px;font-size:15px;border-radius:9px}
+ .mono{width:44px;height:44px;font-size:15px;border-radius:10px}
  .mark{min-width:44px;min-height:44px}
 }
 @media (max-width:599.98px){
@@ -1913,11 +1914,11 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 /* Phones: the header and the count row read as one white block (no line
    between them, one line under both), and the list starts 12 px below it
    instead of touching it. The IB tile's left edge sits on the page margin,
-   like the count and the list; its 44 px tap area reaches 4 px into the margin. */
+   like the count and the list. Since the tile grew to 44 px (2026-11-07) it fills
+   its tap area, so the old -4 px nudge into the margin is gone. */
 @media (max-width:599.98px){
  .hd{border-bottom:0}
  .status{border-bottom:1px solid var(--hairline);margin-bottom:12px}
- .mark,.status.is-stuck .home-tile{margin-left:-4px}
 }
 
 /* Sort is the filters' pick-list (Leon: "reuse that"): label on the left,

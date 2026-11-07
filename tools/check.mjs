@@ -7116,8 +7116,11 @@ check('LR1 rows never cut off the university name: the line wraps and the countr
 check('LR2 phones: the header and count row are one block, and the list starts 12 px below it',
   /border-bottom:0/.test(ruleAt(cssText, '.hd', '(max-width:599.98px)'))
   && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
+// 2026-11-07: the tile grew to 44 px and fills its tap area, so it needs no -4 px nudge;
+// a leftover nudge would push the tile 4 px into the margin.
 check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
-  /margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && /margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
+  /width:44px;height:44px/.test(ruleAt(cssText, '.mono', '(max-width:599.98px),(pointer:coarse)'))
+  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
