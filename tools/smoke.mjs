@@ -3224,6 +3224,46 @@ async function runCompareHeaderR2(base) {
   }
 }
 
+// Phone fixes from the PR 1 review.
+async function runPhoneFixes(base) {
+  watchdog.refresh();
+  const ready = `({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`;
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 3).map((r) => r.id);
+
+  // 1. Below 600 px Search is the filter form's only text field, so Enter
+  // submitted the form: the page reloaded to ?q=…, in English, without the
+  // shared list. Enter now does nothing, as it does from 600 px.
+  for (const query of ['?ui=sk', `?ui=sk&list=${ids.join(',')}`]) {
+    const page = await openPage(base + query, 390, 844);
+    try {
+      await check(`390/sk${query.includes('list') ? '/list' : ''}`, 'PHN enter', 'Enter in Search keeps the page, its address, the language and a shared list', async () => {
+        await page.waitFor(ready, 15000, 'page');
+        // The first-visit setup is modal; dismiss it the way a returning
+        // student has, then mark this page so a reload would show.
+        await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+        await page.ev('window.__alive=true');
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        await page.type('a');
+        await page.waitFor(`({ok:location.search.includes('q=a'),why:location.search})`, 5000, 'search in the address');
+        const before = await page.ev('location.search');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        // A reload would take a moment to start; give it the chance.
+        await page.ev('new Promise((r) => setTimeout(r, 800))');
+        await page.waitFor(ready, 15000, 'page after Enter');
+        const m = await page.ev(`({alive:window.__alive===true,search:location.search,lang:document.documentElement.lang,value:document.querySelector('#f-search').value})`);
+        assert(m.alive, `the page reloaded: ${m.search}`);
+        assert(m.search === before && m.lang === 'sk' && m.value === 'a', JSON.stringify(m));
+        if (query.includes('list')) assert(m.search.includes('list='), `shared list dropped: ${m.search}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3545,7 +3585,8 @@ async function main() {
     await runAlignListCompare(base);
     await runAlignChromeSetup(base);
     await runPhoneMyListCompare(base);
-    await runCompareHeaderR2(base); }
+    await runCompareHeaderR2(base);
+    await runPhoneFixes(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

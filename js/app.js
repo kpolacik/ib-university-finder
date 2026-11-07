@@ -542,6 +542,12 @@ function readNumber(input, message, parse, explanation) {
 }
 
 function wireInputs() {
+  // Filters apply as you type, so the form is never submitted. Below 600 px
+  // placeFilters moves every other field out of it, leaving Search as its
+  // only text field, and Enter then did an implicit submit: the page reloaded
+  // to ?q=…, dropping the language and a shared ?list= view.
+  dom.form.addEventListener('submit', (event) => event.preventDefault());
+
   dom.search.addEventListener('input', debounce(() => {
     state.search = dom.search.value;
     update();

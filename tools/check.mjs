@@ -3651,6 +3651,15 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
 });
+// Below 600 px Search is the filter form's only text field, so Enter there
+// submitted it and reloaded the page to ?q=…, losing the language and a
+// shared ?list= view. Smoke "PHN enter" presses the real key.
+appCheck('actual phone Enter in Search: the filter form is never submitted, on phones or wider (regression)', ({ get, fire, flip600 }) => {
+  flip600(false);
+  const phone = fire(get('filter-form'), 'submit');
+  flip600(true);
+  return phone === false && fire(get('filter-form'), 'submit') === false;
+});
 appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; fee 0 + two countries is Filters (2)', ({ run, get, fire, advance, context }) => {
   run('facets = buildFacets(allRows); drawChips();');
   const more = get('f-more'), clear = get('f-clear'), show = get('sheet-show'), label = () => more.querySelector('span').textContent;
