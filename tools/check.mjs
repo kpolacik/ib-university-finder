@@ -4267,7 +4267,20 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
   ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
-    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn') + printBody('.src-more')));
+    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+// The header and footer do not print, so paper had neither the site's name nor
+// the warning (the old check read a .src-more rule nothing renders any more).
+// smoke "PR print head" measures both on emulated print media.
+check('A08 paper carries the site name and the check-the-official-page warning: .print-head holds both, hidden on screen, shown in print',
+  /<div class="print-head"><p class="print-name" data-i18n="r2_wordmark">[^<]+<\/p><p data-i18n="r2_footer_p">[^<]+<\/p><\/div>/.test(read('index.html'))
+    && indexHtml.includes(`<div class="print-head"><p class="print-name">${UI.en.r2_wordmark}</p><p>${UI.en.r2_footer_p}</p></div>`)
+    && /display:none/.test(ruleAt(cssText, '.print-head')) && /display: block/.test(printBody('.print-head')));
+// Setup and the Filters sheet printed over the list when left open: their
+// [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
+check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
+  ['dialog.sheet', 'dialog.sheet[open]', 'dialog.sheet::backdrop', 'dialog.sheet[open]::backdrop', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+    .every((sel) => /display: none/.test(printBody(sel)))
+    && /overflow: visible/.test(printBody('html:has(dialog.sheet[open])')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
