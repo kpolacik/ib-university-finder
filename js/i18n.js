@@ -67,6 +67,9 @@ export const UI = {
     "r2_plus25": "+25 on Irish courses",
     "r2_any_maths": "Any maths",
     "r2_no_limit": "No limit",
+    "r4_slider_year": "{amount} € a year",
+    "r4_slider_month": "{amount} € a month",
+    "r4_slider_unset": "Not set",
     "r2_edit": "Edit my answers",
 
     "r2_wordmark": "University Finder",
@@ -690,6 +693,9 @@ export const UI = {
     "r2_plus25": "+25 pri írskych programoch",
     "r2_any_maths": "Akákoľvek",
     "r2_no_limit": "Bez limitu",
+    "r4_slider_year": "{amount} € ročne",
+    "r4_slider_month": "{amount} € mesačne",
+    "r4_slider_unset": "Nenastavené",
     "r2_edit": "Upraviť moje odpovede",
 
     "r2_wordmark": "University Finder",

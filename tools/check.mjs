@@ -1145,10 +1145,23 @@ const { syncSlider } = await import('../js/round2.js');
 check('custom budget sliders distinguish unset from explicit zero, cap only the visual thumb, and retain typed amounts', (() => {
   const classes = new Set(), props = {};
   const slider = { min: '0', max: '20000', dataset: { number: 'f-tuition' }, style: { setProperty(k, v) { props[k] = v; } }, classList: { toggle(k, on) { if (on) classes.add(k); else classes.delete(k); } },
-    set value(v) { this.n = Math.min(20000, Math.max(0, Number(v))); }, get value() { return this.n; } };
+    setAttribute() {}, set value(v) { this.n = Math.min(20000, Math.max(0, Number(v))); }, get value() { return this.n; } };
   syncSlider(slider, null); if (classes.has('set') || slider.value !== 20000 || props['--p'] !== '100%') return false;
   syncSlider(slider, 0); if (!classes.has('set') || slider.value !== 0 || props['--p'] !== '0%') return false;
   syncSlider(slider, 50000); return slider.value === 20000 && props['--p'] === '100%';
+})());
+// An unset slider read its bare thumb position ("20000", "40000", "0").
+check('budget sliders say their value with € and its period, "No limit" / "Not set" when unset, and a typed amount past the end as typed, in EN and SK (regression)', (() => {
+  const make = (number, max) => ({ min: '0', max: String(max), dataset: { number }, style: { setProperty() {} }, classList: { toggle() {} }, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; }, set value(v) { this.n = Math.min(max, Math.max(0, Number(v))); }, get value() { return this.n; } });
+  const said = (slider, value) => { syncSlider(slider, value); return slider.attrs['aria-valuetext']; };
+  const fee = make('f-tuition', 20000), budget = make('f-budget', 40000), living = make('f-living', 2000);
+  const en = [said(fee, null), said(budget, ''), said(living, null), said(fee, 12000), said(budget, 50000), said(living, 800), said(fee, 0), said(living, 0)];
+  i18n.initLanguage('', { getItem: () => 'sk' });
+  const sk = [said(fee, null), said(living, null), said(fee, 12000), said(living, 800)];
+  i18n.initLanguage('', { getItem: () => 'en' });
+  return JSON.stringify(en) === JSON.stringify(['No limit', 'No limit', 'Not set', '12,000 € a year', '50,000 € a year', '800 € a month', '0 € a year', '0 € a month'])
+    && JSON.stringify(sk.map((s) => s.replace(/\s/g, ' '))) === JSON.stringify(['Bez limitu', 'Nenastavené', '12 000 € ročne', '800 € mesačne']);
 })());
 check('S08 has specifically named help buttons and persistent described help; scalar facets keep active styling without a fld wrapper',
   indexHtml.includes('aria-label="About HL Maths 4+"') && indexHtml.includes('aria-label="About My IB points"')

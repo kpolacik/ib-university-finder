@@ -969,7 +969,8 @@
       "canvas",
       "2d",
       "function",
-      "dd-sort"
+      "dd-sort",
+      "aria-valuetext"
     ],
     "js/saved-state.js": [
       "./filters.js",
