@@ -2009,9 +2009,11 @@ function renderCounts(shown) {
   drawAppliedChips();
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? t('clear_all', { value1: active }) : t('clear_all_2');
-  // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.maxBudget !== null, state.myLiving !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
-    .filter(Boolean).length;
+  // Filters (n) counts only what lives in the sheet, one per group (§6.3):
+  // every filter but Search, which stays in the header. IB points and HL
+  // Maths moved into the sheet, and leaving them out showed "Filters (1)"
+  // beside "Clear all (2)".
+  const inSheet = active - (state.search.trim() ? 1 : 0);
   dom.more.querySelector('span').textContent = inSheet ? t('filters', { value1: inSheet }) : t('filters_2');
   dom.more.classList.toggle('is-on', inSheet > 0);
   // index.html starts it disabled as "Loading programmes…": until the first

@@ -3660,14 +3660,16 @@ appCheck('actual phone Enter in Search: the filter form is never submitted, on p
   flip600(true);
   return phone === false && fire(get('filter-form'), 'submit') === false;
 });
-appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; fee 0 + two countries is Filters (2)', ({ run, get, fire, advance, context }) => {
+appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; points + HL Maths and fee 0 + two countries are each Filters (2)', ({ run, get, fire, advance, context }) => {
   run('facets = buildFacets(allRows); drawChips();');
   const more = get('f-more'), clear = get('f-clear'), show = get('sheet-show'), label = () => more.querySelector('span').textContent;
   const type = (id, value) => { get(id).value = value; fire(get(id), 'input'); advance(150); };
   if (label() !== 'Filters' || more.classList.contains('is-on') || clear.textContent !== 'Clear all' || !clear.disabled
     || show.textContent !== `Show ${context.fixture.length} programmes`) return false;
   type('f-points', '36'); get('f-maths').checked = true; fire(get('f-maths'), 'change');
-  if (label() !== 'Filters' || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
+  // Points and HL Maths live in the phone sheet, so they count there too; the
+  // old rule left them out and showed "Filters" beside "Clear all (2)".
+  if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
   fire(clear, 'click'); type('f-tuition', '0');
   for (const tick of get('f-countries').querySelectorAll('input').filter((node) => node.type === 'checkbox').slice(0, 2)) { tick.checked = true; fire(tick, 'change'); }
   if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || clear.disabled
@@ -4450,10 +4452,11 @@ appCheck('actual My maths / Entrance exam selects: choosing updates state and ad
   if (urls.at(-1) !== '/?mymaths=AA+SL&exam=none' || chip('exam')?.getAttribute('data-label') !== 'Entrance exam: No exam') return false;
   if (!maths.closest('.fld')?.classList.contains('is-set') || !exam.closest('.dropdown')?.classList.contains('is-set')) return false;
   if (more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (2)') return false;
-  // The tick is a different filter: it adds a Clear all count and a chip, but nothing to the sheet's count.
+  // The tick is a different filter: it adds a chip and one to both counts, as
+  // it sits in the phone sheet beside My maths.
   get('f-maths').checked = true; fire(get('f-maths'), 'change');
   if (run('state.hlMaths') !== true || run('state.myMaths') !== 'AA SL' || !chip('hlMaths') || !urls.at(-1).includes('maths=1&mymaths=AA+SL&exam=none')
-    || more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (3)') return false;
+    || more.querySelector('span').textContent !== 'Filters (3)' || clear.textContent !== 'Clear all (3)') return false;
   exam.value = 'skippable'; fire(exam, 'change');
   return chip('exam')?.getAttribute('data-label') === 'Entrance exam: None or skippable' && urls.at(-1).includes('exam=skippable');
 });
