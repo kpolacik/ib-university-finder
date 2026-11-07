@@ -7143,6 +7143,9 @@ section('Compare and header, round 2, 2026-11-06');
     /if \(bar\) put\(headerRight, dom\.headerList, dom\.headerCompare\);\s*else put\(dom\.status, dom\.headerList, dom\.more\);/.test(appSrc)
     && /if \(listFocused && document\.activeElement !== dom\.headerList\) dom\.headerList\.focus/.test(appSrc)
     && (read('index.html').match(/id="header-list"/g) ?? []).length === 1);
+  check('CH6 crossing 600 px keeps focus in My list: widening moves it off the hidden More, narrowing opens More for a hidden tool (regression, smoke "PM list focus")',
+    /function keepListFocus\(was, bar\)/.test(appSrc) && /else if \(listWas\) keepListFocus\(listWas, bar\)/.test(appSrc)
+    && /listFocus = isListTool\(document\.activeElement\)/.test(appSrc) && /listMoreOpen = true;\s*syncListMore\(\);/.test(appSrc));
   check('CH5 phones: in the count row My list is 44 px tall with Filters\' hairline and corners, takes the free space before Filters, and keeps its words for screen readers',
     /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
     && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))

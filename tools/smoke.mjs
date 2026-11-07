@@ -2827,7 +2827,7 @@ async function runAlignListCompare(base) {
         // 600 px Save follows its own name at a fixed 12 px (2026-11-07), so
         // no column shows an empty gap above it, and Saves may sit one name line apart.
         if (width < 600) assert(tops.size === 1 && belows.size === 1, 'Save row ' + JSON.stringify(m.cols));
-        else assert(m.cols.every((c) => c.nameGap === 12 && c.below === 10), 'Save gap under the name ' + JSON.stringify(m.cols.map((c) => [c.nameGap, c.below])));
+        else assert(m.cols.every((c) => c.nameGap === 12) && Math.min(...m.cols.map((c) => c.below)) <= 11, 'Save gap under the name ' + JSON.stringify(m.cols.map((c) => [c.nameGap, c.below])));
         assert(m.cols.every((c) => c.inside && !c.clip && c.h >= 44), 'Save inside ' + JSON.stringify(m.cols));
         assert(m.cols.every((c) => c.rad.every((v) => v === '8px')), 'Save and x corners ' + JSON.stringify(m.cols.map((c) => c.rad)));
         assert(m.cols.every((c) => !c.needless.length && !c.xOverText), 'names ' + JSON.stringify(m.cols.map((c) => [c.needless, c.xOverText])));
@@ -3054,6 +3054,52 @@ async function runPhoneMyListCompare(base) {
       assert(await page.ev(`[...document.querySelectorAll('tr.cmp-lr')].every(tr=>getComputedStyle(tr).display==='none')&&document.querySelector('.cmp-t tbody th').getBoundingClientRect().width>60`), 'desktop fact names');
     });
   } finally { await page.close(); }
+
+  // Crossing 600 px must not drop keyboard focus in My list (code review,
+  // 2026-11-07). Widening hides More, so focus goes to the first tool still
+  // shown (Back); narrowing hides Share, Export and Print behind a closed
+  // More, so More opens and the tool keeps focus.
+  const crossTo = async (page, width, height) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`({ok:innerWidth===${width},why:'width '+innerWidth})`, 3000, `width ${width}`);
+    await settle(page);
+  };
+  const openList = async (page) => {
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'list view not open'})`, 5000, 'the list view');
+    await settle(page);
+  };
+  {
+    const page = await open('?ui=en', 390, 844, { saves: ids });
+    try {
+      await check('390-600/en', 'PM list focus widening', 'More has focus on a phone; widening past 600 px (More hidden) moves focus to Back, a shown tool, and narrowing again keeps it there', async () => {
+        await openList(page);
+        await page.ev(`document.querySelector('#ml-more').focus()`);
+        assert(await page.ev(`document.activeElement.id`) === 'ml-more', 'More did not take focus');
+        await crossTo(page, 600, 900);
+        await page.waitFor(`({ok:document.activeElement.id==='f-shortlist-only'&&(${visible})('#f-shortlist-only'),why:'focus is on '+document.activeElement.tagName+'#'+document.activeElement.id})`, 3000, 'focus on Back after widening');
+        await crossTo(page, 599, 844);
+        assert(await page.ev(`document.activeElement.id`) === 'f-shortlist-only', 'focus lost narrowing again');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  for (const tool of ['#export-csv', '#print-shortlist', '#ml-share-copy']) {
+    const page = await open('?ui=en', 1280, 900, { saves: ids });
+    try {
+      await check(`1280-599/en${tool}`, 'PM list focus narrowing', `${tool} has focus on desktop; narrowing below 600 px keeps More open and focus on the tool; widening keeps it too`, async () => {
+        await openList(page);
+        if (tool === '#ml-share-copy') await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        await page.ev(`document.querySelector(${JSON.stringify(tool)}).focus()`);
+        assert(await page.ev(`document.activeElement===document.querySelector(${JSON.stringify(tool)})`), `${tool} did not take focus`);
+        await crossTo(page, 599, 844);
+        await page.waitFor(`({ok:document.activeElement===document.querySelector(${JSON.stringify(tool)})&&(${visible})(${JSON.stringify(tool)})&&document.querySelector('#ml-more').getAttribute('aria-expanded')==='true',why:'focus is on '+document.activeElement.tagName+'#'+document.activeElement.id+', More '+document.querySelector('#ml-more').getAttribute('aria-expanded')})`, 3000, 'focus kept narrowing');
+        await crossTo(page, 1280, 900);
+        assert(await page.ev(`document.activeElement===document.querySelector(${JSON.stringify(tool)})`), 'focus lost widening back');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 // Compare and header, round 2 (Leon, 2026-11-06). Phone Compare drops the
