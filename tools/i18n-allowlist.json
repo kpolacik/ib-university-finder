@@ -306,7 +306,11 @@
       "visibilitychange",
       "visible",
       "ml-more",
-      "ml-more-open"
+      "ml-more-open",
+      "Arrow",
+      "Enter",
+      "keyup",
+      "pointerdown"
     ],
     "js/compare.js": [
       "./cost.js",

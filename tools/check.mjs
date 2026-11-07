@@ -3651,6 +3651,38 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
 });
+// Each arrow press in the Sort pick-list committed a sort and closed the
+// list, sending focus back to its button after one step.
+appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on the new radio; Enter, Space on the chosen one, and a click close it (regression)', ({ run, get, fire, context }) => {
+  // A plain object is enough: dispatchStub copies the type.
+  context.Event = function Event(type, init = {}) { return { type, ...init }; };
+  const details = get('dd-sort'), box = get('sort-options'), summary = details.querySelector('summary');
+  // The stand-in <select> has no .options; the real one lists its <option>s.
+  Object.defineProperty(get('f-sort'), 'options', { get() { return this.children; } });
+  run('sortPick();');
+  const radios = () => box.querySelectorAll('input');
+  const pick = (value, how) => {
+    const radio = radios().find((node) => node.value === value);
+    if (how === 'arrow') fire(box, 'keydown', { key: 'ArrowDown' }); else fire(box, 'pointerdown');
+    radio.checked = true; fire(radio, 'change');
+  };
+  details.open = true;
+  const [first, second, third] = radios().map((node) => node.value);
+  pick(second, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== second || stubDocument.activeElement?.value !== second
+    || stubDocument.activeElement === radios().find((node) => node.value === first)) return false;
+  pick(third, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== third || stubDocument.activeElement?.value !== third) return false;
+  fire(box, 'keydown', { key: 'Enter' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  const chosen = radios().find((node) => node.checked); chosen.focus();
+  fire(chosen, 'keyup', { key: ' ' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  pick(first, 'click');
+  return !details.open && stubDocument.activeElement === summary && run('`${state.sort}:${state.dir}`') === first;
+});
 // Below 600 px Search is the filter form's only text field, so Enter there
 // submitted it and reloaded the page to ?q=…, losing the language and a
 // shared ?list= view. Smoke "PHN enter" presses the real key.

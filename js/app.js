@@ -272,6 +272,10 @@ let loaded = false;
 let sourceMeta = null;
 // The local date the deadline fields were last worked out for (S06).
 let dataDay = localDay(new Date());
+// The Sort pick-list's key handling is wired once; whether the last radio
+// change came from an arrow key (sortPick).
+let sortKeysWired = false;
+let sortByArrow = false;
 
 start();
 
@@ -1901,6 +1905,29 @@ function sortPick() {
   const options = [...(dom.sort.options ?? [])];
   const chosen = options.find((option) => option.selected);
   if (current.textContent !== (chosen?.textContent ?? '')) current.textContent = chosen?.textContent ?? '';
+  const close = () => {
+    details.open = false;
+    details.querySelector('summary').focus();
+  };
+  // Arrow keys move through the radios and check each one, so each press
+  // sorts, but the list stays open: closing on every change sent the
+  // keyboard back to the button after one step. Enter, Space and Escape
+  // (round2.js) close it; a click or tap still picks and closes. Wired once:
+  // the radios below are rebuilt on every sort change.
+  if (!sortKeysWired) {
+    sortKeysWired = true;
+    box.addEventListener('pointerdown', () => { sortByArrow = false; });
+    box.addEventListener('keydown', (event) => {
+      sortByArrow = event.key.startsWith('Arrow');
+      if (event.key === 'Enter') { event.preventDefault(); close(); }
+    });
+    // Space on the radio already chosen fires no change, so it closes here.
+    // On keyup, like the click it would make: closing on keydown let the
+    // keyup reach the button and open the list again.
+    box.addEventListener('keyup', (event) => {
+      if (event.key === ' ' && event.target.checked) { event.preventDefault(); close(); }
+    });
+  }
   box.replaceChildren(...options.map((option) => {
     const label = document.createElement('label');
     label.className = 'option';
@@ -1910,10 +1937,13 @@ function sortPick() {
     input.value = option.value;
     input.checked = option.selected;
     input.addEventListener('change', () => {
+      const arrow = sortByArrow;
+      sortByArrow = false;
       dom.sort.value = input.value;
       dom.sort.dispatchEvent(new Event('change'));
-      details.open = false;
-      details.querySelector('summary').focus();
+      // The change rebuilt the radios, so focus goes to the new copy.
+      if (arrow) [...box.querySelectorAll('input')].find((node) => node.value === input.value)?.focus();
+      else close();
     });
     const text = document.createElement('span');
     text.textContent = option.textContent;
