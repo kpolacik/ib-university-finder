@@ -1258,6 +1258,11 @@ section('Logo');
     png.readUInt32BE(16) === 180 && png.readUInt32BE(20) === 180 && /<link rel="apple-touch-icon" href="icons\/apple-touch-icon.png">/.test(indexHtml));
 }
 
+// PR 1 review: a selector list mixing ::-webkit-slider-thumb and ::-moz-range-thumb
+// is dropped whole by each engine, so the set thumb never got its accent border in Chrome.
+check('no rule mixes WebKit and Mozilla range-thumb pseudo-elements in one selector list',
+  ![...cssText.matchAll(/([^{}]+)\{/g)].some(([, sel]) => /::-webkit-slider-thumb/.test(sel) && /::-moz-range-thumb/.test(sel)));
+
 // ---------------------------------------------------------------- maintainer lint
 
 section('Data lint (T05) and id stability (M02)');
@@ -5735,7 +5740,8 @@ check('switch track (off) and slider thumb (unset) use the --edge-soft token; on
   && cssRules.includes('input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft);')
   && cssRules.includes('input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft)}')
   && cssRules.includes('.switch input:checked{background:var(--accent);border-color:var(--accent)}')
-  && cssRules.includes('input[type=range].set::-webkit-slider-thumb,input[type=range].set::-moz-range-thumb{border-color:var(--accent)}')
+  && cssRules.includes('input[type=range].set::-webkit-slider-thumb{border-color:var(--accent)}')
+  && cssRules.includes('input[type=range].set::-moz-range-thumb{border-color:var(--accent)}')
   && !/\.switch input\{[^}]*var\(--edge\)/.test(cssRules)
   && !/slider-thumb\{[^}]*var\(--edge\)/.test(cssRules) && !/range-thumb\{[^}]*var\(--edge\)/.test(cssRules));
 appCheck('Slovak subjects and degree types agree between onboarding, pane and facet labels',({get,fire,resultsSection})=>{

@@ -1050,7 +1050,10 @@ input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(
 input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--fill)}
 input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft);transition:transform 160ms var(--ease-out)}
 input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft)}
-input[type=range].set::-webkit-slider-thumb,input[type=range].set::-moz-range-thumb{border-color:var(--accent)}
+/* One rule per engine: a browser drops a whole selector list when one part is
+   a pseudo-element it doesn't know, so the shared list never coloured Chrome's thumb. */
+input[type=range].set::-webkit-slider-thumb{border-color:var(--accent)}
+input[type=range].set::-moz-range-thumb{border-color:var(--accent)}
 input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
 /* Sized to its text, up to M's 260 px: a fixed 260 px bubble at 13.5 px made a
    four-word hint look like a banner (Leon, 2026-11-05). Visibility is in the
