@@ -762,11 +762,15 @@ function onToggleCompare(id) {
 // One announcement per change, never two. On phones the tray's count changes
 // by the thumb, so only screen readers hear it (#cmp-status); on desktop the
 // header is far from the row, so a toast says it. The limit says so anywhere.
+// A toast that offers "Open compare" goes once Compare opens by any route:
+// left up, it still said "Added to compare (3 of 4) · Open compare" over the
+// open comparison.
+let dismissCompareToast = null;
 function compareFeedback(result) {
   const count = shownCompare().length;
-  if (result === 'full') showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+  if (result === 'full') dismissCompareToast = showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
   else if (trayQuery.matches) announceCompare(t(result === 'added' ? 'r3_cmp_added_sr' : 'r3_cmp_removed', { count }));
-  else if (result === 'added') showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
+  else if (result === 'added') dismissCompareToast = showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
   else showToast(t('r3_cmp_removed'));
 }
 
@@ -969,6 +973,8 @@ function openCompare(trigger) {
   if (!loaded) return;
   if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
   compareOpen = true;
+  dismissCompareToast?.();
+  dismissCompareToast = null;
   syncCompareControls();
   dom.compare.scrollIntoView?.({ block: 'start' });
   dom.compareHeading.focus({ preventScroll: true });

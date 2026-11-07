@@ -6502,6 +6502,29 @@ appCheck('A5 desktop: an add shows one toast with the count and "Open compare"; 
   const removed = context.toasts.at(-1);
   return context.toasts.length === 3 && removed.message === 'Removed from compare.' && !removed.action && get('cmp-status').textContent === '';
 });
+// "Added to compare (3 of 4) · Open compare" stayed up over the open
+// comparison until its timer ran out.
+appCheck('A5 desktop: opening Compare from the header retires the "Open compare" toast of an add and of a refused fifth, and no other (regression)', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  const ids = context.fixture.map((r) => r.id);
+  run('allRows = fixture; update();');
+  const toasts = [];
+  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  fire(cmpOf(get('results').children[0]), 'click');
+  const added = toasts.at(-1);
+  if (added?.label !== 'Open compare' || added.gone) return false;
+  fire(get('header-compare'), 'click');
+  if (get('compare').hidden || !added.gone) return false;
+  fire(get('header-compare'), 'click');
+  run(`${cmpSet(ids.slice(0, 4))} update();`);
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[4])), 'click');
+  const full = toasts.at(-1);
+  if (full?.message !== 'You can compare up to 4 programmes. Remove one first.' || full.gone) return false;
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[0])), 'click');
+  const removed = toasts.at(-1);
+  fire(get('header-compare'), 'click');
+  return !get('compare').hidden && full.gone && removed.message === 'Removed from compare.' && !removed.gone;
+});
 appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 leave one line, "4 of 4"', ({ run, get, fire, context, trayMedia, frames, flushFrame }) => {
   trayMedia.matches = true;
   context.fixture.push(...context.live.slice(1, 2));

@@ -239,6 +239,9 @@ export function showToast(message, actionLabel, action) {
   }
   region.append(toast);
   timeToast(toast);
+  // For a caller whose toast goes stale before its timer, such as "Open
+  // compare" once Compare is open.
+  return () => retireToast(toast, { used: true });
 }
 
 export function wireCompactHeader(dom, { goHome } = {}) {
