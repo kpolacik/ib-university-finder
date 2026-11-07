@@ -1065,6 +1065,7 @@
       "ob-range",
       "ob-step on",
       "ob-step on ob-done",
+      "ob-step-n",
       "ob-title",
       "onboarding",
       "p",

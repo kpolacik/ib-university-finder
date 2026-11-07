@@ -357,11 +357,20 @@ async function start() {
     loaded = true;
     update();
     setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
+      // Compare covers the results, so "Show my programmes" closes it first.
+      // The Compare set stays (review of PR 1, 2026-11-07).
+      closeCompare: () => closeCompare(false),
       apply(answers) {
+        // "Show all saves" ignores the filters, so My list kept showing (and
+        // the done screen counted) saves the answers rule out, like a 42-point
+        // programme for 24 points. The answers are filters: they apply here.
+        listAll = false;
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
-        // Setup's done screen says how many programmes this leaves.
-        return currentlyShown;
+        // Setup's done screen says how many programmes this leaves, how they
+        // stand against the IB points (the count line's own parts) and whether
+        // any filter is on at all.
+        return { shown: currentlyShown, summary: currentSummary.map((part) => part.text), filtered: activeFilterCount(state) > 0 };
       },
     });
   } catch (err) {
