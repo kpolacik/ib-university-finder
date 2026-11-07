@@ -2380,6 +2380,12 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
     helpOk(indexHtml, 'f-maths', 'f-maths-help', 'About HL Maths 4+')
       && !helpOk(indexHtml.replace('aria-controls="f-maths-help"', ''), 'f-maths', 'f-maths-help', 'About HL Maths 4+')
       && elementSource(indexHtml, /<div class="fld f-hl chipbox">/).includes('+25 on Irish courses'));
+  // Item c (PR 1 review): the bubble repeated the visible "+25" hint word for word. It must add
+  // who gives the bonus (the CAO) and the grade, in both languages, and not just echo the hint.
+  const mathsHelp = (lang) => { i18n.initLanguage('', { getItem: () => lang }); const help = i18n.t('r2_maths_help'), hint = i18n.t('r2_plus25'); i18n.initLanguage('', { getItem: () => 'en' }); return { help, hint }; };
+  check('HL Maths help bubble adds the CAO and the grade instead of repeating the +25 hint (EN and SK)',
+    ['en', 'sk'].every((lang) => { const { help, hint } = mathsHelp(lang); return help.includes('CAO') && help.includes('4') && help !== hint && !help.startsWith('+25'); })
+      && read('index.html').includes('id="f-maths-help" data-i18n="r2_maths_help"') && !read('js/i18n.js').includes('"25_points_on_irish_courses"'));
   check('S08 points help uses a named disclosure and keeps its validation error; missing described text fails',
     helpOk(indexHtml, 'f-points', 'f-points-help', 'About My IB points')
       && !helpOk(indexHtml.replace('aria-describedby="f-points-help f-points-error"', ''), 'f-points', 'f-points-help', 'About My IB points')
