@@ -2019,6 +2019,9 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
 /* ------------------------------------------------------------- printing */
 
+/* The paper-only title and warning (index.html); printing shows them. */
+.print-head{display:none}
+
 /* A08: the list on screen, in its order, with every open slot in full; nothing
    else is opened. Paper is A4-narrow (about 720-800 CSS px), under the 900 px
    list query, so the stacked, labelled row is what prints. Ink on white: no fills, tints, rings or shadows, but
@@ -2037,6 +2040,22 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
   .shell { display: block; }
   .split{display:block}
+
+  /* Setup and the Filters sheet are modal dialogs: left open, either printed
+     on top of the list: dialog.ob[open] and .sheet[open] out-rank the plain
+     .sheet above. These rules are at least as heavy and come later. Printing does
+     not close them; the page is as it was afterwards. While one is open, html
+     is overflow:hidden on screen; Chrome prints every page anyway, but a
+     browser that applies it to paper could stop after the first. */
+  dialog.sheet, dialog.sheet[open], dialog.sheet::backdrop, dialog.sheet[open]::backdrop,
+  dialog.ob, dialog.ob[open], dialog.ob::backdrop, dialog.ob[open]::backdrop { display: none; }
+  html:has(dialog.sheet[open]), html:has(dialog.ob[open]) { overflow: visible; }
+
+  /* Paper keeps the site's name and the warning to check the official page,
+     as the printed header did before round 2 (the live site at a6fed60). */
+  .print-head { display: block; margin: 0 0 12pt; padding-bottom: 6pt; border-bottom: 1px solid var(--ink); }
+  .print-head p { margin: 0; }
+  .print-head .print-name { font-size: 14pt; font-weight: 600; margin-bottom: 2pt; }
 
   /* The sample warning must survive onto paper, in full: a printed sheet has
      lost every other bit of context. The saved-copy and failure banners go. */

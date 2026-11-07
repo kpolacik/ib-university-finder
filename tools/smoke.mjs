@@ -808,10 +808,19 @@ async function runI18n(base) {
         await page.ev(`document.querySelector('${button}').click()`);
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 'toggle did not reveal every original');
-        // The same-language switch forces a real detail re-render.
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        // A redraw that keeps the language must keep the originals shown. This
+        // step tapped SK while SK was already on, which did nothing once a tap
+        // came to flip the language (Leon, 2026-11-06), so it re-rendered
+        // nothing. Changing the sort redraws the list and the detail; the old
+        // toggle is marked so a detail that was never rebuilt fails.
+        await page.ev(`document.querySelector('${button}').dataset.before = '1'`);
+        const sort = await page.ev(`document.querySelector('#f-sort').value`);
+        await page.ev(`(s=>{s.value=[...s.options].find(o=>o.value!==s.value).value;s.dispatchEvent(new Event('change',{bubbles:true}))})(document.querySelector('#f-sort'))`);
+        await page.waitFor(`({ok:!!document.querySelector('${button}') && !document.querySelector('${button}').dataset.before && document.documentElement.lang==='sk',why:'detail not redrawn'})`, 5000, 'detail redrawn');
         result = await page.ev(status);
         assert(result.pressed === 'true' && result.allOn, 're-render lost original state');
+        await page.ev(`(s=>{s.value=${JSON.stringify(sort)};s.dispatchEvent(new Event('change',{bubbles:true}))})(document.querySelector('#f-sort'))`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value===${JSON.stringify(sort)} && !!document.querySelector('${button}'),why:'sort not back'})`, 5000, 'sort back');
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-on.png`);
         await page.ev(`document.querySelector('${button}').click()`);
         result = await page.ev(status);
@@ -3103,6 +3112,94 @@ async function runPhoneMyListCompare(base) {
 
 // Compare and header, round 2 (Leon, 2026-11-06). Phone Compare drops the
 // empty count row. Screenshots go to /tmp/ib-compare-header-r2/smoke.
+// Print fixes from the PR 1 review (2026-11-07). An open Setup or Filters
+// dialog printed over the list: their [open] rules out-ranked the print hide.
+// And with the header and footer hidden on paper, a printed list or comparison
+// lost the site's name and the warning to check the official page. Both are
+// measured on emulated print media; the dialogs stay open throughout.
+async function runPrintFixes(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-print-fixes/smoke';
+  await mkdir(shots, { recursive: true });
+  const { UI } = await import('../js/i18n.js');
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const open = async (query, width, height, { compare = [], saves = [] } = {}) => {
+    const page = await openPage(base + query, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    if (width < 600) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const printed = async (page, name, measure) => {
+    await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+    try {
+      await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      const m = await page.ev(measure);
+      const { cssContentSize } = await page.send('Page.getLayoutMetrics');
+      const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width: cssContentSize.width, height: Math.min(3000, cssContentSize.height), scale: 1 } });
+      await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
+      return m;
+    } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+  };
+  // Shown on paper: laid out, not clipped away, and the text is what it says.
+  const head = `(()=>{const h=document.querySelector('.print-head'),r=h.getBoundingClientRect(),cs=getComputedStyle(h);
+    return {display:cs.display,visibility:cs.visibility,w:r.width,h:r.height,top:r.top+scrollY,
+      name:h.querySelector('.print-name').textContent.trim(),warn:h.querySelector('.print-name+p').textContent.trim()}})()`;
+  const headOk = (m, ui, contentTop) => m.head.display === 'block' && m.head.visibility === 'visible' && m.head.w > 200 && m.head.h > 20
+    && m.head.name === UI[ui].r2_wordmark && m.head.warn === UI[ui].r2_footer_p && m.head.top + m.head.h <= contentTop + 0.5;
+
+  // 1. Setup (1280, opened from "Edit my answers") and the phone Filters sheet
+  // (390): open, printed, neither box nor scrim shows while the list does, and
+  // the dialog is still open after. (A hit test cannot tell: a modal dialog
+  // makes the page under it inert, and inert nodes are never hit.)
+  for (const [width, height, which] of [[1280, 900, 'setup'], [390, 844, 'sheet']]) for (const ui of ['sk', 'en']) {
+    const page = await open(`?ui=${ui}&q=nanobiology`, width, height);
+    try {
+      await check(`${width}/${ui}`, 'PR print dialogs', `an open ${which === 'setup' ? 'Setup' : 'Filters sheet'} does not print over the list and stays open`, async () => {
+        const dialog = which === 'setup' ? '#onboarding' : '#filter-sheet';
+        if (which === 'setup') await page.click(`[...document.querySelectorAll('[data-edit]')].find(b=>b.getClientRects().length&&!b.closest('dialog'))`, 'Edit my answers');
+        else await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.waitFor(`({ok:document.querySelector('${dialog}').open,why:'dialog closed'})`, 5000, 'dialog open');
+        const m = await printed(page, `dialog-${which}-${width}-${ui}`, `(()=>{const d=document.querySelector('${dialog}'),row=document.querySelector('#results>.item .row');
+          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:getComputedStyle(d,'::backdrop').display,
+            row:row.getBoundingClientRect().height,overflow:getComputedStyle(document.documentElement).overflow,
+            head:${head},content:document.querySelector('#results').getBoundingClientRect().top+scrollY}})()`);
+        assert(m.open && m.display === 'none' && m.rects === 0 && m.scrim === 'none' && m.row > 0 && m.overflow === 'visible', JSON.stringify(m));
+        assert(headOk(m, ui, m.content), 'title and warning ' + JSON.stringify(m.head));
+        assert(await page.ev(`document.querySelector('${dialog}').open && getComputedStyle(document.querySelector('${dialog}')).display !== 'none'`), 'the dialog is not back on screen after printing');
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  // 2. My list and an open Compare print the site's name and the warning above
+  // what they print (live main at a6fed60 printed both in its header).
+  const { readSheets } = await import('../js/data.js');
+  const ids = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes.slice(0, 2).map((r) => r.id);
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 1440, 900, { compare: ids, saves: ids });
+    try {
+      await check(`1440/${ui}`, 'PR print head', 'printed My list and Compare start with the site name and the check-the-official-page warning', async () => {
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===2,why:'list not shown'})`, 5000, 'My list');
+        let m = await printed(page, `head-mylist-${ui}`, `({head:${head},content:document.querySelector('#results').getBoundingClientRect().top+scrollY})`);
+        assert(headOk(m, ui, m.content), 'My list ' + JSON.stringify(m));
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'Compare');
+        m = await printed(page, `head-compare-${ui}`, `({head:${head},content:document.querySelector('#compare').getBoundingClientRect().top+scrollY})`);
+        assert(headOk(m, ui, m.content), 'Compare ' + JSON.stringify(m));
+        // On screen the paper-only copy is not shown, and not read out.
+        assert(await page.ev(`getComputedStyle(document.querySelector('.print-head')).display==='none'`), 'print head shows on screen');
+      });
+    } finally { await page.close(); }
+  }
+}
+
 async function runCompareHeaderR2(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-compare-header-r2/smoke';
@@ -3545,7 +3642,8 @@ async function main() {
     await runAlignListCompare(base);
     await runAlignChromeSetup(base);
     await runPhoneMyListCompare(base);
-    await runCompareHeaderR2(base); }
+    await runCompareHeaderR2(base);
+    await runPrintFixes(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

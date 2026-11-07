@@ -1072,14 +1072,30 @@ check('the header band is never sticky; .cols sticks only from 600 px and .statu
     && !stickyChromeOk(css + '@media (min-width: 1024px){.fbar .affix{position:sticky;top:0}}')
     && !stickyChromeOk(css + '.mast-top{position:fixed}') && !stickyChromeOk(css + '.cols{position:sticky}')
     && !stickyChromeOk(css + '@media (min-width: 600px){.status{position:sticky}}'));
-const offsetsOk = (source) => {
-  const rules = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
-  return source.includes('scroll-margin-top:calc(var(--header-visible) + var(--columns-height) + 8px)')
-    && source.includes('scroll-margin-top:calc(var(--count-height) + 8px)')
-    && rules.every((r) => !r.selector.includes('#results') || !/scroll-margin-top:\d+px/.test(r.body));
+// Read per selector and media query: the same calc() text is also in the #faq
+// and .cmp rules, so a plain search of the stylesheet passed with #results
+// itself at scroll-margin-top:0. Each width's #results rule must say its offset,
+// and no other rule may set one on #results or anything inside it.
+const RESULTS_OFFSETS = {
+  '(min-width: 600px)': 'calc(var(--header-visible) + var(--columns-height) + 8px)',
+  '(max-width: 599.98px)': 'calc(var(--count-height) + 8px)',
 };
-check('A07 skip and arrow targets clear the measured header, headings or phone count plus 8px; fixed-offset fixture fails',
-  offsetsOk(css) && !offsetsOk(css + '#results{scroll-margin-top:60px}') && /scroll-margin-bottom:8px/.test(ruleAt(cssText, '#results>.item')));
+const offsetsOk = (source) => {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  const tops = (body) => [...body.matchAll(/scroll-margin-top\s*:\s*([^;]+)/g)].map((m) => m[1].trim());
+  const sets = cssTree(text).filter((r) => /(?:^|,)\s*#results(?![\w-])/.test(r.selector) && tops(r.body).length);
+  return Object.entries(RESULTS_OFFSETS).every(([query, value]) => tops(ruleAt(text, '#results', query)).join('|') === value)
+    && sets.every((r) => r.selector === '#results,#results :is(li,a,button)' && r.media.length === 1
+      && tops(r.body).join('|') === RESULTS_OFFSETS[r.media[0].replace(/^@media /, '')]);
+};
+const phoneOffsets = ' #results,#results :is(li,a,button){scroll-margin-top:calc(var(--count-height) + 8px)}';
+check('A07 skip and arrow targets clear the measured header, headings or phone count plus 8px; zero, fixed-offset and descendant fixtures fail',
+  offsetsOk(css) && css.includes(phoneOffsets)
+    && !offsetsOk(css + '#results{scroll-margin-top:60px}') && !offsetsOk(css + '#results{scroll-margin-top:0}')
+    && !offsetsOk(css.replace(phoneOffsets, ' #results,#results :is(li,a,button){scroll-margin-top:0}'))
+    && !offsetsOk(css.replace('scroll-margin-top:calc(var(--header-visible) + var(--columns-height) + 8px)', 'scroll-margin-top:0'))
+    && !offsetsOk(css + '@media (min-width: 600px){#results li{scroll-margin-top:0}}')
+    && /scroll-margin-bottom:8px/.test(ruleAt(cssText, '#results>.item')));
 // A05, A04: names a screen reader reads out.
 check('a hidden "," and a real space separate the title from the degree',
   renderSrc.includes("el('span', 'visually-hidden', ',')"));
@@ -4267,7 +4283,20 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
   ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
-    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn') + printBody('.src-more')));
+    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+// The header and footer do not print, so paper had neither the site's name nor
+// the warning (the old check read a .src-more rule nothing renders any more).
+// smoke "PR print head" measures both on emulated print media.
+check('A08 paper carries the site name and the check-the-official-page warning: .print-head holds both, hidden on screen, shown in print',
+  /<div class="print-head"><p class="print-name" data-i18n="r2_wordmark">[^<]+<\/p><p data-i18n="r2_footer_p">[^<]+<\/p><\/div>/.test(read('index.html'))
+    && indexHtml.includes(`<div class="print-head"><p class="print-name">${UI.en.r2_wordmark}</p><p>${UI.en.r2_footer_p}</p></div>`)
+    && /display:none/.test(ruleAt(cssText, '.print-head')) && /display: block/.test(printBody('.print-head')));
+// Setup and the Filters sheet printed over the list when left open: their
+// [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
+check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
+  ['dialog.sheet', 'dialog.sheet[open]', 'dialog.sheet::backdrop', 'dialog.sheet[open]::backdrop', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+    .every((sel) => /display: none/.test(printBody(sel)))
+    && /overflow: visible/.test(printBody('html:has(dialog.sheet[open])')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
@@ -5999,17 +6028,21 @@ check('B1 bare and ui-only links restore recipient filters; sort links use URL d
 await asyncAppCheck('B1 each of the nine actual copy results describes its URL, without a hash', async ({run,get,fire,settle,context,clipboard}) => {
   context.location.origin = 'http://localhost:8765'; context.location.hash = '#top-marker';
   const messages = []; context.showToast = message => messages.push(message);
-  for (const [kind, shared, points, filters, sort] of [
-    ['none',false,false,false,false],['sort',false,false,false,true],
-    ['filters',false,false,true,false],['points',false,true,false,false],['filters_points',false,true,true,false],
-    ['shared',true,false,false,false],['shared_filters',true,false,true,false],
-    ['shared_points',true,true,false,false],['shared_filters_points',true,true,true,false]
+  // The exact address, not just "has a list=": the fixture's shared list once
+  // had no raw value, so the copied link said list=undefined and still passed.
+  // raw is copied as the address had it, two ids and their comma included.
+  const list = run('fixture[0].id + "," + fixture[1].id');
+  for (const [kind, shared, points, filters, sort, query] of [
+    ['none',false,false,false,false,''],['sort',false,false,false,true,'?sort=name'],
+    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36'],['filters_points',false,true,true,false,'?q=biology&points=36'],
+    ['shared',true,false,false,false,`?list=${list}`],['shared_filters',true,false,true,false,`?list=${list}&q=biology`],
+    ['shared_points',true,true,false,false,`?list=${list}&points=36`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36`]
   ]) {
     context.copyCase = {shared,points,filters,sort};
-    run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {ids:[fixture[0].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
+    run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {raw:fixture[0].id+','+fixture[1].id,ids:[fixture[0].id,fixture[1].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
     fire(get('f-copy'),'click'); await settle();
     const url = clipboard.written.at(-1);
-    if(messages.at(-1)!==t('r2_copied_'+kind) || url.includes('#') || /[?&]list=/.test(url)!==shared || /[?&]points=/.test(url)!==points || /[?&]q=/.test(url)!==filters) return false;
+    if(messages.at(-1)!==t('r2_copied_'+kind) || url !== `http://localhost:8765/${query}`) return false;
   }
   return messages.length===9;
 });
@@ -6640,6 +6673,21 @@ appCheck('A1 two tabs: an add here goes on the set as stored now, so the other t
   context.compareStorage.data = {};
   fireWindow('storage', { key: null });
   return run('compareIds.length') === 0;
+});
+// A storage event takes another tab's set through normalizeCompare: a set of
+// five (an older tab, or one edited by hand) must not open a fifth column, and
+// an id missing from the data is kept aside without taking one of the four.
+appCheck('A1 another tab stores five programmes and one unknown id: this tab keeps the first four known, in order, and the unknown id uncounted', ({ run, get, context, fireWindow }) => {
+  // The harness has three programmes; Compare needs five known ones here.
+  context.fiveRows = live.slice(0, 5);
+  run('allRows = fiveRows; facets = buildFacets(allRows); drawChips(); update();');
+  const five = context.fiveRows.map((r) => r.id);
+  if (new Set(five).size !== 5 || five.includes('not-in-the-data')) return false;
+  run(`${cmpSet(five.slice(0, 2))} update(); openCompare(null);`);
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([five[0], 'not-in-the-data', ...five.slice(1)]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  return run('compareIds.join()') === [five[0], 'not-in-the-data', ...five.slice(1, 4)].join()
+    && cmpColIds(get).join() === five.slice(0, 4).join() && /\b4\b/.test(get('cmp-h').textContent);
 });
 appCheck('A1 a failed write keeps this tab\'s edits: later changes go on its own copy, not on what storage still holds', ({ run, context, ids: [a, b, c] }) => {
   context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([c]);
