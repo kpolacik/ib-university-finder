@@ -3405,6 +3405,116 @@ async function runSetupCompareReview(base) {
   }
 }
 
+// Phone fixes from the PR 1 review.
+async function runPhoneFixes(base) {
+  watchdog.refresh();
+  const ready = `({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`;
+  const { readSheets } = await import('../js/data.js');
+  const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
+  const ids = data.slice(0, 3).map((r) => r.id);
+
+  // 1. Below 600 px Search is the filter form's only text field, so Enter
+  // submitted the form: the page reloaded to ?q=…, in English, without the
+  // shared list. Enter now does nothing, as it does from 600 px.
+  for (const query of ['?ui=sk', `?ui=sk&list=${ids.join(',')}`]) {
+    const page = await openPage(base + query, 390, 844);
+    try {
+      await check(`390/sk${query.includes('list') ? '/list' : ''}`, 'PHN enter', 'Enter in Search keeps the page, its address, the language and a shared list', async () => {
+        await page.waitFor(ready, 15000, 'page');
+        // The first-visit setup is modal; dismiss it the way a returning
+        // student has, then mark this page so a reload would show.
+        await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+        await page.ev('window.__alive=true');
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        await page.type('a');
+        await page.waitFor(`({ok:location.search.includes('q=a'),why:location.search})`, 5000, 'search in the address');
+        const before = await page.ev('location.search');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        // A reload would take a moment to start; give it the chance.
+        await page.ev('new Promise((r) => setTimeout(r, 800))');
+        await page.waitFor(ready, 15000, 'page after Enter');
+        const m = await page.ev(`({alive:window.__alive===true,search:location.search,lang:document.documentElement.lang,value:document.querySelector('#f-search').value})`);
+        assert(m.alive, `the page reloaded: ${m.search}`);
+        assert(m.search === before && m.lang === 'sk' && m.value === 'a', JSON.stringify(m));
+        if (query.includes('list')) assert(m.search.includes('list='), `shared list dropped: ${m.search}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
+  const open = async (width, height, compare = []) => {
+    const page = await openPage(`${base}?ui=en`, width, height);
+    await page.waitFor(ready, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem('ib-university-finder:compare:v1',${JSON.stringify(JSON.stringify(compare))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    return page;
+  };
+  const tab = (page) => page.key('Tab', 'Tab', 9);
+
+  // 3. The phone Compare tray is fixed to the bottom but came last in Tab
+  // order, after every row (about 8,700 stops). It now follows the count row.
+  {
+    const page = await open(390, 844, ids.slice(0, 2));
+    try {
+      await check('390/en', 'PHN tray order', 'Tab from the top reaches the tray\'s Open within 15 stops, before any row; the tray stays at the bottom', async () => {
+        await page.waitFor(`({ok:!document.querySelector('#cmp-tray').hidden,why:'no tray'})`, 5000, 'tray');
+        await page.ev(`document.activeElement?.blur();scrollTo({top:0,behavior:'instant'})`);
+        let stops = 0, row = false;
+        while (stops < 15 && !(await page.ev(`document.activeElement?.id==='cmp-tray-open'`))) {
+          await tab(page); stops++;
+          if (await page.ev(`!!document.activeElement?.closest('#results')`)) row = true;
+        }
+        const m = await page.ev(`(()=>{const r=document.querySelector('#cmp-tray').getBoundingClientRect();return {open:document.activeElement?.id,bottom:Math.round(r.bottom),top:Math.round(r.top),pos:getComputedStyle(document.querySelector('#cmp-tray')).position,h:innerHeight}})()`);
+        assert(m.open === 'cmp-tray-open' && !row, `after ${stops} stops focus is on ${m.open}${row ? ', having passed a row' : ''}`);
+        assert(m.pos === 'fixed' && m.bottom <= m.h && m.bottom >= m.h - 24 && m.top > m.h / 2, `tray at ${JSON.stringify(m)}`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // 4. "Added to compare (n of 4) · Open compare" stayed over the open
+  // comparison until its timer ran out.
+  {
+    const page = await open(1280, 900);
+    try {
+      await check('1280/en', 'PHN compare toast', 'opening Compare from the header retires the "Open compare" toast at once', async () => {
+        await page.click(`document.querySelector('#results>.item .cmpi')`, 'a row\'s Compare');
+        await page.waitFor(`({ok:[...document.querySelectorAll('#toasts .toast')].some(n=>n.textContent.includes('Open compare')),why:document.querySelector('#toasts').textContent})`, 5000, 'the toast');
+        await page.click(`document.querySelector('#header-compare')`, 'Compare in the header');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare not open'})`, 5000, 'compare');
+        await page.waitFor(`({ok:![...document.querySelectorAll('#toasts .toast:not(.out)')].some(n=>n.textContent.includes('Open compare')),why:document.querySelector('#toasts').textContent})`, 1000, 'the toast gone');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // 5. On phones each arrow key in Sort committed a sort and closed the list.
+  {
+    const page = await open(390, 844);
+    try {
+      await check('390/en', 'PHN sort keys', 'arrow keys sort and keep the list open on the chosen radio; Enter closes it on its button', async () => {
+        const state = `({open:document.querySelector('#dd-sort').open,value:document.activeElement?.value??'',summary:document.activeElement===document.querySelector('#dd-sort>summary'),sort:document.querySelector('#f-sort').value})`;
+        await page.ev(`document.querySelector('#dd-sort>summary').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.querySelector('#dd-sort').open,why:'not open'})`, 3000, 'the list');
+        await tab(page);
+        const start = await page.ev(state);
+        for (let i = 1; i <= 2; i++) {
+          await page.key('ArrowDown', 'ArrowDown', 40);
+          const m = await page.waitFor(`(()=>{const m=${state};return {...m,ok:m.sort!==${JSON.stringify(start.sort)}&&m.value===m.sort&&m.open,why:JSON.stringify(m)}})()`, 3000, `arrow ${i}`);
+          start.sort = m.sort;
+        }
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`(()=>{const m=${state};return {ok:!m.open&&m.summary&&m.sort===${JSON.stringify(start.sort)},why:JSON.stringify(m)}})()`, 3000, 'closed on its button');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function runAlignChromeSetup(base) {
   watchdog.refresh();
   const shots = '/tmp/ib-align-fix-b/smoke';
@@ -3890,7 +4000,8 @@ async function main() {
     await runCompareHeaderR2(base);
     await runPrintFixes(base);
     await runCssA11yFixes(base);
-    await runSetupCompareReview(base); }
+    await runSetupCompareReview(base);
+    await runPhoneFixes(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

@@ -274,6 +274,10 @@ let loaded = false;
 let sourceMeta = null;
 // The local date the deadline fields were last worked out for (S06).
 let dataDay = localDay(new Date());
+// The Sort pick-list's key handling is wired once; whether the last radio
+// change came from an arrow key (sortPick).
+let sortKeysWired = false;
+let sortByArrow = false;
 
 start();
 
@@ -553,6 +557,12 @@ function readNumber(input, message, parse, explanation) {
 }
 
 function wireInputs() {
+  // Filters apply as you type, so the form is never submitted. Below 600 px
+  // placeFilters moves every other field out of it, leaving Search as its
+  // only text field, and Enter then did an implicit submit: the page reloaded
+  // to ?q=…, dropping the language and a shared ?list= view.
+  dom.form.addEventListener('submit', (event) => event.preventDefault());
+
   dom.search.addEventListener('input', debounce(() => {
     state.search = dom.search.value;
     update();
@@ -767,11 +777,15 @@ function onToggleCompare(id) {
 // One announcement per change, never two. On phones the tray's count changes
 // by the thumb, so only screen readers hear it (#cmp-status); on desktop the
 // header is far from the row, so a toast says it. The limit says so anywhere.
+// A toast that offers "Open compare" goes once Compare opens by any route:
+// left up, it still said "Added to compare (3 of 4) · Open compare" over the
+// open comparison.
+let dismissCompareToast = null;
 function compareFeedback(result) {
   const count = shownCompare().length;
-  if (result === 'full') showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+  if (result === 'full') dismissCompareToast = showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
   else if (trayQuery.matches) announceCompare(t(result === 'added' ? 'r3_cmp_added_sr' : 'r3_cmp_removed', { count }));
-  else if (result === 'added') showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
+  else if (result === 'added') dismissCompareToast = showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
   else showToast(t('r3_cmp_removed'));
 }
 
@@ -984,6 +998,8 @@ function openCompare(trigger) {
   if (!loaded) return;
   if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
   compareOpen = true;
+  dismissCompareToast?.();
+  dismissCompareToast = null;
   syncCompareControls();
   dom.compare.scrollIntoView?.({ block: 'start' });
   dom.compareHeading.focus({ preventScroll: true });
@@ -1926,6 +1942,29 @@ function sortPick() {
   const options = [...(dom.sort.options ?? [])];
   const chosen = options.find((option) => option.selected);
   if (current.textContent !== (chosen?.textContent ?? '')) current.textContent = chosen?.textContent ?? '';
+  const close = () => {
+    details.open = false;
+    details.querySelector('summary').focus();
+  };
+  // Arrow keys move through the radios and check each one, so each press
+  // sorts, but the list stays open: closing on every change sent the
+  // keyboard back to the button after one step. Enter, Space and Escape
+  // (round2.js) close it; a click or tap still picks and closes. Wired once:
+  // the radios below are rebuilt on every sort change.
+  if (!sortKeysWired) {
+    sortKeysWired = true;
+    box.addEventListener('pointerdown', () => { sortByArrow = false; });
+    box.addEventListener('keydown', (event) => {
+      sortByArrow = event.key.startsWith('Arrow');
+      if (event.key === 'Enter') { event.preventDefault(); close(); }
+    });
+    // Space on the radio already chosen fires no change, so it closes here.
+    // On keyup, like the click it would make: closing on keydown let the
+    // keyup reach the button and open the list again.
+    box.addEventListener('keyup', (event) => {
+      if (event.key === ' ' && event.target.checked) { event.preventDefault(); close(); }
+    });
+  }
   box.replaceChildren(...options.map((option) => {
     const label = document.createElement('label');
     label.className = 'option';
@@ -1935,10 +1974,13 @@ function sortPick() {
     input.value = option.value;
     input.checked = option.selected;
     input.addEventListener('change', () => {
+      const arrow = sortByArrow;
+      sortByArrow = false;
       dom.sort.value = input.value;
       dom.sort.dispatchEvent(new Event('change'));
-      details.open = false;
-      details.querySelector('summary').focus();
+      // The change rebuilt the radios, so focus goes to the new copy.
+      if (arrow) [...box.querySelectorAll('input')].find((node) => node.value === input.value)?.focus();
+      else close();
     });
     const text = document.createElement('span');
     text.textContent = option.textContent;
@@ -2040,9 +2082,11 @@ function renderCounts(shown) {
   drawAppliedChips();
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? t('clear_all', { value1: active }) : t('clear_all_2');
-  // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.maxBudget !== null, state.myLiving !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
-    .filter(Boolean).length;
+  // Filters (n) counts only what lives in the sheet, one per group (§6.3):
+  // every filter but Search, which stays in the header. IB points and HL
+  // Maths moved into the sheet, and leaving them out showed "Filters (1)"
+  // beside "Clear all (2)".
+  const inSheet = active - (state.search.trim() ? 1 : 0);
   dom.more.querySelector('span').textContent = inSheet ? t('filters', { value1: inSheet }) : t('filters_2');
   dom.more.classList.toggle('is-on', inSheet > 0);
   // index.html starts it disabled as "Loading programmes…": until the first

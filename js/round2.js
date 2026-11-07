@@ -166,6 +166,13 @@ export function syncSlider(slider, value) {
   const fraction = (Number(slider.value) - Number(slider.min)) / (Number(slider.max) - Number(slider.min));
   slider.style.setProperty('--p', `${100 * fraction}%`);
   slider.classList.toggle('set', set);
+  // Without this a screen reader read the bare thumb position: "20000" for
+  // a fee with no limit, "0" for living costs nobody set. A typed amount
+  // past the slider's end is read as typed, not as the end.
+  const living = slider.dataset.number === 'f-living';
+  const amount = set ? new Intl.NumberFormat(getLanguage() === 'sk' ? 'sk-SK' : 'en-IE').format(Number(value)) : '';
+  slider.setAttribute('aria-valuetext', set ? t(living ? 'r4_slider_month' : 'r4_slider_year', { amount })
+    : t(living ? 'r4_slider_unset' : 'r2_no_limit'));
 }
 
 export function syncRound2(dom, state, active, saved) {
@@ -239,6 +246,9 @@ export function showToast(message, actionLabel, action) {
   }
   region.append(toast);
   timeToast(toast);
+  // For a caller whose toast goes stale before its timer, such as "Open
+  // compare" once Compare is open.
+  return () => retireToast(toast, { used: true });
 }
 
 export function wireCompactHeader(dom, { goHome } = {}) {

@@ -1168,10 +1168,23 @@ const { syncSlider } = await import('../js/round2.js');
 check('custom budget sliders distinguish unset from explicit zero, cap only the visual thumb, and retain typed amounts', (() => {
   const classes = new Set(), props = {};
   const slider = { min: '0', max: '20000', dataset: { number: 'f-tuition' }, style: { setProperty(k, v) { props[k] = v; } }, classList: { toggle(k, on) { if (on) classes.add(k); else classes.delete(k); } },
-    set value(v) { this.n = Math.min(20000, Math.max(0, Number(v))); }, get value() { return this.n; } };
+    setAttribute() {}, set value(v) { this.n = Math.min(20000, Math.max(0, Number(v))); }, get value() { return this.n; } };
   syncSlider(slider, null); if (classes.has('set') || slider.value !== 20000 || props['--p'] !== '100%') return false;
   syncSlider(slider, 0); if (!classes.has('set') || slider.value !== 0 || props['--p'] !== '0%') return false;
   syncSlider(slider, 50000); return slider.value === 20000 && props['--p'] === '100%';
+})());
+// An unset slider read its bare thumb position ("20000", "40000", "0").
+check('budget sliders say their value with € and its period, "No limit" / "Not set" when unset, and a typed amount past the end as typed, in EN and SK (regression)', (() => {
+  const make = (number, max) => ({ min: '0', max: String(max), dataset: { number }, style: { setProperty() {} }, classList: { toggle() {} }, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; }, set value(v) { this.n = Math.min(max, Math.max(0, Number(v))); }, get value() { return this.n; } });
+  const said = (slider, value) => { syncSlider(slider, value); return slider.attrs['aria-valuetext']; };
+  const fee = make('f-tuition', 20000), budget = make('f-budget', 40000), living = make('f-living', 2000);
+  const en = [said(fee, null), said(budget, ''), said(living, null), said(fee, 12000), said(budget, 50000), said(living, 800), said(fee, 0), said(living, 0)];
+  i18n.initLanguage('', { getItem: () => 'sk' });
+  const sk = [said(fee, null), said(living, null), said(fee, 12000), said(living, 800)];
+  i18n.initLanguage('', { getItem: () => 'en' });
+  return JSON.stringify(en) === JSON.stringify(['No limit', 'No limit', 'Not set', '12,000 € a year', '50,000 € a year', '800 € a month', '0 € a year', '0 € a month'])
+    && JSON.stringify(sk.map((s) => s.replace(/\s/g, ' '))) === JSON.stringify(['Bez limitu', 'Nenastavené', '12 000 € ročne', '800 € mesačne']);
 })());
 check('S08 has specifically named help buttons and persistent described help; scalar facets keep active styling without a fld wrapper',
   indexHtml.includes('aria-label="About HL Maths 4+"') && indexHtml.includes('aria-label="About My IB points"')
@@ -3720,14 +3733,57 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
 });
-appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; fee 0 + two countries is Filters (2)', ({ run, get, fire, advance, context }) => {
+// Each arrow press in the Sort pick-list committed a sort and closed the
+// list, sending focus back to its button after one step.
+appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on the new radio; Enter, Space on the chosen one, and a click close it (regression)', ({ run, get, fire, context }) => {
+  // A plain object is enough: dispatchStub copies the type.
+  context.Event = function Event(type, init = {}) { return { type, ...init }; };
+  const details = get('dd-sort'), box = get('sort-options'), summary = details.querySelector('summary');
+  // The stand-in <select> has no .options; the real one lists its <option>s.
+  Object.defineProperty(get('f-sort'), 'options', { get() { return this.children; } });
+  run('sortPick();');
+  const radios = () => box.querySelectorAll('input');
+  const pick = (value, how) => {
+    const radio = radios().find((node) => node.value === value);
+    if (how === 'arrow') fire(box, 'keydown', { key: 'ArrowDown' }); else fire(box, 'pointerdown');
+    radio.checked = true; fire(radio, 'change');
+  };
+  details.open = true;
+  const [first, second, third] = radios().map((node) => node.value);
+  pick(second, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== second || stubDocument.activeElement?.value !== second
+    || stubDocument.activeElement === radios().find((node) => node.value === first)) return false;
+  pick(third, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== third || stubDocument.activeElement?.value !== third) return false;
+  fire(box, 'keydown', { key: 'Enter' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  const chosen = radios().find((node) => node.checked); chosen.focus();
+  fire(chosen, 'keyup', { key: ' ' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  pick(first, 'click');
+  return !details.open && stubDocument.activeElement === summary && run('`${state.sort}:${state.dir}`') === first;
+});
+// Below 600 px Search is the filter form's only text field, so Enter there
+// submitted it and reloaded the page to ?q=…, losing the language and a
+// shared ?list= view. Smoke "PHN enter" presses the real key.
+appCheck('actual phone Enter in Search: the filter form is never submitted, on phones or wider (regression)', ({ get, fire, flip600 }) => {
+  flip600(false);
+  const phone = fire(get('filter-form'), 'submit');
+  flip600(true);
+  return phone === false && fire(get('filter-form'), 'submit') === false;
+});
+appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; points + HL Maths and fee 0 + two countries are each Filters (2)', ({ run, get, fire, advance, context }) => {
   run('facets = buildFacets(allRows); drawChips();');
   const more = get('f-more'), clear = get('f-clear'), show = get('sheet-show'), label = () => more.querySelector('span').textContent;
   const type = (id, value) => { get(id).value = value; fire(get(id), 'input'); advance(150); };
   if (label() !== 'Filters' || more.classList.contains('is-on') || clear.textContent !== 'Clear all' || !clear.disabled
     || show.textContent !== `Show ${context.fixture.length} programmes`) return false;
   type('f-points', '36'); get('f-maths').checked = true; fire(get('f-maths'), 'change');
-  if (label() !== 'Filters' || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
+  // Points and HL Maths live in the phone sheet, so they count there too; the
+  // old rule left them out and showed "Filters" beside "Clear all (2)".
+  if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
   fire(clear, 'click'); type('f-tuition', '0');
   for (const tick of get('f-countries').querySelectorAll('input').filter((node) => node.type === 'checkbox').slice(0, 2)) { tick.checked = true; fire(tick, 'change'); }
   if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || clear.disabled
@@ -4542,10 +4598,11 @@ appCheck('actual My maths / Entrance exam selects: choosing updates state and ad
   if (urls.at(-1) !== '/?mymaths=AA+SL&exam=none' || chip('exam')?.getAttribute('data-label') !== 'Entrance exam: No exam') return false;
   if (!maths.closest('.fld')?.classList.contains('is-set') || !exam.closest('.dropdown')?.classList.contains('is-set')) return false;
   if (more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (2)') return false;
-  // The tick is a different filter: it adds a Clear all count and a chip, but nothing to the sheet's count.
+  // The tick is a different filter: it adds a chip and one to both counts, as
+  // it sits in the phone sheet beside My maths.
   get('f-maths').checked = true; fire(get('f-maths'), 'change');
   if (run('state.hlMaths') !== true || run('state.myMaths') !== 'AA SL' || !chip('hlMaths') || !urls.at(-1).includes('maths=1&mymaths=AA+SL&exam=none')
-    || more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (3)') return false;
+    || more.querySelector('span').textContent !== 'Filters (3)' || clear.textContent !== 'Clear all (3)') return false;
   exam.value = 'skippable'; fire(exam, 'change');
   return chip('exam')?.getAttribute('data-label') === 'Entrance exam: None or skippable' && urls.at(-1).includes('exam=skippable');
 });
@@ -6571,9 +6628,16 @@ appCheck('A4 the tray says it in Slovak: "Porovnanie: 3 zo 4", and Open is named
   return ok;
 });
 i18n.initLanguage('', { getItem: () => 'en' });
-check('A4 markup: the header button beside My list, the tray before the footer with text and button apart, one status line',
+// The tray is fixed to the bottom, but its place in the markup is its place
+// in Tab and screen-reader order. After </main> it came after every row
+// (about 8,700 stops on a phone), so it now sits right after the count row,
+// before My list, Compare and the results.
+check('A4 markup: the header button beside My list, the tray right after the count row (before the list) with text and button apart, one status line (regression)',
   /<button class="btn hb" id="header-list" type="button">[^]*?<span class="hb-l" data-i18n="my_list">My list<\/span><span id="header-list-count" class="badge">0<\/span><\/button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"\/><\/svg><span class="hb-l" data-i18n="compare_2">Compare<\/span><span id="header-compare-count" class="badge">0<\/span><\/button>/.test(read('index.html'))
-  && /<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
+  && /<p class="copy-status" id="f-copy-status" role="status" aria-live="polite"><\/p>\s*<\/div>\s*(?:<!--[^]*?-->\s*)?<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="count count-summary" id="count-summary"/.test(read('index.html'))
+  && (() => { const html = read('index.html'), at = (s) => html.indexOf(s);
+    return at('<div class="status">') < at('id="cmp-tray"') && at('id="cmp-tray"') < at('id="shortlist-bar"') && at('id="cmp-tray"') < at('id="results"') && at('id="cmp-tray"') < at('</main>'); })()
+  && /<\/dialog>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
 check('A4 CSS: the header button hides where the tray serves; icon-only header buttons at 600–1023; the tray reserves its height, scroll padding and the toasts\' lift, none in print',
   /@media \(max-width:599\.98px\),\(max-height:500px\)\{#header-compare\{display:none\}\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\s*\.hb \.hb-l\{position:absolute;[^}]*clip-path:inset\(50%\)/.test(cssText)
@@ -6603,6 +6667,29 @@ appCheck('A5 desktop: an add shows one toast with the count and "Open compare"; 
   flushFrame();
   const removed = context.toasts.at(-1);
   return context.toasts.length === 3 && removed.message === 'Removed from compare.' && !removed.action && get('cmp-status').textContent === '';
+});
+// "Added to compare (3 of 4) · Open compare" stayed up over the open
+// comparison until its timer ran out.
+appCheck('A5 desktop: opening Compare from the header retires the "Open compare" toast of an add and of a refused fifth, and no other (regression)', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  const ids = context.fixture.map((r) => r.id);
+  run('allRows = fixture; update();');
+  const toasts = [];
+  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  fire(cmpOf(get('results').children[0]), 'click');
+  const added = toasts.at(-1);
+  if (added?.label !== 'Open compare' || added.gone) return false;
+  fire(get('header-compare'), 'click');
+  if (get('compare').hidden || !added.gone) return false;
+  fire(get('header-compare'), 'click');
+  run(`${cmpSet(ids.slice(0, 4))} update();`);
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[4])), 'click');
+  const full = toasts.at(-1);
+  if (full?.message !== 'You can compare up to 4 programmes. Remove one first.' || full.gone) return false;
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[0])), 'click');
+  const removed = toasts.at(-1);
+  fire(get('header-compare'), 'click');
+  return !get('compare').hidden && full.gone && removed.message === 'Removed from compare.' && !removed.gone;
 });
 appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 leave one line, "4 of 4"', ({ run, get, fire, context, trayMedia, frames, flushFrame }) => {
   trayMedia.matches = true;

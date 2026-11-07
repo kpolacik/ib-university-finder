@@ -306,7 +306,11 @@
       "visibilitychange",
       "visible",
       "ml-more",
-      "ml-more-open"
+      "ml-more-open",
+      "Arrow",
+      "Enter",
+      "keyup",
+      "pointerdown"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -966,7 +970,8 @@
       "canvas",
       "2d",
       "function",
-      "dd-sort"
+      "dd-sort",
+      "aria-valuetext"
     ],
     "js/saved-state.js": [
       "./filters.js",

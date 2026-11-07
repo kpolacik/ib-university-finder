@@ -271,6 +271,19 @@
       <p class="copy-status" id="f-copy-status" role="status" aria-live="polite"></p>
     </div>
 
+    <!-- Compare on phones (batch 3): from the first programme added, a bar at
+         the bottom, in reach while scrolling, since the header scrolls away
+         there. Text and button apart, so a scroll cannot open Compare by
+         accident. Hidden while typing, while Compare is open, in a dialog and
+         in print (app.js). It is fixed to the bottom, but sits here, right
+         after the count row, so Tab and a screen reader reach it before the
+         list: at the end of the page it came after every row, about 8,700
+         stops in. -->
+    <div class="cmp-tray" id="cmp-tray" hidden>
+      <p id="cmp-tray-text"></p>
+      <button type="button" class="btn btn-p btn-s" id="cmp-tray-open" aria-label="Open compare" data-i18n="r3_tray_open" data-i18n-attr="aria-label:r3_cmp_open_label">Open</button>
+    </div>
+
     <p class="count count-summary" id="count-summary" aria-hidden="true"></p>
 
     <!-- My list (js/shortlist.js): the saved programmes, kept in this browser.
@@ -426,14 +439,6 @@
   </div>
 </dialog>
 
-<!-- Compare on phones (batch 3): from the first programme added, a bar at the
-     bottom, in reach while scrolling, since the header scrolls away there.
-     Text and button apart, so a scroll cannot open Compare by accident. Hidden
-     while typing, while Compare is open, in a dialog and in print (app.js). -->
-<div class="cmp-tray" id="cmp-tray" hidden>
-  <p id="cmp-tray-text"></p>
-  <button type="button" class="btn btn-p btn-s" id="cmp-tray-open" aria-label="Open compare" data-i18n="r3_tray_open" data-i18n-attr="aria-label:r3_cmp_open_label">Open</button>
-</div>
 <p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>
 
 <footer class="foot"><div><h2><span data-i18n="r2_footer_h">Check before you apply</span></h2><p><span data-i18n="r2_footer_p">Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.</span></p><p class="src" id="source-line" hidden></p></div><div class="faq" id="faq"><details><summary><span data-i18n="r4_faq_tools">What's the difference between My list and Compare?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r4_faq_tools_a">My list keeps every programme you save: you can group them, share them by link or export them as a CSV. Compare puts 2 to 4 programmes side by side. The two are separate, so saving a programme doesn't add it to Compare.</span></div></details>
