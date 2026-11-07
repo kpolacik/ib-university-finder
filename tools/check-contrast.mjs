@@ -228,7 +228,7 @@ const CANONICAL = {
   "--s-4": "16px",
   "--s-5": "24px",
   "--s-6": "32px",
-  "--r-panel": "12px",
+  "--r-panel": "16px",
   "--r-cell": "4px",
   "--pane-w": "clamp(300px,26vw,380px)",
   "--t-fast": "120ms",

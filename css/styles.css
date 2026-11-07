@@ -120,7 +120,7 @@
 
   /* ---------- Space (8-pt grid with a 4 px half step) and shape ---------- */
   --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
-  --r-panel:12px;    /* panels, tiles, sheet, banners */
+  --r-panel:16px;    /* panels, tiles, sheet, banners. 16 = 8 px control corners + 8 px inset (concentric, 2026-11-07) */
   --r-cell:4px;     /* cells, controls, buttons, tags */
   --pane-w:clamp(300px,26vw,380px);   /* desktop detail pane from 1200 px (redesign revisions; was 25rem from 1280) */
   /* --gut (16 phone / 24 from 600), --ctl (control height 44 / 36) and --tap (small-button and link hit
@@ -626,7 +626,7 @@ html:has(.sheet[open]){overflow:hidden}
 .row :where(h3,p){margin:0}
 .listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);container-type:inline-size}
 .cols{display:none}
-.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
+.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
 .listp>.f-sort>label{white-space:nowrap}
 .listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
 /* Rows are display:block, not the <li> default list-item. In Chrome a
