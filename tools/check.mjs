@@ -6888,7 +6888,7 @@ section('Alignment · list, detail, Compare');
     && /@container dfoot \(min-width: 330px\)\{\.d-foot>\.d-actions:lang\(en\)\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/.test(block));
   check('AL compare Save sits at the foot of every header cell, one width; columns keep room for it from 600 px',
     /\.cmp-t th\.cmp-p\{padding-bottom:62px\}/.test(block) && /\.cmp-t th\.cmp-p \.cmp-save\{position:absolute;left:12px;bottom:10px;/.test(block)
-    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px\}\s*\}/.test(block));
+    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px;border-radius:8px\}\s*\}/.test(block));
   check('AL compare "x": its own strip below 1024 px, 4 px from the cell edge so its focus ring is not clipped',
     /@media \(max-width:1023\.98px\)\{\s*\.cmp \.cmp-t th\.cmp-p::before\{display:none\}\s*\.cmp-t th\.cmp-p\{padding-top:44px\}\s*\}/.test(block)
     && /\.cmp-x\{position:absolute;top:4px;right:4px;/.test(cssText));
@@ -7133,6 +7133,9 @@ section('Compare and header, round 2, 2026-11-06');
     && lastValue('.foot', 'margin-top') === '48px');
   check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
     lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
+  check('CH3b desktop Compare: Save and the "x" have the same 8 px corners as Close comparison (the table is not a rounded container, so no concentric inset applies); the card keeps --r-panel',
+    /border-radius:8px/.test(ruleAt(cssText, '.cmp-t th.cmp-p .cmp-save', '(min-width:600px)'))
+    && lastValue('.cmp-x', 'border-radius') === '8px' && lastValue('.cmp', 'border-radius') === 'var(--r-panel)');
   check('CH4 phones: the one My list button moves into the count row before Filters, and back before Compare from 600 px; focus survives the move',
     /if \(bar\) put\(headerRight, dom\.headerList, dom\.headerCompare\);\s*else put\(dom\.status, dom\.headerList, dom\.more\);/.test(appSrc)
     && /if \(listFocused && document\.activeElement !== dom\.headerList\) dom\.headerList\.focus/.test(appSrc)

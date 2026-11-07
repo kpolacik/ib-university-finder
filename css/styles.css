@@ -1531,7 +1531,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    there Save fills its column up to 6.5rem (and drops its icon below 360 px). */
 @media (min-width:600px){
  .cmp-t th.cmp-p{min-width:110px}
- .cmp-t th.cmp-p .cmp-save{width:86px}
+ .cmp-t th.cmp-p .cmp-save{width:86px;border-radius:8px}
 }
 /* Below 1024 px a column is too narrow to share its first lines with the
    "x": a name broke beside it ("Nanobiolo / gy") although it fits the column.
@@ -1706,7 +1706,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 .cmp-save .ic{width:16px;height:16px;fill:none;flex:none}
 .cmp-save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
 .cmp-save[aria-pressed="true"] .ic{fill:currentColor}
-.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:8px;background:none;color:var(--ink-2);cursor:pointer}
 .cmp-x:hover{background:var(--hover);color:var(--accent)}
 .cmp-x .ic{width:18px;height:18px}
 /* The entry: a header button beside My list where the header sticks, the
