@@ -3981,6 +3981,90 @@ async function runCssA11yFixes(base) {
   }
 }
 
+// The country badge on a row's second line had margin-left:6px. When the
+// badge wrapped onto a line of its own (long Masaryk or Charles names on a
+// phone), that margin stayed and the badge started 6 px in from the text
+// above it. The gap now sits at the end of the university · city text, so a
+// wrapped badge is flush and an inline one keeps space + 6 px.
+async function runBadgeFlush(base) {
+  watchdog.refresh();
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const measure = `(()=>{const out={wrapped:[],inline:[]};
+    for(const sub of document.querySelectorAll('#results>.item .sub')){const cc=sub.querySelector('.cc'),uc=sub.querySelector('.uc');
+      if(!cc||!uc||!cc.getClientRects().length)continue;
+      const lines=[...uc.getClientRects()],c=cc.getBoundingClientRect(),last=lines[lines.length-1],id=sub.closest('.item').dataset.id;
+      if(c.top>=last.bottom-1)out.wrapped.push({id,badge:c.left,text:lines[0].left});
+      else{const r=document.createRange();r.selectNodeContents(cc.previousSibling);
+        out.inline.push({id,gap:+(c.left-last.right).toFixed(2),want:+(r.getBoundingClientRect().width+6).toFixed(2)});}}
+    return out})()`;
+  const verdict = (m) => {
+    const bad = m.wrapped.filter((w) => Math.abs(w.badge - w.text) > 1);
+    const off = m.inline.filter((i) => Math.abs(i.gap - i.want) > 0.5);
+    assert(!bad.length, 'wrapped badge indented: ' + JSON.stringify(bad.slice(0, 3)));
+    assert(!off.length, 'inline gap changed: ' + JSON.stringify(off.slice(0, 3)));
+  };
+  const open = async (query, width, height, saves = []) => {
+    const page = await openPage(base + query, width, height);
+    if (width < 600) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    }
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const rowsShown = `({ok:document.querySelectorAll('#results>.item .cc').length>0,why:'no rows'})`;
+  const seen = { wrapped: 0, inline: 0 };
+  const savedIds = [];
+  for (const [width, height] of [[320, 640], [390, 844], [600, 900], [1024, 768], [1440, 900]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, height);
+    try {
+      await check(`${width}/${ui}`, 'BADGE flush', 'a wrapped country badge starts at the text\'s left edge; an inline one keeps its gap', async () => {
+        const counts = [];
+        for (const q of ['Masaryk', 'Charles', 'University College Dublin']) {
+          await page.ev(`window.__oldPage=true;location.search='?ui=${ui}&q=${encodeURIComponent(q)}'`);
+          await page.waitFor(ready, 15000, q);
+          await page.waitFor(rowsShown, 5000, q + ' rows');
+          const m = await page.ev(measure);
+          seen.wrapped += m.wrapped.length; seen.inline += m.inline.length;
+          counts.push(`${q}: ${m.wrapped.length} wrapped, ${m.inline.length} inline`);
+          if (width === 320 && ui === 'en' && m.wrapped.length && savedIds.length < 3) savedIds.push(...m.wrapped.slice(0, 3 - savedIds.length).map((w) => w.id));
+          verdict(m);
+        }
+        if (width === 320) assert(counts.every((c) => !c.startsWith('Masaryk: 0 wrapped')), 'no wrapped Masaryk badge at 320, so nothing was tested: ' + counts.join('; '));
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  // The same rows in My list, and on paper (the print rule drops the tint and
+  // padding but keeps the gap).
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 320, 640, savedIds);
+    try {
+      await check(`320/${ui}`, 'BADGE flush list+print', 'in My list and in print a wrapped badge is flush and an inline one keeps its gap', async () => {
+        assert(savedIds.length, 'no wrapped rows were found to save');
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${savedIds.length},why:'list not shown'})`, 5000, 'My list');
+        const m = await page.ev(measure);
+        verdict(m);
+        assert(m.wrapped.length, 'no wrapped badge in My list ' + JSON.stringify(m));
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          verdict(await page.ev(measure));
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  await check('all', 'BADGE flush seen', 'the widths above showed both a wrapped and an inline badge', async () => {
+    assert(seen.wrapped > 0 && seen.inline > 0, JSON.stringify(seen));
+  });
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4016,7 +4100,8 @@ async function main() {
     await runPrintFixes(base);
     await runCssA11yFixes(base);
     await runSetupCompareReview(base);
-    await runPhoneFixes(base); }
+    await runPhoneFixes(base);
+    await runBadgeFlush(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

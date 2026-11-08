@@ -653,7 +653,7 @@ html:has(.sheet[open]){overflow:hidden}
 /* The country, in words, on a small tint (the tint only helps; it may repeat
    once there are more countries than pairs). An unmapped country gets the
    neutral pair with no code change. MAINTENANCE.md says how to add one. */
-.cc{display:inline-block;margin-left:6px;padding:0 6px;border-radius:var(--r-cell);background:var(--cty-fill);color:var(--cty-ink);font-size:var(--fs-12);font-weight:600;line-height:18px;white-space:nowrap}
+.cc{display:inline-block;padding:0 6px;border-radius:var(--r-cell);background:var(--cty-fill);color:var(--cty-ink);font-size:var(--fs-12);font-weight:600;line-height:18px;white-space:nowrap}
 .cc[data-country=Denmark]{background:var(--cty-dk-fill);color:var(--cty-dk-ink)}
 .cc[data-country=Ireland]{background:var(--cty-ie-fill);color:var(--cty-ie-ink)}
 .cc[data-country=Italy]{background:var(--cty-it-fill);color:var(--cty-it-ink)}
@@ -1932,6 +1932,11 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .sub{display:block}
 .sub .uc{overflow:visible;white-space:normal}
 .sub .cc{vertical-align:1px}
+/* The 6 px before the country badge belongs to the text, not the badge: a
+   margin-left on the badge stayed when it wrapped onto a line of its own, so
+   on phones it sat 6 px in from the university name above it. At the end of
+   the name it still makes "space + 6 px" when both share a line. */
+.sub .uc{margin-right:6px}
 /* Phones: the header and the count row read as one white block (no line
    between them, one line under both), and the list starts 12 px below it
    instead of touching it. The IB tile's left edge sits on the page margin,

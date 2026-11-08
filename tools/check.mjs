@@ -7438,6 +7438,11 @@ section("Leon's review, 2026-11-06");
 const lastValue = (selector, prop, query) => [...ruleAt(cssText, selector, query).matchAll(new RegExp(`(?:^|;)${prop}:([^;]+)`, 'g'))].at(-1)?.[1];
 check('LR1 rows never cut off the university name: the line wraps and the country tag follows inline',
   lastValue('.sub', 'display') === 'block' && lastValue('.sub .uc', 'white-space') === 'normal' && lastValue('.sub .uc', 'overflow') === 'visible');
+// A margin-left on the badge stayed when the badge wrapped onto its own line,
+// so it sat 6 px in from the name above (smoke BADGE flush measures it).
+check('LR1b the country badge has no left margin; its 6 px gap is the end of the university text',
+  ['.cc', '.sub .cc', '.row .cc'].every((sel) => !/(?:^|;)margin(?:-left|-inline-start)?:/.test(ruleAt(cssText, sel)))
+  && lastValue('.sub .uc', 'margin-right') === '6px');
 check('LR2 phones: the header and count row are one block, and the list starts 12 px below it',
   /border-bottom:0/.test(ruleAt(cssText, '.hd', '(max-width:599.98px)'))
   && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
