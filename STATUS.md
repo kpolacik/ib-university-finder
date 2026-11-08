@@ -1118,6 +1118,18 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   and reduced motion is still instant. Never give `.item` another display
   value. `check.mjs` and smoke A10 guard this.
 
+- **Compare would not scroll down on a phone (fixed 2026-11-08).** Leon, on
+  an iPhone: "couldn't scroll down" in Compare. The table's sideways scroll
+  box (`.cmp-scroll`) had only `overflow-x: auto`, which makes the vertical
+  axis `auto` too. The phone tap padding of the "Official page" links in the
+  last row reaches 2 px below the table, so the box could also scroll 2 px
+  down. On a phone the table fills nearly the whole screen, and a vertical
+  swipe that started over it went to that 2 px box, not the page (headless
+  Chrome with touch: the page moved 0 px). The box now has
+  `overflow-y: hidden`. Never let a sideways scroller scroll vertically, and
+  never give it `touch-action: pan-x`. `check.mjs` and smoke "CMP touch
+  scroll" guard this.
+
 ## Decisions already made, so they are not relitigated
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
