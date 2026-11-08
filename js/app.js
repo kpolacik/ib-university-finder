@@ -1,19 +1,23 @@
-import { t, initLanguage, setLanguage, getLanguage, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
+import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
+import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader } from './round2.js';
+import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
 import { loadData, applyToday } from './data.js';
 import {
   createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
-  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket,
+  parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket, linkContents,
 } from './filters.js';
 import {
   loadShortlist, saveShortlist, readStoredShortlist, SHORTLIST_KEY, toCsv, downloadCsv, shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist,
   groupRows, groupHeadings, addressQuery,
 } from './shortlist.js';
-import { compareTable, prunePicks, MIN_COMPARE, MAX_COMPARE } from './compare.js';
+import { compareTable, MIN_COMPARE } from './compare.js';
+import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
-  setSaved, renderCompare,
+  setSaved, setInCompare, renderCompare,
 } from './render.js';
 
 const dom = {
@@ -58,8 +62,12 @@ const dom = {
   sort: document.getElementById('f-sort'),
   count: document.getElementById('result-count'),
   countShort: document.querySelector('.cshort'),
+  countSummary: document.getElementById('count-summary'),
   stuckMark: document.querySelector('.stuck-mark'),
   copy: document.getElementById('f-copy'),
+  copyHelp: document.getElementById('f-copy-help'),
+  copyStatus: document.getElementById('f-copy-status'),
+  copyStatusFrame: null,
   more: document.getElementById('f-more'),
   moreFilters: document.querySelector('.more-filters'),
   sheet: document.getElementById('filter-sheet'),
@@ -78,6 +86,8 @@ const dom = {
   emptyTitle: document.getElementById('empty-title'),
   emptyHint: document.getElementById('empty-hint'),
   emptyClear: document.getElementById('empty-clear'),
+  emptyBack: document.getElementById('empty-back'),
+  headerList: document.getElementById('header-list'),
   emptyTips: document.getElementById('empty-tips'),
   pointsError: document.getElementById('f-points-error'),
   tuitionError: document.getElementById('f-tuition-error'),
@@ -89,6 +99,7 @@ const dom = {
   shortlistCount: document.getElementById('shortlist-count-text'),
   sourceLine: document.getElementById('source-line'),
   shortlistOnly: document.getElementById('f-shortlist-only'),
+  shortlistOnlyText: document.getElementById('f-shortlist-only').querySelector('.ml-open-t'),
   exportCsv: document.getElementById('export-csv'),
   print: document.getElementById('print-shortlist'),
   clearShortlist: document.getElementById('clear-shortlist'),
@@ -98,10 +109,8 @@ const dom = {
   listNote: document.getElementById('ml-note'),
   listTools: document.getElementById('ml-tools'),
   listOrigin: document.getElementById('ml-origin'),
+  listMore: document.getElementById('ml-more'),
   groupBy: document.getElementById('ml-group'),
-  comparePicker: document.getElementById('ml-compare'),
-  comparePicks: document.getElementById('ml-picks'),
-  compareGo: document.getElementById('ml-compare-go'),
   share: document.getElementById('ml-share'),
   sharePoints: document.getElementById('ml-share-points'),
   sharePointsHelp: document.getElementById('ml-share-points-help'),
@@ -111,8 +120,19 @@ const dom = {
   compare: document.getElementById('compare'),
   compareHeading: document.getElementById('cmp-h'),
   compareDiff: document.getElementById('cmp-diff'),
+  compareDiffLabel: document.getElementById('cmp-diff-label'),
   compareClose: document.getElementById('cmp-close'),
+  compareNote: document.getElementById('cmp-note'),
+  compareOne: document.getElementById('cmp-one'),
   compareBody: document.getElementById('cmp-body'),
+  compareEmpty: document.getElementById('cmp-empty'),
+  compareBrowse: document.getElementById('cmp-browse'),
+  headerCompare: document.getElementById('header-compare'),
+  headerCompareCount: document.getElementById('header-compare-count'),
+  tray: document.getElementById('cmp-tray'),
+  trayText: document.getElementById('cmp-tray-text'),
+  trayOpen: document.getElementById('cmp-tray-open'),
+  compareStatus: document.getElementById('cmp-status'),
   issues: document.getElementById('issues'),
   issuesSummary: document.getElementById('issues-summary'),
   issuesList: document.getElementById('issues-list'),
@@ -125,22 +145,34 @@ const shortlist = loadShortlist();
 // is open, else null; it is kept apart from the saves, which change only on
 // "Save these to my list". None of these go in the address except `list`.
 let shared = null;
+let restored = null;
+let preferencesDirty = false;
+const editedFacets = new Set();
+const persistPreferences = debounce(() => {
+  if (!loaded || !preferencesDirty) return;
+  writeSaved(storedFilters(state, facets)); preferencesDirty = false;
+}, 300);
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
 let groupBy = 'deadline';
+// Phones: whether My list's More is open (Share, Export, Print, Clear and the
+// footnotes; styles.css hides them otherwise). Closed again on leaving the list.
+let listMoreOpen = false;
 // Ids of the programmes in the list view, the rows on screen that carry a
 // group heading, and whether the last save failed.
 let listIds = [];
 let listHeadings = new Map();
 let listShown = 0;
 let saveFailed = false;
-// Compare: the picked ids (2 to 4), whether the table is open, and the key of
-// the list the picker was last built for.
-let comparePicks = [];
+// Compare: whether its view is open, "Show only differences", and where it was
+// opened from ({ trigger, scrollY }), so closing can go back there.
 let compareOpen = false;
 let onlyDifferences = false;
-let picksKey = null;
-let shareTimer;
+let compareFrom = null;
+// The compare set (js/compare-set.js): up to four programme ids in the order
+// they were added, apart from the saves. compareFailed: the last write failed.
+let compareIds = loadCompare();
+let compareFailed = false;
 // One line after a shared list was saved ("3 programmes added to your list.").
 let sharedNote = null;
 let allRows = [];
@@ -163,6 +195,10 @@ const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 // Paper is narrower than the screen, so both layout queries can fire while
 // printing. Between beforeprint and afterprint nothing moves (A08).
 const printQuery = matchMedia('print');
+// Where the header does not stick (phones, and any width at 500 px tall or
+// less) Compare's entry is the tray at the bottom instead of the header
+// button. The same query as the CSS.
+const trayQuery = matchMedia('(max-width: 599.98px), (max-height: 500px)');
 let printing = false;
 let updateAfterPrint = false;
 // Slot motion owned by each slot: its pending frame, transitionend listener and
@@ -175,7 +211,6 @@ let appliedBar = null;
 let filterFocus = null;
 let returnFocusOnClose = true;
 let sentinelAbove = false;
-let copyTimer;
 // L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
 // almost all of them are off screen. update() now draws enough rows to fill the
 // window at once and appends the rest in slices just after the first paint.
@@ -218,11 +253,20 @@ const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
   Italy: 'f-it', Netherlands: 'f-nl', Norway: 'f-no', Sweden: 'f-se', 'United Kingdom': 'f-gb',
 };
+// Language pick-list flags (Leon, 2026-11-06): the flag of the country most
+// associated with the language, only as a visual cue beside its name.
+const LANGUAGE_FLAGS = { English: 'f-gb', Czech: 'f-cz', German: 'f-de', French: 'f-fr', Italian: 'f-it' };
 let selectedId = null;
 let shownRows = new Map();
 let appliedWide = null;
 let paneId = null;
 let crossingFocus = null;
+// A My list tool that holds focus, for the 600 px crossing: CSS hides More
+// from 600 px, and the tools below 600 px unless More is open, and Chrome can
+// drop focus from a node that goes hidden before the change callback runs.
+let listFocus = null;
+// The same for a focused Compare arrow, which CSS hides from 600 px.
+let compareNavFocus = null;
 // False until the data is in. The inputs are live from the start so nothing
 // typed during loading is lost (S04), but update() must not draw anything
 // before then: with no rows it would flash "No programmes match".
@@ -230,6 +274,10 @@ let loaded = false;
 let sourceMeta = null;
 // The local date the deadline fields were last worked out for (S06).
 let dataDay = localDay(new Date());
+// The Sort pick-list's key handling is wired once; whether the last radio
+// change came from an arrow key (sortPick).
+let sortKeysWired = false;
+let sortByArrow = false;
 
 start();
 
@@ -237,7 +285,13 @@ async function start() {
   initLanguage(location.search);
   applyLanguage();
   for (const button of document.querySelectorAll('[data-language]')) {
-    button.addEventListener('click', () => switchLanguage(button.getAttribute('data-language')));
+    // Tapping the language already shown flips to the other one (Leon,
+    // 2026-11-06): nobody taps SK to stay in Slovak.
+    button.addEventListener('click', () => {
+      const other = [...button.parentElement.querySelectorAll('[data-language]')].find((b) => b !== button);
+      const pick = button.getAttribute('aria-pressed') === 'true' && other ? other : button;
+      switchLanguage(pick.getAttribute('data-language'));
+    });
   }
   dom.banner.addEventListener('click', openIssuesFromLink);
   crossBar();
@@ -248,11 +302,26 @@ async function start() {
   applyUrlFields();
   syncSort();
   wireInputs();
+  wireRound2(dom);
+  wireCompactHeader(dom, { goHome });
+  for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
+    const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
+    const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
+    if (fields.includes(event.target) || (event.target.type === 'checkbox' && boxes.some((box) => box.contains(event.target)))) {
+      preferencesDirty = true; persistPreferences();
+    }
+  });
   dom.results.addEventListener('click', toggleRow);
-  // The pane's "Save to my list".
+  document.getElementById('pane-close').addEventListener('click', () => {
+    const id = selectedId; clearSelection(); selectedId = null; drawPane();
+    dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
+  });
+  // The pane's "Save to my list" and compare button.
   dom.pane.addEventListener('click', (event) => {
     const save = event.target.closest('button[data-save-id]');
     if (save) onToggleStar(save.getAttribute('data-save-id'));
+    const compare = event.target.closest('button[data-compare-id]');
+    if (compare) onToggleCompare(compare.getAttribute('data-compare-id'));
   });
   dom.results.addEventListener('keydown', rowKeydown);
   wideQuery.addEventListener('change', crossWide);
@@ -261,8 +330,9 @@ async function start() {
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
-  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); });
+  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); syncTray(); });
   window.addEventListener('afterprint', afterPrint);
+  wireTray();
   dom.results.setAttribute('aria-busy', 'true');
 
   try {
@@ -278,6 +348,8 @@ async function start() {
     syncSort();
 
     facets = buildFacets(allRows);
+    // Only in memory: the next change writes the tidied set (compare-set.js).
+    compareIds = normalizeCompare(compareIds, knownIds());
     applyUrlLists();
     // An incoming share link opens its own list view, never the saves (S03).
     shared = readSharedList(location.search, new Set(allRows.map((row) => row.id)));
@@ -290,6 +362,27 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
+      // Compare covers the results, so "Show my programmes" closes it first.
+      // The Compare set stays (review of PR 1, 2026-11-07).
+      closeCompare: () => closeCompare(false),
+      apply(answers) {
+        // "Show all saves" ignores the filters, so My list kept showing (and
+        // the done screen counted) saves the answers rule out, like a 42-point
+        // programme for 24 points. The answers are filters: they apply here.
+        listAll = false;
+        for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
+        fillFields(state); drawChips(); preferencesDirty = true; update();
+        // Setup's done screen says how many programmes this leaves, how they
+        // stand against the IB points (the count line's own parts) and whether
+        // any filter is on at all. On phones Search sits in the header, not in
+        // Filters, so there the note counts the sheet's filters only, as the
+        // Filters (n) button does (verification of PR 1).
+        const active = activeFilterCount(state);
+        return { shown: currentlyShown, summary: currentSummary.map((part) => part.text),
+          filtered: active > 0, sheetFiltered: active - (state.search.trim() ? 1 : 0) > 0 };
+      },
+    });
   } catch (err) {
     showTotalFailure(err);
   } finally {
@@ -303,7 +396,16 @@ async function start() {
 // data loads overwrites them and wins; readFields() picks up whichever is
 // there. The sort is set now so the menu is built with it.
 function applyUrlFields() {
-  const fromUrl = paramsToState(location.search);
+  restored = restoration(location.search, readSaved(), readDismissed());
+  const fromUrl = restored.state;
+  for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
+  fillFields(fromUrl);
+  state.sort = fromUrl.sort;
+  state.dir = fromUrl.dir;
+}
+
+function fillFields(fromUrl) {
+  dom.points.value = dom.tuition.value = dom.budget.value = dom.living.value = '';
   dom.search.value = fromUrl.search;
   if (fromUrl.myIbPoints !== null) dom.points.value = String(fromUrl.myIbPoints);
   dom.maths.checked = fromUrl.hlMaths;
@@ -313,19 +415,17 @@ function applyUrlFields() {
   dom.deadline.value = fromUrl.deadlineWindow;
   dom.myMaths.value = fromUrl.myMaths ?? '';
   dom.exam.value = fromUrl.exam ?? '';
-  state.sort = fromUrl.sort;
-  state.dir = fromUrl.dir;
 }
 
 // Subjects, countries and languages can only be checked against the data,
 // so they wait for it; a value not in the data is dropped.
 function applyUrlLists() {
+  if (restored?.source === 'saved') { validateLoadedFacets(state, facets); return; }
   const fromUrl = paramsToState(location.search, facets);
-  fromUrl.subjectAreas.forEach((v) => state.subjectAreas.add(v));
-  fromUrl.countries.forEach((v) => state.countries.add(v));
-  fromUrl.languages.forEach((v) => state.languages.add(v));
-  fromUrl.degreeTypes.forEach((v) => state.degreeTypes.add(v));
-  fromUrl.cities.forEach((v) => state.cities.add(v));
+  for (const key of FACET_FIELDS) {
+    if (editedFacets.has(key)) continue;
+    state[key].clear(); for (const value of fromUrl[key]) state[key].add(value);
+  }
 }
 
 // replaceState, not pushState: one history entry per keystroke would make the
@@ -339,8 +439,9 @@ function switchLanguage(language) {
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
   applyLanguage();
-  clearTimeout(copyTimer);
-  clearTimeout(shareTimer);
+  closeSheet();
+  cancelAnimationFrame(dom.copyStatusFrame);
+  dom.copyStatus.textContent = '';
   if (loaded) {
     renderSourceBanner(dom.banner, sourceMeta);
     renderSourceLine(dom.sourceLine, allRows, sourceMeta);
@@ -408,15 +509,21 @@ function openIssuesFromLink(event) {
 }
 
 function drawChips() {
-  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area' });
-  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS });
-  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages));
-  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type' });
-  renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities));
+  const counts = (field) => {
+    const out = new Map();
+    for (const row of allRows) for (const value of new Set(Array.isArray(row[field]) ? row[field] : [row[field]])) out.set(value, (out.get(value) ?? 0) + 1);
+    return out;
+  };
+  renderChips(dom.subjects, facets.subjectAreas, state.subjectAreas, toggle(state.subjectAreas), { field: 'subject_area', counts: counts('subjectAreas') });
+  renderChips(dom.countries, facets.countries, state.countries, toggle(state.countries), { flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') });
+  renderChips(dom.languages, facets.languages, state.languages, toggle(state.languages), { flags: LANGUAGE_FLAGS, counts: counts('languages') });
+  renderChips(dom.degrees, facets.degreeTypes, state.degreeTypes, toggle(state.degreeTypes), { field: 'degree_type', counts: counts('degreeType') });
+  renderChips(dom.cities, facets.cities, state.cities, toggle(state.cities), { counts: counts('city') });
 }
 
 function toggle(set) {
   return (value, checked) => {
+    for (const key of FACET_FIELDS) if (state[key] === set) editedFacets.add(key);
     if (checked) set.add(value); else set.delete(value);
     update();
   };
@@ -454,6 +561,12 @@ function readNumber(input, message, parse, explanation) {
 }
 
 function wireInputs() {
+  // Filters apply as you type, so the form is never submitted. Below 600 px
+  // placeFilters moves every other field out of it, leaving Search as its
+  // only text field, and Enter then did an implicit submit: the page reloaded
+  // to ?q=…, dropping the language and a shared ?list= view.
+  dom.form.addEventListener('submit', (event) => event.preventDefault());
+
   dom.search.addEventListener('input', debounce(() => {
     state.search = dom.search.value;
     update();
@@ -514,8 +627,12 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
-      state.dir = state.sort === key && state.dir === 'asc' ? 'desc' : 'asc';
-      state.sort = key;
+      if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
+        state.sort = 'deadline'; state.dir = 'asc';
+      } else {
+        state.dir = state.sort === key && state.dir === 'asc' ? 'desc' : 'asc';
+        state.sort = key;
+      }
       syncSort();
       update();
     });
@@ -572,6 +689,13 @@ function onToggleStar(id) {
   for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, starred);
   syncListToSaves();
   renderCounts(currentlyShown);
+  if (selectedId === null) drawPane();
+  showToast(t(starred ? 'r2_saved' : 'r2_removed'), t('r2_undo'), () => {
+    changeShortlist((set) => { if (starred) set.delete(id); else set.add(id); });
+    for (const button of document.querySelectorAll(`[data-save-id="${id}"]`)) setSaved(button, !starred);
+    syncListToSaves(); renderCounts(currentlyShown); if (selectedId === null) drawPane();
+    (compareOpen ? dom.compareBody : document).querySelector(`${compareOpen ? 'th' : '.row'} [data-save-id="${id}"]`)?.focus({ preventScroll: true });
+  });
   return starred;
 }
 
@@ -590,11 +714,22 @@ function changeShortlist(change) {
   saveFailed = !saveShortlist(shortlist);
 }
 
-// Another tab changed the saves: take its list, then bring the stars and
-// counts here up to date. The list view is drawn again, as it would be for
-// any change made from outside it. Other keys are not ours.
+// Another tab changed the saves or the compare set: take its copy, then bring
+// the buttons and counts here up to date. key null (storage cleared) is both.
+// The list view is drawn again, as it would be for any change made from
+// outside it. Other keys are not ours.
 function onStorage(event) {
-  if (event.key !== SHORTLIST_KEY && event.key !== null) return;
+  if (event.key === null || event.key === COMPARE_KEY) {
+    const stored = readStoredCompare();
+    if (stored) {
+      compareIds = normalizeCompare(stored, knownIds());
+      if (loaded) syncCompareControls();
+    }
+  }
+  if (event.key === null || event.key === SHORTLIST_KEY) savesFromStorage();
+}
+
+function savesFromStorage() {
   const stored = readStoredShortlist();
   if (!stored) return;
   shortlist.clear();
@@ -603,12 +738,137 @@ function onStorage(event) {
   if (state.shortlistOnly) { update(); return; }
   for (const button of document.querySelectorAll('[data-save-id]')) setSaved(button, shortlist.has(button.getAttribute('data-save-id')));
   renderCounts(currentlyShown);
+  if (selectedId === null) drawPane();
 }
 
-// The list view's ids, counts and Compare picks from the saves as they are
-// now, without drawing the rows again. An unsaved row stays where it is
-// (onToggleStar), but the bar and Compare follow the real list at once.
-// Same scope as update().
+// The ids of every programme in the data, worked out again only when the
+// rows change (ids are unique, so the count follows the rows).
+let knownRows = null;
+let knownSet = new Set();
+function knownIds() {
+  if (knownRows !== allRows || knownSet.size !== allRows.length) { knownRows = allRows; knownSet = new Set(allRows.map((row) => row.id)); }
+  return knownSet;
+}
+
+// The compare ids that are in the data, in the order they were added.
+function shownCompare() {
+  const known = knownIds();
+  return compareIds.filter((id) => known.has(id));
+}
+
+// One change to the compare set as it is stored now, then written; the same
+// rule as changeShortlist, so another tab's add survives this tab's. A refused
+// fifth writes nothing. Returns toggleIn's or restoreAt's result.
+function changeCompare(change) {
+  const stored = compareFailed ? null : readStoredCompare();
+  if (stored) compareIds = normalizeCompare(stored, knownIds());
+  const { ids, result } = change(compareIds);
+  if (result === 'full') return result;
+  compareIds = ids;
+  compareFailed = !saveCompare(compareIds);
+  return result;
+}
+
+// A compare toggle on a row, its slot or the pane: in or out of the set. A
+// fifth is refused with a toast that says why; the button is never disabled.
+function onToggleCompare(id) {
+  const result = changeCompare((ids) => toggleIn(ids, id, knownIds()));
+  syncCompareControls();
+  compareFeedback(result);
+  return result;
+}
+
+// One announcement per change, never two. On phones the tray's count changes
+// by the thumb, so only screen readers hear it (#cmp-status); on desktop the
+// header is far from the row, so a toast says it. The limit says so anywhere.
+// A toast that offers "Open compare" goes once Compare opens by any route:
+// left up, it still said "Added to compare (3 of 4) · Open compare" over the
+// open comparison.
+let dismissCompareToast = null;
+function compareFeedback(result) {
+  const count = shownCompare().length;
+  if (result === 'full') dismissCompareToast = showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+  else if (trayQuery.matches) announceCompare(t(result === 'added' ? 'r3_cmp_added_sr' : 'r3_cmp_removed', { count }));
+  else if (result === 'added') dismissCompareToast = showToast(t('r3_cmp_added', { count }), t('r3_cmp_open_label'), () => openCompare(null));
+  else showToast(t('r3_cmp_removed'));
+}
+
+// Cleared, then written on the next frame, so the same words twice are
+// still read; a newer change cancels the one still waiting.
+let compareStatusFrame;
+function announceCompare(text) {
+  cancelAnimationFrame(compareStatusFrame);
+  dom.compareStatus.textContent = '';
+  compareStatusFrame = requestAnimationFrame(() => { dom.compareStatus.textContent = text; });
+}
+
+// Brings everything that shows the compare set up to date, in place, and
+// draws the compare view again if it is open.
+function syncCompareControls() {
+  const inSet = new Set(compareIds);
+  for (const button of document.querySelectorAll('[data-compare-id]')) setInCompare(button, inSet.has(button.getAttribute('data-compare-id')));
+  syncCompareEntry();
+  drawCompare();
+}
+
+// The header button's count and pressed state, and the tray.
+function syncCompareEntry() {
+  const count = String(shownCompare().length);
+  if (dom.headerCompareCount.textContent !== count) dom.headerCompareCount.textContent = count;
+  dom.headerCompare.setAttribute('aria-pressed', String(compareOpen));
+  syncTray();
+}
+
+// The tray shows on phones (trayQuery) once a programme is in Compare. It
+// hides while Compare is open, while a field that brings up the on-screen
+// keyboard has focus, while a dialog is open, while a pick-list floats open
+// from outside the Filters sheet and while printing. That is every pick-list
+// in the bar on a short, wide window (a phone on its side), and Sort above the
+// list on a portrait phone; with 390 px of height the tray covered Budget's
+// first field and Sort's list (review of PR 1), and there is no room below
+// them to give the list instead.
+// body.has-tray reserves its height at the end of the page; the height itself
+// comes from the ResizeObserver in wireTray, never read here, since a layout
+// read after the rows are rebuilt costs a full layout of the list (L09).
+function syncTray(focused = document.activeElement) {
+  const count = shownCompare().length;
+  const show = loaded && count > 0 && !compareOpen && trayQuery.matches && !printing && !opensKeyboard(focused)
+    && ![...document.querySelectorAll('dialog')].some((dialog) => dialog.open)
+    && !dom.dropdowns.some((d) => d.open && !dom.sheet.contains(d));
+  const text = t('r3_tray_text', { count });
+  if (dom.trayText.textContent !== text) dom.trayText.textContent = text;
+  if (dom.tray.hidden === show) dom.tray.hidden = !show;
+  document.body.classList.toggle('has-tray', show);
+}
+
+function opensKeyboard(node) {
+  const tag = node?.tagName?.toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return true;
+  return tag === 'input' && !['checkbox', 'radio', 'range', 'button', 'submit', 'reset'].includes(node.type);
+}
+
+// The tray follows focus (the keyboard), the phone query and every dialog. Its
+// measured height (safe area included) becomes --tray-h: the page's bottom
+// padding, the root's scroll-padding-bottom (so Tab never lands under it) and
+// the toasts' lift. 0 while hidden.
+function wireTray() {
+  document.addEventListener('focusin', (event) => syncTray(event.target));
+  document.addEventListener('focusout', (event) => syncTray(event.relatedTarget));
+  trayQuery.addEventListener('change', () => syncTray());
+  for (const dialog of document.querySelectorAll('dialog')) dialog.addEventListener('close', () => syncTray());
+  for (const d of dom.dropdowns) d.addEventListener('toggle', () => syncTray());
+  if (typeof ResizeObserver !== 'function') return;
+  new ResizeObserver((entries) => {
+    const height = Math.ceil(entries.at(-1).borderBoxSize?.[0]?.blockSize ?? dom.tray.offsetHeight);
+    if (height) document.documentElement.style.setProperty('--tray-h', `${height}px`);
+    else document.documentElement.style.removeProperty('--tray-h');
+  }).observe(dom.tray);
+}
+
+// The list view's ids and counts from the saves as they are now, without
+// drawing the rows again. An unsaved row stays where it is (onToggleStar), but
+// the bar follows the real list at once. Same scope as update(). Compare is
+// its own set, so nothing here touches it; its Save buttons change in place.
 function syncListToSaves() {
   if (!state.shortlistOnly || shared) return;
   const inScope = allRows.filter((row) => shortlist.has(row.id));
@@ -618,8 +878,6 @@ function syncListToSaves() {
   listShown = filtered.length;
   currentlyShown = onScreen.length;
   currentSummary = pointsSummaryParts(onScreen, state);
-  drawPicks();
-  drawCompare();
 }
 
 // The list bar's buttons and pickers. Everything here changes the view, never
@@ -627,7 +885,8 @@ function syncListToSaves() {
 function wireList() {
   window.addEventListener('storage', onStorage);
   dom.shortlistOnly.addEventListener('click', () => {
-    if (state.shortlistOnly) {
+    const leaving = state.shortlistOnly;
+    if (leaving) {
       // Back to all programmes; a shared link's view closes for good.
       shared = null;
       state.shortlistOnly = false;
@@ -635,6 +894,15 @@ function wireList() {
     listAll = false;
     closeCompare(false);
     update();
+    // Back hides with the list view and focus fell to the page (review of PR 1,
+    // 2026-11-07), so it goes to My list, as the empty list's own way back does.
+    if (leaving && !canShow(dom.shortlistOnly)) dom.headerList.focus();
+  });
+  // The empty list's own way back. The list exit restores no focus, and this
+  // button disappears with the empty state, so focus goes to the header's My list.
+  dom.emptyBack.addEventListener('click', () => {
+    dom.shortlistOnly.click();
+    dom.headerList.focus();
   });
   dom.listShowAll.addEventListener('click', () => {
     listAll = state.shortlistOnly ? !listAll : true;
@@ -656,22 +924,28 @@ function wireList() {
     groupBy = dom.groupBy.value;
     update();
   });
-  dom.comparePicks.addEventListener('change', (event) => {
-    const input = event.target;
-    if (input.checked) comparePicks = [...comparePicks, input.value];
-    else comparePicks = comparePicks.filter((id) => id !== input.value);
-    comparePicks = prunePicks(comparePicks, listIds);
-    syncPicks();
-  });
-  dom.compareGo.addEventListener('click', () => {
-    if (comparePicks.length < MIN_COMPARE) return;
-    compareOpen = true;
-    dom.comparePicker.open = false;
-    drawCompare();
-    dom.compare.focus({ preventScroll: true });
-    dom.compare.scrollIntoView?.({ block: 'start' });
+  dom.listMore.addEventListener('click', () => {
+    listMoreOpen = !listMoreOpen;
+    // An open Share panel would otherwise show again with the next More.
+    if (!listMoreOpen) dom.share.open = false;
+    syncListMore();
   });
   dom.compareClose.addEventListener('click', () => closeCompare(true));
+  // A column's Save and "x"; Browse sits outside the table, in the empty state.
+  dom.compareBody.addEventListener('click', (event) => {
+    const save = event.target.closest('button[data-save-id]');
+    if (save) { onToggleStar(save.getAttribute('data-save-id')); return; }
+    const remove = event.target.closest('button[data-compare-remove]');
+    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'));
+  });
+  dom.compareBrowse.addEventListener('click', () => closeCompare(true));
+  // The header button (from 600 px) opens Compare, and closes it when open;
+  // the tray (phones) only opens it.
+  dom.headerCompare.addEventListener('click', () => {
+    if (compareOpen) closeCompare(true); else openCompare(dom.headerCompare);
+  });
+  dom.trayOpen.addEventListener('click', () => openCompare(dom.trayOpen));
+  window.addEventListener('resize', syncCompareCue);
   dom.compareDiff.addEventListener('change', () => {
     onlyDifferences = dom.compareDiff.checked;
     drawCompare();
@@ -699,81 +973,236 @@ function syncShare() {
   dom.shareUrl.value = shareLink();
 }
 
-// Like Copy link: the button says what happened for 2 s.
+// Keep the result tied to the link at the click, even if the list changes meanwhile.
 async function copyShareLink() {
   syncShare();
-  let copied = false;
+  const url = dom.shareUrl.value;
+  const known = new Set(allRows.map((row) => row.id));
+  const ids = [...shortlist].filter((id) => known.has(id));
+  const count = ids.length;
+  const withPoints = dom.sharePoints.checked && state.myIbPoints !== null;
+  const success = t(count === 1
+    ? (withPoints ? 'r2_list_copied_points_one' : 'r2_list_copied_one')
+    : (withPoints ? 'r2_list_copied_points' : 'r2_list_copied'), { count });
+  const failure = t('r2_copy_failed_list');
   try {
-    await navigator.clipboard.writeText(dom.shareUrl.value);
-    copied = true;
+    await navigator.clipboard.writeText(url);
   } catch {
-    copied = false;
+    // Select the link that failed, even if the list changed while copying.
+    dom.shareUrl.value = url;
+    dom.shareUrl.select();
+    showToast(failure);
+    return;
   }
-  dom.shareCopy.textContent = copied ? t('link_copied') : t('copy_failed_select_the_link_and_copy_it');
-  clearTimeout(shareTimer);
-  shareTimer = setTimeout(() => { dom.shareCopy.textContent = t('copy_share_link'); }, 2000);
+  showToast(success);
 }
 
-// The compare picker lists every programme in the list view (filters do not
-// narrow it), rebuilt only when that list changes, so ticking a box keeps
-// its focus.
-function drawPicks() {
-  const byId = new Map(allRows.map((row) => [row.id, row]));
-  const key = listIds.join(',');
-  comparePicks = prunePicks(comparePicks, listIds);
-  if (key !== picksKey) {
-    picksKey = key;
-    dom.comparePicks.replaceChildren(...listIds.map((id) => {
-      const row = byId.get(id);
-      const label = document.createElement('label');
-      label.className = 'option';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.value = id;
-      const text = document.createElement('span');
-      text.textContent = `${row.programme} · ${row.university}`;
-      label.append(input, text);
-      return label;
-    }));
-  }
-  syncPicks();
+// Opens the compare view at any count, from wherever the student is (the
+// list, My list or a shared list), which stays as it was underneath.
+function openCompare(trigger) {
+  if (!loaded) return;
+  if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
+  compareOpen = true;
+  dismissCompareToast?.();
+  dismissCompareToast = null;
+  syncCompareControls();
+  dom.compare.scrollIntoView?.({ block: 'start' });
+  dom.compareHeading.focus({ preventScroll: true });
 }
 
-// Ticks, the fifth box disabled at four, and the button's count.
-function syncPicks() {
-  const picked = new Set(comparePicks);
-  for (const input of dom.comparePicks.querySelectorAll('input')) {
-    input.checked = picked.has(input.value);
-    input.disabled = !input.checked && picked.size >= MAX_COMPARE;
-  }
-  const n = comparePicks.length;
-  dom.compareGo.disabled = n < MIN_COMPARE;
-  dom.compareGo.textContent = n >= MIN_COMPARE ? t('compare', { value1: n }) : t('compare_2');
-}
-
+// The compare set's programmes from the whole data, never the filtered list:
+// a filter never drops a column and a passed deadline still shows. Drawn again
+// on every change (a filter changes the points verdicts); focus and the
+// sideways scroll survive it (compareFocus).
 function drawCompare() {
   if (!compareOpen) return;
+  const focus = compareFocus();
+  const scroller = dom.compareBody.querySelector('.cmp-scroll');
+  const scrollLeft = scroller ? scroller.scrollLeft : 0;
   const byId = new Map(allRows.map((row) => [row.id, row]));
-  const rows = comparePicks.map((id) => byId.get(id)).filter(Boolean);
-  if (rows.length < MIN_COMPARE) { closeCompare(false); return; }
-  dom.compareHeading.textContent = t('compare_programmes', { value1: rows.length });
+  const rows = compareIds.map((id) => byId.get(id)).filter(Boolean);
+  const n = rows.length;
+  dom.compareHeading.textContent = n ? t('r3_cmp_heading', { count: n }) : t('compare_2');
   dom.compareDiff.checked = onlyDifferences;
-  renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences });
+  dom.compareDiffLabel.hidden = n < MIN_COMPARE;
+  dom.compareOne.hidden = n !== 1;
+  dom.compareEmpty.hidden = n !== 0;
+  const note = compareFailed ? t('r3_cmp_failed') : '';
+  if (dom.compareNote.textContent !== note) dom.compareNote.textContent = note;
+  dom.compareNote.hidden = !note;
+  // Shown before drawing: a hidden box can neither take back its scroll nor
+  // be measured for the phone cue.
   dom.compare.hidden = false;
   dom.split.hidden = true;
+  dom.shortlistBar.hidden = true;
+  if (n) {
+    renderCompare(dom.compareBody, rows, compareTable(rows, state), { onlyDifferences: onlyDifferences && n >= MIN_COMPARE, saved: shortlist });
+    const next = dom.compareBody.querySelector('.cmp-scroll');
+    if (next && scrollLeft) next.scrollLeft = scrollLeft;
+    wireCompareCue(next);
+  } else dom.compareBody.replaceChildren();
+  if (focus) restoreCompareFocus(focus, rows.map((row) => row.id));
 }
 
-// returnFocus: from the Close button, focus goes back to the picker.
+// The phone cue for columns off to the side: "Programmes 1–2 of 3", the
+// arrows (each moves one column, off at its end) and the trailing fade. Its
+// listeners live on the scroll box, so a redraw drops them with it; a resize
+// is the one window listener (wireList).
+let compareCueFrame = 0;
+function wireCompareCue(box) {
+  const nav = dom.compareBody.querySelector('.cmp-nav');
+  if (nav) {
+    const step = (dir) => {
+      const column = box.querySelector('th.cmp-p');
+      const width = column ? column.getBoundingClientRect().width : 0;
+      box.scrollBy({ left: dir * width, behavior: motionQuery.matches ? 'instant' : 'smooth' });
+    };
+    nav.querySelector('.cmp-prev').addEventListener('click', () => step(-1));
+    nav.querySelector('.cmp-next').addEventListener('click', () => step(1));
+  }
+  box.addEventListener('scroll', () => {
+    if (compareCueFrame) return;
+    compareCueFrame = requestAnimationFrame(() => { compareCueFrame = 0; syncCompareCue(); });
+  }, { passive: true });
+  box.addEventListener('scrollend', syncCompareCue);
+  syncCompareCue();
+}
+
+// Which programmes are in view, measured right of the sticky fact column: a
+// column counts once at least half of it shows.
+function syncCompareCue() {
+  const box = dom.compareBody.querySelector('.cmp-scroll');
+  if (!compareOpen || !box) return;
+  const frame = box.parentElement;
+  const atStart = (box.scrollLeft ?? 0) <= 1;
+  const atEnd = (box.scrollLeft ?? 0) + (box.clientWidth ?? 0) >= (box.scrollWidth ?? 0) - 1;
+  frame.classList.toggle('at-start', atStart);
+  frame.classList.toggle('at-end', atEnd);
+  const nav = dom.compareBody.querySelector('.cmp-nav');
+  if (!nav) return;
+  const columns = [...box.querySelectorAll('th.cmp-p')];
+  const outer = box.getBoundingClientRect();
+  const left = outer.left + (box.querySelector('.cmp-c')?.getBoundingClientRect().width ?? 0);
+  const shown = columns.map((th, i) => {
+    const r = th.getBoundingClientRect();
+    return Math.min(r.right, outer.right) - Math.max(r.left, left) >= r.width / 2 - 1 ? i + 1 : 0;
+  }).filter(Boolean);
+  const total = columns.length;
+  const [from, to] = shown.length ? [shown[0], shown.at(-1)] : [1, Math.min(2, total)];
+  const text = t(total === 4 ? 'r3_cmp_range_zo' : 'r3_cmp_range', { from, to, total });
+  const range = nav.querySelector('.cmp-range');
+  if (range.textContent !== text) range.textContent = text;
+  const prev = nav.querySelector('.cmp-prev'), next = nav.querySelector('.cmp-next');
+  // A disabled button drops focus to the page, so focus crosses to the other arrow first.
+  if (atStart && document.activeElement === prev) next.focus({ preventScroll: true });
+  if (atEnd && document.activeElement === next) prev.focus({ preventScroll: true });
+  prev.disabled = atStart;
+  next.disabled = atEnd;
+}
+
+// Where focus is in the compare view, as something a redraw cannot break: a
+// column's control by programme and kind (and its column, in case it goes),
+// a link by its address, or the sideways scroll box.
+function compareFocus() {
+  const active = document.activeElement;
+  if (!active || !dom.compareBody.contains(active)) return null;
+  const head = active.closest('th');
+  const id = head?.getAttribute('data-id');
+  if (id) {
+    const ids = [...dom.compareBody.querySelectorAll('th')].map((th) => th.getAttribute('data-id')).filter(Boolean);
+    return { id, kind: active.matches('[data-save-id]') ? 'save' : 'remove', index: ids.indexOf(id) };
+  }
+  const link = active.closest('a');
+  if (link) return { kind: 'link', href: link.getAttribute('href') };
+  return { kind: 'box' };
+}
+
+// The same control if its programme is still there; after an "x", the next
+// column's "x", else the previous one's, else Browse in the empty state.
+function restoreCompareFocus(focus, ids) {
+  const removeOf = (id) => dom.compareBody.querySelector(`[data-compare-remove="${id}"]`);
+  let target = null;
+  if (focus.kind === 'save' || focus.kind === 'remove') {
+    if (ids.includes(focus.id)) {
+      target = focus.kind === 'save' ? dom.compareBody.querySelector(`th [data-save-id="${focus.id}"]`) : removeOf(focus.id);
+    } else {
+      const at = Math.min(focus.index, ids.length);
+      target = ids.length ? removeOf(ids[at] ?? ids[at - 1]) : dom.compareBrowse;
+    }
+  } else if (focus.kind === 'link') {
+    target = [...dom.compareBody.querySelectorAll('a')].find((link) => link.getAttribute('href') === focus.href) ?? null;
+  }
+  target ??= dom.compareBody.querySelector('.cmp-scroll') ?? (ids.length ? null : dom.compareBrowse);
+  (target ?? dom.compareHeading).focus({ preventScroll: true });
+}
+
+// The column's "x": out of Compare, with Undo putting it back in its place,
+// before the programmes that came after it (another may have gone meanwhile),
+// or the limit toast if four have been added since.
+function removeFromCompare(id) {
+  const later = compareIds.slice(compareIds.indexOf(id) + 1);
+  changeCompare((ids) => ({ ids: ids.filter((x) => x !== id), result: 'removed' }));
+  syncCompareControls();
+  showToast(t('r3_cmp_removed'), t('r2_undo'), () => {
+    const result = changeCompare((ids) => {
+      const at = ids.findIndex((x) => later.includes(x));
+      return restoreAt(ids, id, at < 0 ? ids.length : at, knownIds());
+    });
+    if (result === 'full') {
+      if (compareOpen) dom.compareHeading.focus({ preventScroll: true });
+      showToast(t('r3_cmp_full'), t('r3_cmp_open_label'), () => openCompare(null));
+      return;
+    }
+    syncCompareControls();
+    // Focus moves to the programme it brought back before the toast goes.
+    const back = compareOpen ? dom.compareBody.querySelector(`[data-compare-remove="${id}"]`)
+      : document.querySelector(`.row [data-compare-id="${id}"]`);
+    back?.focus({ preventScroll: true });
+  });
+}
+
+// returnFocus true (Close, Browse, the header button): back where Compare was
+// opened, at the same scroll, focus on the button that opened it or the next
+// best entry. false (another view takes over): hide it and restore nothing.
 function closeCompare(returnFocus) {
   if (!compareOpen) return;
   compareOpen = false;
+  const from = compareFrom;
+  compareFrom = null;
   dom.compare.hidden = true;
   dom.split.hidden = false;
   dom.compareBody.replaceChildren();
-  if (returnFocus) dom.comparePicker.querySelector('summary').focus({ preventScroll: true });
+  renderListBar();
+  syncCompareControls();
+  if (!returnFocus) return;
+  window.scrollTo(window.scrollX, from.scrollY);
+  const target = [from.trigger, document.getElementById('header-compare'), document.getElementById('cmp-tray-open')].find(canShow) ?? dom.resultsSection;
+  target.focus({ preventScroll: true });
+}
+
+// In the page and not hidden by itself, an ancestor or the stylesheet.
+function canShow(node) {
+  if (!node || !document.body.contains(node)) return false;
+  for (let n = node; n; n = n.parentElement) if (n.hidden) return false;
+  return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
+}
+
+// The logo goes home (Leon, 2026-11-05): the main list, out of My list, a
+// shared list or Compare. Filters, search, sort, saves, the Compare set and the
+// pane's pick all stay. update() then drops list= from the address. The logo's
+// handler (wireCompactHeader) scrolls to the top and moves focus.
+function goHome() {
+  closeCompare(false);
+  shared = null;
+  state.shortlistOnly = false;
+  listAll = false;
+  for (const panel of document.querySelectorAll('.ml-pop,.dropdown')) if (panel.open) panel.open = false;
+  update();
 }
 
 function clearAll() {
+  preferencesDirty = false; writeSaved(null);
+  for (const key of FACET_FIELDS) editedFacets.add(key);
   state.search = '';
   state.maxTuition = null;
   state.maxBudget = null;
@@ -816,6 +1245,7 @@ function clearAllFrom(button) {
 
 function update() {
   if (!loaded) return;
+  if (preferencesDirty) persistPreferences();
   // Rebuilt rows while printing would take the paper's layout. Run it after.
   if (printing) { updateAfterPrint = true; return; }
   settleSlots();
@@ -836,10 +1266,8 @@ function update() {
     dataDay = localDay(now);
   }
 
-  // Turning off an empty list view belongs here, before rendering — not as a
-  // side effect hidden inside the count update. A shared link's view stays,
-  // even empty: it says what happened to its programmes.
-  if (state.shortlistOnly && !shared && shortlist.size === 0) state.shortlistOnly = false;
+  // An empty list view stays open (batch 3 B3): its empty state says how to
+  // save. It used to turn itself off, so "My list (0)" did nothing.
   if (!state.shortlistOnly) listAll = false;
 
   // The list view: the saved (or shared) programmes, with the page's filters
@@ -873,7 +1301,7 @@ function update() {
   currentSummary = pointsSummaryParts(rows, state);
 
   retireList();
-  renderRows(dom.results, rows.slice(0, first), { state, shortlist, wide: wideQuery.matches, headings: listHeadings });
+  renderRows(dom.results, rows.slice(0, first), { state, shortlist, compare: new Set(compareIds), wide: wideQuery.matches, headings: listHeadings });
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
   if (appliedWide) {
@@ -888,8 +1316,7 @@ function update() {
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
-  if (state.shortlistOnly) drawPicks();
-  else closeCompare(false);
+  syncCompareEntry();
   drawCompare();
   keepAddress();
 }
@@ -923,7 +1350,7 @@ function appendSlice(pending, count) {
   pending.next += rows.length;
   // The list's applied mode, not the query: a flipped query whose change event
   // has not run yet is crossWide's job.
-  arrive(appendRows(dom.results, rows, { state, shortlist, wide: appliedWide, headings: listHeadings }));
+  arrive(appendRows(dom.results, rows, { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings }));
 }
 
 function stopRows(pending) {
@@ -1013,7 +1440,7 @@ function openRow(item, row, { animate = false } = {}) {
     slot.inert = false;
     slot.setAttribute('data-state', 'open');
   } else {
-    slot = renderSlot(row, state, { saved: shortlist.has(row.id) });
+    slot = renderSlot(row, state, { saved: shortlist.has(row.id), inCompare: compareIds.includes(row.id) });
     if (move) slot.setAttribute('data-state', 'closed');
     item.append(slot);
     if (move) {
@@ -1099,6 +1526,12 @@ function toggleRow(event) {
     onToggleStar(save.getAttribute('data-save-id'));
     return;
   }
+  // The compare toggle (row or slot) never opens the row either.
+  const compare = event.target.closest('button[data-compare-id]');
+  if (compare) {
+    onToggleCompare(compare.getAttribute('data-compare-id'));
+    return;
+  }
   const goto = event.target.closest('a.goto');
   if (goto) {
     if (event.button === 0 && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -1112,6 +1545,10 @@ function toggleRow(event) {
   const item = button.closest('li.item');
   const id = item.dataset.id;
   if (wideQuery.matches) {
+    if (id === selectedId && paneId === id) {
+      dom.pane.focus({ preventScroll: true });
+      return;
+    }
     selectRow(id);
   } else if (openIds.has(id)) {
     closeRow(item);
@@ -1159,7 +1596,7 @@ function drawPane({ fade = false, scroll } = {}) {
   const current = scroll ?? dom.pane.scrollTop;
   const row = allRows.find((row) => row.id === selectedId) ?? null;
   const mode = renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, row, shownRows.has(selectedId), state,
-    { saved: row ? shortlist.has(row.id) : undefined });
+    { saved: row ? shortlist.has(row.id) : undefined, inCompare: row ? compareIds.includes(row.id) : undefined, savedCount: shortlist.size });
   if (fade && changed && mode === 'content') dom.paneBody.children[0].classList.add('fade-in');
   paneId = selectedId;
   // Same pick keeps its place, clamped to the new content; a new pick starts
@@ -1245,16 +1682,27 @@ function restoreFocus(focus) {
 // Real focus moves or a blur within the current layout invalidate this record.
 function rememberFocus() {
   crossingFocus = snapshotFocus();
+  listFocus = isListTool(document.activeElement) ? document.activeElement : null;
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+  compareNavFocus = isCompareNav(document.activeElement) ? document.activeElement : null;
 }
 
 function forgetFocus(event) {
   if (event.relatedTarget || appliedWide === wideQuery.matches) crossingFocus = null;
-  if (event.relatedTarget || appliedBar === barQuery.matches) filterFocus = null;
+  if (event.relatedTarget || appliedBar === barQuery.matches) { filterFocus = null; listFocus = null; compareNavFocus = null; }
+}
+
+// Compare's phone arrows ("Previous/Next programme"), hidden from 600 px.
+function isCompareNav(node) {
+  return !!node && !!node.closest?.('.cmp-nav') && dom.compareBody.contains(node);
+}
+
+function isListTool(node) {
+  return !!node && node !== document.body && (node === dom.listMore || dom.listTools.contains(node));
 }
 
 function isFilterControl(node) {
-  return !!node && node !== document.body && (dom.form.contains(node) || dom.sheet.contains(node) || node === dom.copy);
+  return !!node && node !== document.body && (dom.form.contains(node) || dom.sheet.contains(node) || node === dom.copy || node === dom.more);
 }
 
 function crossWide() {
@@ -1308,27 +1756,74 @@ function placeFilters() {
   if (appliedBar === bar) return;
   const active = document.activeElement;
   const was = active && active !== document.body ? active : filterFocus;
+  const listWas = isListTool(active) ? active : listFocus;
+  const compareWas = isCompareNav(active) ? active : compareNavFocus;
   const moved = !!was && (dom.moreFilters.contains(was) || was === dom.clear || was === dom.copy);
   let target = null;
   if (moved) target = bar ? was : dom.more;
   // Widening from the sheet or the Filters button, which both disappear.
   else if (bar && was && (dom.sheet.contains(was) || was === dom.more)) target = dom.tuition;
-  if (bar) closeSheet(false);
+  if (bar) {
+    closeSheet(false);
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatus.textContent = '';
+  }
   const put = (parent, node, before = null) => {
     if (node.parentElement !== parent || node.nextElementSibling !== before) parent.insertBefore(node, before);
   };
+  // My list: on phones the header scrolls away, so the button sits in the
+  // sticky count row beside Filters (Leon, 2026-11-06); from 600 px it goes
+  // back before Compare in the header. One button, so its count, pressed state
+  // and handlers need no syncing. Moving a focused node drops its focus.
+  const listFocused = active === dom.headerList;
+  const headerRight = dom.headerCompare?.parentElement;
+  if (headerRight) {
+    if (bar) put(headerRight, dom.headerList, dom.headerCompare);
+    else put(dom.status, dom.headerList, dom.more);
+    if (listFocused && document.activeElement !== dom.headerList) dom.headerList.focus({ preventScroll: true });
+  }
   if (bar) {
     put(dom.form, dom.moreFilters);
-    put(dom.moreFilters, dom.clear);
-    put(dom.status, dom.copy);
+    put(dom.status, dom.clear, dom.copy.parentElement === dom.status ? dom.copy : null);
+    put(dom.status, dom.copy, dom.copyHelp.parentElement === dom.status ? dom.copyHelp : null);
+    put(dom.status, dom.copyHelp, dom.copyStatus.parentElement === dom.status ? dom.copyStatus : null);
+    put(dom.status, dom.copyStatus);
   } else {
-    put(dom.sheetBody, dom.copy);
+    put(dom.sheetBody, dom.copy, dom.copyHelp.parentElement === dom.sheetBody ? dom.copyHelp : null);
+    put(dom.sheetBody, dom.copyHelp, dom.copyStatus.parentElement === dom.sheetBody ? dom.copyStatus : null);
+    put(dom.sheetBody, dom.copyStatus);
     put(dom.sheetBody, dom.moreFilters, dom.copy);
     put(dom.sheetFoot, dom.clear, dom.sheetShow);
   }
   appliedBar = bar;
   if (target) target.focus({ preventScroll: true });
+  else if (listWas) keepListFocus(listWas, bar);
+  else if (compareWas) keepCompareFocus(compareWas, bar);
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
+}
+
+// Widening past 600 px hides Compare's arrows, and a focused arrow dropped
+// focus to the page (review of PR 1, 2026-11-07). The comparison's scroll box
+// is what the arrows move, and it stays shown and focusable.
+function keepCompareFocus(was, bar) {
+  if (!bar || !compareOpen || was.getClientRects().length) return;
+  dom.compareBody.querySelector('.cmp-scroll')?.focus({ preventScroll: true });
+}
+
+// Crossing 600 px hides the control that had focus in My list: More from 600
+// px up (focus goes to the first tool still shown, Back or Group by), and
+// Share, Export and Print below 600 px while More is closed (More opens so the
+// tool stays; it takes focus back if the browser already dropped it).
+function keepListFocus(was, bar) {
+  if (bar) {
+    if (was !== dom.listMore || dom.listMore.getClientRects().length) return;
+    const next = [dom.shortlistOnly, dom.groupBy].find((node) => node.getClientRects().length);
+    next?.focus({ preventScroll: true });
+  } else if (was !== dom.listMore && !listMoreOpen && !dom.listMore.hidden) {
+    listMoreOpen = true;
+    syncListMore();
+    if (document.activeElement !== was) was.focus({ preventScroll: true });
+  }
 }
 
 function crossBar() {
@@ -1346,6 +1841,7 @@ function isPrinting() {
 
 function afterPrint() {
   printing = false;
+  syncTray();
   crossBar();
   crossWide();
   if (updateAfterPrint) {
@@ -1369,6 +1865,8 @@ function wireSheet() {
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeSheet();
   });
   dom.sheet.addEventListener('close', () => {
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatus.textContent = '';
     // A close queued before a quick reopen must not undo the reopen.
     if (dom.sheet.open) return;
     dom.more.setAttribute('aria-expanded', 'false');
@@ -1408,30 +1906,105 @@ function syncStuck() {
   dom.status.classList.toggle('is-stuck', sentinelAbove && !barQuery.matches);
 }
 
-// Copies the address, which already holds the filters (S03). The button's own
-// text says what happened for 2 s; the count stays the only live region.
+// Flush typed fields, then snapshot the address and its description together.
+// A modal sheet owns its live feedback; otherwise the toast announces the result.
 async function copyLink() {
-  let copied = false;
+  const before = stateToParams(state);
+  readFields();
+  if (stateToParams(state) !== before) update();
+  else keepAddress();
+  const params = stateToParams(state);
+  const kind = linkContents(state, { shared: Boolean(shared) });
+  const query = languageQuery(addressQuery(params, shared));
+  const url = location.origin + location.pathname + (query ? `?${query}` : '');
+  const inSheet = dom.sheet.open && dom.sheet.contains(dom.copy);
+  const success = t(`r2_copied_${kind}`);
+  const failSheet = t('r2_copy_failed_sheet'), failDesktop = t('r2_copy_failed_desktop');
+  let message = success;
   try {
-    await navigator.clipboard.writeText(location.href);
-    copied = true;
+    await navigator.clipboard.writeText(url);
   } catch {
-    copied = false;
+    // Texts in the click's language; which one is chosen when the copy settles: if the sheet closed meanwhile, "close
+    // Filters first" would be wrong (batch 2 B review).
+    const stillInSheet = inSheet && dom.sheet.open && dom.sheet.contains(dom.copy);
+    message = stillInSheet ? failSheet : failDesktop;
   }
-  dom.copy.textContent = copied ? t('link_copied') : t('copy_failed_use_the_address_bar');
-  clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => { dom.copy.textContent = t('copy_link'); }, 2000);
+  if (inSheet && dom.sheet.open && dom.sheet.contains(dom.copy)) {
+    dom.copyStatus.textContent = '';
+    cancelAnimationFrame(dom.copyStatusFrame);
+    dom.copyStatusFrame = requestAnimationFrame(() => { dom.copyStatus.textContent = message; });
+  } else showToast(message);
+}
+
+// The visible sort control: a filter-style pick-list mirroring the hidden
+// select's options. Rebuilt from the select, so language changes and
+// renderSortOptions need nothing extra beyond calling this.
+function sortPick() {
+  const box = document.getElementById('sort-options');
+  const details = document.getElementById('dd-sort');
+  const current = document.getElementById('sort-current');
+  if (!box || !details || !current) return;
+  const options = [...(dom.sort.options ?? [])];
+  const chosen = options.find((option) => option.selected);
+  if (current.textContent !== (chosen?.textContent ?? '')) current.textContent = chosen?.textContent ?? '';
+  const close = () => {
+    details.open = false;
+    details.querySelector('summary').focus();
+  };
+  // Arrow keys move through the radios and check each one, so each press
+  // sorts, but the list stays open: closing on every change sent the
+  // keyboard back to the button after one step. Enter, Space and Escape
+  // (round2.js) close it; a click or tap still picks and closes. Wired once:
+  // the radios below are rebuilt on every sort change.
+  if (!sortKeysWired) {
+    sortKeysWired = true;
+    box.addEventListener('pointerdown', () => { sortByArrow = false; });
+    box.addEventListener('keydown', (event) => {
+      sortByArrow = event.key.startsWith('Arrow');
+      if (event.key === 'Enter') { event.preventDefault(); close(); }
+    });
+    // Space on the radio already chosen fires no change, so it closes here.
+    // On keyup, like the click it would make: closing on keydown let the
+    // keyup reach the button and open the list again.
+    box.addEventListener('keyup', (event) => {
+      if (event.key === ' ' && event.target.checked) { event.preventDefault(); close(); }
+    });
+  }
+  box.replaceChildren(...options.map((option) => {
+    const label = document.createElement('label');
+    label.className = 'option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'sort-pick';
+    input.value = option.value;
+    input.checked = option.selected;
+    input.addEventListener('change', () => {
+      const arrow = sortByArrow;
+      sortByArrow = false;
+      dom.sort.value = input.value;
+      dom.sort.dispatchEvent(new Event('change'));
+      // The change rebuilt the radios, so focus goes to the new copy.
+      if (arrow) [...box.querySelectorAll('input')].find((node) => node.value === input.value)?.focus();
+      else close();
+    });
+    const text = document.createElement('span');
+    text.textContent = option.textContent;
+    label.append(input, text);
+    return label;
+  }));
 }
 
 function syncSort() {
   dom.sort.value = `${state.sort}:${state.dir}`;
+  sortPick();
   for (const button of dom.sortButtons) {
     const key = button.dataset.sort;
     const active = key === state.sort;
     const current = active && state.dir === 'desc' ? REVERSE_SORTS[key] : SORTS[key];
-    const next = active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
+    const next = active && state.dir === 'desc' && key !== 'deadline' ? t('r2_default_order')
+      : active && state.dir === 'asc' ? REVERSE_SORTS[key] : SORTS[key];
     button.setAttribute('aria-pressed', String(active));
-    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? t('university_z_a') : t('university_a_z');
+    if (key === 'name') button.querySelector('.sort-label').textContent = active && state.dir === 'desc' ? t('r2_programme_desc') : t('r2_programme_asc');
     button.querySelector('.visually-hidden').textContent = active
       ? t('sorted_activate_to_sort', { value1: current, value2: next }) : t('sort', { value1: next });
     // One mark box per heading, always present; only its symbol changes, so no
@@ -1463,6 +2036,7 @@ function drawAppliedChips() {
 }
 
 function removeChip(key) {
+  preferencesDirty = true;
   const before = [...dom.applied.children];
   const at = before.findIndex((button) => button.getAttribute('data-chip') === key);
   const inSheet = dom.sheet.open && dom.sheet.contains(dom.applied);
@@ -1490,14 +2064,17 @@ function renderCounts(shown) {
 
   // Whole phrases, not "X of Y" + a plural noun: after "z" Slovak needs the
   // genitive ("2 z 3 uložených programov"), which no stand-alone noun form gives.
-  const lead = state.shortlistOnly
+  const rawLead = state.shortlistOnly
     ? t(shared ? 'count_of_link' : 'count_of_saved', { shown, count: listTotal })
     : active === 0
       ? `${shown} ${plural(shown)}`
       : t('count_of_all', { shown, count: allRows.length });
   // The count is a live region. Rewriting it with the same text on every
   // keystroke made a screen reader repeat it (A06), so only a change is written.
+  const lead = rawLead.replace(/\d+/g, (value) => formatCount(Number(value)));
   renderCount(dom.count, lead, currentSummary);
+  renderCount(dom.countSummary, '', currentSummary);
+  dom.countSummary.hidden = currentSummary.length === 0;
   renderCountShort(dom.countShort, lead, currentSummary);
 
   // Each pick-list button shows how many of its values are ticked, so a closed
@@ -1510,14 +2087,16 @@ function renderCounts(shown) {
   drawAppliedChips();
   dom.clear.disabled = active === 0;
   dom.clear.textContent = active ? t('clear_all', { value1: active }) : t('clear_all_2');
-  // Filters (n) counts only what lives in the sheet, one per group (§6.3).
-  const inSheet = [state.maxTuition !== null, state.maxBudget !== null, state.myLiving !== null, state.subjectAreas.size > 0, state.countries.size > 0, state.languages.size > 0, state.deadlineWindow !== 'any', state.myMaths !== null, state.exam !== null, state.degreeTypes.size > 0, state.cities.size > 0]
-    .filter(Boolean).length;
+  // Filters (n) counts only what lives in the sheet, one per group (§6.3):
+  // every filter but Search, which stays in the header. IB points and HL
+  // Maths moved into the sheet, and leaving them out showed "Filters (1)"
+  // beside "Clear all (2)".
+  const inSheet = active - (state.search.trim() ? 1 : 0);
   dom.more.querySelector('span').textContent = inSheet ? t('filters', { value1: inSheet }) : t('filters_2');
   dom.more.classList.toggle('is-on', inSheet > 0);
   // index.html starts it disabled as "Loading programmes…": until the first
   // count there is no number to show.
-  dom.sheetShow.textContent = t('show', { value1: shown, value2: plural(shown) });
+  dom.sheetShow.textContent = t('show', { value1: formatCount(shown), value2: plural(shown) });
   dom.sheetShow.disabled = false;
   markSet(dom.search, state.search.trim() !== '');
   markSet(dom.points, state.myIbPoints !== null);
@@ -1532,6 +2111,7 @@ function renderCounts(shown) {
   }
 
   renderListBar();
+  syncRound2(dom, state, active, shortlist.size);
 }
 
 // The My list bar. Outside the list view: "3 saved · 2 shown", and "Show all
@@ -1542,9 +2122,13 @@ function renderListBar() {
   const known = new Set(allRows.map((row) => row.id));
   const saved = [...shortlist].filter((id) => known.has(id)).length;
   const mode = !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine';
-  dom.shortlistBar.hidden = mode === 'main' && saved === 0 && !saveFailed;
+  // Compare hides the bar while it is open, whatever else changes.
+  dom.shortlistBar.hidden = compareOpen || (mode === 'main' && saved === 0 && !saveFailed);
   dom.shortlistBar.classList.toggle('is-list', mode !== 'main');
   dom.listTitle.textContent = mode === 'shared' ? t('shared_list') : t('my_list');
+  const helpKey = shared ? 'r2_copy_help_shared' : 'r2_copy_help';
+  dom.copyHelp.setAttribute('data-i18n', helpKey);
+  dom.copyHelp.textContent = t(helpKey);
 
   let total, shown;
   if (mode === 'main') {
@@ -1555,8 +2139,11 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
+  // An empty My list shows only its title and "0 saved"; the empty card below
+  // says how to save and has the way back (B3).
+  const emptyMine = mode === 'mine' && listIds.length === 0;
   const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
-  if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
+  if (emptyMine) { /* nothing is shown or hidden */ } else if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
   else {
     parts.push(t('shown', { value1: shown }));
     if (hidden > 0) parts.push(t('hidden_by_your_filters', { value1: hidden }));
@@ -1565,10 +2152,11 @@ function renderListBar() {
   if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
 
   const filtersOff = listAll && mode !== 'main';
-  dom.listShowAll.hidden = !filtersOff && hidden <= 0;
+  dom.listShowAll.hidden = emptyMine || (!filtersOff && hidden <= 0);
   dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
-  dom.shortlistOnly.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
+  // The text has its own span so the back chevron survives (batch 3 B2).
+  dom.shortlistOnlyText.textContent = mode === 'main' ? t('open_my_list') : mode === 'shared' ? t('close_shared_list') : t('back_to_all_programmes');
 
   const notes = [];
   if (saveFailed) notes.push(t('your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave'));
@@ -1577,24 +2165,35 @@ function renderListBar() {
     if (missing) notes.push(missing);
     if (sharedNote) notes.push(sharedNote);
   }
-  if (mode !== 'main' && groupBy === 'points' && state.myIbPoints === null) notes.push(t('enter_your_ib_points_to_group_the_list_by_them'));
+  if (mode !== 'main' && !emptyMine && groupBy === 'points' && state.myIbPoints === null) notes.push(t('enter_your_ib_points_to_group_the_list_by_them'));
   const note = notes.join(' ');
   if (dom.listNote.textContent !== note) dom.listNote.textContent = note;
   dom.listNote.hidden = note === '';
 
-  dom.listTools.hidden = mode === 'main';
-  dom.listOrigin.hidden = mode !== 'mine';
+  dom.listTools.hidden = mode === 'main' || emptyMine;
+  // An empty My list keeps one way back, the empty card's button: the bar's
+  // own back button said the same thing beside it (alignment audit).
+  dom.shortlistOnly.hidden = emptyMine;
+  dom.listOrigin.hidden = mode !== 'mine' || emptyMine;
   for (const node of dom.listTools.querySelectorAll('.ml-mine')) node.hidden = mode !== 'mine';
   dom.share.hidden = mode !== 'mine';
-  dom.comparePicker.hidden = listIds.length < MIN_COMPARE;
   if (dom.groupBy.value !== groupBy) dom.groupBy.value = groupBy;
   if (mode === 'mine' && dom.share.open) syncShare();
+  // More holds only the own list's tools, so a shared or empty list has none.
+  dom.listMore.hidden = mode !== 'mine' || emptyMine;
+  if (dom.listMore.hidden) listMoreOpen = false;
+  syncListMore();
+}
+
+function syncListMore() {
+  dom.listMore.setAttribute('aria-expanded', String(listMoreOpen));
+  dom.shortlistBar.classList.toggle('ml-more-open', listMoreOpen);
 }
 
 // The "set" look on a field whose value is in force: valid, so fee 0 counts and
 // an invalid number does not.
 function markSet(input, set) {
-  input.closest('.fld').classList.toggle('is-set', set);
+  (input.closest('.fld') || input.closest('.dropdown')).classList.toggle('is-set', set);
 }
 
 function showCount(box, number, n) {
@@ -1610,11 +2209,18 @@ function renderEmptyState(shown) {
   }
   dom.empty.hidden = false;
   dom.emptyClear.hidden = true;
+  dom.emptyBack.hidden = true;
   dom.emptyTips.hidden = true;
 
-  if (state.shortlistOnly && listIds.length === 0) {
-    dom.emptyTitle.textContent = shared ? t('none_of_the_programmes_in_this_link_are_listed_any_more') : t('your_list_is_empty');
-    dom.emptyHint.textContent = shared ? t('close_the_shared_list_to_see_every_programme') : t('no_programmes_are_saved_here');
+  if (state.shortlistOnly && listIds.length === 0 && shared) {
+    dom.emptyTitle.textContent = t('none_of_the_programmes_in_this_link_are_listed_any_more');
+    dom.emptyHint.textContent = t('close_the_shared_list_to_see_every_programme');
+  } else if (state.shortlistOnly && listIds.length === 0) {
+    // An empty My list says how to save, with a way back (B3).
+    dom.emptyTitle.textContent = t('your_list_is_empty');
+    dom.emptyHint.textContent = t('r3_list_empty_hint');
+    dom.emptyBack.hidden = false;
+    dom.emptyBack.textContent = t('back_to_all_programmes');
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
@@ -1681,7 +2287,14 @@ function wireDropdowns() {
     // In the open sheet Escape belongs to the dialog: it closes the sheet.
     if (event.key !== 'Escape' || dom.sheet.open) return;
     const open = dom.dropdowns.find((d) => d.open);
-    if (!open) return;
+    if (!open) {
+      if (!selectedId || document.querySelector('dialog[open]')) return;
+      const item = selectedItem();
+      if (wideQuery.matches) { selectedId = null; decorateSelection(); drawPane(); }
+      else if (item) closeRow(item);
+      item?.querySelector('button.open')?.focus({ preventScroll: true });
+      return;
+    }
     // Focus goes back to the button only from inside the list. Escape in
     // Search used to pull focus away to a dropdown button (A06).
     const wasInside = open.contains(document.activeElement);

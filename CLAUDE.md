@@ -23,11 +23,12 @@ or any npm package. Somebody who doesn't code has to be able to maintain it.
 Read these first: `STATUS.md` (current state, known gaps, decisions, past bugs),
 `MAINTENANCE.md` (the column rules, written for non-coders), `README.md`.
 
-## Commands (all local; there is no CI)
+## Commands (run locally; `.github/workflows/checks.yml` also runs check and contrast on GitHub)
 
 ```bash
 node tools/serve.mjs [port]     # dev server, no-store caching; default http://localhost:8765
 node tools/check.mjs            # must end "All checks passed"
+node tools/smoke.mjs            # real Chrome smoke test; needs Node >=22
 node tools/check-contrast.mjs   # run after any colour-token change; never lower the minimum
 node tools/make-snapshot.mjs    # REWRITES data/fallback.json from the CSVs
 ```
@@ -130,11 +131,30 @@ reopen any of them unless the user asks. The most load-bearing:
 - Irish fee is the Free Fees figure (contribution + levy)
 - Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
 - Jakub's data and choices win over the fork's older decisions (Leon, 2026-11-02, at the upstream merge); the UK is shown
-- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (2–4) and `?list=` share links; non-EU tuition not collected
+- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (its own set of up to 4) and `?list=` share links; non-EU tuition not collected
 
 The visual direction (one summary row per programme, colour only for
 verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
-build spec is `plans/design-round1/design-spec.md`.
+round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
+in `plans/design-round2/proposal.md`, with mockup v4 in
+`plans/design-round2/mockup.html`; its later Leon decisions override the mockup.
+Most of `plans/` is local only (excluded in this clone's `.git/info/exclude`);
+only `plans/scan/` and `plans/backlog/` are in git, so on another machine
+STATUS.md is the record for the rest.
+
+- Colours belong only in the `:root` tokens in `css/styles.css`. Colour is
+  only for verdicts; blue is only for interaction (see STATUS.md for the
+  country-identity exception).
+- Keep one global soft-outline rule: `--edge-soft` must reach at least 3:1
+  on white, used only on the off switch and unset slider thumb. No grey
+  outline when on/set: the accent fill/ring supplies contrast. Never lower
+  `check-contrast.mjs`'s minimum.
+- Saved-state precedence is proposal §11 (`js/saved-state.js`): any recognised
+  filter/sort parameter or `?list=` means URL state plus defaults, never merged
+  with storage. `?ui=` alone still restores saved filters. Opening a URL must
+  not overwrite saved preferences; later explicit edits may. The onboarding
+  flag is separate, and Clear all keeps it while removing saved filters.
+  Sticky-header and scroll-target rules (A07) are under STATUS.md "The look of it".
 
 ## Workflow profile
 

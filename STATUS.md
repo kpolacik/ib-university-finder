@@ -8,6 +8,19 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
+PR for `main` without the Supabase switch-over. It ships the white 56 px
+header (also 56 px when compact), two filter rows with custom sliders, a
+filter-summary detail pane, saved filters and five-step onboarding. The
+progress bar is hidden at step 1, then shows 25/50/75/100%, while the label
+stays "Step n of 5". Column headings are sort buttons; the phone keeps its
+Sort select. The switch and unset slider thumb use a softer contrast outline.
+The footer says "Data comes from the universities' official pages and the
+CAO; living costs are estimates." Data
+still loads from the CSVs, then `data/fallback.json`, as before. Rules and
+sources are under *The look of it*; the sort cycles and Leon's decisions are
+under *Decisions*.
+
 **SK/EN infrastructure (2026-11-03).** English is the default (Jakub, 2026-11-04; it was Slovak until then). The EN/SK buttons
 switch in place, preserving filters, selection and scroll. URL `ui=sk|en`
 wins over this browser's stored choice. `lang=` stays the teaching-language
@@ -37,7 +50,9 @@ follow-up from the translation plan.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
-**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Compare** 2 to 4 programmes side by side (`js/compare.js`; "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns at a time, swiped sideways), **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+
+**Compare** (batch 3, Leon 2026-11-05: "comparing something and saving something is not really the same intent") is its own set of up to four programmes, kept in this browser (`js/compare-set.js`, key `ib-university-finder:compare:v1`), independent of the saves, the filters and the address. Every row, phone card and detail has a scales toggle beside the save star; a fifth add changes nothing and says why, with "Open compare". On phones (and short windows) a bottom tray says "Compare n of 4 · Open"; from 600 px a header button beside My list does. The view works at any count (an empty state at 0, a prompt at 1); each column has a Save toggle and an "x" with Undo. "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns show at a time, with a "Programmes 1–2 of 3" line, arrows and an edge fade (`js/compare.js`).
 
 **Saves belong to one web address.** Browser storage is kept per site origin (scheme, host and port). Saves made on a test address (`localhost`, a preview host, Leon's old fork) are not on the live site at `kpolacik.github.io`, and the other way round; a different browser or device has its own list too. To move a list, use Share and open the link on the other address, then "Save these to my list".
 
@@ -378,7 +393,7 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
-**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The Language dropdown opens with a note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement (U5).
+**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
 
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
@@ -419,9 +434,12 @@ plans/backlog/wording.md.
 IB points, EU fee, subject area, IB subjects and language requirement consistently.
 Points help is visible on phones; shared help in the extra filters explains
 that unknown figures, fees and deadlines stay visible. Irish detail fees say
-"Student contribution + levy". The masthead says "Always check the university's
-official page before you apply. Requirements, fees and deadlines can change." (Jakub, 2026-11-04;
-it used to call the site "a starting point for research, not a source of truth"). Data prose, saved snapshots and CAO
+"Student contribution + levy". The footer says "Always check the university's
+official page before you apply. Requirements, fees and deadlines can change.
+Students maintain this site." (Jakub's wording, 2026-11-04; it used to call the
+site "a starting point for research, not a source of truth". Design round 2
+moved the warning from the masthead into the footer, and the source line there
+says only "Data comes from the universities' official pages."). Data prose, saved snapshots and CAO
 marker sentences were left for after the upstream merge (done 2026-11-02, so they can be reworded now); Slovak remains disabled. See
 plans/backlog/wording.md for the translation queue.
 
@@ -491,6 +509,25 @@ plans/backlog/wording.md for the translation queue.
 
 ## Known gaps
 
+- **L09 timing, round 2 (measured 2026-11-05).** Paired run, live a6fed60 vs
+  round 2 90f71e1, 2,915 rows, AC power, gated load, 4× CPU, 20 samples each:
+  every forward filter change is under 150 ms on both (round 2 71–107 ms
+  medians); the reverse change (all to 548 rows) is about the same on both
+  and misses at 1920 px with the default Chrome (157 vs 164 ms). No
+  measurable round 2 regression. Batch 3's row Compare toggle adds about
+  1.6 ms to `update()` and 6–12 ms to the second frame (the builder's own
+  paired run, not independently repeated). Raw data: `/tmp/l09-r2/out` (local).
+
+- **Landscape phones lose the logo once scrolled.** At 844 x 390 the header
+  stops sticking (by design, to save height), so "home" is off screen after a
+  scroll. A sticky row with the IB tile would cost about 57 of 390 px; Leon
+  kept it this way (2026-11-07).
+
+- **Rolling admission and "Not passed yet".** 21 of the 22 programmes whose notes
+  mention rolling or ongoing admission also have a recorded deadline, so they drop
+  out of that filter once the date passes. The filter's note says so truthfully;
+  the data backfill fixes the dates (Leon, 2026-11-05).
+
 - **Czech gaps** (424 rows): 61 have no deadline — the faculties above plus
   English-taught programmes whose 2027 dates are not out (Masaryk's medicine,
   pharmacy and arts; four VŠE English bachelors). 7 English-taught rows have no
@@ -498,6 +535,12 @@ plans/backlog/wording.md for the translation queue.
   every programme's admission section was searched and none sets a school
   subject, so the cards say "No particular IB subjects" (see *IB subject
   requirements* under Decisions).
+- **The Czech fee note assumes a public university.** It says Czech-taught
+  study at a *public* university is free, but the code only checks country,
+  teaching language and a zero EU fee. That is true today: all 371 rows that get
+  the note are at the five public universities (Charles, Masaryk, ČVUT, VUT,
+  VŠE). Whoever adds a private Czech university must make sure the note can't
+  appear on it (a free private programme would be wrongly explained).
 - **Three Czech deadlines fall before Christmas**: VUT Design and Volné umění
   (30 Nov 2026, portfolio by 3 Dec) and ČVUT Architektura a urbanismus (30 Nov).
 - **Three Charles FTVS rows contradict themselves**: Fyzioterapie, Trenér and
@@ -560,8 +603,210 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
-**Rebuilt 2026-10-27 to 2026-11-01** (local branch `redesign`, not upstream
-yet). Leon took it as the working direction on 2026-11-02; he has not been
+**Compare and header, round 2 (2026-11-06, local `compare-header-r2`):**
+Leon's second look. On phones, while Compare is open, the count row (an IB
+tile and Filters over an empty gap, since the count hides in Compare) is
+gone: Compare starts 12 px from the top, its Close is the way back and the
+header's logo above it still goes home. From 600 px the footer sits 24 px
+under an open Compare instead of 48 (the footer heading is 44 px below it,
+was 68); under the list the gap is unchanged. "Close compare" has 8 px
+corners at every width, like "Show the original". On phones My list is in
+the count row just before Filters (the header scrolls away; that row
+sticks): its bookmark and saved count, 44 px, the words kept for screen
+readers. It is the same button, moved by `placeFilters` in `js/app.js`, so
+the header has no copy below 600 px and Search gets the room. Rules: CSS section "Compare and
+header, round 2, 2026-11-06"; checks: check.mjs section of the same name,
+smoke `runCompareHeaderR2`.
+
+**Phone My list and Compare (2026-11-06, local `fix-phone-mylist-compare`):**
+Leon, on an iPhone 16 (393 x 852), found the phone My list box took half the
+screen and Compare looked rough. My list's box is now Back with a "More" /
+"Viac" button beside it, the title and count, and Group by (146 px, was
+330). More shows Share, Export, Print and Clear in the old 2 x 2 grid plus
+both footnotes; a shared or empty list has no More; from 600 px nothing
+changes. In phone Compare each fact's name is a line above its values (an
+aria-hidden copy; the row header stays for screen readers at zero width),
+Save and the "x" share one line under the programme's name, and Close and
+the arrows have the header buttons' hairline and 8 px corners. Rules: CSS
+section "Phone My list and Compare, 2026-11-06"; checks: check.mjs section
+of the same name, smoke `runPhoneMyListCompare`.
+
+**Alignment review (2026-11-05, local `align-fix-chrome-setup`):** Search
+keeps its short hint if canvas measurement is unavailable. On phones the
+setup footer's keyboard order follows its new layout: Next, Skip, Back.
+Crossing 600 px restores the desktop order and keeps a focused Next button.
+Regression checks cover both cases.
+
+**Batch 3 Compare review (2026-11-05, local `batch3-a-compare`):** Compare
+has its own stored set of up to four programmes, separate from saves and URL
+filters. The header opens it on tall desktop windows; phones and short windows
+use the bottom tray. The old My list picker is retired. Row Compare and Save
+targets are both at least 44 px, including with a mouse. Comparison column
+headers are explicitly named by programme and university so their controls do
+not become part of the header name. Hovering a toast during its exit cancels
+that exit, just as focusing it does. These review fixes have regression checks.
+
+**Alignment fixes, list, detail and Compare (2026-11-05, local
+`align-fix-list-compare`):** a long degree wraps inside the row and pane; row
+labels start with their values and the row toggles centre on the title's first
+line. The detail's Save and Compare never break inside a word and stack when
+they do not fit side by side (Slovak needs about 450 px, English 330). In
+Compare every Save sits on one line at the foot of the header, one width for
+Save and Saved; below 1024 px the "x" has its own strip so names do not break
+beside it; the fact names are 6.5rem up to 1023 px; Close, Save and Browse are
+44 px; the count is hidden while Compare is open. At 320 px a word wider than
+its column still has to break (this Chrome hyphenates Slovak, Czech and German,
+not English). Rules: CSS section "Alignment fixes · list, detail, Compare";
+checks: smoke `runAlignListCompare`, check.mjs section of the same name.
+The independent review also keeps Charles faculty words whole in the summary
+row; regression checks cover EN/SK from 320 to 1440 px.
+
+**Round 2 (2026-11-05):** branch `redesign-round2-only` (a PR for `main`,
+without the Supabase switch-over) includes the approved white 56 px header,
+two filter rows, custom budget sliders,
+filter-summary pane, toast actions, footer FAQ, saved filters and five-step
+onboarding. The mockup/spec live in the main checkout's excluded
+`plans/design-round2/`: `proposal.md` is the spec, `mockup.html` is v4, and
+`review-r2.md` records the later outline decision. Later Leon decisions win
+over the mockup. The progress bar uses fourths (0/25/50/75/100%).
+`ui` remains the interface-language parameter and `lang` the teaching-language
+filter. Preferences use `ibuf.filters.v1`, separate from `ibuf.onboarding.v1`
+and the existing saved list. Any recognised URL filter/sort parameter or
+`?list=` uses URL state plus defaults, never merged with saved filters. A URL
+with only `?ui=` still restores saved filters. URL hydration leaves stored
+preferences alone; later explicit edits save validated filters, not sort,
+selection or list/compare/panel state. Clear all removes saved filters but
+keeps the separate onboarding flag, so setup does not replay. Full programme
+requirements remain in opened details; summary rows are compact. The phone
+Sort select and all My list tools remain available. Local source checks,
+contrast checks and Chrome smoke tests cover the change; this is not a
+merge into `main`, hosted test or human/device acceptance.
+
+
+The final Round 2 pass keeps the visible compact header and its offsets at
+56 px. Only the wordmark/Filters slot cross-fades; focused controls never
+move or disappear. The header sticks from 600 px wide, except at viewport
+heights of 500 px or less. Column headings sit below its visible height;
+the pane starts 12 px below it and its maximum height allows for the header.
+Skip and arrow targets clear the header plus column headings plus 8 px;
+below 600 px they clear the sticky count bar plus 8 px (A07). The build
+matches the 85dvh/320 ms phone sheet, 180 ms help reveal, right-edge
+popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
+page overflow. The phone maths control uses the mockup's native select.
+Onboarding headings return to the top of each step after scrolling the real
+subject vocabulary. Browser checks also exercise reduced motion, invalid
+answers, blocked preference storage and the 200% layout. Smoke tests check
+settled widening/narrowing of the country filter on all 2,915 rows. They do
+not certify L09 performance: the original yardstick remains AC power, a quiet
+machine and 4× CPU slowdown, with settled samples between country changes.
+The previous 1× CPU / three-HL-toggle timing claim did not meet that yardstick.
+The paired baseline versus Round 2 build measurement was deferred by Leon on
+2026-11-05 because AC power was unavailable.
+No new L09 numbers or performance acceptance are claimed. EN/SK review-fix
+screenshots and viewport measurements are in the local review artifact folder
+`scratchpad/design-round2/fix-r1/`; real catalogue rows and existing uncertainty
+wording are preserved, rather than substituted with the mockup's sample data.
+
+**Round 2 fixes, batches 1 and 2 (2026-11-05,** local branches
+`redesign-batch2` and `batch2-followup`, not yet in `main`). What changed for
+students, and where each rule lives:
+
+- *Setup (batch 1).* The points stepper is centred and Skip setup lines up with
+  Back and Next. The "Your answers are now filters" toast appears only when an
+  answer was actually chosen. The first step links to the FAQ
+  (`js/onboarding.js`).
+- *Help (batch 1).* On phones the inline help opens and closes with the same
+  small slide and fade as the desktop bubble, and the sheet's Budget, Subject
+  area… rows open with a short height animation. Browsers that can't animate
+  to an automatic height (Safari, so iPhones, as of 2026-11; not tested on a device) fade the help in and open those
+  rows at once; Leon kept it that way. The desktop help bubble is now only as wide as its
+  text (up to 260 px). CSS: the `@supports (interpolate-size…)` block.
+- *My list on phones (batch 1)* is one even toolbar joined to the list.
+- *Header (batch 2 A).* On phones and touch screens the logo tile is 44 px, as
+  tall as Search (36 px with a mouse from 600 px; Leon, 2026-11-07), and stays off Search. The logo has a translated name and
+  takes you back to the top without changing filters or the address. Up to
+  700 px wide the "University Finder" heading is hidden visually but still read by
+  screen readers. From 600 to 700 px the compact header's Filters button is
+  an icon (with the filter count on its corner), because the labelled button
+  did not fit beside Search; screen readers still hear "Filters". Rules: CSS
+  section "Batch 2 · A", `wireCompactHeader` in `js/round2.js`.
+- *Filter rows (batch 2 A).* Budget is the last control of the second row;
+  controls wrap whole, with one 8 px gap. Two rows at 1024 px wide is the aim,
+  more rows are fine for Slovak, long selections and zoom. The count and "Edit
+  my answers" sit on one line at one size. The "Not passed yet" deadline
+  option says it goes by the recorded dates (Known gaps: rolling admission).
+  The Slovak living-costs placeholder is "Podľa školy", since "Podľa
+  univerzity" was cut off in its 112 px field.
+- *Copy link (batch 2 B).* The buttons say what they copy ("Copy link to these
+  filters", "Copy share link"). The message after copying is built from the
+  same state as the link and says what it includes: filters, IB points, a
+  shared list; saved programmes are never in a filter link. A failed copy
+  never says it worked and says what to do instead. On phones the message
+  shows inside the Filters sheet. Rules: `copyLink()` in `js/app.js`.
+- *Compare (batch 2 B).* Replaced by batch 3: the hint, "Compare (n)" and the
+  My list picker are gone (see My list, above, and batch 3 below).
+- *Details (batch 2 C).* The official page and save buttons are an even pair,
+  side by side when there is room and stacked when not. On wide screens
+  (1200 px and up) clicking a row that is already open moves the keyboard
+  focus into its details; narrower, it closes the row as before. It never
+  opens the university's site by itself.
+- *Batch 3 (2026-11-05, branch `redesign-batch3`).* Compare is its own set
+  (above). The detail's official page link is full width, with Save and
+  Compare as a pair below it (stacked when they do not fit). On phones the
+  main view no longer shows a My list box; the header's "My list (n)" is the
+  way in (since 2026-11-06 it sits in the count row instead, see above). The phone My list toolbar has "Back to all programmes" top-left and
+  Share, Export CSV, Print and Clear my list as an even 2 x 2 grid, Clear
+  outlined. An empty My list opens with "Your list is empty", how to save and
+  a way back. Setup ends with Finish and a done screen ("Your answers are now
+  filters", the count, a large "Show my programmes" and an outlined "Read the
+  FAQ"); Skip never shows it, and step 1 no longer links to the FAQ. The logo
+  always goes home: it leaves My list, a shared list or Compare, drops
+  `list=`, keeps filters, search, sort, saves and the Compare set, and scrolls
+  to the top. The IB tile stays visible when scrolled (beside Filters from
+  600 px, in the stuck count row on phones). Rules: CSS sections "Batch 3 ·
+  A/B/C"; checks in check.mjs and smoke `runBatch3A/B/C`.
+- *Alignment audit (2026-11-05).* Five read-only Chrome audits (header, list
+  and detail, Compare, My list, setup and footer; EN and SK, 320 to 1440 px
+  and 844 x 390) found 2 high, 21 medium and about 38 low problems; all high
+  and medium ones are fixed except the landscape logo (Known gaps). Header,
+  My list and setup: Search shows its long hint only where it fits whole;
+  "Edit my answers" is first in the phone Filters sheet; the setup switch
+  label wraps; on phones setup's Next/Finish has its own full-width row with
+  Skip and Back below; all setup buttons are 44 px; desktop Clear my list is
+  an outlined button like Export; the CSV note is its own line and hides on a
+  shared list; Slovak "Clear my list" is "Vymazať zoznam" so phone labels fit
+  (Leon to confirm). Rules: CSS sections "Alignment fixes · header, My list,
+  setup" and "· list, detail, Compare"; smoke `runAlignChromeSetup`,
+  `runAlignListCompare`.
+- *Logo and corners (Leon, 2026-11-06).* The logo is "Bookmark IB": a
+  lilac tile with a violet bookmark in the header, the plum version as the tab
+  icon and apple-touch-icon. The tile is as tall as Search (44 px on phones,
+  36 px with a mouse from 600 px). Panels have 16 px corners (`--r-panel`),
+  with Sort and My list inset 8 px so the corners stay concentric.
+- *Review of PR 1 (2026-11-07) and its verification (2026-11-08).* Three
+  read-only reviews from different models (Astra, Opus, Sol) found 28 issues;
+  five fix branches fixed them, and a second Opus pass checked each fix and
+  found 11 smaller ones, also fixed. Rows with no IB figure now say why: "Test
+  in cutoff" / "Hranica s testom", "Entrance exam" / "Prijímacia skúška" (any
+  row whose `entrance_exam` is `yes`, whatever the admission wording), "No IB
+  figure" / "Bez údaja v IB", and "Not published" only when the university
+  publishes nothing (Leon approved the wording, 2026-11-07). The HL Maths help
+  says the CAO adds the 25 points for grade 4 or above, on Irish courses only.
+  At under 360 px the column labels count toward their tile's width, so a fee
+  whose Slovak label is wider than the fee moves to its own line instead of
+  overlapping "Termín". Held for the Supabase PR (`plans/backlog/supabase-pr-ui.md`):
+  one tab stop per row, a keyboard way to reach the toast's Undo, and the smoke
+  test on GitHub's checks.
+
+Round 1 corrections cover subject translations in setup and the pane, draft
+application and dismissal focus, cross-tab saves and Undo, compact unknowns,
+value-first row cells, status actions, phone help and 44 px controls, facet
+search/counts, selected rows, the pane close button, and the approved sort
+cycles. Programme sorts by its title; the third click restores deadline soonest.
+The phone select, URL parameters, sort arrows and announced next state agree.
+
+**Rebuilt 2026-10-27 to 2026-11-01** (branch `redesign`, live since Jakub
+merged PR #2 on 2026-11-04). Leon took it as the working direction on 2026-11-02; he has not been
 through the built site in detail, so refinements will follow. The full build
 brief is `plans/design-round1/design-spec.md` (with its 2026-10-28 amendment)
 and the picture is `plans/design-round1/full/mockup.html`. Both are local to
@@ -585,8 +830,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Blue only for interaction** (links, focus, the primary button, the
   selected row, active filters). **Red only** on the sample-data banner and
   the total-failure alert. Field errors and notes use ink and weight.
-- **Identity is not status.** The lavender masthead and the country badges
-  are the only other tints, and a badge always says the country's name in
+- **Identity is not status.** The header is now white; country badges
+  keep their identity tints, and a badge always says the country's name in
   words. Flags appear only inside the Country filter.
 - **One typeface: IBM Plex Sans,** self-hosted in `fonts/` (400, 600, 700;
   licence in `fonts/OFL.txt`). No Google Fonts request, so no visitor IPs go to
@@ -594,14 +839,18 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   no italics.
 - **Every colour is a token** in the one `:root` block of `css/styles.css`;
   never put a hex value anywhere else. `node tools/check-contrast.mjs` checks
-  every text and mark pair (65 today). Never lower its minimum.
+  every text and mark pair. Never lower its minimum. The global `--edge-soft`
+  token is a 1 px grey border only on the off switch and unset slider thumb:
+  at least 3:1 on white (currently 3.04:1). No grey border when on/set; the
+  accent fill/ring takes over.
 - **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light`
   is declared in `:root`, and it has to be: without it a browser on a dark OS
   renders form controls, scrollbars and the canvas dark underneath a light page.
   `tools/check-contrast.mjs` throws if a `prefers-color-scheme: dark` block
   reappears.
-- **Motion** is transform and opacity plus the one expand, 120–200 ms, and
-  none at all under `prefers-reduced-motion`. No reordering animation.
+- **Motion** follows round 2's approved timings (for example 250 ms popovers
+  and dialog, 280 ms step slides), with transform and opacity preferred.
+  None at all under `prefers-reduced-motion`. No reordering animation.
 - **Print** prints the filtered rows in order, ink on white (A08).
 - **Speed.** The first screen of rows is drawn at once and the rest in short
   8 ms chunks after it, so a filter change paints quickly (L09). A change also
@@ -819,9 +1068,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   without its decorative full stop, and each "Official admissions page" link
   with the programme's name and a note that it opens a new tab. The filter bar
   no longer sticks to the top on a phone held sideways (it took half the
-  screen). Since the redesign nothing in the header sticks: only the count line
-  below 600 px and the column header from 600 px, and "Skip to results", Tab
-  and the arrow keys land below whichever one it is. `check.mjs` guards each.
+  screen). Round 2 adds a sticky 56 px header from 600 px, disabled at viewport
+  heights of 500 px or less; below 600 px only the count bar sticks.
+  "Skip to results", Tab and the arrow keys clear the visible sticky bands
+  (see *The look of it*). `check.mjs` guards each.
 
 - **Motion, print and the last screen-reader comma (fixed 2026-10-28, redesign
   stage 6, registry A05, A08, L09).** Traps worth knowing before touching them:
@@ -854,7 +1104,50 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   `check.mjs` guards each, and `plans/finish-review/` (not in git) has the browser
   evidence.
 
+- **The phone Filters sheet stalled before it moved (fixed 2026-11-06).** A
+  tap on Filters or Done froze the page for about 580 ms (Chrome, 393 px, 4×
+  CPU slowdown) before the sheet started to slide. `showModal()` makes the
+  whole page inert, and in Chrome every such page-wide style change rebuilt
+  all 2,915 rows. That happens only while the rows keep the `<li>` default
+  `display: list-item` and `content-visibility` has never drawn them. The
+  rows are now `display: block`. They look the same, because the list has
+  no bullets, and Chrome's accessibility tree still lists them as list items. Tap to motion
+  is now about 150 ms at 4× (about 4× faster in paired runs). Most of what
+  is left is the inert update itself, spread over every mounted row. The
+  slide is also shorter: 240 ms up, 200 ms down (it was 320 ms both ways),
+  and reduced motion is still instant. Never give `.item` another display
+  value. `check.mjs` and smoke A10 guard this.
+
 ## Decisions already made, so they are not relitigated
+
+- **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
+  “Decided” and “Later changes vs mockup v4”):
+  - **Pane option (c):** reserve the pane from 1200 px; before a pick, show
+    the filter summary (or guidance) and verdict legend. Never auto-select a
+    programme: that would look like a recommendation.
+  - **Skip discards answers.** Onboarding edits a draft; only “Show my
+    programmes” applies it. Skip/Esc records dismissal without applying it.
+  - **Custom sliders:** thin track, white thumb, light-blue `--accent-tint`
+    when unset, accent fill/ring when set. Typed numbers remain authoritative:
+    blank is no limit, zero is valid, and values beyond the slider range work.
+  - **Interface language:** URL, then saved choice, then English (Jakub
+    made English the default on 2026-11-04, replacing round 2's Slovak
+    default). Points placeholder stays “napr. 36” / “e.g. 36”.
+  - **Progress in fourths:** step 1 has no bar, then 25/50/75/100%; the label
+    remains “Step n of 5”.
+  - **Compact stays 56 px:** only the wordmark/Filters cross-fade changes;
+    search spacing and sticky offsets keep the full header height.
+  - **Heading sort cycles:** Programme A–Z → Z–A → default; IB points and EU
+    fee lowest first → highest first → default. Default is deadline soonest
+    first; Deadline alternates soonest → latest → soonest. The default stays
+    out of the URL; other orders use `sort`/`dir`. Keep the phone Sort select,
+    arrows and accessible current/next-sort wording in sync.
+  - **One global soft outline** (`review-r2.md`, “Decided after round 2”):
+    `--edge-soft` reaches at least 3:1 on white, only for the off switch and
+    unset thumb. The grey border disappears when on/set; accent takes over.
+    Never lower the contrast check's minimum.
+  - **Footer data wording:** “Data comes from the universities' official
+    pages.” Do not claim weekly updates: the weekly job is not built.
 
 - **A programme's own signature is enough** (Leon, 2026-10-26, registry T01).
   A card says "Checked <date> by <initials>" when its programme row is signed,
@@ -895,12 +1188,33 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   A proper column, recording the meaning and the conversion separately, is in
   `plans/backlog/points-value-kind.md`.
 
-- **Compare is built, on the saved list** (Leon, 2026-11-03, superseding his
+- **Compare is built, on the saved list** (replaced on 2026-11-05 by the batch
+  3 call below; kept for the history) (Leon, 2026-11-03, superseding his
   2026-10-26 "draft only, ask Jakub first", registry Q9/F05). Pick 2 to 4
   saved programmes; the table uses the detail's own wording (`js/compare.js`,
   which `js/render.js` imports for the exam line, the countdown and the yearly
   estimate). The compare view is not in the address; the shared list is.
   `plans/backlog/compare-architecture.md` is the old sketch.
+
+- **Design round 2, batch 2 calls** (Leon, 2026-11-05). Copy link has no
+  pop-up window: the button copies at once and the message says truthfully
+  what the link holds, or that copying failed. Compare stays at 2 to 4
+  programmes (replaced in batch 3: Compare is its own set of up to 4), made easier to find with the hint and "Compare (n)", which
+  pre-ticks all saves when there are 2 to 4. Passed deadlines stay visible;
+  the "Not passed yet" option carries a note instead, and rolling admission is
+  fixed in the data, not the filter. A second click on an open row focuses
+  its details on wide screens. The phone help keeps its height animation;
+  iPhones get the fade only. The Czech fee note left the Language filter for
+  the programme details. Slovak "Podľa školy" for the living-costs
+  placeholder. "Edit my answers" stays permanently.
+
+- **Design round 2, batch 3 calls** (Leon, 2026-11-05). Compare is fully
+  independent of My list: its own set, at most 4, with a compare toggle on
+  every programme and a Save toggle and "x" in each Compare column. Phones
+  reach it through a bottom tray, wider screens through a header button. The
+  main-view My list box is hidden on phones. The detail's official link is
+  full width with Save and Compare below. Setup ends on a done screen with
+  "Show my programmes" and "Read the FAQ". The logo always goes home.
 
 - **The class's target programmes come later** (Leon, 2026-10-26, registry
   Q7). The human sign-off of 15–20 programmes (T02) waits for that list;
@@ -1219,9 +1533,16 @@ hidden paths such as `.git/`: the first version listened on every network
 interface, so anyone on the same Wi-Fi could download the repository (X02). To
 try the site on a phone, use the live site or a deliberate tunnel, not this.
 
-`smoke.mjs` opens the real page in an invisible Chrome with a temporary profile
+`smoke.mjs` needs **Node 22 or newer** (it uses the built-in WebSocket). It
+opens the real page in an invisible Chrome with a temporary profile
 (never yours), clicks through it at phone and desktop widths, then deletes the
 profile; without Chrome it prints SKIP and changes nothing (L08).
+
+`.github/workflows/checks.yml` runs `check.mjs` and `check-contrast.mjs` on
+GitHub for every push and pull request, with no secrets. `smoke.mjs` stays
+local: nobody has run it on GitHub's Linux machines, where Chrome's sandbox may
+need a flag it doesn't pass, and a test that fails for no real reason teaches
+people to ignore the red mark.
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette

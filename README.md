@@ -1,222 +1,126 @@
 # IB University Finder
 
-A single-page site for filtering European bachelor programmes by the things IB
-students actually need: entry requirements, deadlines, tuition, language.
+**Live site: <https://kpolacik.github.io/ib-university-finder/>**
+
+A single-page site for finding European bachelor programmes by what IB students
+need: IB points and subjects, deadlines, EU tuition, living costs and language.
 It covers 11 countries: the Netherlands, Ireland, Czechia, Italy, Denmark,
 Sweden, Finland, Norway, Austria, Germany and the United Kingdom (counts are in
-STATUS.md).
+STATUS.md). English by default, with Slovak one tap away.
 
-Static files only. No server, no database, no accounts, nothing paid.
+Static files only: no build, no dependencies, no accounts, nothing paid.
 
 ## Running it locally
 
-The site uses ES modules, which browsers refuse to load over `file://`. Opening
-`index.html` by double-clicking it will show a blank page. Serve it instead:
+Browsers will not load the page's modules over `file://`, so double-clicking
+`index.html` shows a blank page. Serve it instead:
 
 ```bash
-node tools/serve.mjs
+node tools/serve.mjs        # then open http://localhost:8765
 ```
 
-Then open <http://localhost:8765>. This server tells the browser not to cache,
-so a CSS change shows up straight away; Python's `http.server` does not do that.
-
-## How the data gets in
-
-Data lives in a **Google Sheet with two tabs**, published to the web as CSV. The
-browser fetches both CSVs on page load, joins them, and renders the results.
-Nobody needs Git or a code editor to add a university.
-
-```
-Google Sheet ──published as CSV──▶ browser fetch ──▶ join ──▶ cards
-      │
-      └── if the fetch fails ──▶ data/fallback.json (with a visible warning)
-```
-
-The Sheet is not connected yet and there is no plan to connect it for now: `js/config.js`
-has no Sheet URLs, so the site reads `data/*.csv` from the repo.
-
-**Two tabs, not one**, so that university-level facts are typed once no matter
-how many programmes you list:
-
-- `universities` — one row per university (city, country, living cost as a
-  monthly range with its source, default tuition)
-- `programmes` — one row per programme, pointing at a university via `university_id`,
-  optionally overriding the university's city, tuition or English requirement
-
-University-level values flow down to programmes unless the programme overrides
-them. Three states, not two:
-
-| Cell | Meaning |
-|---|---|
-| *(blank)* | Same as the university |
-| `?` | Differs from the university, figure unknown — never inherits |
-| a value | This programme's own value |
-
-`?` exists because "blank means inherit" had no way to say *"the default is
-wrong here"*. University College Roosevelt would have shown Utrecht's €2,694
-when university colleges routinely charge double. It applies to `tuition_eu`,
-`tuition_noneu` and `english_requirement`.
-
-The optional `city` column works the same way: blank uses the university's home
-city, a value overrides it, for satellite campuses like University College
-Roosevelt in Middelburg.
-
-### Pointing the site at your Sheet
-
-1. In the Sheet: **File → Share → Publish to web**.
-2. Publish the `universities` tab as **Comma-separated values (.csv)**. Copy the URL.
-3. Do the same for the `programmes` tab.
-4. Paste both into [`js/config.js`](js/config.js):
-
-```js
-export const SHEET_CSV_URLS = {
-  universities: 'https://docs.google.com/.../pub?gid=0&single=true&output=csv',
-  programmes:   'https://docs.google.com/.../pub?gid=12345&single=true&output=csv',
-};
-```
-
-While those are empty the site reads `data/universities.csv` and
-`data/programmes.csv` from the repo, so it works before the Sheet exists.
-
-Note that Google caches the published CSV for a few minutes. An edit will not
-appear instantly — that is Google, not a bug here.
-
-## Deploying
-
-Push to GitHub, then **Settings → Pages → Deploy from a branch → main / root**.
-There is no build step. The `.nojekyll` file stops GitHub from running Jekyll
-over the files.
-
-## Files
-
-```
-index.html            markup and the filter controls
-css/styles.css        all styling, including the print layout (light only; there is no dark mode)
-js/
-  config.js           Sheet URLs and the two thresholds. Start here.
-  csv.js              RFC 4180 CSV parser (~90 lines, no dependencies)
-  data.js             fetch, join, validate, normalise. All parsing lives here.
-  filters.js          pure functions: rows + filter state -> rows, and sorting
-  cost.js             fee + 12 months' living: the yearly estimate and the budget test
-  shortlist.js        My list: saves in localStorage, CSV export, share links, grouping
-  compare.js          the compare table, and the detail wording it shares with render.js
-  render.js           everything that touches the DOM
-  app.js              wiring and event handlers
-data/
-  universities.csv    real data, used until the Sheet URLs are set
-  programmes.csv
-  sample-*.csv        invented rows with deliberately varied fees, points and
-                      dates — the fixtures tools/check.mjs sorts against
-  fallback.json       offline snapshot, regenerated by tools/make-snapshot.mjs
-tools/
-  check.mjs           runs the checks below
-  smoke.mjs           opens the real page in an invisible Chrome and clicks through it
-  make-snapshot.mjs   rebuilds fallback.json
-```
+This server tells the browser not to cache, so a CSS change shows straight
+away; Python's `http.server` does not.
 
 ## Checking you have not broken anything
 
 ```bash
-node tools/check.mjs
+node tools/check.mjs          # must end "All checks passed"
+node tools/check-contrast.mjs # after any colour change
+node tools/smoke.mjs          # clicks through the real page in an invisible Chrome (Node 22+)
 ```
 
-No libraries needed. It covers the things that are easy to break by accident:
-CSV quoting and malformed rows, rejection of non-http links, the
-inherit / override / `?` rules, whether bad spreadsheet input is reported rather
-than swallowed, sort order including where unknown values land, the shortlist
-export round-trip, share links, groups and the compare table, and that the real dataset still loads with every programme
-linked to an official page. Run it after changing anything in `js/`.
+`check.mjs` needs no libraries. It covers CSV parsing, the blank / `?` / value
+rules, bad input being reported rather than swallowed, sorting, filters, My
+list, Compare, share links, both languages, and that every real programme loads
+with a link to its official page.
+
+## The data
+
+Two CSV files in `data/`, joined by `university_id`:
+
+- `universities.csv`: one row per university (city, country, living costs as a
+  monthly range with its source, default tuition)
+- `programmes.csv`: one row per programme, which can override the university's
+  city, tuition, English requirement or admission
+
+A programme cell has three states:
+
+| Cell | Meaning |
+|---|---|
+| *(blank)* | Same as the university |
+| `?` | Differs from the university, value unknown; never inherits |
+| a value | This programme's own value |
+
+`data/fallback.json` is an offline copy, rebuilt by `tools/make-snapshot.mjs`;
+the page uses it, with a warning, if the CSVs fail to load. The column rules,
+written for someone who does not code, are in [MAINTENANCE.md](MAINTENANCE.md).
+Never open the CSVs in Excel: it mangles dates and the `€ — ·` characters.
+
+## Deploying
+
+GitHub Pages serves `main` from the root (Settings → Pages). There is no build
+step; `.nojekyll` stops GitHub running Jekyll. Anything merged into `main` is
+live for students.
 
 ## Design decisions worth knowing
 
-**Unknown values never hide a programme.** If you filter to "max €3000" and a
-programme has no fee recorded, it still appears, with a line saying why.
-Silently dropping a university because a spreadsheet cell is empty could cost
-someone an option they wanted.
-With "My IB points" set, the count after the total says how many of the shown
-programmes are within your IB points, only with HL Maths 4+, or can’t be compared.
-The **HL Maths 4+** tick adds the 25 CAO bonus points on Irish courses: it
-changes those labels and that count, never which programmes are shown.
-**My maths** (which IB maths courses a programme accepts) and **Entrance exam**
-hide programmes that state they don't fit your choice; a programme whose maths
-or exam nobody has checked stays in the list, and while the filter is on its
-entry says it was not filtered.
-**Max yearly cost** adds the EU fee to 12 months of living costs and hides a
-programme only when even the lowest estimate is over your budget; a range that
-crosses it says "May exceed your budget", and an unknown fee or living cost
-stays. **My living costs** (euros a month) replaces every university's estimate
-in those totals, and the page says "your €N" wherever it does.
+- **Unknown never hides a programme.** A programme with no fee recorded still
+  shows under "max €3,000", with a line saying why. My maths and Entrance exam
+  hide only programmes that state they don't fit; one nobody has checked stays
+  and says it was not filtered.
+- **Your IB points don't hide anything either.** With My IB points set, each
+  row says whether it is within your points, only with HL Maths 4+, or can't be
+  compared, and the count line adds them up.
+- **A minimum and a cutoff are said differently.** A published minimum is a
+  floor ("36, minimum"). Irish courses show the IB equivalent of last year's
+  CAO cutoff ("≈ 37, Round 1"), which moves every year; UCD publishes its own
+  IB minimum, so its rows say "minimum".
+- **Fees are what an EU student pays.** In the UK that is the international
+  fee, which EU students have paid since 2021.
+- **Max yearly cost** adds the EU fee to 12 months of living costs and hides a
+  programme only when even the lowest estimate is over budget.
+- **`verified_by` means a person looked.** `AI-DRAFT` rows were gathered
+  automatically (the banner says so); only a person's initials show
+  "Checked by …". `SAMPLE` rows are invented and show a red banner.
+- **Every row links to its official page**, and the site never claims to be
+  the final word: a wrong deadline could cost someone an application.
+- **One bad edit cannot take the page down.** Malformed rows are skipped and
+  listed at the bottom, naming the row and column.
+- **No invented rankings or scores.** `student_life_url` is only ever a link.
 
-**My list.** The star on a row (or "Save to my list" in its detail) saves a
-programme in this browser. "Open my list" shows the saves, still filtered (or
-all of them with "Show all saves"), grouped by deadline month, by your IB
-points or by country. From there you can **compare** 2 to 4 programmes side by
-side ("Show only differences" never hides a fact nobody knows), **share** the
-list as a link (`?list=…`, with your IB points only if you tick the box),
-export it as CSV or print it. Opening a shared link shows its programmes and
-saves nothing until you press "Save these to my list". Saves stay in the
-browser and on the web address where they were made.
+## My list and Compare
 
-**Fees are what an EU student pays.** The site shows EU fees only and is built
-for a cohort of EU citizens. The UK is included, and there that figure is the
-international fee, because EU students have paid it since 2021. Each UK card
-says where Irish citizens or settled status change it.
+The bookmark on a row saves the programme in this browser. My list shows the
+saves, grouped by deadline month, IB points or country, and can be shared as a
+link (`?list=…`), exported as CSV or printed. Compare is a separate set of up
+to 4 programmes, added with the scales button on any row. Opening a shared
+link saves nothing until you press "Save these to my list".
 
-**`verified_by` means a person looked.** Rows marked `AI-DRAFT` were gathered
-automatically; the banner at the top of the page says nothing has been checked
-by a person, and a card only shows "Checked <date> by <initials>" once someone
-replaces `AI-DRAFT` with their initials. Rows marked `SAMPLE` are invented and
-trigger a red banner. Neither can pass as verified data.
-
-**Every card shows `last_verified` and links to the official page.** Not behind
-an expander, not optional. A wrong deadline here could make someone miss an
-application, so the site never presents itself as the final authority.
-
-**One bad spreadsheet edit cannot take down the page.** Malformed rows are
-skipped and reported in a panel at the bottom, naming the row and column.
-
-**The filters are in the page address.** Reloading keeps them, and a filtered
-view can be shared by copying the address (for example
-`?q=law&country=Ireland&points=36`). A value the data does not have, or a
-number out of range, is ignored.
-
-**A minimum and a cutoff are said differently.** A university's published
-minimum is a floor, so the card says "36 IB points, minimum". An Irish course
-has no IB minimum: places go to the highest CAO points, and the figure is the
-IB equivalent of last year's cutoff, which moves with demand every year. So
-those cards say "≈ 37 IB points, Round 1 cutoff, 2026", with a second line for
-Round 2 where the CAO published one. UCD is the exception: it publishes its own
-IB minimum, so its cards say "minimum".
-
-**No invented rankings or "student life scores".** `student_life_url` is a
-link, never a number. See MAINTENANCE.md.
-
-## Maintaining it
-
-See [MAINTENANCE.md](MAINTENANCE.md) — written for someone who has never seen
-this project and does not code.
+Filters live in the page address, so reloading keeps them and a filtered view
+can be shared (`?q=law&country=Ireland&points=36`).
 
 ## Site language
 
-Slovak is the default; EN/SK switches in place and remembers the choice in this
-browser. `?ui=en` or `?ui=sk` takes priority. `lang=` stays the
-teaching-language filter (`?lang=English`) and is independent of `ui=`;
-share-list links never carry the interface language. Search finds both English
-and Slovak wording in either language.
+`?ui=en` or `?ui=sk` picks the interface language; otherwise the page uses the
+last choice in this browser, then English. `lang=` is the teaching-language
+filter, not the interface. `js/i18n.js` holds the interface text (`UI.en`,
+`UI.sk`, with Slovak plural forms); data translations come from
+`data/i18n/sk.csv`. `node tools/i18n-missing.mjs` lists missing ones. Details
+are in MAINTENANCE.md.
 
-`js/i18n.js` holds `UI.en`, `UI.sk` and `t(key, vars)`, including Slovak plural
-forms (`one`, `few`, `other`). A count glued into a sentence needs a whole-phrase
-plural key (Slovak declines the noun after “z”). An empty Slovak entry falls
-back to English. Data
-translations are already loaded from `data/i18n/sk.csv` and baked into
-`data/fallback.json`. Lookup happens at display time, after parsing and
-inheritance: exact field + English text with whitespace normalised. Whole-cell
-matches win, otherwise ` · ` and `;` lists translate item by item. English that
-no longer matches shows as plain English (`lang=en`); each detail section with
-such text gets one note. One button in the detail pane reveals the English
-originals. Filtering, sorting, points and costs use English
-source facts; dates use the selected locale.
+## Files
 
-`node tools/i18n-missing.mjs` prints missing and orphaned data translations
-without writing files. Translation maintenance is explained in MAINTENANCE.md.
-CSV headings follow the interface; data cells remain English.
+```
+index.html          markup and filter controls
+css/styles.css      all styling, including print (light only)
+js/data.js          fetch, join, validate; all parsing lives here
+js/filters.js       rows + filter state → rows, and sorting
+js/render.js        everything that touches the page
+js/app.js           wiring and event handlers
+js/i18n.js          English and Slovak interface text
+data/               the CSVs, fallback.json and Slovak data translations
+tools/              checks, the dev server and data scripts
+```
+
+Current state, known gaps and past decisions: [STATUS.md](STATUS.md).

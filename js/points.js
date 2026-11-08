@@ -189,10 +189,22 @@ export const pointsLineText = (line) => (line.number === null
 // Compact row figures use the same dispatch and round order as pointsLines.
 export function pointsShort(row) {
   if (row.ibPointsMin === null) {
+    // `cell` is the list row's short label. A row with a known reason says it
+    // there, not "Not published": the FAQ defines that as "the university does
+    // not publish a figure", which is false for a test-in-cutoff Irish course
+    // or a Czech entrance-exam programme (review of PR 1, D27).
+    // The entrance_exam column is the reliable signal; the admission text
+    // also says "Talent exam", "Online entrance exam" or "Entrance
+    // examination", which the old /^Entrance exam\b/ test missed, so 190 such
+    // rows said "Not published" (verification of PR 1).
+    const exam = row.entranceExam === 'yes' || row.admission.some((item) => /^Entrance exam\b/.test(item));
     const reason = row.pointsPlusTest ? t('cutoff_includes_a_test_score_2')
       : row.pointsTestUnverified ? t('assessment_required_ib_equivalent_unverified_2')
-      : row.admission.some((item) => /^Entrance exam\b/.test(item)) ? t('entrance_exam_3') : null;
-    return { parts: [], after: null, unknown: { verdict: reason ? t('no_ib_figure') : t('no_minimum_published'), reason } };
+      : exam ? t('entrance_exam_3') : null;
+    const cell = row.pointsPlusTest ? t('r2_pts_test_in_cutoff')
+      : row.pointsTestUnverified ? t('r2_pts_no_ib_figure')
+      : exam ? t('entrance_exam') : t('not_published');
+    return { parts: [], after: null, unknown: { verdict: reason ? t('no_ib_figure') : t('no_minimum_published'), reason, cell } };
   }
   if (row.pointsKind === 'cutoff' && row.cao) {
     const figured = row.cao.rounds.filter((r) => r.ib !== null);

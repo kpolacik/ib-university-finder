@@ -24,6 +24,10 @@
                             so NEVER the only edge of a control or of the unknown box. */
   --edge:#76808e;        /* control borders, stale tag border. 4.00 panel / 3.40 ground / 3.36 accent-tint.
                             NOT for text. */
+  --edge-soft:#8b95a2;   /* switch track while OFF and slider thumb while UNSET only. WCAG 1.4.11 non-text contrast:
+                            the mockup's #c4cdd8 was 1.61:1; this is the lightest grey that still reaches 3:1.
+                            3.04 panel (both controls sit on white; the thumb's 20 px is mostly over panel, not the
+                            4 px tint track). When ON/SET the accent fill or border replaces it. NOT for text. */
   --ink:#16202c;         /* titles, figures, body text, verified check, field-error text and the 2 px invalid-field
                             border, "No official link" note rule, sample-row tag border. 16.44 panel / 13.97 ground / 15.04 hover /
                             13.83 accent-tint / 13.71 fit / 11.90 cond / 9.57 time. */
@@ -63,11 +67,16 @@
 
   /* ---------- Depth ---------- */
   --scrim:rgb(22 32 44 / .45);   /* behind the phone filter sheet only. */
+  --thumb-shadow:0 1px 3px rgb(22 32 44 / .22);
+  --pop-shadow:0 1px 2px rgb(22 32 44 / .08),0 12px 32px -10px rgb(22 32 44 / .28);
+  --dialog-shadow:0 24px 64px -16px rgb(22 32 44 / .4);
+  --spring-snappy:linear(0,.012,.049,.107,.185,.278,.383,.493,.601,.702,.791,.865,.924,.967,.995,1.013,1.019,1.016,1.009,1.003,1);
   --shadow:0 1px 2px rgb(22 32 44 / .06), 0 8px 24px -8px rgb(22 32 44 / .22); /* the detail pane only: the page's one shadow. */
 
   /* ---------- Identity (lavender): the masthead and country badges only. Never a status. ---------- */
   --brand-fill:#ebe4f3;  /* masthead band. */
   --brand-ink:#47345d;   /* masthead title, tagline and language buttons. 8.83 on brand-fill; panel on it 10.95. */
+  --brand-accent:#7c55c4;/* the bookmark in the logo tile only. A graphic, 3:1 on brand-fill. */
   /* Country badges: one fill/ink pair per mapped country, and a neutral pair for any country not
      mapped yet (it needs no code change). Every pair is in tools/check-contrast.mjs (all above 7:1). */
   --cty-fill:#edf0f4; --cty-ink:#46515f;
@@ -98,6 +107,7 @@
   --flag-se-blue:#006aa7; --flag-se-yellow:#fecc02;
   --flag-fi-blue:#002f6c;
   --flag-no-red:#ba0c2f; --flag-no-blue:#00205b;
+  --flag-fr-blue:#000091; --flag-fr-red:#e1000f;
 
   /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
   --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -110,9 +120,9 @@
 
   /* ---------- Space (8-pt grid with a 4 px half step) and shape ---------- */
   --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
-  --r-panel:6px;    /* panels, tiles, sheet, banners */
+  --r-panel:16px;    /* panels, tiles, sheet, banners. 16 = 8 px control corners + 8 px inset (concentric, 2026-11-07) */
   --r-cell:4px;     /* cells, controls, buttons, tags */
-  --pane-w:380px;   /* desktop detail pane from 1200 px (redesign revisions; was 25rem from 1280) */
+  --pane-w:clamp(300px,26vw,380px);   /* desktop detail pane from 1200 px (redesign revisions; was 25rem from 1280) */
   /* --gut (16 phone / 24 from 600), --ctl (control height 44 / 36) and --tap (small-button and link hit
      height 44 / 28) are set on .page per breakpoint */
 
@@ -120,7 +130,7 @@
   --t-fast:120ms;   /* hover/focus background, pane content fade */
   --t-med:160ms;    /* chevron turn */
   --t-slow:200ms;   /* row expand, filter sheet */
-  --ease-out:cubic-bezier(.2,.7,.3,1);      /* anything entering */
+  --ease-out:cubic-bezier(.22,1,.36,1);      /* anything entering */
   --ease-in-out:cubic-bezier(.45,0,.25,1);  /* anything moving between two states */
 
 }
@@ -381,8 +391,8 @@ svg:not(.sprite) {
 .tick input,.option input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--accent)}
 /* Active: 2 px accent border and tint, label "· active". Padding drops by the extra
    border pixel so the text does not move. */
-.is-set .inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
-.f-q.is-set .inp{padding-left:33px}
+.fld.is-set>.inp,.fld.is-set>.affix>.inp{border:2px solid var(--accent);background:var(--accent-tint);font-weight:600;padding-left:9px}
+.f-q.fld.is-set>.affix>.inp{padding-left:33px}
 .is-set:not(.f-pts)>label::after{content:attr(data-active-label);color:var(--accent)}
 /* Why My points or Max fee is not being applied (P05). Ink, never red. After
    the set rule, so an invalid field always shows the ink border. */
@@ -417,11 +427,10 @@ svg:not(.sprite) {
 /* A02: a 16rem panel never wider than the screen, and the last one opens
    leftward, so none pushes the page sideways. */
 .dropdown-panel{position:absolute;top:100%;left:0;z-index:20;margin-top:6px;width:19rem;max-width:calc(100vw - 2 * var(--gut));max-height:18rem;overflow:auto;overscroll-behavior:contain;padding:6px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
-.dropdown:last-of-type .dropdown-panel,#dd-countries .dropdown-panel{left:auto;right:0}
+.dropdown-panel.right{left:auto;right:0}
 /* Options: 36 px on a fine pointer, 44 px on touch and in the phone sheet
    (--tap is 44 below 600). A picked option is filled, not only ticked. */
 .options{display:grid;gap:2px}
-.dd-help{padding:4px 8px 8px}
 .option{display:flex;align-items:center;gap:10px;min-height:max(36px,var(--tap));padding:4px 8px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:18px;white-space:normal;cursor:pointer;user-select:none}
 .option:hover{background:var(--hover)}
 .option:has(input:checked){font-weight:600;background:var(--accent-tint);color:var(--accent)}
@@ -432,7 +441,7 @@ svg:not(.sprite) {
 .opt-clear{justify-self:start;height:auto;min-height:max(28px,var(--tap))}
 .opt-none{margin:0;padding:6px 8px}
 /* Flags only here. Out-ranks the global 1em icon size (svg:not(.sprite)). */
-.dropdown svg.flag{width:21px;height:14px;border-radius:2px;outline:1px solid var(--hairline);vertical-align:middle}
+.dropdown svg.flag{width:20px;height:14px;border-radius:2px;outline:1px solid var(--hairline);vertical-align:middle}
 
 /* The phone sheet: a native <dialog> opened with showModal(). Its UA margins,
    padding, border and size limits are reset, and it is shown only while open:
@@ -441,11 +450,14 @@ svg:not(.sprite) {
    body scrolls. ::backdrop is the only scrim.
    It slides up and the scrim fades (spec §8). display and overlay switch at
    the end, so a closing sheet keeps its place on top until it is gone. A
-   browser without @starting-style or allow-discrete just opens and closes. */
-.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:90dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
-.sheet[open]{display:flex;flex-direction:column;transform:none}
-.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete}
-.sheet[open]::backdrop{opacity:1}
+   browser without @starting-style or allow-discrete just opens and closes.
+   Leon 2026-11-06: 240 ms up, 200 ms down (was 320 ms both ways, which felt
+   sluggish). A transition uses the timing of the state it goes to, so the
+   closed rules carry the closing times and the [open] rules the opening ones. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
+.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
+.sheet[open]::backdrop{opacity:1;transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet[open]::backdrop{opacity:0}}
 html:has(.sheet[open]){overflow:hidden}
 .sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
@@ -518,7 +530,7 @@ html:has(.sheet[open]){overflow:hidden}
 /* My list (js/shortlist.js): a panel under the count line. Outside the list
    view it is one line, "3 saved · 2 shown"; in it, a second row of tools.
    Blue only where you can press; the counts are ink. */
-.mylist{margin:0 0 12px;padding:8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
+.mylist{margin:0 0 12px;padding:8px 8px 8px 12px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);font-size:var(--fs-13);line-height:18px}
 :where(.mylist,.cmp) :where(button,input,select,summary){font:inherit;color:inherit}
 .ml-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .ml-h{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:var(--fs-14);font-weight:700;line-height:20px}
@@ -534,17 +546,27 @@ html:has(.sheet[open]){overflow:hidden}
 .ml-pop>summary::-webkit-details-marker{display:none}
 .ml-pop[open]>summary{border-color:var(--accent)}
 .ml-panel{position:absolute;top:100%;left:0;z-index:20;display:grid;gap:8px;margin-top:6px;width:22rem;max-width:calc(100vw - 2 * var(--gut));padding:10px;background:var(--panel);border:1px solid var(--edge);border-radius:8px}
-.ml-picks{margin:0;padding:0;border:0;min-width:0}
-.ml-picks legend{padding:0 0 4px}
-.ml-picks .options{max-height:16rem;overflow:auto;overscroll-behavior:contain}
-.ml-picks .option:has(input:disabled){color:var(--ink-3);cursor:default}
 .ml-panel .inp{font-size:var(--fs-13)}
 .ml-panel .btn{justify-self:start}
 @media (max-width: 599.98px) {
   /* On a phone the panels open in place, full width, like the sheet's lists. */
-  .ml-pop[open]{flex-basis:100%}
+  .ml-pop[open]{grid-column:1/-1}
   .ml-panel{position:static;width:auto;max-width:none}
-  .ml-group{flex:1 1 10rem}
+  /* One tidy toolbar (Leon, 2026-11-05: wrapped buttons, a lone Clear row and a
+     detached Sort box). Group by reads like the Sort by strip below it: label
+     left at the same 6rem, select right, so the two selects line up. The
+     actions are an even two-column grid (batch 3 B2 styles them). */
+  .ml-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center}
+  .ml-group{grid-column:1/-1;width:auto;display:flex;align-items:center;gap:8px}
+  .ml-group>label,.listp>.f-sort>label{flex:0 0 6rem;white-space:normal}
+  .ml-group>.inp{flex:1 1 auto;width:auto;min-width:0;max-width:22rem}
+  .ml-tools>.btn,.ml-pop>summary{width:100%}
+  .ml-tools>.help{grid-column:1/-1}
+  /* In the list view the panel and the list are one card: the Sort by strip is
+     the toolbar's last row, not a second box 12 px below. Not while Compare
+     hides the list. */
+  .mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden])){margin-bottom:0;border-bottom:0;border-radius:var(--r-panel) var(--r-panel) 0 0}
+  .mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp,.mylist.is-list:not([hidden]) ~ .split:not([hidden]) .listp>.f-sort{border-top-left-radius:0;border-top-right-radius:0}
 }
 
 /* The row's save star: above the row's whole-row button (its ::after covers
@@ -604,12 +626,19 @@ html:has(.sheet[open]){overflow:hidden}
 .row :where(h3,p){margin:0}
 .listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);container-type:inline-size}
 .cols{display:none}
-.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
+.listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
 .listp>.f-sort>label{white-space:nowrap}
 .listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
-.item{position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
+/* Rows are display:block, not the <li> default list-item. In Chrome a
+   list-item row that content-visibility has never drawn (nearly all 2,915)
+   makes every inherited style change rebuild the whole list: opening the
+   phone Filters sheet (showModal makes the page inert) froze the page for
+   ~500 ms at 4x CPU slowdown before the sheet moved; with block rows that
+   showModal() call takes ~90 ms (measured 2026-11-06, 393 px, Chrome 157).
+   The list has no markers (list-style:none), so nothing visible changes. */
+.item{display:block;position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
 .item+.item{border-top:1px solid var(--hairline)}
-.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main" "pts pts" "ddl fee" "req req";gap:8px;padding:12px}
+.row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main main" "pts ddl fee";gap:8px;padding:12px}
 .row:hover{background:var(--hover)}
 .is-open>.row{background:var(--hover)}
 .r-main{grid-area:main;min-width:0;padding-right:28px}
@@ -642,8 +671,8 @@ html:has(.sheet[open]){overflow:hidden}
 .chev{position:absolute;top:15px;right:12px;display:flex;width:16px;height:16px;color:var(--ink-2);pointer-events:none}
 .row .chev .ic{width:16px;height:16px;fill:none}
 .is-open .chev{transform:rotate(180deg)}
-.deg{margin-left:6px;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
-/* The hidden ", " between a title and its degree (A05). Clipped and absolute,
+.deg{white-space:nowrap;margin-left:0;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
+/* The hidden "," between a title and its degree (A05). Clipped and absolute,
    Chrome read it as a block of its own and named the row "Title , Degree".
    Inline at zero size it reads "Title, Degree" and draws nothing. line-height
    0 too: at font-size 0 the inherited 20 px leading made every title line 5 px
@@ -688,7 +717,7 @@ html:has(.sheet[open]){overflow:hidden}
    place line is drawn above it. Nothing in the head is focusable. */
 .d-place{order:-1;font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
 .d-title{font-size:var(--fs-18);font-weight:700;line-height:24px}
-.d-title .deg{margin-left:6px;font-size:15px;font-weight:400;color:var(--ink-2)}
+.d-title .deg{white-space:nowrap;margin-left:0;font-size:15px;font-weight:400;color:var(--ink-2)}
 
 /* Cells: plain text unless the cell carries a verdict (§6.6). */
 .d-cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
@@ -737,7 +766,7 @@ html:has(.sheet[open]){overflow:hidden}
 .kv-none{font-size:15px;line-height:22px}
 /* "Not published" / "Not checked yet": unknown is not "none" and must not
    read like it. */
-.unk-t{display:inline-block;padding:0 6px;border:1.5px dashed var(--ink-3);border-radius:var(--r-cell);font-size:var(--fs-13);font-weight:600;line-height:20px;color:var(--ink-2)}
+.unk-t{display:inline;padding:0;border:0;font-size:var(--fs-14);font-weight:400;line-height:20px;color:var(--ink-2);white-space:nowrap}
 .tag{display:inline-block;margin-left:4px;padding:0 5px;border:1px solid var(--edge);border-radius:var(--r-cell);font-size:var(--fs-12);line-height:16px;font-weight:600;color:var(--ink)}
 .tag-strong{border:2px solid var(--ink)}
 
@@ -772,7 +801,7 @@ html:has(.sheet[open]){overflow:hidden}
      "Podľa univerzity €/mesiac"); they were cut off at 8 and 10.5rem. */
   .f-fee,.f-budget{flex:none;width:10rem}.f-living{flex:none;width:12.5rem}
   .fbar .more{display:none}
-  .sheet,.sheet::backdrop{transition:none}
+  .sheet,.sheet[open],.sheet::backdrop,.sheet[open]::backdrop{transition:none}
   /* The count is static from 600 (the column header sticks instead). Every
      stuck declaration is put back, in case .is-stuck is still on the bar. */
   .status{position:static;padding:12px var(--gut) 8px}
@@ -782,7 +811,7 @@ html:has(.sheet[open]){overflow:hidden}
   .status .copy{display:inline-flex}
   .item{contain-intrinsic-size:auto 200px}
   /* Stacked facts on a tablet-width list: one band of three. */
-  .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee" "req req req";padding:14px 16px}
+  .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee";padding:14px 16px}
   .chev{top:17px;right:16px}
   /* The headings stick while the list scrolls. They show only from a 900 px
      list (the @container rule below), so this is inert until then. */
@@ -813,11 +842,11 @@ html:has(.sheet[open]){overflow:hidden}
    title track keeps at least 320 px. Headings and rows share one template,
    one gap and one inset, so a heading sits over its column at every width. A
    16 px track holds the row chevron below 1200 px, where rows open in place. */
-@container (min-width: 900px) {
+@container (min-width: 800px) {
   .listp>.f-sort{display:none}
-  .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px 16px;column-gap:12px;padding-inline:16px}
+  .cols,.row{grid-template-columns:minmax(0,1fr) 168px 148px 128px 16px;column-gap:12px;padding-inline:16px}
   .cols{display:grid}
-  .row{grid-template-areas:"main pts ddl fee chev" "req req req req req";row-gap:6px;padding-block:12px;align-items:start}
+  .row{grid-template-areas:"main pts ddl fee chev";row-gap:6px;padding-block:12px;align-items:start}
   .item{contain-intrinsic-size:auto 120px}
   .r-main{padding-right:0}
   .chev{position:static;grid-area:chev;margin-top:3px}
@@ -852,7 +881,7 @@ html:has(.sheet[open]){overflow:hidden}
      row does. */
   .row{transition:none}
   .item:not(.is-sel)>.row:hover{transition:background-color var(--t-fast) var(--ease-out)}
-  .is-sel>.row{background:var(--accent-tint);box-shadow:inset 0 0 0 2px var(--accent)}
+  .is-sel>.row{background:var(--accent-tint);box-shadow:inset 3px 0 0 var(--accent)}
   .is-sel .open:focus-visible::after{outline-offset:-6px}
   .goto{display:block;position:absolute;left:-9999px;color:var(--accent);text-decoration:underline}
   .goto:hover{color:var(--accent-press)}
@@ -863,9 +892,9 @@ html:has(.sheet[open]){overflow:hidden}
   .pane .d-cells .c-pts{grid-column:1/-1}
   .r-main{padding-right:0}
   /* No chevron track once rows no longer open in place. */
-  @container (min-width: 900px) {
-    .cols,.row{grid-template-columns:minmax(320px,1fr) 206px 146px 124px}
-    .row{grid-template-areas:"main pts ddl fee" "req req req req"}
+  @container (min-width: 800px) {
+    .cols,.row{grid-template-columns:minmax(0,1fr) 168px 148px 128px}
+    .row{grid-template-areas:"main pts ddl fee"}
   }
 }
 
@@ -908,15 +937,9 @@ html:has(.sheet[open]){overflow:hidden}
 /* Skip to results, Tab and the arrow keys land below whatever sticks: the
    stuck count line below 600, the column header from 600 (A07). The arrow
    keys also keep 8 px under a row. */
-/* measured 2026-10-27, fonts ready: the stuck count line is 31 px, 49 px at
-   320 when the short count wraps; 49 + 8 = 57 */
-#results,#results :is(li,a,button){scroll-margin-top:57px}
+
 #results>.item{scroll-margin-bottom:8px}
-@media (min-width: 600px) {
-  /* measured 2026-10-27: the sticky column header is 34.4 px, 51.8 px at 600
-     where its first label wraps; 52 + 8 = 60 */
-  #results,#results :is(li,a,button){scroll-margin-top:60px}
-}
+
 
 /* On a touch screen the controls grow to a 44px target. Hover styling is
    dropped too — on touch it sticks after a tap and reads as selected. */
@@ -928,6 +951,1079 @@ html:has(.sheet[open]){overflow:hidden}
   .chip:hover { border-color: var(--edge); background: var(--panel); }
 }
 
+/* Round 2: only the wordmark/Filters slot changes on scroll. */
+:where(.hd,.ob) :where(button,input,select){font-family:inherit;font-variant-numeric:tabular-nums}
+.hd{height:56px;background:var(--panel);border-bottom:1px solid var(--hairline);z-index:30;position:relative;transition:transform 240ms var(--ease-out)}
+.hd-in{max-width:1440px;margin:auto;height:100%;padding:0 var(--gut);display:flex;align-items:center;gap:16px;transition:transform 240ms var(--ease-out)}
+.slot{position:relative;width:196px;height:36px;flex:none}
+.mark,.filters-btn{position:absolute;inset:0 auto 0 0;transition:opacity 160ms,transform 240ms var(--ease-out)}
+.mark{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
+.mono{width:36px;height:36px;border-radius:10px;background:var(--brand-fill);color:var(--brand-ink);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.mono svg{width:100%;height:100%;display:block}
+.mark h1{font-size:17px;letter-spacing:-.01em;margin:0;white-space:nowrap}
+.filters-btn{opacity:0;visibility:hidden;transform:translateY(4px)}
+.search{flex:1;min-width:0;max-width:560px;margin:0 auto}
+.search>label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.search kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:600 11px/1 'IBM Plex Sans';color:var(--ink-3);border:1px solid var(--hairline);border-radius:5px;padding:4px 6px;background:var(--panel)}
+.search .inp{height:36px;width:100%;border:1px solid var(--hairline);background:var(--hover);border-radius:10px;padding-left:38px;padding-right:40px}
+.search .affix>.ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
+.hd-right{display:flex;align-items:center;gap:8px;flex:none}
+.hd .btn{height:36px;border-color:var(--hairline);border-radius:8px}
+.hd .lang{display:flex;gap:0;padding:3px;border-radius:9px;background:var(--hover);border:1px solid var(--hairline);height:36px}
+.hd .lang>.ic{display:none}
+.hd .lang button{border:0;background:transparent;color:var(--ink-2);font-size:13px;padding:0 10px;border-radius:6px}
+.hd .lang button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--hairline)}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--ink);color:var(--panel);font-size:12px;font-weight:600;display:inline-grid;place-items:center}
+.fslot{background:var(--panel);border-bottom:1px solid var(--hairline)}
+.shell,.foot{max-width:1440px}
+.shell{padding-top:12px}
+@media(max-width:599px){.shell{padding-top:0}}
+.foot{margin:0 auto;padding:8px var(--gut) 60px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;font-size:15px}
+.foot h2{font-size:15px;color:var(--ink);margin:0 0 8px}
+.foot p{margin:0 0 8px;max-width:62ch}
+.faq details{border-bottom:1px solid var(--hairline)}
+.faq summary{list-style:none;cursor:pointer;padding:12px 0;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;gap:12px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary>span[aria-hidden]{display:inline-block;transition:transform 220ms var(--ease-out)}
+.faq details[open] summary>span[aria-hidden]{transform:rotate(45deg)}
+.faq .a{padding:0 0 14px;max-width:62ch}
+@media (min-width: 600px) and (min-height: 501px){.hd{position:sticky;top:0}}
+@media (max-width: 599.98px){
+ .hd{height:auto;min-height:56px}.hd-in{flex-wrap:wrap;padding:10px var(--gut);gap:10px}.slot{width:auto;flex:1}.mark{position:static}.mark h1{font-size:16px}.hd-right{gap:4px}#header-list>span:not(.badge){display:none}.search{order:3;flex-basis:100%;max-width:none}.search .inp{height:44px}.foot{grid-template-columns:1fr;gap:20px}
+}
+
+/* Round 2 filters: one copy moves as a unit into the native phone sheet. */
+.fbar{max-width:1440px;margin:auto;padding:12px var(--gut);display:block}
+.fbar .more-filters{display:grid;gap:10px}
+.frow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.frow>.fld,.frow>.dropdown{width:auto;flex:none;grid-area:auto}
+.chipbox{display:inline-flex;align-items:center;height:var(--ctl);border:1px solid var(--hairline);border-radius:8px;background:var(--panel);gap:0}
+.chipbox.is-set{border-color:var(--accent);background:var(--accent-tint)}
+.pts>label{padding:0 4px 0 12px;white-space:nowrap;font-size:15px;font-weight:400}
+.pts input.inp{width:68px;height:100%;padding:0 4px;border:0;background:transparent;text-align:center;font-weight:700;font-size:16px;appearance:textfield}
+.pts.fld.is-set>input.inp{border:0;background:transparent}
+.pts input::-webkit-inner-spin-button{appearance:none}
+.pts input::placeholder{font-size:14px;font-weight:400}
+.step{width:34px;height:100%;border:0;background:transparent;cursor:pointer;color:var(--ink-2);font-size:18px}
+/* A popover, so an error never moves or muddles the row under it (review round 2). */
+.chipbox .err{position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:max-content;max-width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--hairline);border-radius:8px;box-shadow:var(--pop-shadow);font-weight:600;white-space:normal}
+.chipbox .err:empty{display:none}
+.sheet-b .chipbox .err{position:static;flex-basis:100%;width:auto;max-width:none;padding:0 12px 8px;border:0;box-shadow:none}
+.chipbox:has([aria-invalid=true]){border-color:var(--ink)}
+.f-hl>label.switch{font-weight:400;font-size:15px}
+.switch{font-weight:400;display:inline-flex;align-items:center;gap:10px;padding:0 6px 0 10px;cursor:pointer;white-space:nowrap;font-size:14px}
+.switch input{appearance:none;width:34px;height:20px;border:1px solid var(--edge-soft);border-radius:10px;background:var(--hairline);position:relative;margin:0;cursor:pointer;flex:none}
+.switch input::after{content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:50%;background:var(--panel);transition:transform 260ms var(--spring-snappy)}
+.switch input:checked{background:var(--accent);border-color:var(--accent)}
+.switch input:checked::after{transform:translateX(14px)}
+.aside{color:var(--ink-3);font-size:13px;font-weight:400}
+.info{width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:var(--ink-3);display:inline-grid;place-items:center;cursor:pointer;padding:0;margin-right:3px;flex:none}
+.info:hover,.info[aria-expanded=true]{background:var(--hover);color:var(--ink)}
+.seg{display:inline-flex;padding:3px;border-radius:9px;background:var(--hover);border:1px solid var(--hairline);height:var(--ctl)}
+.seg button{border:0;background:transparent;padding:0 10px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.seg button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--hairline)}
+.maths-control>select{display:none}
+.dropdown>summary.inp{height:var(--ctl);border:1px solid var(--hairline);border-radius:8px;font-size:15px;width:auto;gap:6px;padding:0 12px;background:var(--panel);font-weight:400}
+.dropdown.is-set>summary.inp{background:var(--accent-tint);border-color:var(--accent);color:var(--accent-press);font-weight:600}
+.dropdown-panel{width:300px;border-color:var(--hairline);border-radius:12px;padding:0;max-height:min(440px,calc(100dvh - 180px));overflow:auto;z-index:40}
+.dropdown-panel.right{left:auto;right:0}
+.dropdown-panel>.options{max-height:300px;gap:0;overflow:auto;padding:4px 6px;overscroll-behavior:contain}
+.dropdown-panel .option{min-height:40px;border-radius:7px;font-weight:400}
+.dropdown-panel .option:has(input:checked){background:var(--hover);color:var(--ink);font-weight:600}
+.pop-f{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--hairline);font-size:13px;color:var(--ink-2)}
+.pop-f .btn{margin-left:auto;height:30px;font-weight:400}
+.budget-panel{width:340px}
+.budget{padding:14px;display:grid;gap:18px}
+.budget>.fld{display:grid;grid-template-columns:minmax(0,1fr) 164px;align-items:center;gap:8px 10px;width:auto;flex:auto}
+.budget .fld>label{font-size:13px;font-weight:400;line-height:1.4}
+.budget .affix{width:164px;display:flex;align-items:center;gap:6px}
+.budget .affix>.unit{position:static;font-size:13px;white-space:nowrap}
+.budget .inp{width:112px;height:32px;padding:0 8px;text-align:right;border-color:var(--hairline);border-radius:7px;background:var(--panel)}
+.budget .fld.is-set>.affix>.inp{border-width:1px;border-color:var(--hairline);background:var(--panel);font-weight:600}
+.budget .fld>label::after{content:none}
+.budget .err,.budget input[type=range]{grid-column:1/-1}
+.budget-panel>#f-budget-help{padding:0 14px 10px}
+input[type=range]{--p:100%;--fill:var(--accent-tint);appearance:none;width:100%;height:24px;margin:0;background:transparent;cursor:pointer}
+input[type=range].set{--fill:var(--accent)}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--fill) var(--p),var(--hairline) var(--p))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--hairline)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--fill)}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft);transition:transform 160ms var(--ease-out)}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft)}
+/* One rule per engine: a browser drops a whole selector list when one part is
+   a pseudo-element it doesn't know, so the shared list never coloured Chrome's thumb. */
+input[type=range].set::-webkit-slider-thumb{border-color:var(--accent)}
+input[type=range].set::-moz-range-thumb{border-color:var(--accent)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.12)}
+/* Sized to its text, up to M's 260 px: a fixed 260 px bubble at 13.5 px made a
+   four-word hint look like a banner (Leon, 2026-11-05). Visibility is in the
+   transition so closing fades too; without it the bubble vanished at once. */
+.tip{display:none;position:absolute;z-index:45;width:max-content;max-width:260px;padding:6px 10px;border-radius:8px;background:var(--ink);color:var(--panel);font-size:var(--fs-12);line-height:1.4;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete}
+.tip.is-open{display:block;opacity:1;visibility:visible;transform:none}
+@starting-style{.tip.is-open{opacity:0;transform:translateY(-4px)}}
+#f-unknown-help,#applied-filters{display:none}
+.btn.btn-q{color:var(--ink-2);text-decoration:none}
+.btn.btn-a{border-color:transparent;background:transparent;color:var(--accent);font-weight:600}
+.status .btn{height:var(--ctl);padding:0 12px;gap:8px;border-radius:8px;font-size:15px;font-weight:400}
+.status .btn .ic{width:16px;height:16px}
+.status .edit-answers{margin-right:auto;font-weight:600}
+.status .copy{margin-left:0;display:inline-flex;border-color:var(--hairline)}
+.status .more{display:none}
+.sheet-b .more-filters{display:grid;gap:16px}
+/* A column, not wrapping rows: every item is full width anyway, and only in a
+   column does a closed help tip's negative margin cancel the gap (a flex line
+   never gets shorter than zero). */
+.sheet-b .frow{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:12px}
+.sheet-b .dropdown{width:100%}
+.sheet-b .dropdown-panel{position:static;width:auto;max-width:none;max-height:none!important;overflow:visible;margin-top:8px}
+.sheet-b .budget-info{display:none}
+/* Phone help sits in the sheet's flow and reveals with the same −4 px, 180 ms
+   motion as the bubble, opening and closing (it used to appear and vanish in
+   one frame). Font and width undo the desktop bubble's; flex:none because a
+   100% basis in the .frow column would override the animated height. */
+.sheet-b .tip{display:none;position:static;width:auto;max-width:none;color:var(--ink-2);background:var(--hover);padding:10px 12px;flex:none;border-radius:10px;font-size:13.5px}
+.sheet-b .tip.is-open{display:block}
+/* Where height:auto can animate, the help also grows from nothing, so the rows
+   below slide down rather than jump. Closed, its negative margin cancels the
+   12 px gap of the .frow column that a displayed tip adds. Elsewhere it only fades.
+   The sheet's Budget, Subject area… rows open the same way, with the footer
+   accordion's optional 260 ms height (M .faq). Plain CSS transitions reverse
+   from wherever they are, so quick re-toggling never jumps or leaves state. */
+@supports (interpolate-size:allow-keywords){
+ .sheet-b{interpolate-size:allow-keywords}
+ .sheet-b .tip{height:0;min-height:0;padding-block:0;margin-top:-12px;overflow:clip;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),height 180ms var(--ease-out),padding 180ms var(--ease-out),margin 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete}
+ .sheet-b .tip.is-open{height:auto;padding-block:10px;margin-top:0}
+ @starting-style{.sheet-b .tip.is-open{height:0;padding-block:0;margin-top:-12px}}
+ .sheet-b .dropdown::details-content{height:0;overflow:clip;transition:height 260ms var(--ease-out),content-visibility 260ms allow-discrete}
+ .sheet-b .dropdown[open]::details-content{height:auto;transition:height 260ms var(--ease-out)}
+}
+.sheet-b .frow>.chipbox{width:100%}
+.sheet-b .pts input.inp{flex:1;min-width:0}
+.sheet-b .pts .step{width:52px}
+.sheet-b .budget>.fld{width:auto}
+.sheet-b .dropdown>summary.inp{width:100%}
+@media (max-width: 1023px){.maths-control>select{display:block;min-width:148px}.maths-control>.seg{display:none}}
+@media (max-width: 599.98px){.fbar{padding:0}.fbar .more-filters{display:none}.status{padding:8px var(--gut);background:var(--panel);min-height:60px;flex-wrap:nowrap;gap:8px}.status .more{display:inline-flex;margin-left:auto;height:44px}.status>.copy,.status>.clear,.status>.edit-answers{display:none}.sheet-b .chipbox{max-width:100%;flex-wrap:wrap;height:auto;min-height:44px}.sheet-b .switch{white-space:nowrap;flex-wrap:wrap}.sheet-b .switch .aside{margin-left:44px}.sheet-b .info{margin-left:auto}.sheet-b .maths-control{width:100%}.sheet-b .seg{max-width:100%;height:44px}.sheet-b .seg button{padding:0 8px}.sheet-b .budget .affix{width:164px}.sheet-b .dropdown .option{min-height:44px}}
+@media (pointer: coarse),(max-width:599px){.info,.step{min-width:44px;min-height:44px}.chipbox{height:44px}.seg{height:44px}.dropdown>summary.inp{min-height:44px}.pop-f .btn{min-height:44px}.option{min-height:44px}}
+
+/* Round 2 density and A07: all offsets follow the actual visible chrome. */
+.page{max-width:none;--header-visible:0px;--columns-height:0px;--count-height:60px}
+body{font-size:15px}
+button{font-family:inherit}
+#top-marker{height:1px;margin-bottom:-1px}
+body.compact .mark{opacity:0;transform:translateY(-4px);pointer-events:none}
+body.compact .filters-btn{opacity:1;visibility:visible;transform:none}
+.status{min-height:36px;flex-wrap:nowrap;gap:6px}
+.status .count{min-width:0;flex:1;font-size:0}
+.status .count .count-lead,.status .cshort{font-size:15px}
+.count .count-lead{font-weight:400}
+.status .count>.k{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.count-summary{margin:0 0 10px;font-size:13px;line-height:1.5}
+.status .copy{white-space:nowrap}
+@media(min-width:600px){.status .count{flex:0 1 auto}}
+.count-summary .k{font-weight:400}
+.overview-actions>.btn.btn-q{font-weight:400}
+#header-list,.filters-btn{font-size:15px;font-weight:400}
+.filters-btn .ic{width:16px;height:16px}
+.filters-btn{gap:6px}
+.count{font-size:15px}
+.row{gap:10px 12px;padding:14px 16px}
+.row>.line,.row .chev{display:none}
+.row .r-main{padding-right:0}
+.r-t{font-weight:700;line-height:1.35}
+.sub{display:flex;align-items:center;min-width:0;gap:4px;font-size:14px}
+.sub .uc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.sub .cc{flex:none}
+.row .cell{align-self:start;justify-self:start;width:max-content;max-width:100%;border-radius:8px;padding:5px 10px;line-height:1.35}
+.row .cell .fig{font-size:15px;font-weight:600;line-height:1.35}
+.row .v-unk{width:max-content;max-width:100%;padding:4px 8px;border-radius:8px}
+@container (min-width: 800px){.row .v-unk .lab{display:none}}
+.row .v-unk .verd,.row .v-unk .fig{font-size:13px;font-weight:400;padding-left:0;text-indent:0;white-space:nowrap}
+.row .v-unk .m::before{display:none}
+.row .cc{background:var(--cty-fill);color:var(--cty-ink)}
+.row .lab{margin-bottom:3px;font-size:12px}
+.row .c-fee{justify-self:end;align-items:flex-end;text-align:right}
+.row .liv{display:none}
+.row .c-ddl .fig{white-space:nowrap}
+.row .c-ddl{flex-direction:column;align-items:flex-start;text-align:left}
+.row .verd{font-size:14px;line-height:1.35;font-weight:400;padding:0;text-indent:0}
+.row .fig .pt{display:inline-flex;flex-direction:column}
+.row .fig .pt.cutoff{display:inline}
+.row .fig .pt small{font-size:14px;font-weight:400}
+.row .fig .pt:not(:last-child){margin-right:4px}
+.row .c-ddl .lab{order:0}
+.filter-overview{padding:18px;font-size:14px;line-height:1.45}
+.filter-overview h2{font-size:18px;line-height:1.3;margin:0 0 2px}
+.filter-overview h3{font-size:13px;margin:18px 0 8px;color:var(--ink-2);font-weight:600}
+.filter-overview p{margin:0 0 12px;color:var(--ink-2)}
+.overview-actions{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0 0 -12px}
+.overview-actions>.btn{max-width:100%;white-space:normal;height:auto;min-height:var(--ctl);text-align:left}
+.overview-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:12px 0}
+.overview-kv dt{color:var(--ink-2)}
+.overview-kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.legend{display:grid;gap:8px;font-size:13.5px}
+.legend div{display:flex;gap:10px;align-items:center}
+.legend i{width:26px;height:16px;border-radius:4px;flex:none}
+.legend-fit{background:var(--fit-fill)}.legend-cond{background:var(--cond-fill)}.legend-time{background:var(--time-fill)}.legend-unknown{border:1.5px dashed var(--ink-3)}
+.mylist:not(.is-list):not(:has(.ml-note:not([hidden]))){display:none}
+.toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:grid;gap:8px;justify-items:center;pointer-events:none;max-width:calc(100vw - 24px);width:max-content}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--panel);padding:10px 14px;border-radius:10px;font-size:14px;animation:toast-in 240ms var(--ease-out)}
+.toast button{border:0;background:transparent;color:var(--accent-tint);font-weight:600;cursor:pointer;min-height:24px}
+.toast.out{animation:toast-out 160ms ease-in forwards}
+@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}
+@keyframes toast-in{from{opacity:0;transform:translateY(10px) scale(.98)}}
+.dropdown::details-content{transition:content-visibility 250ms allow-discrete}
+/* Only closing waits for the panel's fade. Delayed on opening too, the content was
+   still hidden when the toggle event fired, so focusing the facet search silently
+   did nothing (review round 2). */
+.dropdown[open]::details-content{transition:none}
+.dropdown>.dropdown-panel{transform-origin:top left;transform:scale(.97);opacity:0;transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)}
+.dropdown[open]>.dropdown-panel{transform:none;opacity:1}
+.dropdown>.dropdown-panel.right{transform-origin:top right}
+@starting-style{.dropdown[open]>.dropdown-panel{transform:scale(.97);opacity:0}}
+@media (min-width: 600px){
+ .cols{top:var(--header-visible);border-bottom-color:var(--hairline)}
+ #results,#results :is(li,a,button){scroll-margin-top:calc(var(--header-visible) + var(--columns-height) + 8px)}
+ @container (min-width: 800px){.row .lab{display:none}}
+}
+@media (min-width: 600px) and (min-height: 501px){.page{--header-visible:56px}}
+@media (min-width: 1200px){.split{gap:20px}.pane{top:calc(var(--header-visible) + 12px);max-height:calc(100dvh - var(--header-visible) - 24px)}}
+@media (max-width: 599.98px){
+ body.compact .hd,body.compact .hd-in{transform:none}
+ #results,#results :is(li,a,button){scroll-margin-top:calc(var(--count-height) + 8px)}
+ .row{gap:10px 12px;padding:14px 12px}.row .cell{font-size:13px;padding:4px 6px}.row .cell .fig{font-size:14px}
+ .row .verd,.row .fig .pt small{font-size:13px}.row .v-unk{padding:4px 6px}.row .v-unk .verd,.row .v-unk .fig{font-size:13px;font-weight:400;white-space:nowrap}
+ .sheet .dropdown>.dropdown-panel{transform:none;opacity:1;animation:none}
+}
+
+dialog.ob{border:0;padding:0;border-radius:16px;overflow:hidden;width:min(560px,calc(100vw - 32px));max-height:90dvh;box-shadow:var(--dialog-shadow);color:var(--ink);
+  opacity:0;transform:scale(.96) translateY(8px);transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out),overlay 250ms allow-discrete,display 250ms allow-discrete}
+dialog.ob[open]{opacity:1;transform:none;display:flex;flex-direction:column}
+@starting-style{dialog.ob[open]{opacity:0;transform:scale(.96) translateY(8px)}}
+dialog.ob::backdrop{background:var(--scrim);opacity:0;transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete}
+dialog.ob[open]::backdrop{opacity:1}
+@starting-style{dialog.ob[open]::backdrop{opacity:0}}
+.ob-bar{height:4px;background:var(--hover);flex:none}
+.ob-bar i{display:block;height:100%;background:var(--accent);width:100%;transform-origin:left;transition:transform 360ms var(--ease-out)}
+.ob-body{padding:22px 28px 8px;min-height:240px;overflow:auto;flex:1}
+.ob-n{font-size:13px;color:var(--ink-3);margin:0 0 6px}
+.ob-step{display:none}
+.ob-step.on{display:grid;gap:14px;animation:step-in 280ms var(--ease-out)}
+.ob-step.on.back{animation-name:step-back}
+@keyframes step-in{from{opacity:0;transform:translateX(18px)}}
+@keyframes step-back{from{opacity:0;transform:translateX(-18px)}}
+.ob h2{font-size:22px;letter-spacing:-.01em;margin:0;line-height:1.25}
+.ob h2:focus{outline:none}
+.ob p{margin:0;color:var(--ink-2)}
+.ob .note{background:var(--hover);border-radius:10px;padding:12px 14px;color:var(--ink);font-size:14px}
+.ob .chips{display:flex;flex-wrap:wrap;gap:8px}
+.ob .chip{height:var(--ctl);padding:0 14px;border-radius:18px;border:1px solid var(--hairline);background:var(--panel);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)}
+.ob .chip:hover{border-color:var(--edge)}
+.ob .chip:active{transform:scale(.96)}
+.ob .chip[aria-pressed=true]{background:var(--accent-tint);border-color:var(--accent);color:var(--accent-press);font-weight:600}
+/* Centred at every width, as on phones: left-aligned it read as a stray row
+   under the centred number on wide screens (Leon, 2026-11-05). */
+.big-pts{display:flex;align-items:center;justify-content:center;gap:14px}
+.big-pts output{font-size:44px;font-weight:700;letter-spacing:-.02em;min-width:2.2ch;text-align:center}
+.big-pts output.blank{color:var(--ink-3);font-weight:400}
+.big-pts .btn{width:44px;height:44px;justify-content:center;font-size:22px;padding:0}
+/* Top-aligned, not centred: Skip setup and Back/Next are the same --ctl
+   height, so their text shares one centre line and the "Discards" hint hangs
+   below. Centring the whole skip column pushed Skip above Back/Next. */
+.ob-foot{display:flex;align-items:flex-start;gap:8px;padding:14px 28px 20px;flex:none;border-top:1px solid var(--hairline)}
+.ob-foot .sp{flex:1}
+/* 12 px = the Skip button's 11 px padding plus its 1 px border: the column
+   moves left by it and the hint is indented by it, so the Skip text, the hint
+   and the step text above all start on one line. Change all three together. */
+.skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
+.skipwrap .btn.btn-q{padding-inline:11px}
+.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:4px}
+
+
+.sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
+.ob .note{border:0}
+/* The FAQ link lands below the sticky bar: the count bar on phones, the
+   header from 600 px. */
+#faq{scroll-margin-top:calc(var(--count-height) + 8px)}
+@media (min-width: 600px){#faq{scroll-margin-top:calc(var(--header-visible) + 8px)}}
+.ob .btn{border-color:var(--hairline);border-radius:8px;font-size:15px;font-weight:400}
+.ob .btn-p{font-weight:600;border-color:var(--accent)}
+.ob .btn-q{border-color:transparent}
+.ob .big-pts .btn{font-size:22px}
+.ob .switch{padding-left:0}
+.ob .big-pts input{width:90px;height:60px;font-size:44px;font-weight:700;text-align:center;border:0;background:transparent;appearance:textfield}
+.ob .big-pts input::-webkit-inner-spin-button{appearance:none}
+.ob .ob-hint{font-size:13px;padding-left:44px;margin-top:-8px}
+.ob .rng{display:grid;gap:8px;margin-top:12px}
+.ob .rng-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ob .rng-top .inp{max-width:164px;text-align:right;height:24px;border:0;background:transparent;padding:0;font-size:15px;font-weight:600;color:var(--ink)}
+.ob .rng-top .inp::placeholder{color:var(--ink)}
+.ob .chips .flag{width:20px;height:14px;border-radius:2px}
+html:has(.ob[open]){overflow:hidden}
+.sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
+.sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
+@media (max-width: 599.98px){
+ .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
+ .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}
+}
+@media (pointer: coarse),(max-width:599px){
+ .switch{min-height:44px}.hd .btn,.hd .lang{height:44px}.hd .lang{padding:0}.hd .lang button{min-height:44px;min-width:44px;padding:0 8px}.hd .btn{min-width:44px}.seg{padding:0;height:44px}.seg button{min-height:44px;min-width:44px}
+}
+.hd .lang,.seg{position:relative}
+.hd .lang button,.seg button{position:relative;z-index:1}
+.segment-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:6px;background:var(--panel);box-shadow:0 0 0 1px var(--hairline);transition:transform 280ms var(--spring-snappy);pointer-events:none}
+.hd .lang button[aria-pressed=true],.seg button[aria-pressed=true]{background:transparent;box-shadow:none}
+@media (pointer: coarse),(max-width:599px){.segment-thumb{top:0;bottom:0}}
+.listp>.f-sort .inp{min-width:0;border-color:var(--hairline)}
+.maths-control>select{border-color:var(--hairline);font-size:15px}
+.status .more{border-color:var(--hairline);font-weight:400;min-width:0;flex-shrink:1}
+.pane-close{position:absolute;top:8px;right:8px;z-index:2;width:36px;height:36px;padding:0;justify-content:center;border:0;background:var(--panel)}
+.pane:has(.filter-overview) .pane-close{display:none}
+.pane:has(.pane-close:not([hidden])) .d-head{padding-right:28px}
+.btn{transition:transform 120ms ease-out,background-color 120ms ease-out}
+.btn:active{transform:scale(.97)}
+.faq summary>.ic{width:16px;height:16px;flex:none;transition:transform 220ms var(--ease-out)}
+.faq details[open] summary>.ic{transform:rotate(45deg)}
+.foot{margin-top:48px}
+.switch input::after{box-shadow:var(--thumb-shadow)}
+input[type=range]::-webkit-slider-thumb{box-shadow:var(--thumb-shadow)}
+input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
+@media(min-width:600px) and (max-width:700px){.slot{width:36px}}
+@container (min-width: 800px){.cols{min-height:39px;align-items:center;padding-block:10px}.cols button{padding:0}.cols .r{white-space:nowrap}}
+@media (pointer:coarse),(max-width:599px){
+ .sheet-b .pts input.inp,.budget .inp,.ob .rng-top .inp,.maths-control>select,input[type=range]{min-height:44px}
+ .sheet-b .dropdown>summary .dd-chev{transform:rotate(-90deg)}
+ .sheet-b .dropdown[open]>summary .dd-chev{transform:rotate(0deg)}
+}
+@media (max-width: 599.98px){
+ .sheet-b .f-hl{position:relative;display:block;padding-right:44px}
+ .sheet-b .f-hl .info{position:absolute;top:0;right:0}
+ .sheet-b .f-hl .switch{min-width:0;width:100%;padding:8px 6px 8px 10px;gap:6px 10px}
+ .sheet-b .f-hl .switch .aside{margin-left:44px;flex-basis:calc(100% - 44px)}
+ .sheet-b .f-hl .switch>span{white-space:nowrap}
+}
+.dropdown-panel,.toast{box-shadow:var(--pop-shadow)}
+.sheet-b .dropdown-panel{box-shadow:none}
+.dropdown-panel>.options:not(.at-end){mask-image:linear-gradient(var(--ink) calc(100% - 28px),transparent)}
+.dropdown-panel .opt-q{position:sticky;top:0;z-index:1;background:var(--panel);padding:6px 4px}
+.dropdown-panel .opt-q .inp{border-color:var(--hairline);background:var(--hover);height:36px}
+.dropdown-panel>.options:has(.opt-q){max-height:356px}
+.dropdown-panel .option-count{margin-left:auto;color:var(--ink-3);font-size:13px}
+.dropdown-panel .option input{width:16px;height:16px}
+.dropdown-panel .flag{width:20px;height:14px}
+.budget .inp{font-size:13px}
+.ob .ob-body{min-height:min(240px,calc(90dvh - 160px));flex:1 1 auto}
+.ob .ob-foot .btn{flex-shrink:0}
+@media (pointer:coarse){.ob .chip{min-height:44px}}
+@media(max-width:360px){#header-list{position:relative;width:44px;padding:0;justify-content:center}#header-list .badge{position:absolute;right:1px;top:1px;min-width:14px;height:14px;font-size:10px;padding:0 3px}.hd-in{gap:6px}}
+
+/* Review round 2. */
+/* A touch screen gets 44 px controls at any width: the tokens move, so every
+   control sized from them follows, and the fixed sizes are named here. */
+@media (pointer:coarse){
+ .page{--ctl:44px;--tap:44px;--fs-ctl:16px}
+ .search .inp{height:44px}
+ .pane-close{width:44px;height:44px}
+ .pane:has(.pane-close:not([hidden])) .d-head{padding-right:36px}
+ .toast button,.detail-originals,.mark{min-height:44px}
+ .mark{top:-4px}
+ @container (min-width: 800px){.cols{padding-block:0}.cols button{min-height:44px;align-items:center}.c1 button{margin-top:0}}
+}
+/* Headings line up with the values, which sit inside their tile padding (mockup
+   .cols .m, .cols .fee). Programme has no tile and stays where it is. */
+@container (min-width: 800px){
+ .cols [data-sort=points],.cols [data-sort=deadline]{margin-left:10px}
+ .cols [data-sort=tuition]{margin-right:10px}
+ /* "V rámci tvojich IB bodov" is 4 px wider than the column and borrows the gap,
+    rather than wrapping on every Slovak row. Half the gap only: a wider tile
+    would touch an urgent deadline tile beside it. */
+ .row .c-pts{max-width:calc(100% + 6px)}
+}
+/* Without column headings each label sits above its tile, as in the mockup (.lbl):
+   pulled out of flow so it never sets the tile's width or wraps inside it. Where
+   the headings show, the existing rule clips the label for screen readers only. */
+.row .cell{position:relative;margin-top:19px}
+.row .cell .lab{position:absolute;bottom:100%;left:0;margin:0 0 3px;white-space:nowrap}
+.row .c-fee .lab{left:auto;right:0}
+@container (min-width: 800px){.row .cell{margin-top:0}}
+/* Status row: 36 px, 21 px above the table, as in the mockup. */
+@media (min-width:600px){
+ .status,.status.is-stuck{padding:0 var(--gut);margin-bottom:21px}
+ .count-summary{margin:-13px 0 10px}
+ .status .count-lead{white-space:nowrap}
+}
+@media (min-width:600px) and (max-width:799.98px){.status{flex-wrap:wrap;justify-content:flex-end}.status .btn{padding:0 8px}}
+/* Verdicts: colour follows the tile, as in the mockup, and a short last word never
+   sits alone ("4+"). Cell text breaks at spaces only, never inside a word. */
+.row .cell{overflow-wrap:normal}
+.row .verd{text-wrap:balance}
+.row .v-fit .fig,.row .v-fit .fig small{color:var(--fit-ink)}
+.row .v-fit .fig{font-weight:700}
+.row .v-cond .fig,.row .v-cond .fig small{color:var(--cond-ink)}
+.row .v-time .fig{color:var(--time-ink)}
+.row .fig .pt small::first-letter{text-transform:uppercase}
+/* Verdicts wrap below 800 px: no line may end in a dangling "·". */
+@media (max-width:799.98px){
+ .count-summary .sep{display:none}
+ .count-summary{display:flex;flex-wrap:wrap;gap:0 12px}
+}
+@media (max-width:599.98px){
+ /* A little more room for the verdict, so it wraps at two lines, not three. A date
+    or "Not published" may lean into the gap by a pixel or two, never get clipped. */
+ .row{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,.95fr)}
+ .row :is(.c-ddl,.c-fee){max-width:none}
+}
+/* The mockup's facet buttons keep an empty count slot, so the chevron sits 12 px
+   from the label (6 + 6), not 6. */
+@media (min-width:600px){.dropdown>summary:has(.dropdown-count[hidden]) .dd-chev,.dropdown>summary:has(.scalar-count:empty) .dd-chev{margin-left:6px}}
+/* A chosen radio is shown by its dot alone. Unlike a ticked checkbox, one of them
+   is always chosen, and a filled, bold first row read as an active filter. */
+.dropdown-panel .option:has(input[type=radio]:checked){background:none;font-weight:400}
+.dropdown-panel .option:has(input[type=radio]:checked):hover{background:var(--hover)}
+.foot .src{font-size:inherit;line-height:inherit;color:inherit}
+.foot .stat{display:inline}
+@media (min-width:600px) and (pointer:fine){.search .inp{font-size:15px}}
+/* Smallest phones: the three facts take only what they need, and the search field
+   gives its icon's room to the placeholder. A fee that still does not fit moves
+   to its own line rather than overlap. */
+@media (max-width:359.98px){
+ .search .affix>.ic{display:none}
+ .hd .search .inp{padding:0 4px 0 10px}
+ .search .inp:placeholder-shown::-webkit-search-cancel-button{display:none}
+ .row{display:flex;flex-wrap:wrap;gap:10px 6px;padding:12px 10px}
+ .row .r-main{flex:0 0 100%}
+ .row .cell{padding:4px}
+ .row .v-unk{padding:4px}
+ .row .c-pts{max-width:108px}
+ .row .c-fee{flex:1 1 0;width:auto;min-width:min-content}
+ .row .c-fee.v-unk{flex:none;width:max-content;margin-left:auto}
+ /* Each label above a tile now counts toward the tile's width: it stays in
+    flow with no height and is lifted back above the tile (4 px padding + 3 px
+    gap + 16 px line). Out of flow, Slovak "Školné pre EÚ / rok" ran left past
+    its narrow fee tile into "Termín" (verification of PR 1); now a fee whose
+    label does not fit wraps to its own line. */
+ .row .cell .lab{position:relative;bottom:auto;left:auto;right:auto;top:-23px;order:-1;height:0;margin:0 -4px -2px}
+ .listp>.f-sort>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+}
+/* Batch 2 · A: header and filter bar */
+/* The 30 px tile looked undersized beside the 44 px controls, and its 44 px hit
+   area spilled 8 px over Search because the slot was only 36 px wide (item 1).
+   Leon, 2026-11-07: the tile is as tall as Search and the language switch, with
+   Search's 10 px corners: 44 px here, 36 px with a fine pointer from 600 px. */
+@media (max-width:599.98px),(pointer:coarse){
+ .mono{width:44px;height:44px;font-size:15px;border-radius:10px}
+ .mark{min-width:44px;min-height:44px}
+}
+@media (max-width:599.98px){
+ .slot{width:44px;height:44px}
+ .mark{position:relative;top:0;width:44px;height:44px;justify-content:center}
+}
+@media (min-width:600px) and (max-width:700px) and (pointer:coarse){
+ .slot{width:44px}
+ .mark{width:44px;justify-content:center}
+}
+/* At 600–700 px the slot is only as wide as the logo, but the labelled compact
+   Filters button is 87–120 px, so Search covered it and cut it to "Fil…" with its
+   right part unclickable. Widening the slot only while compact would make Search
+   jump sideways, and widening it for good would cost Search about 90 px, so the
+   button shows its icon alone here, filling the slot (44 px on touch). "Filters"
+   stays in its accessible name, and the count sits on the corner, still clear of
+   Search across the 16 px gap. */
+@media (min-width:600px) and (max-width:700px){
+ .filters-btn{width:100%;padding:0}
+ .filters-btn>span:not(.badge){position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .filters-btn>.badge{position:absolute;top:-4px;right:-8px}
+}
+/* Below 700 px the wordmark does not fit, but it is the page's only h1. It was
+   display:none, which took the heading out of the accessibility tree, so it is
+   clipped instead: no space taken, still read and still reachable (item 2). */
+@media (max-width:700px){
+ .mark h1{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+
+/* One gap inside and between the filter rows. Controls wrap whole; extra rows are
+   fine for Slovak, long selections and zoom (item 3). Two rows at 1024 px is the
+   target, and measured without help it misses: row 1 in Slovak by 13 px and row 2
+   in English by 42 px. So only here, and never the gap or the points field: the
+   maths buttons keep the tighter padding they had, and a closed facet's chevron
+   gives up its 6 px empty count slot. From 1100 px everything fits as drawn. */
+.fbar .more-filters{gap:8px}
+@media (min-width:1024px) and (max-width:1099.98px){
+ .seg button{padding:0 6px}
+ .fbar .dropdown>summary:has(.dropdown-count[hidden]) .dd-chev,.fbar .dropdown>summary:has(.scalar-count:empty) .dd-chev{margin-left:0}
+ #budget-value:empty{display:none}
+}
+
+/* The count sat in an 18 px line box beside fixed-height buttons, so it read
+   lower and smaller than "Edit my answers" (item 8). .cfull, not .count: .cshort
+   shares that class and display:flex would show it beside the full sentence. The
+   clipped full sentence on a stuck phone bar must not keep the height. */
+.status .cfull{display:flex;align-items:center;min-height:var(--ctl);line-height:20px}
+.status .count .count-lead,.status .btn{font-size:15px;line-height:20px}
+@media (max-width:599.98px){.status.is-stuck .cfull{min-height:0}}
+
+/* The Deadline note, indented to the radio's text: 8 px row padding, the 16 px
+   radio and its 10 px gap (item 11). */
+.opt-note{display:block;padding:0 8px 6px 34px;font-size:var(--fs-12);font-weight:400;line-height:16px;color:var(--ink-2)}
+
+/* Batch 2 · B: share and My list */
+.copy-short{display:none}
+.copy-help{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.copy-status{display:none}
+.sheet-b .copy-long{display:inline}
+.sheet-b .copy-short{display:none}
+/* The sheet already has a 16px grid gap; leave 5px under the copy action and help. */
+.sheet-b .copy-help{position:static;width:auto;height:auto;margin:-11px 0 0;overflow:visible;clip-path:none;white-space:normal}
+.sheet-b .copy-status:not(:empty){display:block;margin:-11px 0 0;font-size:var(--fs-13);color:var(--ink-2)}
+@media(min-width:600px) and (max-width:1023.98px){.status .copy-long{display:none}.status .copy-short{display:inline}}
+/* A tablet's wrapping toolbar can put Share near either edge. Anchor its
+   panel to the toolbar's right edge, keeping the summary's vertical position. */
+@media(min-width:600px) and (max-width:1023.98px){
+ .ml-tools{position:relative}
+ #ml-share{position:static}
+ #ml-share>.ml-panel{left:auto;right:0;top:auto}
+}
+
+
+
+/* Batch 2 · C: detail */
+.d-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px;flex-basis:100%}
+.d-actions .btn{min-height:44px;height:auto;white-space:normal;text-align:center;padding-block:10px}
+.dd-note{display:block;font-size:13px;color:var(--ink-2);margin-top:4px}
+/* Print keeps the official link as a plain left-aligned line, as before C1. */
+@media print{.d-actions{display:block}.d-actions .btn{min-height:0;text-align:left}}
+
+/* Alignment fixes · list, detail, Compare */
+/* The alignment audit of 2026-11-05 (list-detail and compare findings). Each
+   rule here has a smoke measurement in runAlignListCompare. */
+/* A degree keeps its words together but wraps inside itself once it is wider
+   than the line. "Jednostupňové magisterské štúdium (dlhý cyklus)" is 384 px on
+   one line: nowrap stretched the pane past its edge and ran off a 320 px row. */
+.deg,.d-title .deg{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal}
+/* Faculty names need a whole-word minimum width beside the country badge. */
+.sub .identity{overflow-wrap:normal}
+/* A label above a tile starts where the tile's text starts, not at the tile's
+   edge: the value sits inside the cell padding (4, 6 or 10 px), so plain cells
+   had their label hanging out to the left and tinted ones did not. */
+.row .cell .lab{padding-left:inherit}
+.row .c-fee .lab{padding-left:0;padding-right:inherit}
+/* Compare and Save centre on the title's first line (16 px x 1.35), not 8 px
+   below it. */
+.r-main>:is(.cmpi,.star){margin-top:calc(var(--fs-16) * 1.35 / 2 - 22px)}
+/* A tap leaves no hover box behind on a touch screen; the pressed colour stays. */
+@media (pointer:coarse){
+ .r-main>:is(.star,.cmpi):hover{background:none}
+ .r-main>:is(.star,.cmpi):not([aria-pressed="true"]):hover{color:var(--ink-2)}
+}
+/* The last open row's details follow the card's rounded corners. */
+#results>.item:last-child>.expand>.expand-inner{border-radius:0 0 calc(var(--r-panel) - 1px) calc(var(--r-panel) - 1px)}
+/* A sort heading's hover and press area is its label, not the whole column. */
+@container (min-width: 800px){.cols>button{justify-self:start}}
+
+/* The detail's Save and Compare: one line each, or stacked. Labels break only
+   between words (.detail's overflow-wrap:anywhere broke "porovnani/a"). The
+   pair stacks when the detail is too narrow for both labels side by side:
+   the Slovak labels need about 450 px, the English ones about 330 (measured
+   in Chrome); any other language takes the Slovak width. */
+.d-foot{container:dfoot / inline-size}
+.d-actions .btn{overflow-wrap:normal}
+.d-actions :is(.save,.cmpb) .ic{width:18px;height:18px}
+@container dfoot (max-width: 449.98px){.d-foot>.d-actions{grid-template-columns:minmax(0,1fr)}}
+@container dfoot (min-width: 330px){.d-foot>.d-actions:lang(en){grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Compare. Every column's Save sits at the foot of its header cell, so the
+   Saves form one line across the row whatever the names' lengths; the cell
+   keeps room for it: 66 = 10 below Save + 44 Save + 12 above it, so the tallest
+   name sits 12 px over the Saves (Leon, 2026-11-07, was 8). One width for Save
+   and Saved, so toggling never shifts. */
+.cmp-t th.cmp-p{padding-bottom:66px}
+.cmp-t th.cmp-p .cmp-acts{margin:0}
+.cmp-t th.cmp-p .cmp-save{position:absolute;left:12px;bottom:10px;width:min(calc(100% - 24px),6.5rem);padding:0 8px}
+/* Out of flow, Save no longer widens its column, so a column keeps room for
+   the longest label, Slovak "Uložené" with its icon (86 px), and every Save
+   is that wide, whatever its column's width. Phone columns are equal anyway:
+   there Save fills its column up to 6.5rem (and drops its icon below 360 px). */
+@media (min-width:600px){
+ .cmp-t th.cmp-p{min-width:110px}
+ .cmp-t th.cmp-p .cmp-save{width:86px;border-radius:8px}
+}
+/* Below 1024 px a column is too narrow to share its first lines with the
+   "x": a name broke beside it ("Nanobiolo / gy") although it fits the column.
+   The "x" gets its own strip at the top instead. */
+@media (max-width:1023.98px){
+ .cmp .cmp-t th.cmp-p::before{display:none}
+ .cmp-t th.cmp-p{padding-top:44px}
+}
+@media (max-width:599.98px){
+ .cmp-t th.cmp-p{padding-bottom:60px}
+ .cmp-t th.cmp-p .cmp-save{left:8px;bottom:8px;width:min(calc(100% - 16px),6.5rem)}
+}
+/* 600–1023 px: the fact names take 6.5rem, as on phones, rather than 10rem,
+   which left three or four programmes about 112 px each. */
+@media (min-width:600px) and (max-width:1023.98px){.cmp .cmp-t tbody th,.cmp .cmp-t .cmp-c{width:6.5rem;padding-inline:10px}}
+/* One programme: the column is as wide as its facts, so its "x" stays near
+   the name instead of 1000 px away at the card's edge. */
+@media (min-width:600px){.cmp-t[data-n="1"]{width:auto}}
+/* A fact name shares its first baseline with the values beside it. */
+.cmp .cmp-t tbody th{line-height:20px}
+/* The official link is a line of text: its icon follows the last word, the
+   value starts on the first line, and on paper its address follows the words
+   instead of squeezing them to one word per line. The padding keeps the tap
+   area without moving the text: it was inline, whose padding never counts
+   toward the height, so with a coarse pointer the link was 42 px, not 44
+   (review of PR 1). An inline-block counts it, and the negative margins give
+   the room back to the line, so the text does not move; the words still wrap
+   inside it with the icon on the last word. */
+.cmp-t .lnk{display:inline-block;min-height:var(--tap);padding-block:calc((var(--tap) - 20px) / 2);margin-block:calc((20px - var(--tap)) / 2);line-height:20px}
+.cmp-t .lnk .ic{display:inline-block;margin-left:4px;vertical-align:-2px}
+.cmp-t .lnk-end{white-space:nowrap}
+/* The view's own buttons share one height: Close, Save and Browse are 44 px
+   (Close was 28, Browse 36). */
+#cmp-close,#cmp-browse{height:44px}
+/* Opening Compare clears whatever sticks above it, plus 8 px (A07). */
+.cmp{scroll-margin-top:calc(var(--header-visible) + 8px)}
+@media (max-width:599.98px){.cmp{scroll-margin-top:calc(var(--count-height) + 8px)}}
+/* While Compare is open the count describes the hidden list ("2 of 2 saved
+   programmes" above "Compare 4 programmes"), so it is not shown. display, not
+   visibility: a hidden count kept its width, an empty gap left of "Edit my
+   answers" on desktop (review of PR 1). */
+.stream:has(>#compare:not([hidden])) :is(#result-count,.status .cshort){display:none}
+.stream:has(>#compare:not([hidden]))>#count-summary{display:none}
+/* Toast actions: one line and a 44 px target ("Späť" was 41 px wide). */
+.toast button{flex:none;min-width:44px;white-space:nowrap}
+/* On paper there is no Save or "x", so no room is kept for them. */
+@media print{.cmp .cmp-t th.cmp-p{padding-block:10px}.cmp .cmp-t .lnk .ic{display:none}}
+
+/* Alignment fixes · header, My list, setup */
+/* Header (alignment audit 2026-11-05). round2.js shows the long Search hint
+   only where it fits whole; the ellipsis is a safety net for the moment before
+   the font loads. From 600 to 700 px the "/" hint gave up 40 of the field's
+   ~90 px, so it goes there, as it does on phones. */
+.search .inp{text-overflow:ellipsis}
+@media (min-width:600px) and (max-width:700px){.search kbd{display:none}.hd .search .inp{padding-right:10px}}
+/* On phones the filter band is empty (its controls live in the sheet), so its
+   hairline, plus the 1 px grey of the stuck-row marker, doubled the header's
+   hairline into a thick grey stripe. */
+@media (max-width:599.98px){.fslot{border-bottom:0}.stuck-mark{margin-inline:calc(-1 * var(--gut));background:var(--panel)}}
+/* The wordmark ended exactly at the link's edge, so the focus ring touched the
+   "r" of "Finder"; the tile side has its inset. Not while compact, where the
+   link is the tile alone. */
+@media (min-width:701px){body:not(.compact) .mark{padding-right:6px}}
+/* SK/EN: the ring drawn outside a 28 px button merged with the pill's border
+   (and crossed the neighbour on touch), so it sits just inside the button. */
+.hd .lang button:focus-visible{outline-offset:-3px}
+/* At 360 px and under the My list count sat on the button's corner, over its
+   border; it stays in the corner, inside. */
+@media (max-width:360px){#header-list .badge{top:3px;right:3px}}
+/* The Filters sheet. My IB points: the label and the number share the room, so
+   a long label wraps to two lines before the field gets too narrow for
+   "napr. 36" (it was 30 px at 320 px in Slovak). */
+.sheet-b .pts>label{flex:1 1 0;white-space:normal;line-height:18px}
+.sheet-b .pts input.inp{flex:1 1 0;min-width:64px}
+/* One left edge at the bottom: Copy link sat at the right (the bar's
+   margin-left:auto) 28 px below the rows, and "Edit my answers" (now first in
+   the sheet, index.html) had its text inset by the button padding. The -15 px
+   is .btn's 14 px padding plus its 1 px border. */
+.sheet-b .copy{margin:0}
+.sheet-b .sheet-edit{margin-left:-15px}
+/* That margin puts the button 1 px from the sheet's scrolling edge, which cut
+   off the left of its focus ring (review of PR 1, 320 px). The ring is drawn
+   inside the button instead, as on SK/EN; the button does not move. */
+.sheet-b .sheet-edit:focus-visible{outline-offset:-3px}
+
+/* My list (alignment audit). From 600 px Clear my list is a small outlined
+   button like Share, Export and Print, in secondary ink, at the toolbar's
+   right end; it was a borderless 36 px link 4 px above their labels. The CSV
+   note is a footnote on its own line, not a toolbar item, and like Export it
+   is not shown for a shared list (ml-mine, index.html). */
+.ml-tools>.ml-export-note{flex:0 0 100%;margin:0}
+@media (min-width:600px){
+ .mylist .ml-tools>#clear-shortlist{height:var(--tap);margin-left:auto;padding:0 10px;border:1px solid var(--edge);background:var(--panel);color:var(--ink-2);font-size:var(--fs-13);text-decoration:none}
+}
+/* 600–1023 px: Group by takes its own row, label beside the select as on
+   phones, so the four buttons stay together on the next row. They did not fit
+   beside it in Slovak at 700 px or in English at 600 px, and Clear wrapped alone. */
+@media (min-width:600px) and (max-width:1023.98px){
+ .ml-group{flex:0 0 100%;display:flex;align-items:center;gap:8px}
+ .ml-group>.inp{width:10rem}
+}
+/* Phones: every label fits its half of the 2 x 2 grid on one line. "Vymazať
+   môj zoznam" wrapped beside its icon at 390 px, so Slovak says "Vymazať
+   zoznam" (js/i18n.js). Under 360 px the icons go (Share has none anyway) and
+   the padding is 6 px, which fits "Vymazať zoznam" and "Exportovať CSV". If a
+   label still cannot fit (zoom, larger text), it moves under its icon, both
+   centred, rather than wrapping beside an icon stuck at the left. */
+@media (max-width:599.98px){
+ .mylist.is-list .ml-tools>.btn{flex-wrap:wrap;align-content:center;row-gap:2px}
+}
+@media (max-width:359.98px){
+ .mylist.is-list .ml-tools>.btn>.ic,.mylist.is-list .ml-tools>#clear-shortlist>.ic{display:none}
+ .mylist.is-list .ml-tools>.btn,.mylist.is-list .ml-tools>#clear-shortlist.btn,.mylist.is-list .ml-tools>.ml-pop>summary{padding-inline:6px}
+}
+/* An empty My list: the empty card lines up with the pane (the bar above
+   already leaves 12 px), and the bar keeps its rounded bottom, since no list
+   is joined under it. */
+.mylist:not([hidden]) ~ .split .empty{margin-top:0}
+
+/* Setup (alignment audit). The switch label could not wrap, so at 320 px the
+   step was wider than the dialog and scrolled sideways (Slovak lost 50 px at
+   the right); the step's one column now never outgrows the dialog. */
+.ob-step.on{grid-template-columns:minmax(0,1fr)}
+.ob .switch{white-space:normal}
+/* One button height on every screen: Skip, Back and Next were 36 px from
+   600 px but the done screen's buttons are 44 px, so the row jumped. */
+.ob-foot .btn{height:44px}
+/* The Skip hint (.skipwrap small above) sat 4 px into the Skip button's box,
+   so the focus ring (2.5 px at a 2 px offset) ran into it; it is 4 px below. */
+/* The done screen is shorter than the steps; the steps' minimum height left
+   90–130 px of nothing above its buttons. */
+.ob .ob-body:has(.ob-done){min-height:0}
+/* Phones: Next/Finish took the end of the row and wrapped alone under Back
+   (320 px, and Slovak at 390 px). Now it is always full width on its own row,
+   on top as on the done screen, with Skip and Back together below. */
+@media (max-width:599.98px){
+ .ob-foot:not(.ob-done-foot)>.btn-p{order:-1;flex:0 0 100%;margin-left:0}
+ .ob-foot:not(.ob-done-foot){row-gap:12px}
+}
+/* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
+   from 600 px the footer heading starts on the first question's line. */
+.faq summary>.ic{margin-top:calc(.5lh - 8px)}
+@media (min-width:600px){.foot h2{margin-top:12px}}
+
+/* Batch 3 · A: Compare */
+/* The row's compare toggle sits beside the save star, which keeps its outer
+   place: title | compare | save. Both keep the required 44 px target,
+   above the row's whole-row button. On is the filled-pan symbol plus accent. */
+.r-main{grid-template-columns:minmax(0,1fr) auto auto;column-gap:4px}
+.r-main>.cmpi{grid-column:2;grid-row:1/span 2}
+.r-main>.star{grid-column:3}
+.r-main>:is(.cmpi,.star){min-width:44px;min-height:44px}
+.cmpi{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:max(32px,var(--tap));height:max(32px,var(--tap));margin:-4px 0 0;padding:0;border:0;border-radius:var(--r-cell);background:none;color:var(--ink-2);cursor:pointer}
+.cmpi .ic{width:20px;height:20px}
+.cmpi:hover{background:var(--panel);color:var(--accent)}
+.cmpi[aria-pressed="true"]{color:var(--accent)}
+@media (pointer:coarse){.cmpi{width:2.75rem;height:2.75rem}}
+/* The compare view at any count: one column says what to do next, none is
+   an empty state. Each column heads with its "x" at the top right and its
+   Save toggle under the names, never squeezed side by side. */
+#cmp-h:focus{outline:none}
+#cmp-h:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cmp-one{margin:0;padding:8px 16px 0}
+.cmp-empty{display:grid;gap:8px;justify-items:start;padding:16px}
+.cmp-empty[hidden]{display:none}
+.cmp-empty :where(h3,p){margin:0}
+.cmp-empty h3{font-size:var(--fs-16);font-weight:700}
+.cmp-empty p{max-width:60ch;color:var(--ink-2)}
+.cmp-head .ml-note{flex-basis:100%;margin:0}
+#cmp-close .ic{width:16px;height:16px}
+#cmp-close{gap:6px}
+/* The "x" sits in the cell's top-right corner; an empty float of its size
+   keeps only the first lines of the name clear of it, so a long name gets the
+   whole column below (reserving the corner down the whole cell broke phone
+   names mid-word). Save never breaks inside its word. */
+.cmp-t th.cmp-p{position:relative}
+.cmp-t th.cmp-p::before{content:"";float:right;width:36px;height:34px}
+.cmp-t th.cmp-p .cmp-n{overflow-wrap:break-word;hyphens:auto}
+.cmp-acts{margin-top:8px}
+.cmp-save{min-height:44px;height:auto;max-width:100%;padding:0 8px;gap:4px;overflow-wrap:normal;font-weight:400}
+@media (max-width:359.98px){.cmp-save .ic{display:none}}
+.cmp-save .ic{width:16px;height:16px;fill:none;flex:none}
+.cmp-save[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
+.cmp-save[aria-pressed="true"] .ic{fill:currentColor}
+.cmp-x{position:absolute;top:4px;right:4px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:8px;background:none;color:var(--ink-2);cursor:pointer}
+.cmp-x:hover{background:var(--hover);color:var(--accent)}
+.cmp-x .ic{width:18px;height:18px}
+/* The entry: a header button beside My list where the header sticks, the
+   tray at the bottom where it does not (the same query as app.js). From 600
+   to 1023 px both header buttons are icon and count only; the label stays in
+   their names. */
+#header-compare{font-size:15px;font-weight:400}
+.hb .ic{width:16px;height:16px;flex:none}
+@media (max-width:599.98px),(max-height:500px){#header-compare{display:none}}
+@media (min-width:600px) and (max-width:1023.98px){
+ .hb .hb-l{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .hd-right .hb{padding:0 8px}
+}
+.cmp-tray{position:fixed;inset-inline:0;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px var(--gut) calc(8px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--hairline);box-shadow:var(--pop-shadow)}
+.cmp-tray[hidden]{display:none}
+.cmp-tray p{margin:0;min-width:0;font-size:15px;line-height:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.cmp-tray .btn{flex:none;min-height:44px;padding:0 18px;font-size:15px}
+@media (min-width:600px) and (min-height:501px){.cmp-tray{display:none}}
+body.has-tray{padding-bottom:var(--tray-h,0px)}
+html{scroll-padding-bottom:var(--tray-h,0px)}
+/* A wide but short window (500 px tall or less) has the tray and the pane:
+   the pane's end stays above it. */
+@media (min-width:1200px){body.has-tray .pane{max-height:calc(100dvh - var(--header-visible) - 24px - var(--tray-h,0px))}}
+.toasts{bottom:calc(24px + var(--tray-h,0px))}
+/* Print: no tray and no space kept for it. An open comparison prints instead
+   of the list, every column in full, each official link with its address. */
+@media print{
+ body.has-tray{padding-bottom:0}
+ html{scroll-padding-bottom:0}
+ .cmp:not([hidden]) ~ .split{display:none}
+ .cmp-scroll{overflow:visible}
+ .cmp-frame::after{display:none}
+ .cmp-t a.lnk::after{content:" — " attr(href);font-size:.85em;word-break:break-all}
+ .cmp-t .lnk svg{display:none}
+}
+/* Phones: Close is a 44 px icon at the heading's right; "Show only
+   differences" takes the second row (Leon, 2026-11-05). From 600 px the head
+   stays as it was. With three or four programmes, the arrows and the range say
+   more columns are off to the side, and a fade marks the edge until the end. */
+/* A dashed "No minimum published" wraps in a narrow column instead of poking
+   past it, which kept the last column from ever scrolling fully into view. */
+.cmp-t .unk-t{white-space:normal}
+.cmp-frame{position:relative}
+.cmp-frame::after{content:"";position:absolute;top:0;right:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--panel));pointer-events:none}
+.cmp-frame.at-end::after{display:none}
+.cmp-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px;border-bottom:1px solid var(--hairline)}
+.cmp-range{margin:0;font-size:var(--fs-14);color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:center}
+.cmp-nav .btn{width:44px;height:44px;padding:0}
+.cmp-nav .btn:disabled{color:var(--ink-3);cursor:default}
+.cmp-nav .ic{width:20px;height:20px}
+@media (min-width:600px){.cmp-nav{display:none}}
+@media (max-width:599.98px){
+ .cmp-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding:8px 8px 8px 16px}
+ #cmp-h{grid-column:1;grid-row:1}
+ #cmp-close{grid-column:2;grid-row:1;width:44px;height:44px;padding:0}
+ .cmp-close-t{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ #cmp-diff-label{grid-column:1/-1;grid-row:2}
+ .cmp-head .ml-note{grid-column:1/-1}
+}
+/* The detail: the official link across the top, then Save and Compare as an
+   equal pair (Leon, 2026-11-05). Without a link, the pair is the first row. */
+.d-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+.d-actions>a.btn-p{grid-column:1/-1}
+.cmpb .ic{width:18px;height:18px}
+.cmpb[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-tint)}
+
+/* Batch 3 · B: My list */
+/* B2: the back button's chevron points left, and only in the list view;
+   Clear my list's trash icon is for the phone toolbar only. */
+.ml-open>.ic{display:none}
+.mylist.is-list .ml-open>.ic{display:block;transform:rotate(90deg)}
+#clear-shortlist>.ic{display:none}
+@media (max-width: 599.98px) {
+  /* Leon, 2026-11-05: "Back to all programmes" sat misaligned at the end of
+     the title row. It is a quiet back control now, alone on the first row and
+     flush with the panel's left edge; the title and count follow. */
+  .mylist.is-list .ml-open{order:-1;flex:0 0 100%;justify-content:flex-start;margin-left:0;min-height:44px;padding:0;border-color:transparent;background:none;color:var(--ink-2);font-size:var(--fs-14)}
+  .mylist.is-list .ml-open:hover{background:var(--hover)}
+  /* The four tools are an even 2 x 2 block of 44 px buttons; 14 px text and
+     8 px gaps keep it compact without shrinking the touch targets. */
+  /* At 320 px "Vymazať môj zoznam" is wider than its half, so a label may wrap
+     to two lines; the row's cells then stretch to the same height. */
+  .mylist.is-list .ml-tools{gap:8px;align-items:stretch}
+  .mylist.is-list .ml-tools>.ml-group{align-self:center}
+  .mylist.is-list .ml-tools>.ml-pop:not([open]){display:flex;flex-direction:column}
+  .mylist.is-list .ml-tools>.ml-pop:not([open])>summary{flex:1 1 auto}
+  .mylist.is-list .ml-tools>.btn,.mylist.is-list .ml-tools>.ml-pop>summary{height:auto;min-height:44px;font-size:var(--fs-14);line-height:18px;white-space:normal;text-align:center}
+  /* Clear my list looked like an empty grid cell as underlined quiet text.
+     It is an outlined button like its neighbours, in secondary ink. */
+  .mylist.is-list .ml-tools>#clear-shortlist{border:1px solid var(--edge);background:var(--panel);color:var(--ink-2);text-decoration:none;padding:0 10px}
+  #clear-shortlist>.ic{display:block}
+  .mylist.is-list .ml-tools>.help{font-size:var(--fs-13)}
+}
+
+/* The empty-list navigation has no action on paper. */
+@media print {#empty-back{display:none}}
+
+/* Batch 3 · C: setup and home */
+/* Setup's done screen (C1): two large buttons, the primary on the right from
+   600 px and on top, full width, on phones. The primary is first in the DOM, so
+   the row is reversed on wide screens; the spacer (last) pushes both right. */
+.ob .ob-count{color:var(--ink);font-size:17px;font-weight:600}
+.ob-done-foot{flex-direction:row-reverse}
+.ob-done-foot>.btn{min-height:44px;padding-inline:18px}
+@media (max-width:599.98px){
+ .ob-done-foot{flex-direction:column;align-items:stretch}
+ .ob-done-foot>.btn{width:100%;justify-content:center}
+ .ob-foot.ob-done-foot>.btn-p{margin-left:0}
+}
+
+/* C2: the logo goes home and stays reachable while scrolled. From 600 px the
+   tile stays in the compact header with Filters beside it; only the wordmark
+   cross-fades, on the same 160/240 ms timing. The slot keeps one width in both
+   states, so Search never moves. While compact the link shrinks to the tile, so
+   its hit area and focus ring do not reach under Filters. */
+.mark h1{transition:opacity 160ms,transform 240ms var(--ease-out)}
+body.compact .mark{opacity:1;transform:none;pointer-events:auto}
+body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
+@media (min-width:701px){
+ body.compact .mark{width:30px}
+ .filters-btn{left:38px}
+}
+@media (min-width:701px) and (pointer:coarse){
+ body.compact .mark{width:44px}
+ .filters-btn{left:52px}
+}
+/* A touch screen's 44 px Filters hung 8 px below the 36 px slot; the logo is
+   lifted by 4 px for the same reason, so both share one centre line. */
+@media (min-width:600px) and (pointer:coarse){.filters-btn{top:-4px}}
+/* 600–700 px: tile 44 + 6 + icon-only Filters 44 = 94 px in both states. */
+@media (min-width:600px) and (max-width:700px){
+ .slot{width:94px}
+ .mark{width:44px;justify-content:center}
+ .filters-btn{left:50px;width:44px}
+}
+/* Phones: the header scrolls away, so the stuck count row gets the same tile
+   first: [IB][count][Filters]. Hidden everywhere else. */
+.home-tile{display:none}
+@media (max-width:599.98px){
+ .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
+}
+
+/* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */
+
+/* My list on phones (Leon, iPhone 16, 393 x 852: "My list menu on phones is
+   50% the top box. this is WAYYY too much"). The box is three short lines:
+   Back with More at its right, the title and count, then Group by. More
+   (js/app.js, listMoreOpen) shows Share, Export, Print and Clear in the same
+   2 x 2 grid as before, and the two footnotes. A shared or empty list has no
+   More. Back takes the room More leaves (its words wrap before More would),
+   and the ::before is an empty full-width item that ends that first line,
+   so the title never moves up beside More. From 600 px More is never shown
+   and nothing is held back. */
+.ml-more{display:none}
+@media (max-width:599.98px){
+ .mylist.is-list .ml-row{gap:2px 8px}
+ .mylist.is-list .ml-row:has(>.ml-more:not([hidden]))::before{content:"";flex:0 0 100%;height:0}
+ .mylist.is-list .ml-open{flex:1 1 0;min-width:0;white-space:normal;text-align:left}
+ .mylist.is-list .ml-more:not([hidden]){order:-1;display:inline-flex;flex:none;gap:4px;height:44px;padding:0 8px 0 10px;border-color:var(--hairline);border-radius:8px;font-size:var(--fs-14)}
+ .mylist.is-list .ml-more[aria-expanded="true"]{border-color:var(--accent)}
+ .mylist.is-list .ml-more[aria-expanded="true"] .ic{transform:rotate(180deg)}
+ .mylist.is-list:not(.ml-more-open) :is(#ml-share,.ml-tools>.ml-mine,#ml-origin){display:none}
+}
+
+/* Compare on phones (Leon: "a lil ugly"). Close looks like the header's
+   buttons (hairline, 8 px corners) instead of a heavy square. Each fact's name
+   is a line above its values (render.js, tr.cmp-lr), so the values get the
+   full width and "Školné + životné náklady na 12 mesiacov (odhad)" is one
+   line, not five in a 6.5rem column. That column is still there for screen
+   readers, at zero width. The arrows for three or four programmes match
+   Close. Save and the "x" share one line at the foot of
+   each programme's header, so the "x" sits by its programme, not at the far
+   edge above it. Rows, header and hint all start 12 px in. */
+.cmp-lr{display:none}
+@media (max-width:599.98px){
+ #cmp-close,.cmp-nav .btn{border-color:var(--hairline);border-radius:8px}
+ .cmp-head{padding-left:12px}
+ .cmp-one{padding:10px 12px;border-bottom:1px solid var(--hairline);font-size:var(--fs-13);color:var(--ink-2)}
+ .cmp .cmp-t tbody th,.cmp .cmp-t .cmp-c{width:0;padding:0;border:0;overflow:hidden;white-space:nowrap;clip-path:inset(50%)}
+ .cmp-scroll{scroll-padding-left:0}
+ .cmp-t[data-n="3"]{width:150%}
+ .cmp-t[data-n="4"]{width:200%}
+ .cmp-t tr.cmp-lr{display:table-row}
+ .cmp .cmp-t tr.cmp-lr>td{padding:10px 0 0;border-bottom:0}
+ /* Sticky, so the name stays in view while three or four programmes scroll sideways. */
+ .cmp-lr span{position:sticky;left:0;display:inline-block;box-sizing:border-box;max-width:calc(100vw - 2 * var(--gut) - 2px);padding:0 12px;font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
+ .cmp .cmp-t tbody tr:not(.cmp-lr)>td{padding:4px 12px 10px}
+ .cmp .cmp-t th.cmp-p{padding:10px 12px 64px}
+ .cmp .cmp-t th.cmp-p .cmp-acts{position:absolute;left:12px;right:12px;bottom:8px;display:flex;align-items:center;gap:4px}
+ .cmp .cmp-t th.cmp-p .cmp-save{position:static;flex:none;width:min(calc(100% - 48px),5.75rem);padding:0 8px;border-color:var(--hairline);border-radius:8px;font-size:var(--fs-13)}
+ .cmp .cmp-t th.cmp-p .cmp-save[aria-pressed="true"]{border-color:var(--accent)}
+ .cmp .cmp-t th.cmp-p .cmp-x{position:static;flex:none;border-radius:8px}
+}
+
+/* ------------------------------------------------- Leon's review, 2026-11-06 */
+
+/* University names are what students scan for, so the row never cuts them
+   off: the name wraps and the country tag follows it inline, not beside it. */
+.sub{display:block}
+.sub .uc{overflow:visible;white-space:normal}
+.sub .cc{vertical-align:1px}
+/* Phones: the header and the count row read as one white block (no line
+   between them, one line under both), and the list starts 12 px below it
+   instead of touching it. The IB tile's left edge sits on the page margin,
+   like the count and the list. Since the tile grew to 44 px (2026-11-07) it fills
+   its tap area, so the old -4 px nudge into the margin is gone. */
+@media (max-width:599.98px){
+ .hd{border-bottom:0}
+ .status{border-bottom:1px solid var(--hairline);margin-bottom:12px}
+}
+
+/* Sort is the filters' pick-list (Leon: "reuse that"): label on the left,
+   the box fills the rest of the strip, the list opens under its right end.
+   Group by in My list is widened the same way so the two still line up. */
+.listp>.f-sort>.sort-l{font-size:var(--fs-12);font-weight:600;color:var(--ink-2);line-height:16px;white-space:nowrap}
+.listp>.f-sort .sort-dd{flex:1 1 auto;min-width:0}
+.listp>.f-sort .sort-dd>summary.inp{width:100%;max-width:none}
+.listp>.f-sort .sort-dd>summary #sort-current{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.listp>.f-sort .sort-dd .dd-chev .ic{width:16px;height:16px;fill:none}
+.sort-dd .dropdown-panel{width:300px}
+.sort-dd .dropdown-panel>.options{max-height:none}
+@media (max-width:599.98px){
+ .listp>.f-sort>.sort-l{flex:0 0 6rem;white-space:normal}
+ .ml-group>.inp{max-width:none}
+}
+@media (max-width:359.98px){.listp>.f-sort>.sort-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
+
+/* Copy link in the Filters sheet looks like the rows above it (full width,
+   hairline, 8 px corners) instead of a lone heavy box, and its help is one
+   quiet paragraph that wraps evenly. */
+.sheet-b .copy{width:100%;justify-content:flex-start;min-height:44px;padding:0 12px;border-color:var(--hairline);border-radius:8px;font-weight:400}
+.sheet-b .copy-help{margin-top:-14px;font-size:var(--fs-13);line-height:18px;text-wrap:pretty}
+/* The Compare tray floats: inset from the screen edges with round corners
+   and a shadow, and it slides up when the first programme is added instead
+   of appearing at once. The page reserves its height plus the 12 px gap. */
+.cmp-tray{inset-inline:12px;bottom:calc(12px + env(safe-area-inset-bottom));padding:8px 8px 8px 16px;border:1px solid var(--hairline);border-radius:16px;transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete}
+.cmp-tray .btn{min-height:44px;border-radius:10px}
+.cmp-tray[hidden]{transform:translateY(calc(100% + 24px));opacity:0}
+@starting-style{.cmp-tray:not([hidden]){transform:translateY(calc(100% + 24px));opacity:0}}
+@media screen{
+ body.has-tray{padding-bottom:calc(var(--tray-h,0px) + 24px)}
+ html{scroll-padding-bottom:calc(var(--tray-h,0px) + 24px)}
+}
+@media (prefers-reduced-motion:reduce){.cmp-tray{transition:none}}
+
+/* Setup's done screen names the two row icons; the icons sit in the text. */
+.ob-tools .ic{width:16px;height:16px;vertical-align:-3px;fill:none;color:var(--ink)}
+
+/* ------------------------------------------------- Compare and header, round 2, 2026-11-06 */
+
+/* Phone Compare (Leon: "either keep navbar … or make it take up more space").
+   While Compare is open the count is hidden, so the count row was an IB tile
+   and Filters over an empty gap. The row goes, and Compare starts at the top
+   of the screen; its own Close is the way back, and the header's logo above
+   it still goes home. --count-height follows the row (round2.js), but the
+   scroll on opening happens first, so the scroll margin is set here too. */
+@media (max-width:599.98px){
+ .stream:has(>#compare:not([hidden]))>.status{display:none}
+ .stream:has(>#compare:not([hidden]))>.cmp{margin-top:12px;scroll-margin-top:12px}
+}
+
+/* Desktop Compare (Leon: "a lil too much space under it"). Compare is short
+   next to the list, so the footer's 48 px gap, made for the end of a long
+   list, left an empty band under it. While Compare is open the gap is 24 px. */
+@media (min-width:600px){
+ body:has(#compare:not([hidden])) .foot{margin-top:24px}
+}
+/* Phones (2026-11-07: the heading sat 56 px under the card, desktop 44). On
+   phones 24 px measured 32 px under the card (the card's 12 px margin merges
+   into the footer's and the footer pads 8 px), so 36 px puts the heading the
+   same 44 px below the card as on desktop. */
+@media (max-width:599.98px){
+ body:has(#compare:not([hidden])) .foot{margin-top:36px}
+}
+
+/* "Close comparison" was "too angular" on desktop (4 px, the control token):
+   it gets the 8 px corners of the other outlined buttons ("Show the original",
+   the header's buttons). Phones already had them. */
+#cmp-close{border-radius:8px}
+
+/* Phones: My list sits in the count row, just before Filters (app.js,
+   placeFilters), since the header scrolls away and that row sticks. It shows
+   its bookmark and saved count; the words stay for screen readers (the
+   header's display:none had dropped them from its name). Same height,
+   hairline and corners as Filters; at 360 px and under the count moves to
+   the icon's corner (the older #header-list rules). */
+@media (max-width:599.98px){
+ .status #header-list{flex:none;height:44px;margin-left:auto;padding:0 10px;gap:6px;border-color:var(--hairline);border-radius:8px}
+ .status #header-list~.more{margin-left:0}
+ .status #header-list>.hb-l{display:block;position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+@media (max-width:360px){.status #header-list{padding:0}}
+
 /* ------------------------------------------------- motion preferences */
 
 /* Instant, not 0.01ms: a near-zero transition still fires its events late and
@@ -938,9 +2034,19 @@ html:has(.sheet[open]){overflow:hidden}
     animation: none !important;
     scroll-behavior: auto !important;
   }
+  /* The universal selector above never reaches these pseudo-elements, so the
+     phone sheet's dropdowns still grew for 260 ms and the slider thumb still
+     scaled for 160 ms (review of PR 1). One rule each: a browser that does not
+     know one of them would drop a shared selector list whole. */
+  ::details-content { transition: none !important; }
+  input[type=range]::-webkit-slider-thumb { transition: none !important; }
+  input[type=range]::-moz-range-thumb { transition: none !important; }
 }
 
 /* ------------------------------------------------------------- printing */
+
+/* The paper-only title and warning (index.html); printing shows them. */
+.print-head{display:none}
 
 /* A08: the list on screen, in its order, with every open slot in full; nothing
    else is opened. Paper is A4-narrow (about 720-800 CSS px), under the 900 px
@@ -953,12 +2059,29 @@ html:has(.sheet[open]){overflow:hidden}
   /* .listp>.f-sort, not .f-sort: the screen rule that shows the list's Sort
      select under 900 px has that weight, and paper is under 900 px, so a
      plain .f-sort lost and the select printed. */
-  .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
+  .hd, .toasts, .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
+  .cmp-tray, #header-compare, .cmpi, .cmpb, .cmp-acts, .cmp-nav,
   .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
   .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
   .split{display:block}
+
+  /* Setup and the Filters sheet are modal dialogs: left open, either printed
+     on top of the list: dialog.ob[open] and .sheet[open] out-rank the plain
+     .sheet above. These rules are at least as heavy and come later. Printing does
+     not close them; the page is as it was afterwards. While one is open, html
+     is overflow:hidden on screen; Chrome prints every page anyway, but a
+     browser that applies it to paper could stop after the first. */
+  dialog.sheet, dialog.sheet[open], dialog.sheet::backdrop, dialog.sheet[open]::backdrop,
+  dialog.ob, dialog.ob[open], dialog.ob::backdrop, dialog.ob[open]::backdrop { display: none; }
+  html:has(dialog.sheet[open]), html:has(dialog.ob[open]) { overflow: visible; }
+
+  /* Paper keeps the site's name and the warning to check the official page,
+     as the printed header did before round 2 (the live site at a6fed60). */
+  .print-head { display: block; margin: 0 0 12pt; padding-bottom: 6pt; border-bottom: 1px solid var(--ink); }
+  .print-head p { margin: 0; }
+  .print-head .print-name { font-size: 14pt; font-weight: 600; margin-bottom: 2pt; }
 
   /* The sample warning must survive onto paper, in full: a printed sheet has
      lost every other bit of context. The saved-copy and failure banners go. */
@@ -974,8 +2097,10 @@ html:has(.sheet[open]){overflow:hidden}
   .open, .d-title, .cell .verd, .cell .r2, .cell .ic { color: var(--ink); }
   /* The marks are the shape of the verdict; keep them when backgrounds are off. */
   .m::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  /* Focus is a screen state; a focused row printed its blue ring. */
-  :focus-visible, .open:focus-visible::after { outline: none; }
+  /* Focus is a screen state; a focused row printed its blue ring, and so did
+     the Compare heading (#cmp-h:focus-visible out-ranked this rule;
+     verification of PR 1), hence !important. */
+  :focus, :focus-visible, :focus-visible::after { outline: none !important; }
 
   /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
      whole; a long open detail may run on to the next page. */
@@ -999,7 +2124,7 @@ html:has(.sheet[open]){overflow:hidden}
 }
 
 /* One detail-level control and quiet notes keep source-language context local. */
-.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:3px;padding:6px 10px;margin-bottom:16px;cursor:pointer}
+.detail-originals{font:inherit;font-size:var(--fs-14);color:var(--ink-2);background:transparent;border:1px solid var(--edge);border-radius:8px;padding:6px 12px;justify-self:start;cursor:pointer}
 .english-note{font-size:var(--fs-14);color:var(--ink-2);margin-top:12px}
 .data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
 .data-original[hidden]{display:none}

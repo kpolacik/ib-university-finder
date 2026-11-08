@@ -1,3 +1,4 @@
+import * as savedState from '../js/saved-state.js';
 // Checks the parts of this site that are easy to break by accident.
 //
 //   node tools/check.mjs
@@ -6,7 +7,7 @@
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +51,7 @@ class ChromeNode {
   }
   get lastChild() { return this.children.at(-1) ?? null; }
   before(node) { this.parent.insertBefore(node, this); }
+  after(node) { const next = this.parent.children[this.parent.children.indexOf(this) + 1] ?? null; this.parent.insertBefore(node, next); }
   // A shallow copy, as cloneNode(false): tag, id, class and attributes, no
   // children and no listeners.
   cloneNode() {
@@ -178,11 +180,20 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
 const compareMod = await import(new URL('../js/compare.js', import.meta.url));
+// Batch 3 · A: the compare set, its own list apart from the saves.
+const compareSetMod = await import(new URL('../js/compare-set.js', import.meta.url));
+// A stand-in localStorage for the compare set: blocked throws on any access,
+// full throws on writes only (a quota or a private-browsing write).
+function fakeStorage(entries = {}) {
+  return { data: { ...entries }, blocked: false, full: false,
+    getItem(key) { if (this.blocked) throw new Error('SecurityError'); return this.data[key] ?? null; },
+    setItem(key, value) { if (this.blocked || this.full) throw new Error('QuotaExceededError'); this.data[key] = String(value); } };
+}
 const { createFilterState: noFilters } = await import(new URL('../js/filters.js', import.meta.url));
 const detailOf = (row, state = noFilters()) => withStubDocument(() => renderDetail(row, state));
 function* nodesOf(node) {
@@ -711,7 +722,14 @@ check('language buttons expose both available choices, with their own language n
     && /data-language="en" lang="en"/.test(foundationHtml)
     && /data-language="sk" lang="sk"/.test(foundationHtml)
     && !/aria-disabled="true"|sk-later/.test(foundationHtml)
-    && foundationHtml.includes('(English)') && foundationHtml.includes('(Slovak)'));
+    && foundationHtml.includes('(English)') && foundationHtml.includes('(slovenčina)'));
+// Review of PR 1: the lang="sk" button's hidden text was English " (Slovak)"
+// in the English UI. Each button names its language in that language, so the
+// text matches the button's lang attribute whatever the UI language.
+check('each language button names its language in that language, in both UIs',
+  /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
+    && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
+    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -733,12 +751,11 @@ try {
   renderSourceLine(source, rows, { ...base, draftCount: 1 });
   check('source counts every loaded row, university and country with final punctuation',
     !source.hidden && source.children[0].textContent === '3 programmes · 2 universities · 2 countries.'
-      && source.children[0].className === 'stat' && source.textContent.includes("Always check the university's official page before you apply.")
-      && source.children[2].className === 'src-more'
-      && source.children[2].textContent === 'Requirements, fees and deadlines can change.');
+      && source.children[0].className === 'stat' && source.children[0].tagName !== 'b'
+      && source.textContent.endsWith(' Data comes from the universities’ official pages and the CAO; living costs are estimates.'));
   renderSourceLine(source, rows.slice(0, 1), { ...base, draftCount: 1 });
-  equal('one unchecked programme keeps the research warning with singular source counts', source.textContent,
-    "1 programme · 1 university · 1 country. Always check the university's official page before you apply. Requirements, fees and deadlines can change.");
+  equal('one unchecked programme keeps singular source counts without repeating the footer disclaimer', source.textContent,
+    '1 programme · 1 university · 1 country. Data comes from the universities’ official pages and the CAO; living costs are estimates.');
   renderSourceLine(source, rows, base);
   check('checked data hides and clears the source line', source.hidden && source.children.length === 0);
   for (const meta of [base, { ...base, draftCount: 3 }]) {
@@ -920,7 +937,7 @@ check('parseFee refuses a number too long to be exact (a 400-digit entry is Infi
   parseFee('9'.repeat(400)).value === null && parseFee('9'.repeat(400)).valid === false && parseFee(String(Number.MAX_SAFE_INTEGER)).value === Number.MAX_SAFE_INTEGER);
 const indexHtml = englishHtml(read('index.html'));
 check('the fee field takes any whole euro amount (no step="500")',
-  !indexHtml.includes('step="500"') && /id="f-tuition"[^>]*step="1"/.test(indexHtml));
+  !/id="f-tuition"[^>]*step="500"/.test(indexHtml) && /id="f-tuition"[^>]*step="1"/.test(indexHtml));
 check('both number fields point at a message element',
   /id="f-points"[^>]*aria-describedby="f-points-help f-points-error"/.test(indexHtml) && indexHtml.includes('id="f-points-error"')
     && /id="f-tuition"[^>]*aria-describedby="f-unknown-help f-tuition-error"/.test(indexHtml) && indexHtml.includes('id="f-tuition-error"'));
@@ -1042,14 +1059,14 @@ check('filter controls keep the global 2.5 px focus outline: no outline:none or 
     && !keepsFocusOutline(css + '.fbar summary{outline: none}'));
 // A05: the h1's decorative full stop was read out as part of the title.
 check('the h1 is plain IB University Finder with no generated full stop',
-  /<h1>IB University Finder<\/h1>/.test(englishHtml(read('index.html'))) && !/h1\s*::after/.test(css));
+  /<h1>University Finder<\/h1>/.test(englishHtml(read('index.html'))) && !/h1\s*::after/.test(css));
 // A02: dropdown panels and the masthead stat pushed a 320 px page to 354 px.
 // Stage 5: below 600 the panels are accordions in the sheet; in the bar every
 // panel is clamped to the viewport and the last one opens leftward.
 check('dropdown panels stay inside the viewport: every panel clamped, the last right-aligned, sheet panels static and full width (A02)',
   /max-width:calc\(100vw - 2 \* var\(--gut\)\)/.test(ruleAt(cssText, '.dropdown-panel'))
-    && /left:auto;right:0/.test(ruleAt(cssText, '.dropdown:last-of-type .dropdown-panel'))
-    && /left:auto;right:0/.test(ruleAt(cssText, '#dd-countries .dropdown-panel'))
+    && /left:auto;right:0/.test(ruleAt(cssText, '.dropdown-panel.right'))
+    && read('js/round2.js').includes('box.left + panel.offsetWidth > document.documentElement.clientWidth - 12')
     && /position:static;width:auto;max-width:none;max-height:none;overflow:visible/.test(ruleAt(cssText, '.sheet-b .dropdown-panel')));
 check('the source line wraps normally and phone hides stat and advice',
   /\.src\{[^}]*white-space:normal/.test(css) && /\.stat,\.src-more\{display:none\}/.test(css)
@@ -1062,13 +1079,33 @@ check('the header band is never sticky; .cols sticks only from 600 px and .statu
     && !stickyChromeOk(css + '@media (min-width: 1024px){.fbar .affix{position:sticky;top:0}}')
     && !stickyChromeOk(css + '.mast-top{position:fixed}') && !stickyChromeOk(css + '.cols{position:sticky}')
     && !stickyChromeOk(css + '@media (min-width: 600px){.status{position:sticky}}'));
-const marginRules = [...css.matchAll(/\/\*[^*]*measured[^*]*\*\/\s*#results,\s*#results :is\(li,\s*a,\s*button\)\s*\{\s*scroll-margin-top:\s*\d+px\s*;?\s*\}/g)];
-check('#results and its rows, links and buttons clear the sticky chrome with a measured scroll-margin-top below and from 600; no 236 px (A07)',
-  marginRules.length === 2 && /scroll-margin-top/.test(ruleAt(cssText, '#results')) && /scroll-margin-top/.test(ruleAt(cssText, '#results', '(min-width: 600px)'))
-    && !/236px/.test(cssText) && /scroll-margin-bottom:8px/.test(ruleAt(cssText, '#results>.item')));
+// Read per selector and media query: the same calc() text is also in the #faq
+// and .cmp rules, so a plain search of the stylesheet passed with #results
+// itself at scroll-margin-top:0. Each width's #results rule must say its offset,
+// and no other rule may set one on #results or anything inside it.
+const RESULTS_OFFSETS = {
+  '(min-width: 600px)': 'calc(var(--header-visible) + var(--columns-height) + 8px)',
+  '(max-width: 599.98px)': 'calc(var(--count-height) + 8px)',
+};
+const offsetsOk = (source) => {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  const tops = (body) => [...body.matchAll(/scroll-margin-top\s*:\s*([^;]+)/g)].map((m) => m[1].trim());
+  const sets = cssTree(text).filter((r) => /(?:^|,)\s*#results(?![\w-])/.test(r.selector) && tops(r.body).length);
+  return Object.entries(RESULTS_OFFSETS).every(([query, value]) => tops(ruleAt(text, '#results', query)).join('|') === value)
+    && sets.every((r) => r.selector === '#results,#results :is(li,a,button)' && r.media.length === 1
+      && tops(r.body).join('|') === RESULTS_OFFSETS[r.media[0].replace(/^@media /, '')]);
+};
+const phoneOffsets = ' #results,#results :is(li,a,button){scroll-margin-top:calc(var(--count-height) + 8px)}';
+check('A07 skip and arrow targets clear the measured header, headings or phone count plus 8px; zero, fixed-offset and descendant fixtures fail',
+  offsetsOk(css) && css.includes(phoneOffsets)
+    && !offsetsOk(css + '#results{scroll-margin-top:60px}') && !offsetsOk(css + '#results{scroll-margin-top:0}')
+    && !offsetsOk(css.replace(phoneOffsets, ' #results,#results :is(li,a,button){scroll-margin-top:0}'))
+    && !offsetsOk(css.replace('scroll-margin-top:calc(var(--header-visible) + var(--columns-height) + 8px)', 'scroll-margin-top:0'))
+    && !offsetsOk(css + '@media (min-width: 600px){#results li{scroll-margin-top:0}}')
+    && /scroll-margin-bottom:8px/.test(ruleAt(cssText, '#results>.item')));
 // A05, A04: names a screen reader reads out.
-check('a hidden ", " separates the title from the degree',
-  renderSrc.includes("el('span', 'visually-hidden', ', ')"));
+check('a hidden "," and a real space separate the title from the degree',
+  renderSrc.includes("el('span', 'visually-hidden', ',')"));
 check('a Czech-only title is marked lang="cs"', /title\.lang = 'cs'/.test(renderSrc));
 // Redesign stage 2: the source check is on renderDetail; every live row is
 // rendered and checked further down ("each detail is named by its title").
@@ -1088,6 +1125,71 @@ check('the dropdown count has no hidden comma (it read "Country , 1 selected")',
   !/dropdown-count[^>]*><span class="visually-hidden">,/.test(indexHtml));
 check('the live result count is written only when its text changes',
   renderSrc.includes('if (node.textContent === text) return false;') && appSrc.includes('renderCount(dom.count, lead, currentSummary)'));
+
+check('round 2 has a white 56px header, gated by both width and height; negative height fixture fails', (() => {
+  const valid = (source) => {
+    const rules = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+    return source.includes('.page{max-width:none;--header-visible:0px;')
+      && rules.some((r) => r.selector === '.hd' && r.body.includes('height:56px') && r.body.includes('background:var(--panel)'))
+      && rules.filter((r) => r.selector === '.hd' && /position:sticky/.test(r.body)).every((r) => r.media.join() === '@media (min-width: 600px) and (min-height: 501px)');
+  };
+  return valid(css) && !valid(css + '@media (min-width: 600px){.hd{position:sticky}}')
+    && !valid(css.replace('.page{max-width:none;--header-visible:0px;', '.page{max-width:1440px;--header-visible:0px;'));
+})());
+check('compact header keeps its full visible height and offsets; translated-header and short-offset fixtures fail', (() => {
+  const fullHeight = (text) => !/body\.compact \.hd(?:-in)?\{transform:translateY/.test(text)
+    && !/\.page\.compact\{--header-visible:44px/.test(text) && text.includes('.page{--header-visible:56px}');
+  return fullHeight(css) && !fullHeight(css + 'body.compact .hd{transform:translateY(-12px)}')
+    && !fullHeight(css + '.page.compact{--header-visible:44px}');
+})());
+check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
+  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06).
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 240ms') && text.includes('transition:transform 200ms')
+    && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
+    && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
+    && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
+    && text.includes('transition:transform 220ms') && text.includes('animation:toast-out 160ms')
+    && text.includes('@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}');
+  return valid(css) && !valid(css.replace('max-height:85dvh', 'max-height:90dvh'))
+    && !valid(css.replace('animation:toast-out 160ms', 'animation:none'))
+    && !valid(css.replaceAll('.tip{display:none;', '.tip{display:block;'));
+})());
+check('header and onboarding controls inherit Plex and tabular figures; UA font fixture fails', (() => {
+  const valid = (source) => source.includes(':where(.hd,.ob) :where(button,input,select){font-family:inherit;font-variant-numeric:tabular-nums}');
+  return valid(css) && !valid(css.replace('font-family:inherit;font-variant-numeric:tabular-nums', 'font-family:Arial'));
+})());
+check('round 2 moves search to the header and provenance/disclaimer/FAQ to the footer',
+  elementSource(indexHtml, /<header class="hd">/).includes('id="f-search"')
+  && elementSource(indexHtml, /<footer class="foot">/).includes('id="source-line"')
+  && elementSource(indexHtml, /<div class="faq" id="faq">/).includes('<details>')
+  && !elementSource(indexHtml, /<main class="shell">/).includes(UI.en.r2_footer_p));
+
+const { syncSlider } = await import('../js/round2.js');
+check('custom budget sliders distinguish unset from explicit zero, cap only the visual thumb, and retain typed amounts', (() => {
+  const classes = new Set(), props = {};
+  const slider = { min: '0', max: '20000', dataset: { number: 'f-tuition' }, style: { setProperty(k, v) { props[k] = v; } }, classList: { toggle(k, on) { if (on) classes.add(k); else classes.delete(k); } },
+    setAttribute() {}, set value(v) { this.n = Math.min(20000, Math.max(0, Number(v))); }, get value() { return this.n; } };
+  syncSlider(slider, null); if (classes.has('set') || slider.value !== 20000 || props['--p'] !== '100%') return false;
+  syncSlider(slider, 0); if (!classes.has('set') || slider.value !== 0 || props['--p'] !== '0%') return false;
+  syncSlider(slider, 50000); return slider.value === 20000 && props['--p'] === '100%';
+})());
+// An unset slider read its bare thumb position ("20000", "40000", "0").
+check('budget sliders say their value with € and its period, "No limit" / "Not set" when unset, and a typed amount past the end as typed, in EN and SK (regression)', (() => {
+  const make = (number, max) => ({ min: '0', max: String(max), dataset: { number }, style: { setProperty() {} }, classList: { toggle() {} }, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; }, set value(v) { this.n = Math.min(max, Math.max(0, Number(v))); }, get value() { return this.n; } });
+  const said = (slider, value) => { syncSlider(slider, value); return slider.attrs['aria-valuetext']; };
+  const fee = make('f-tuition', 20000), budget = make('f-budget', 40000), living = make('f-living', 2000);
+  const en = [said(fee, null), said(budget, ''), said(living, null), said(fee, 12000), said(budget, 50000), said(living, 800), said(fee, 0), said(living, 0)];
+  i18n.initLanguage('', { getItem: () => 'sk' });
+  const sk = [said(fee, null), said(living, null), said(fee, 12000), said(living, 800)];
+  i18n.initLanguage('', { getItem: () => 'en' });
+  return JSON.stringify(en) === JSON.stringify(['No limit', 'No limit', 'Not set', '12,000 € a year', '50,000 € a year', '800 € a month', '0 € a year', '0 € a month'])
+    && JSON.stringify(sk.map((s) => s.replace(/\s/g, ' '))) === JSON.stringify(['Bez limitu', 'Nenastavené', '12 000 € ročne', '800 € mesačne']);
+})());
+check('S08 has specifically named help buttons and persistent described help; scalar facets keep active styling without a fld wrapper',
+  indexHtml.includes('aria-label="About HL Maths 4+"') && indexHtml.includes('aria-label="About My IB points"')
+  && indexHtml.includes('aria-describedby="f-maths-help"') && indexHtml.includes('aria-controls="f-maths-help"')
+  && appSrc.includes("input.closest('.fld') || input.closest('.dropdown')"));
 
 // ---------------------------------------------------------------- export
 
@@ -1148,8 +1250,31 @@ section('Tidy-up (M05-M07)');
 check('config.js no longer says the site runs on the sample files', !read('js/config.js').includes('sample files in /data'));
 check('the CSS header no longer mentions a dark palette or a 1080px rail',
   !/dark palette/.test(css.slice(0, 600)) && !/1080px/.test(css.slice(0, 600)));
-check('index.html declares an icon, so no favicon request 404s', /<link rel="icon" href="data:,">/.test(indexHtml));
+// The empty data: icon was replaced by the real logo (2026-11-07); declaring a real file still stops the 404.
+check('index.html declares an icon that exists, so no favicon request 404s',
+  /<link rel="icon" href="icons\/icon.svg" type="image\/svg\+xml">/.test(indexHtml) && existsSync(new URL('../icons/icon.svg', import.meta.url)));
 check('the unused fromCutoff converter is gone', !read('tools/lib/ireland.mjs').includes('fromCutoff'));
+
+
+// The logo (Leon, 2026-11-07): bookmark IB. Lilac tile with a violet bookmark in the page;
+// the tab icon switches to the solid plum version in dark mode; phones get the plum PNG.
+section('Logo');
+{
+  const tiles = indexHtml.match(/<span class="mono"[^]*?<\/span>/g) || [];
+  check('both logo tiles draw the bookmark mark, not the old IB text', tiles.length === 2 && tiles.every((t) => t.includes('<use href="#i-logo"/>') && !/>IB</.test(t)));
+  check('the logo symbol takes its colours from brand tokens, which are defined', /<symbol id="i-logo"[^]*?var\(--brand-accent\)[^]*?var\(--brand-ink\)[^]*?<\/symbol>/.test(indexHtml) && /--brand-accent:#[0-9a-f]{6}/.test(css));
+  check('the old monogram string is gone from both languages', !('r2_monogram' in UI.en) && !('r2_monogram' in UI.sk));
+  const icon = readFileSync(new URL('../icons/icon.svg', import.meta.url), 'utf8');
+  check('the tab icon switches to the plum tile in dark mode', /@media \(prefers-color-scheme:dark\)\{\.t\{fill:#47345d\}/.test(icon) && /\.t\{fill:#ebe4f3\}/.test(icon));
+  const png = readFileSync(new URL('../icons/apple-touch-icon.png', import.meta.url));
+  check('the home-screen icon is a 180 px PNG and index.html links it',
+    png.readUInt32BE(16) === 180 && png.readUInt32BE(20) === 180 && /<link rel="apple-touch-icon" href="icons\/apple-touch-icon.png">/.test(indexHtml));
+}
+
+// PR 1 review: a selector list mixing ::-webkit-slider-thumb and ::-moz-range-thumb
+// is dropped whole by each engine, so the set thumb never got its accent border in Chrome.
+check('no rule mixes WebKit and Mozilla range-thumb pseudo-elements in one selector list',
+  ![...cssText.matchAll(/([^{}]+)\{/g)].some(([, sel]) => /::-webkit-slider-thumb/.test(sel) && /::-moz-range-thumb/.test(sel)));
 
 // ---------------------------------------------------------------- maintainer lint
 
@@ -2054,8 +2179,8 @@ equal('D27 figure, flags and card line per row',
     [30, false, false, '30 IB points, minimum']]);
 equal('D27 compact figure says why there is none',
   ['ie-added', 'ie-unver'].map((id) => pts.pointsShort(d27Of(id)).unknown),
-  [{ verdict: 'No IB figure', reason: 'cutoff includes a test score' },
-    { verdict: 'No IB figure', reason: 'assessment required, IB equivalent unverified' }]);
+  [{ verdict: 'No IB figure', reason: 'cutoff includes a test score', cell: 'Test in cutoff' },
+    { verdict: 'No IB figure', reason: 'assessment required, IB equivalent unverified', cell: 'No IB figure' }]);
 const d27Filters = await import(new URL('../js/filters.js', import.meta.url));
 equal('D27 My points never hides them (unknown bucket)',
   ['ie-added', 'ie-unver'].map((id) => d27Filters.pointsBucket(d27Of(id), { myIbPoints: 24, hlMaths: false })), ['unknown', 'unknown']);
@@ -2246,24 +2371,29 @@ check('app.js restores, reads, clears and names the tick, and the count carries 
   appSrc.includes('dom.maths.checked = fromUrl.hlMaths') && appSrc.includes('state.hlMaths = dom.maths.checked')
     && appSrc.includes('dom.maths.checked = false') && englishSource(appSrc).includes("used.push('HL Maths 4+')")
     && appSrc.includes('pointsSummaryParts(rows, state)'));
-// S08: the help lived only in a tooltip and a hidden copy. Spec §6.3: a
-// visible p.help that the tick names with aria-describedby.
-check('HL Maths 4+ help is a visible p.help describing the tick, with no tooltip or hidden copy; the fee reads "Max EU fee" with "€/year" (S08)',
-  /<p class="help" id="f-maths-help">\+25 points on Irish courses<\/p>/.test(indexHtml)
-    && /<input type="checkbox" id="f-maths"[^>]*aria-describedby="f-maths-help"/.test(indexHtml)
-    && /<label class="tick">/.test(indexHtml) && !/<label class="tick"[^>]*title=/.test(indexHtml) && !indexHtml.includes('(adds the 25 CAO')
-    && !/\.help\s*\{[^}]*(?:clip|position:\s*absolute)/.test(cssText)
-    && /<label for="f-tuition">Max EU fee<\/label>/.test(indexHtml) && /<span class="unit">(?:<span>)?&euro;\/year(?:<\/span>)?<\/span>/.test(indexHtml)
-    && !/id="f-tuition"[^>]*title=/.test(indexHtml));
-check('points help is one short visible line that spans the bar, with no tooltip (S08, shortened 2026-11-02)',
-  /<label for="f-points">My IB points<\/label>/.test(indexHtml)
-    && /<p class="help filter-help" id="f-points-help">Hides programmes above your total.<\/p>/.test(indexHtml)
-    && !/id="f-points"[^>]*title=/.test(indexHtml)
-    && /\.filter-help\{grid-column:1\/-1;flex-basis:100%\}/.test(cssText)
-    && cssText.includes('.is-set:not(.f-pts)>label::after{content:attr(data-active-label);'));
+// S08: help is available by click/keyboard, with a visible Irish bonus hint.
+{
+  const helpOk = (html, field, help, name) => html.includes(`aria-controls="${help}" aria-label="${name}"`)
+    && new RegExp(`<input[^>]*id="${field}"[^>]*aria-describedby="[^\\"]*${help}`).test(html)
+    && html.includes(`id="${help}"`) && !new RegExp(`id="${field}"[^>]*title=`).test(html);
+  check('S08 HL help has a named disclosure, described text and visible +25 hint; missing trigger fails',
+    helpOk(indexHtml, 'f-maths', 'f-maths-help', 'About HL Maths 4+')
+      && !helpOk(indexHtml.replace('aria-controls="f-maths-help"', ''), 'f-maths', 'f-maths-help', 'About HL Maths 4+')
+      && elementSource(indexHtml, /<div class="fld f-hl chipbox">/).includes('+25 on Irish courses'));
+  // Item c (PR 1 review): the bubble repeated the visible "+25" hint word for word. It must add
+  // who gives the bonus (the CAO) and the grade, in both languages, and not just echo the hint.
+  const mathsHelp = (lang) => { i18n.initLanguage('', { getItem: () => lang }); const help = i18n.t('r2_maths_help'), hint = i18n.t('r2_plus25'); i18n.initLanguage('', { getItem: () => 'en' }); return { help, hint }; };
+  check('HL Maths help bubble adds the CAO and the grade instead of repeating the +25 hint (EN and SK)',
+    ['en', 'sk'].every((lang) => { const { help, hint } = mathsHelp(lang); return help.includes('CAO') && help.includes('4') && help !== hint && !help.startsWith('+25'); })
+      && read('index.html').includes('id="f-maths-help" data-i18n="r2_maths_help"') && !read('js/i18n.js').includes('"25_points_on_irish_courses"'));
+  check('S08 points help uses a named disclosure and keeps its validation error; missing described text fails',
+    helpOk(indexHtml, 'f-points', 'f-points-help', 'About My IB points')
+      && !helpOk(indexHtml.replace('aria-describedby="f-points-help f-points-error"', ''), 'f-points', 'f-points-help', 'About My IB points')
+      && indexHtml.includes('id="f-points-error" aria-live="polite"'));
+}
 check('shared uncertainty help (points, fees, deadlines) travels inside the extra filters; fee and deadline name it (S08)',
   elementSource(indexHtml, /<div class="more-filters"/).includes('<p class="help filter-help" id="f-unknown-help">Unknown values never hide a programme.</p>')
-    && /id="f-deadline" aria-describedby="f-unknown-help"/.test(indexHtml));
+    && /<select(?=[^>]*id="f-deadline")(?=[^>]*aria-describedby="f-unknown-help")/.test(indexHtml));
 // Browser pass, 2026-10-26: at 320 px a two-round line broke "≈ 39" into one
 // digit per line, because .req-points did not wrap (A02). Redesign stage 2:
 // the number is .plines b, the line .plines li, inside .detail.
@@ -2308,7 +2438,10 @@ function detailProblems(row, state, slot = false) {
   }
   const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
   if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
-  if (/Tuition \(EU\)|no tuition fee/.test(a.textContent)) say('old fee wording');
+  // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
+  const feeText = (node) => typeof node === 'string' ? node
+    : node.classList.contains('dd-note') ? '' : node.children.map(feeText).join('');
+  if (/Tuition \(EU\)/.test(a.textContent) || /no tuition fee/.test(feeText(a))) say('old fee wording');
   return { out, id: title?.id };
 }
 const liveRuns = [['empty', noFilters()], ['36', fstate(36)], ['36 ticked', fstate(36, true)], ['37', fstate(37)]];
@@ -2331,7 +2464,7 @@ check('the Czech-only live title is lang="cs" and its degree stays English',
     const row = live.find((p) => p.id === 'muni-anthropology');
     const h2 = row && byTag(detailOf(row), 'h2')[0];
     return h2?.lang === 'cs' && byClass(h2, 'deg')[0]?.lang === 'en'
-      && byClass(h2, 'visually-hidden')[0]?.textContent === ', ';
+      && byClass(h2, 'visually-hidden')[0]?.textContent === ',';
   })());
 
 // Named fixtures for the states no live row has today.
@@ -2592,16 +2725,17 @@ check('signed under an AI-DRAFT university: fresh, so no stale tag', fxRow('fx-c
 check('render.js calls pointsNote once, in renderDetail, and the cell builder does not',
   (renderSrc.match(/pointsNote\(/g) ?? []).length === 1 && renderDetailSrc.includes('pointsNote(row, state)'));
 // The save star came back on 2026-11-03 (Leon): the rows now take the saved
-// ids and the list view's group headings.
-check('renderRows keeps its call contract: saved ids for the star, group headings',
-  /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
+// ids and the list view's group headings. Batch 3 · A: and the compare set,
+// for the compare toggle beside the star.
+check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
+  /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
+    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, compare: new Set\(compareIds\), wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
-  /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
-    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
+  /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
+    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, compare: new Set\(compareIds\), wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -2619,6 +2753,22 @@ check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
 check('off-screen rows are skipped on screen and printed in full',
   /content-visibility:\s*auto/.test(ruleBody('.item'))
     && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
+// Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
+// display:list-item that content-visibility has never drawn make every
+// inherited style change rebuild the whole list. showModal() makes the page
+// inert, which is such a change: the sheet froze ~500 ms (4x CPU) before it
+// moved. Rows are display:block, and no rule may turn them back.
+check('result rows are display:block beside content-visibility:auto, never list-item (sheet open/close stall)',
+  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /content-visibility:\s*auto/.test(ruleBody('.item'))
+    && (() => {
+      // Every rule whose selector ends on a result row (.item, li.item,
+      // .item.is-open, .results>li, ...) may only set display to block.
+      const rowSel = /(?:^|[\s>+~])(?:li)?(?:\.item|\.results\s*>\s*li)(?:[.:][\w-]+(?:\([^)]*\))?)*$/;
+      const rowBodies = [...cssRules.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter(([, sel]) => sel.split(',').some((x) => rowSel.test(x.trim()))).map(([, , body]) => body);
+      const ok = (bodies) => bodies.every((b) => b.split(';').filter((d) => /^\s*display\s*:/.test(d)).every((d) => /^\s*display\s*:\s*block\s*$/.test(d)));
+      return rowBodies.length >= 2 && ok(rowBodies) && !ok(['position:relative;display:list-item']) && rowSel.test('.results>.item.is-open') && rowSel.test('.results>li') && !rowSel.test('.item-x');
+    })());
 check('the sprite has the Phosphor i-ext, i-check and i-clock, and no old i-external',
   ['i-ext', 'i-check', 'i-clock', 'i-sort'].every((id) => indexHtml.includes(`<symbol id="${id}" viewBox="0 0 256 256">`))
     && !indexHtml.includes('id="i-external"') && !renderSrc.includes('i-external'));
@@ -2657,10 +2807,20 @@ equal('pointsShort: mixed bonus labels stay per part; all bonus labels share an 
   ]);
 equal('pointsShort: null figures explain test, entrance exam or no minimum',
   ['fx-test-score', 'fx-entrance', 'fx-nothing'].map((id) => ptsShort(fxRow(id))), [
-    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'cutoff includes a test score' } },
-    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam' } },
-    { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null } },
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'cutoff includes a test score', cell: 'Test in cutoff' } },
+    { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam', cell: 'Entrance exam' } },
+    { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null, cell: 'Not published' } },
   ]);
+// Verification of PR 1: rows whose admission says "Talent exam", "Online
+// entrance exam" or "Entrance examination" (entrance_exam = yes) fell through
+// to "Not published". The column decides; a row with no exam stays as it was.
+const examWorded = (admission, entranceExam) => ptsShort({ ...fxRow('fx-nothing'), admission, entranceExam }).unknown.cell;
+equal('pointsShort: any entrance-exam wording with entrance_exam=yes says Entrance exam, not Not published',
+  [examWorded(['Talent exam'], 'yes'), examWorded(['Online entrance exam'], 'yes'), examWorded(['Entrance examination'], 'yes'),
+    examWorded(['Portfolio'], 'no'), examWorded(['Portfolio'], null)],
+  ['Entrance exam', 'Entrance exam', 'Entrance exam', 'Not published', 'Not published']);
+check('live rows with entrance_exam=yes and no IB figure never say Not published',
+  live.filter((row) => row.ibPointsMin === null && row.entranceExam === 'yes').every((row) => ptsShort(row).unknown.cell !== 'Not published'));
 check('pointsShort: every live figure matches the corresponding pointsLines number, and unknown is exclusive', live.every((row) => {
   const short = ptsShort(row), lines = pts.pointsLines(row);
   return row.ibPointsMin === null ? short.parts.length === 0 && !!short.unknown
@@ -2695,16 +2855,39 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
 ], [
   ['v-fit', 'Within your IB points', '≈36 R1', null, null],
   ['v-fit', 'Within your IB points', '≈38 R1 · ≈36 R2', 'Round 2 cutoff only', null],
-  ['v-fit', 'Within your IB points, then HPAT', '35 minimum', null, null],
+  ['v-fit', 'Within your IB points, then HPAT', '35', null, null],
   ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points', '≈38 R1', null, null],
   ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
-  ['v-unk', 'No IB figure', 'entrance exam', null, null],
-  ['v-unk', 'No minimum published', null, null, null],
+  ['v-unk', 'Entrance exam', null, null, null],
+  ['v-unk', 'Not published', null, null, null],
   ['v-none', null, '≈44 R1', null, 'with HL Maths 4+'],
   ['v-cond', 'Only with HL Maths 4+', '≈44 R1', null, null],
   ['v-fit', 'Within your IB points', '≈44 R1', null, null],
 ]);
+// Review of PR 1: every row with no figure said "Not published", even when
+// the reason is known (a test in the CAO cutoff, D27, or a Czech entrance
+// exam). The FAQ defines "Not published" as "the university does not publish
+// a figure", so those rows now say what they are, in both languages.
+const reasonRows = [['test', fxRow('fx-test-score')], ['unverified', d27Of('ie-unver')], ['exam', fxRow('fx-entrance')], ['none', bkRow('blank')]];
+const reasonCells = (lang) => {
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return reasonRows.map(([why, row]) => [why, ...rowPoints(row, fstate(36)).slice(0, 2)]); } finally { i18n.setLanguage('en', { setItem() {} }); }
+};
+equal('row points with no figure name the known reason, EN and SK', [reasonCells('en'), reasonCells('sk')], [
+  [['test', 'v-unk', 'Test in cutoff'], ['unverified', 'v-unk', 'No IB figure'], ['exam', 'v-unk', 'Entrance exam'], ['none', 'v-unk', 'Not published']],
+  [['test', 'v-unk', 'Hranica s testom'], ['unverified', 'v-unk', 'Bez údaja v IB'], ['exam', 'v-unk', 'Prijímacia skúška'], ['none', 'v-unk', 'Nezverejnené']],
+]);
+check('row points: no live row with a known reason says "Not published"', live.every((row) => {
+  const short = ptsShort(row);
+  return !short.unknown || !short.unknown.reason || rowPoints(row, fstate(36))[1] !== 'Not published';
+}));
+// The row cell is at most 108 px wide on a 320 px phone (css/styles.css) and
+// its verdict does not wrap; "Bez údaja v IB bodoch" overflowed it.
+check('row points reason labels stay as short as the longest existing one', ['en', 'sk'].every((lang) => {
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return ['r2_pts_test_in_cutoff', 'r2_pts_no_ib_figure', 'entrance_exam'].every((k) => i18n.t(k).length <= 17); } finally { i18n.setLanguage('en', { setItem() {} }); }
+}));
 check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
@@ -2716,16 +2899,34 @@ equal('row deadline: short plain date, countdowns, neutral passed and dashed unk
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
     const c = cellOf(rowOf(fxRow(id)), 'c-ddl');
     return [fillOf(c), byClass(c, 'verd')[0]?.textContent ?? null, byClass(c, 'fig')[0].textContent, byTag(c, 's').length];
-  }), [['', null, '1 Feb 2027', 0], ['v-time', 'In 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'Tomorrow', '15 Aug 2026', 0],
-    ['v-time', 'Today', '14 Aug 2026', 0], ['v-past', 'Passed, check next cycle', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+  }), [['', 'in 171 days', '1 Feb 2027', 0], ['v-time', 'in 34 days', new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-09-17T00:00:00Z')), 0], ['v-time', 'tomorrow', '15 Aug 2026', 0],
+    ['v-time', 'today', '14 Aug 2026', 0], ['v-past', 'passed', '31 Mar 2026', 1], ['v-unk', null, 'Not published', 0]]);
+// Review of PR 1: the row countdown read "in 0 days" on the day itself,
+// "in 1 day" the day before, and Slovak "o 3 dní" (should be "o 3 dni").
+// The row now uses countdown(), as the detail does. Each case re-works the
+// days with applyToday, the way the app does at load and at midnight.
+const rowCountdown = (lang, daysBefore) => {
+  const row = { ...fxRow('fx-plain'), deadline: new Date('2026-11-30T00:00:00Z') };
+  applyToday([row], new Date(2026, 10, 30 - daysBefore, 10));
+  i18n.setLanguage(lang, { setItem() {} });
+  try { return byClass(cellOf(rowOf(row), 'c-ddl'), 'verd')[0].textContent; } finally { i18n.setLanguage('en', { setItem() {} }); }
+};
+equal('row countdown: today, tomorrow, 2-4 and 5+ days, EN and SK',
+  ['en', 'sk'].map((lang) => [0, 1, 2, 3, 4, 5, 21].map((n) => rowCountdown(lang, n))), [
+    ['today', 'tomorrow', 'in 2 days', 'in 3 days', 'in 4 days', 'in 5 days', 'in 21 days'],
+    ['dnes', 'zajtra', 'o 2 dni', 'o 3 dni', 'o 4 dni', 'o 5 dní', 'o 21 dní'],
+  ]);
 check('compact Irish fees keep the detail-only contribution note out of rows',
   !byClass(rowOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
-equal('row date: November and December use short names', [11, 12].map((m) => byClass(rowOf({ ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) }), 'c-ddl')[0].textContent),
-  ['Deadline1 Nov 2026', 'Deadline1 Dec 2026']);
+equal('row date: November and December use short names', [11, 12].map((m) => {
+  const row = { ...fxRow('fx-plain'), deadline: new Date(`2026-${m}-01T00:00:00Z`) };
+  applyToday([row], new Date(2026, 9, 1, 10));
+  return byClass(rowOf(row), 'c-ddl')[0].textContent;
+}), ['Deadline1 Nov 2026in 31 days', 'Deadline1 Dec 2026in 61 days']);
 equal('row fee: known, zero, blank and ? keep distinct meanings',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => byClass(rowOf(fxRow(id)), 'c-fee')[0].textContent),
-  ['EU fee€2,500 / yearLiving €1,100/mo', 'EU fee€0 · No tuition feeLiving €1,100/mo',
-    'EU feeNot publishedLiving cost not published', 'EU feeNot publishedLiving €1,100/mo']);
+  ['EU fee / year€2,500Living €1,100/mo', 'EU fee / year€0 · No tuition feeLiving €1,100/mo',
+    'EU fee / yearNot publishedLiving cost not published', 'EU fee / yearNot publishedLiving €1,100/mo']);
 const sentenceRow = { ...fxRow('fx-checked'), languages: ['Czech'], otherRequirements: ['Portfolio'], admission: ['Entrance exam: maths'], isStale: true };
 equal('row requirement groups are ordered and provenance follows them', byClass(rowOf(sentenceRow), 'line')[0].textContent,
   'Requires HL Maths 5 · Portfolio · Taught in Czech · Entrance exam: maths Checked by JKmay be out of date');
@@ -2829,14 +3030,14 @@ check('sort header has all four SORTS keys, hidden direction text and one defaul
     && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
-    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*syncSort\(\);/.test(appSrc));
+    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
 check('row toggle retains slots while arrows select only wide without roving tabindex',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
     && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
   (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
-    && !/shimmer|@keyframes/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
+    && !/shimmer|@keyframes sk-/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
     && !indexHtml.includes('i-compass') && !/<div[^>]*(?:role|aria-live)=[^>]*id="empty-state"|id="empty-state"[^>]*(?:role|aria-live)=/.test(indexHtml));
 check('empty h2, search tips and Clear all count are present',
   indexHtml.includes('<h2 id="empty-title">') && indexHtml.includes('Words can appear in any order')
@@ -2848,7 +3049,7 @@ check('row wraps whole point parts without clipping requirements; containment on
     && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
-    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap'].includes(t))
+    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h'].includes(t))
     && (css.match(/var\(--shadow\)/g) ?? []).length === 1
     && /box-shadow:var\(--shadow\)/.test(cssRules.match(/\.pane\{display:block;[^}]+/)?.[0] ?? ''));
 
@@ -2872,14 +3073,18 @@ for (let i = 0; i < cssRules.length; i++) {
 // the gallery-only rules and the mockup's scrim node stay out.
 // Redesign revisions: the one deliberate @container is the list's 900 px
 // query (on .listp); any other container query or container is still a copy.
-const containerQueriesOk = (source) => (source.match(/@container[^{]*/g) ?? []).every((q) => q.trim() === '@container (min-width: 900px)')
-  && (source.match(/container(?:-type)?\s*:/g) ?? []).length === 1 && /\.listp\{[^}]*container-type:inline-size/.test(source);
-check('CSS contains no copied mockup gallery, container or scrim rules; the only container query is the list at 900 px',
+// Alignment fixes (2026-11-05): the detail footer is a second, named container,
+// so the Save/Compare pair can stack when the detail is too narrow for both
+// labels; its queries name it and nothing else may be a container.
+const containerQueriesOk = (source) => (source.match(/@container[^{]*/g) ?? []).every((q) => q.trim() === '@container (min-width: 800px)' || /^@container dfoot \((?:max|min)-width: [\d.]+px\)$/.test(q.trim()))
+  && (source.match(/container(?:-type)?\s*:/g) ?? []).length === 2 && /\.listp\{[^}]*container-type:inline-size/.test(source)
+  && /\.d-foot\{container:dfoot \/ inline-size\}/.test(source);
+check('CSS contains no copied mockup gallery, container or scrim rules; the only container queries are the list at 900 px and the detail footer',
   !/\.g-h3\b|\.app\s*\{\s*container\s*:|\.listp\s*\{\s*justify-self\s*:|\.spec\s+\.dd(?![\w-])|\.scrim(?![\w-])/.test(cssRules)
     && containerQueriesOk(cssRules) && !containerQueriesOk(cssRules + '@container (min-width: 1024px){.row{gap:0}}')
     && !containerQueriesOk(cssRules + '.app{container-type:inline-size}'));
 check('chrome has exactly one base definition each, and stickiness follows A07',
-  ['.status', '.mast', '.src', '.lang', '.bn', '.foot', '.fbar', '.sheet', '.cols'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
+  ['.hd', '.hd-in', '.fslot'].every((sel) => baseSelectors.filter((s) => s === sel).length === 1)
     && stickyChromeOk(css));
 check('every live and fixture requirements line preserves source facts in order', [...live, ...fxs, ...kinds, ...bk].every((row) => {
   const li = rowOf(row), line = byClass(li, 'line')[0];
@@ -2912,7 +3117,8 @@ function cssTree(source, media = []) {
     const selector = source.slice(start, brace).trim(), body = source.slice(brace + 1, end - 1);
     // @starting-style nests rules like @media; keep it as ancestry too (Stage 6).
     // @container too (redesign revisions): the 900 px list query is ancestry.
-    if (selector.startsWith('@media') || selector.startsWith('@starting-style') || selector.startsWith('@container')) rules.push(...cssTree(body, [...media, selector]));
+    // @supports too (2026-11-05): the sheet's height motion is a progressive enhancement.
+    if (selector.startsWith('@media') || selector.startsWith('@starting-style') || selector.startsWith('@container') || selector.startsWith('@supports')) rules.push(...cssTree(body, [...media, selector]));
     else rules.push({ selector, body, media });
     start = end;
   }
@@ -2927,7 +3133,7 @@ function stickyChromeOk(source) {
   const sticky = (r) => /position\s*:\s*(?:sticky|fixed)/.test(r.body);
   const arms = (r) => r.selector.split(',').map((x) => x.trim());
   const in600 = (r) => r.media.length === 1 && r.media[0] === '@media (min-width: 600px)';
-  return rules.every((r) => !(sticky(r) && (header.test(r.selector)
+  return rules.every((r) => !(sticky(r) && ((header.test(r.selector) && !(r.selector === '.dropdown-panel .opt-q' && /position:sticky;top:0/.test(r.body)))
       || (arms(r).some((a) => /\.cols(?![\w-])/.test(a)) && !in600(r))
       || (arms(r).some((a) => /\.status(?![\w-])/.test(a)) && r.media.length))))
     && rules.some((r) => !r.media.length && arms(r).includes('.status') && /position:sticky;top:0/.test(r.body))
@@ -2940,7 +3146,7 @@ const paneRule = (selector, query) => paneCss.filter((r) => r.selector.split(','
   && (query ? atMedia(r, query) : r.media.length === 0)).map((r) => r.body).join(';');
 // Redesign revisions (2026-10-28): one pane query at 1200 (was 1024/1280);
 // where a row's facts sit is a 900 px container query on the list.
-const desktopQuery = '(min-width: 1200px)', listQuery = '@container (min-width: 900px)';
+const desktopQuery = '(min-width: 1200px)', listQuery = '@container (min-width: 800px)';
 function confinedPaneRules(source) {
   return cssTree(source).every((r) => {
     const sels = r.selector.split(',').map((s) => s.trim());
@@ -2969,15 +3175,15 @@ function sharedTracks(rules, media, template) {
     && /grid-template-columns|column-gap|padding-inline|padding-left|padding-right|(?:^|;)\s*padding\s*:|(?:^|;)\s*gap\s*:/.test(r.body));
   return shared.length === 1 && shared[0].body.includes(`grid-template-columns:${template}`) && !stray.length;
 }
-const tracksOk = (rules) => sharedTracks(rules, [listQuery], 'minmax(320px,1fr) 206px 146px 124px 16px')
+const tracksOk = (rules) => sharedTracks(rules, [listQuery], 'minmax(0,1fr) 168px 148px 128px 16px')
   && /column-gap:12px;padding-inline:16px/.test(trackRules([listQuery]).find((r) => r.selector === '.cols,.row')?.body ?? '')
-  && sharedTracks(rules, [`@media ${desktopQuery}`, listQuery], 'minmax(320px,1fr) 206px 146px 124px');
+  && sharedTracks(rules, [`@media ${desktopQuery}`, listQuery], 'minmax(0,1fr) 168px 148px 128px');
 check('headings and rows share one track template, gap and inset at the 900 px list query, with and without the chevron track; split rows fail',
   tracksOk(paneCss)
-    && !tracksOk(cssTree(cssRules + '@container (min-width: 900px){.cols{column-gap:8px}}'))
-    && !tracksOk(cssTree(cssRules + '@container (min-width: 900px){.row{padding-inline:12px}}'))
+    && !tracksOk(cssTree(cssRules + '@container (min-width: 800px){.cols{column-gap:8px}}'))
+    && !tracksOk(cssTree(cssRules + '@container (min-width: 800px){.row{padding-inline:12px}}'))
     && /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', desktopQuery))
-    && /--pane-w:380px/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
+    && /--pane-w:clamp\(300px,26vw,380px\)/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
     && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
     && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
     && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
@@ -2990,15 +3196,15 @@ check('sort marks: one fixed 14x14 SVG box, the active heading changes colour no
     && /width:16px;height:16px/.test(paneRule('.chev')) && /transform:rotate\(180deg\)/.test(paneRule('.is-open .chev'))
     && !/::after\{content:""/.test(paneRule('.dropdown>summary::after')) && !/\.dir(?![\w-])/.test(cssRules)
     && !indexHtml.includes('class="dir"') && (indexHtml.match(/<svg class="sm" aria-hidden="true" focusable="false"><use href="#i-(?:sort|chevron-up)"\/><\/svg>/g) ?? []).length === 4
-    && (indexHtml.match(/<span class="dd-chev" aria-hidden="true">/g) ?? []).length === 5);
+    && (indexHtml.match(/<span class="dd-chev" aria-hidden="true">/g) ?? []).length === 9);
 check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
   /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
     && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
     && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.pane .d-cells', desktopQuery))
     && /grid-template-areas:"pts pts" "ddl fee"/.test(paneRule('.pane .d-cells', desktopQuery))
     && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery)));
-check('selected tint/ring follow hover, focus inset and goto colours are explicit',
-  /background:var\(--accent-tint\);box-shadow:inset 0 0 0 2px var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
+check('selected tint and left accent follow hover, focus inset and goto colours are explicit',
+  /background:var\(--accent-tint\);box-shadow:inset 3px 0 0 var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
     && cssRules.lastIndexOf('.is-sel>.row') > cssRules.indexOf('.row:hover')
     && /outline-offset:-6px/.test(paneRule('.is-sel .open:focus-visible::after', desktopQuery))
     && /left:-9999px;color:var\(--accent\);text-decoration:underline/.test(paneRule('.goto', desktopQuery))
@@ -3008,7 +3214,7 @@ check('selected tint/ring follow hover, focus inset and goto colours are explici
 // The bar no longer sticks, so that block and its offset went together.
 check('no interim height-gated chrome: no (min-height: 600px) media and no 236 px offset; the pane is top 12 px at every height',
   !/@media[^{]*min-height:\s*600px/.test(cssRules) && !/236px/.test(cssRules) && !css.includes('interim until Stage 5')
-    && /position:sticky;top:12px;max-height:calc\(100vh - 24px\)/.test(paneRule('.pane', desktopQuery)));
+    && /top:calc\(var\(--header-visible\) \+ 12px\);max-height:calc\(100dvh - var\(--header-visible\) - 24px\)/.test(paneRule('.pane', desktopQuery)));
 // Stage 6 retarget: the only motion near the pane is the new content's
 // opacity and an unselected row's hover; the pane box, Go to details and the
 // selection fill never move.
@@ -3040,12 +3246,27 @@ check('pane reuse removes old content, keeps stable nodes and resolves every nam
     if (expected === 'content') {
       if (!heading.hidden || title.length !== 1 || title[0].id !== `p-${row.id}` || pane.getAttribute('aria-labelledby') !== title[0].id
         || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-cells').length !== 1) return false;
-    } else if (heading.hidden || title.length || pane.getAttribute('aria-labelledby') !== 'pane-h'
+    } else if (heading.hidden || title.length !== (expected === 'empty' ? 1 : 0) || pane.getAttribute('aria-labelledby') !== 'pane-h'
       || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} does not match your filters`)
         || byTag(body, 'span')[0]?.lang !== 'cs'))
-      || (expected === 'empty' && body.textContent !== 'Choose a programmeIts details appear here. Use the Up and Down arrow keys to move through the list.')) return false;
+      || (expected === 'empty' && (title[0]?.textContent !== UI.en.r2_pane_heading || !body.textContent.includes(UI.en.r2_pane_pick) || !body.textContent.includes(UI.en.r2_legend) || byClass(body, 'legend').length !== 1))) return false;
   }
   return true;
+}));
+check('empty pane needs its target heading; a paragraph-only negative fixture fails', withStubDocument(() => {
+  const body = new ChromeNode('div');
+  renderPane({pane:new ChromeNode('aside'),heading:new ChromeNode('h2'),body}, null, false, noFilters());
+  const valid = (node) => byTag(node, 'h2').some((h) => h.textContent === UI.en.r2_pane_heading);
+  if (!valid(body)) return false;
+  if (byClass(body, 'overview-actions').length) return false;
+  byTag(body, 'h2')[0].remove(); return !valid(body);
+}));
+check('pane overview renders every active filter including numeric budgets without auto-selecting a programme', withStubDocument(() => {
+  const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
+  const state = noFilters(); Object.assign(state, { myIbPoints: 36, maxBudget: 15000, maxTuition: 0, myLiving: 500 }); state.countries.add('Ireland');
+  const mode = renderPane({ pane, heading, body }, null, false, state, { savedCount: 2 });
+  return mode === 'empty' && body.textContent.includes('€15,000') && body.textContent.includes('Ireland')
+    && body.textContent.includes('My list · 2 saved') && byClass(body, 'detail').length === 0;
 }));
 check('all live pane details have exactly one full heading, head and cells', typeof renderPane === 'function' && withStubDocument(() => {
   const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
@@ -3100,7 +3321,7 @@ function parseHtml(source) {
 // start() runs for real up to its never-ending data load, so every handler and
 // the initial filter placement are the app's own. 600 and 1024 are separate
 // media objects (R4); media/flip still drive only 1024, as in Stage 4.
-function paneAppHarness(test, { boot = false } = {}) {
+function paneAppHarness(test, { boot = false, compare = null } = {}) {
   const originalGlobal = globalThis.document;
   globalThis.document = stubDocument;
   const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners',
@@ -3136,7 +3357,10 @@ function paneAppHarness(test, { boot = false } = {}) {
     // layout stubs; an unknown query is an error rather than a silent 1024.
     const motionMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
-    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia };
+    // Batch 3 · A: where the compare tray replaces the header button.
+    const trayMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
+      '(max-width: 599.98px), (max-height: 500px)': trayMedia };
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
     let nextFrame = 1; const frames = new Map();
@@ -3174,13 +3398,19 @@ function paneAppHarness(test, { boot = false } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
       IntersectionObserver, navigator: { clipboard },
-      ...shortlistMod, ...compareMod, saveShortlist: (set) => {
+      ...shortlistMod, ...compareMod, ...compareSetMod,
+      // The real compare-set functions on context.compareStorage, a stand-in
+      // localStorage a test can block, fill or change as a second tab would.
+      readStoredCompare: () => compareSetMod.readStoredCompare(context.compareStorage),
+      saveCompare: (ids) => compareSetMod.saveCompare(ids, context.compareStorage),
+      loadCompare: () => compareSetMod.loadCompare(context.compareStorage),
+      saveShortlist: (set) => {
         context.savedLists = [...(context.savedLists ?? []), [...set]];
         const works = context.saveWorks ?? true;
         if (works && context.stored) context.stored = [...set];
@@ -3192,8 +3422,9 @@ function paneAppHarness(test, { boot = false } = {}) {
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, renderCompare, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
+    context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(code, context);
     const run = (code) => runInNewContext(code, context);
@@ -3220,7 +3451,7 @@ function paneAppHarness(test, { boot = false } = {}) {
     };
     result = test({ perf, drain, timers, run, get, item, click, flip, flip600, fire, advance, settle, media, media600, observers, clipboard, tree, html,
       docBody, pane, body, resultsSection, context, ids: context.fixture.map((r) => r.id),
-      motionMedia, printMedia, frames, flushFrame, fireWindow, styleReads });
+      motionMedia, printMedia, trayMedia, frames, flushFrame, fireWindow, styleReads });
   } catch (err) { finish(); throw err; }
   if (result && typeof result.then === 'function') return result.finally(finish);
   finish();
@@ -3347,18 +3578,18 @@ check('one copy of each control: every filter, sheet and copy id appears exactly
 // container query swaps it with the headings (one visible sort control).
 const listpSrc = elementSource(indexHtml, /<div class="listp">/);
 check('.more-filters holds the fee, the five dropdowns, Deadline and Clear all, inside the filter form in the header; Sort sits in the list before the headings',
-  moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-deadline"', 'id="dd-degrees"', 'id="dd-cities"', 'id="f-clear"'].every((s) => moreSrc.includes(s))
-    && !formSrc.includes('id="f-sort"') && /<div class="fld f-sort">\s*<label for="f-sort">Sort by<\/label>\s*<select class="inp" id="f-sort"><\/select>\s*<\/div>\s*<div class="cols"/.test(listpSrc)
-    && formSrc.includes(moreSrc) && elementSource(indexHtml, /<header class="top">/).includes(formSrc)
-    && ['id="f-search"', 'id="f-points"', 'id="f-maths"', 'id="f-more"'].every((s) => formSrc.includes(s) && !moreSrc.includes(s)));
+  moreSrc.length > 0 && ['id="f-tuition"', 'id="dd-subjects"', 'id="dd-countries"', 'id="dd-languages"', 'id="f-deadline"', 'id="dd-degrees"', 'id="dd-cities"'].every((s) => moreSrc.includes(s))
+    && !formSrc.includes('id="f-sort"') && /<div class="fld f-sort">[\s\S]*?<select class="inp" id="f-sort" hidden[^>]*><\/select>\s*<details class="dropdown sort-dd" id="dd-sort">[\s\S]*?<\/details>\s*<\/div>\s*<div class="cols"/.test(listpSrc)
+    && formSrc.includes(moreSrc) && elementSource(indexHtml, /<div class="fslot">/).includes(formSrc)
+    && ['id="f-points"', 'id="f-maths"'].every((s) => moreSrc.includes(s)) && statusSrc.includes('id="f-more"'));
 check('.status holds the live count, its aria-hidden twin and Copy link after a 1 px sentinel; Sort has left it; the footer holds Show N',
   /<p class="count cfull" id="result-count" aria-live="polite"><\/p>/.test(statusSrc) && /<p class="count cshort" aria-hidden="true"><\/p>/.test(statusSrc)
     && statusSrc.includes('id="f-copy"') && !statusSrc.includes('f-sort') && /<div class="stuck-mark" aria-hidden="true"><\/div>\s*<div class="status">/.test(indexHtml)
     && elementSource(indexHtml, /<div class="sheet-f">/).includes('id="sheet-show"') && !indexHtml.includes('sort-field'));
 check('the sheet is a labelled native dialog with a focusable heading and Done, controlled by Filters',
   /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
-    && /id="sheet-done"[^>]*>Done</.test(sheetSrc) && !/role="dialog"|aria-modal/.test(indexHtml)
-    && /<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet">/.test(formSrc));
+    && /id="sheet-done"[^>]*aria-label="Close filters"[^>]*><svg/.test(sheetSrc) && !/role="dialog"|aria-modal/.test(indexHtml)
+    && /<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet">/.test(statusSrc));
 check('every button in the filter form and the sheet is type="button" (no implicit submit)', [formSrc, sheetSrc].every((src) => {
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
@@ -3399,8 +3630,8 @@ check('print hides the filter bar, sheet, short count and Copy link with selecto
 check('invalid fields get a 2 px ink border placed after the active look, so it wins; flags out-rank the 1em icon rule',
   /border:2px solid var\(--ink\)/.test(paneRule('.inp[aria-invalid=true]'))
     && cssRules.indexOf('.inp[aria-invalid=true]') > cssRules.indexOf('.is-set .inp')
-    && /width:21px;height:14px;border-radius:2px;outline:1px solid var\(--hairline\)/.test(paneRule('.dropdown svg.flag')));
-check('compact count twin: lead plus each bucket number with its mark, lead only without points, rewritten only on change',
+    && /width:20px;height:14px;border-radius:2px;outline:1px solid var\(--hairline\)/.test(paneRule('.dropdown svg.flag')));
+check('compact count twin keeps the readable count without cryptic verdict numbers, rewritten only on change',
   typeof renderCountShort === 'function' && withStubDocument(() => {
     const n = new ChromeNode('p');
     n.setAttribute('aria-hidden', 'true');
@@ -3408,9 +3639,8 @@ check('compact count twin: lead plus each bucket number with its mark, lead only
     const first = renderCountShort(n, '1130 of 1240 programmes', parts), kids = [...n.children];
     const same = renderCountShort(n, '1130 of 1240 programmes', parts);
     return first === true && same === false && kids.every((c, i) => c === n.children[i])
-      && n.textContent === '1130 of 1240 programmes · 410 · 41 · 679' && byTag(n, 'b')[0]?.textContent === '1130 of 1240 programmes'
-      && byClass(n, 'k').map((x) => x.className).join(' ') === 'k k-fit m m-fit k k-cond m m-cond k k-unk m m-unk'
-      && renderCountShort(n, '1240 programmes', []) === true && n.textContent === '1240 programmes' && n.childElementCount === 1
+      && n.textContent === '1130 of 1240 programmes' && !byClass(n, 'k').length
+      && renderCountShort(n, '1240 programmes', []) === true && n.textContent === '1240 programmes' && n.childElementCount === 0
       && n.getAttribute('aria-hidden') === 'true';
   }));
 check('country options get an aria-hidden flag between the tick and the name; an unmapped country gets text only',
@@ -3425,36 +3655,42 @@ check('country options get an aria-hidden flag between the tick and the name; an
       return label.textContent === name && label.children[0].tagName === 'input' && label.children[0].checked === (name === 'Ireland')
         && (name === 'Atlantis' ? !svg : !!svg && svg.getAttribute('aria-hidden') === 'true' && svg.className === 'flag' && label.children[1] === svg
           && byTag(svg, 'use')[0]?.getAttribute('href') === `#${flags[name]}`);
-    }) && !byTag(plain, 'svg').length && appSrc.includes('{ flags: COUNTRY_FLAGS }')
+    }) && !byTag(plain, 'svg').length && appSrc.includes("{ flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') }")
       && Object.entries(flags).every(([c, f]) => appSrc.includes(`${c}: '${f}'`));
   }));
 
 // Real handlers on the real markup. Each would pass with a wrong target only
 // if the app code were wrong in the same way, so every outcome is asserted.
 const kids = (n) => n.children.filter((c) => typeof c !== 'string');
-appCheck('actual 600 crossings move .more-filters, Clear all and Copy link as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
+appCheck('actual 600 crossings move .more-filters, Clear all, Copy link and My list as single nodes, round trip and keep values, ticks and open lists', ({ run, get, tree, flip600 }) => {
   run('facets = buildFacets(allRows); drawChips();');
+  // Batch 2 B1 moves the copy help and live status alongside the unchanged controls.
+  const help = get('f-copy-help'), feedback = get('f-copy-status');
   const more = tree.querySelector('.more-filters'), clear = get('f-clear'), copy = get('f-copy'), show = get('sheet-show');
   const sheetB = tree.querySelector('.sheet-b'), sheetF = tree.querySelector('.sheet-f'), form = get('filter-form'), status = tree.querySelector('.status');
-  const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy].join() && kids(sheetB)[1] === copy
-    && clear.parent === sheetF && clear.nextElementSibling === show;
-  const wideOk = () => more.parent === form && kids(form).at(-1) === more && kids(more).at(-1) === clear && kids(status).at(-1) === copy;
+  // Since 2026-11-06 My list sits before Filters in the phone count row and
+  // before Compare in the header from 600 px (CH4), so a crossing moves 6 nodes.
+  const list = get('header-list'), compare = get('header-compare'), filtersButton = get('f-more');
+  const narrowOk = () => more.parent === sheetB && kids(sheetB).join() === [more, copy, help, feedback].join() && kids(sheetB)[1] === copy
+    && clear.parent === sheetF && clear.nextElementSibling === show && list.parent === status && list.nextElementSibling === filtersButton;
+  const wideOk = () => more.parent === form && kids(form).at(-1) === more && clear.parent === status && kids(status).slice(-3).join() === [copy, help, feedback].join()
+    && list.nextElementSibling === compare && list.parent === compare.parent;
   if (!narrowOk()) return false;
-  const box = get('dd-countries'), tick = get('f-countries').querySelector('input');
+  const box = get('dd-countries'), tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox');
   box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
   stubDocument.moved = (n) => { moves++; hook(n); };
   flip600(true);
-  if (!wideOk() || moves !== 3) return false;
+  if (!wideOk() || moves !== 6) return false;
   flip600(true); run('placeFilters();');
-  if (moves !== 3) return false;
+  if (moves !== 6) return false;
   // A fresh placement (page load at 600 or wider) finds every node in place:
   // nothing moves, so a control focused before the script ran keeps focus.
   get('f-tuition').focus(); run('appliedBar = null; placeFilters();');
-  if (moves !== 3 || stubDocument.activeElement !== get('f-tuition')) return false;
+  if (moves !== 6 || stubDocument.activeElement !== get('f-tuition')) return false;
   for (let i = 0; i < 10; i++) { flip600(i % 2 === 0 ? false : true); if (!(i % 2 === 0 ? narrowOk() : wideOk())) return false; }
   return box.open && tick.checked && get('f-tuition').value === '3000' && get('f-sort').value === 'tuition:desc'
-    && get('f-countries').querySelector('input') === tick && tree.querySelectorAll('.more-filters').filter((n) => n.parent === form || n.parent === sheetB).length === 1
+    && get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox') === tick && tree.querySelectorAll('.more-filters').filter((n) => n.parent === form || n.parent === sheetB).length === 1
     && ['f-deadline','f-degrees','f-cities'].every((id) => tree.querySelectorAll(`#${id}`).length === 1);
 });
 appCheck('actual 600 focus: a moved control keeps focus, sheet focus and the vanishing Filters go to the fee, narrowing goes to Filters, others stay', ({ get, flip600, fire, item, ids: [a] }) => {
@@ -3471,8 +3707,8 @@ appCheck('actual 600 focus: a moved control keeps focus, sheet focus and the van
   focus(get('f-search')); flip600(true); if (active() !== get('f-search')) return false;
   flip600(false); focus(item(a).querySelector('button.open')); flip600(true);
   if (active() !== item(a).querySelector('button.open')) return false;
-  flip600(false); focus(get('f-points')); flip600(true); flip600(false);
-  return active() === get('f-points');
+  flip600(false); fire(more, 'click'); focus(get('f-points')); flip600(true); flip600(false);
+  return active() === more;
 });
 appCheck('actual 600 focus cleared by CSS before the callback: Filters and moved controls recover; a real move or same-mode blur forgets', ({ get, flip600, fire, media600, docBody, item, ids: [a] }) => {
   const fee = get('f-tuition'), more = get('f-more'), focus = (n) => { n.focus(); fire(n, 'focusin'); };
@@ -3513,16 +3749,59 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
 });
-appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; fee 0 + two countries is Filters (2)', ({ run, get, fire, advance, context }) => {
+// Each arrow press in the Sort pick-list committed a sort and closed the
+// list, sending focus back to its button after one step.
+appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on the new radio; Enter, Space on the chosen one, and a click close it (regression)', ({ run, get, fire, context }) => {
+  // A plain object is enough: dispatchStub copies the type.
+  context.Event = function Event(type, init = {}) { return { type, ...init }; };
+  const details = get('dd-sort'), box = get('sort-options'), summary = details.querySelector('summary');
+  // The stand-in <select> has no .options; the real one lists its <option>s.
+  Object.defineProperty(get('f-sort'), 'options', { get() { return this.children; } });
+  run('sortPick();');
+  const radios = () => box.querySelectorAll('input');
+  const pick = (value, how) => {
+    const radio = radios().find((node) => node.value === value);
+    if (how === 'arrow') fire(box, 'keydown', { key: 'ArrowDown' }); else fire(box, 'pointerdown');
+    radio.checked = true; fire(radio, 'change');
+  };
+  details.open = true;
+  const [first, second, third] = radios().map((node) => node.value);
+  pick(second, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== second || stubDocument.activeElement?.value !== second
+    || stubDocument.activeElement === radios().find((node) => node.value === first)) return false;
+  pick(third, 'arrow');
+  if (!details.open || run('`${state.sort}:${state.dir}`') !== third || stubDocument.activeElement?.value !== third) return false;
+  fire(box, 'keydown', { key: 'Enter' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  const chosen = radios().find((node) => node.checked); chosen.focus();
+  fire(chosen, 'keyup', { key: ' ' });
+  if (details.open || stubDocument.activeElement !== summary) return false;
+  details.open = true;
+  pick(first, 'click');
+  return !details.open && stubDocument.activeElement === summary && run('`${state.sort}:${state.dir}`') === first;
+});
+// Below 600 px Search is the filter form's only text field, so Enter there
+// submitted it and reloaded the page to ?q=…, losing the language and a
+// shared ?list= view. Smoke "PHN enter" presses the real key.
+appCheck('actual phone Enter in Search: the filter form is never submitted, on phones or wider (regression)', ({ get, fire, flip600 }) => {
+  flip600(false);
+  const phone = fire(get('filter-form'), 'submit');
+  flip600(true);
+  return phone === false && fire(get('filter-form'), 'submit') === false;
+});
+appCheck('actual counts: Filters (n) counts sheet groups, Clear all (n) every filter, Show N the shown rows; points + HL Maths and fee 0 + two countries are each Filters (2)', ({ run, get, fire, advance, context }) => {
   run('facets = buildFacets(allRows); drawChips();');
   const more = get('f-more'), clear = get('f-clear'), show = get('sheet-show'), label = () => more.querySelector('span').textContent;
   const type = (id, value) => { get(id).value = value; fire(get(id), 'input'); advance(150); };
   if (label() !== 'Filters' || more.classList.contains('is-on') || clear.textContent !== 'Clear all' || !clear.disabled
     || show.textContent !== `Show ${context.fixture.length} programmes`) return false;
   type('f-points', '36'); get('f-maths').checked = true; fire(get('f-maths'), 'change');
-  if (label() !== 'Filters' || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
+  // Points and HL Maths live in the phone sheet, so they count there too; the
+  // old rule left them out and showed "Filters" beside "Clear all (2)".
+  if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || !get('f-points').closest('.fld').classList.contains('is-set')) return false;
   fire(clear, 'click'); type('f-tuition', '0');
-  for (const tick of get('f-countries').querySelectorAll('input').slice(0, 2)) { tick.checked = true; fire(tick, 'change'); }
+  for (const tick of get('f-countries').querySelectorAll('input').filter((node) => node.type === 'checkbox').slice(0, 2)) { tick.checked = true; fire(tick, 'change'); }
   if (label() !== 'Filters (2)' || !more.classList.contains('is-on') || clear.textContent !== 'Clear all (2)' || clear.disabled
     || get('dd-countries-count-number').textContent !== '2' || get('dd-countries-count').hidden
     || !get('f-tuition').closest('.fld').classList.contains('is-set') || !get('dd-countries').classList.contains('is-set')
@@ -3538,11 +3817,11 @@ appCheck('actual sheet Clear all clears every filter and moves focus to the shee
   run('facets = buildFacets(allRows); drawChips();');
   const clear = get('f-clear');
   fire(get('f-more'), 'click');
-  const tick = get('f-countries').querySelector('input'); tick.checked = true; fire(tick, 'change');
+  const tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox'); tick.checked = true; fire(tick, 'change');
   get('f-tuition').value = '3000'; fire(get('f-tuition'), 'input'); advance(150);
   clear.focus(); fire(clear, 'click');
   return stubDocument.activeElement === get('sheet-h') && clear.disabled && clear.textContent === 'Clear all'
-    && run('activeFilterCount(state)') === 0 && !get('f-countries').querySelector('input').checked && get('f-tuition').value === '';
+    && run('activeFilterCount(state)') === 0 && !get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox').checked && get('f-tuition').value === '';
 });
 appCheck('actual dropdowns: in the sheet Escape is left to the dialog and outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
   const subjects = get('dd-subjects'), countries = get('dd-countries');
@@ -3587,22 +3866,31 @@ appCheck('actual stuck count: only while narrow with the sentinel above the view
   flip600(true); mark.rect = { top: 900, bottom: 901 }; flip600(false);
   return !stuck();
 });
-await asyncAppCheck('actual Copy link: success, rejection and no clipboard change only its own text for 2 s; a second click restarts the timer', async ({ get, fire, advance, settle, clipboard, context }) => {
-  const copy = get('f-copy');
+// Copy feedback now describes the snapshot; changing the button label hid the
+// result behind the phone modal and made the desktop action change width.
+await asyncAppCheck("Copy link writes the state's address and a state-based toast; failure never says copied", async ({ get, fire, settle, clipboard, context, run }) => {
+  context.location.origin = 'http://localhost:8765';
+  context.toastMessages = [];
+  context.showToast = (message) => context.toastMessages.push(message);
+  const copy = get('f-copy'), label = copy.textContent;
   fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Link copied' || clipboard.written.at(-1) !== context.location.href) return false;
-  advance(1999); if (copy.textContent !== 'Link copied') return false;
-  advance(1); if (copy.textContent !== 'Copy link') return false;
-  fire(copy, 'click'); await settle(); advance(1500); fire(copy, 'click'); await settle(); advance(1500);
-  if (copy.textContent !== 'Link copied') return false;
-  advance(500); if (copy.textContent !== 'Copy link') return false;
+  if (clipboard.written.at(-1) !== 'http://localhost:8765/' || context.toastMessages.at(-1) !== t('r2_copied_none')) return false;
+  run("state.countries.add('Ireland'); dom.points.value = '36';");
+  fire(copy, 'click'); await settle();
+  if (context.toastMessages.at(-1) !== t('r2_copied_filters_points')) return false;
+  run("state.countries.clear(); dom.points.value = ''; state.sort = 'name';");
+  fire(copy, 'click'); await settle();
+  if (!clipboard.written.at(-1).includes('?sort=name') || context.toastMessages.at(-1) !== t('r2_copied_sort')) return false;
+  get('f-search').value = 'biology'; fire(get('f-search'), 'input');
+  fire(copy, 'click'); await settle();
+  if (!clipboard.written.at(-1).includes('q=biology')) return false;
+  context.location.hash = '#top-marker';
   clipboard.mode = 'reject'; fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Copy failed: use the address bar') return false;
-  advance(2000); if (copy.textContent !== 'Copy link') return false;
+  if (context.toastMessages.at(-1) !== t('r2_copy_failed_desktop')) return false;
   context.navigator.clipboard = undefined; fire(copy, 'click'); await settle();
-  if (copy.textContent !== 'Copy failed: use the address bar') return false;
-  advance(2000);
-  return copy.textContent === 'Copy link' && copy.getAttribute('aria-live') === null;
+  return context.toastMessages.at(-1) === t('r2_copy_failed_desktop') && copy.textContent === label
+    && copy.querySelector('.copy-long').textContent === t('r2_copy_filters_link')
+    && copy.getAttribute('aria-live') === null;
 });
 appCheck('actual arrows scroll the new pick after selecting it: nearest when it fits under the sticky header, start when taller; focus never scrolls', ({ run, flip, get, html, context }) => {
   flip(true);
@@ -3660,6 +3948,28 @@ const transitions = allCss.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body)
 // The dormant shortlist/legacy rules keep their old transitions (not §8
 // surfaces, never shown); every other transition must be one listed here.
 const motionAllowed = {
+  '.btn': 'transition:transform 120ms ease-out,background-color 120ms ease-out',
+  '.faq summary>.ic': 'transition:transform 220ms var(--ease-out)',
+  '.faq summary>span[aria-hidden]': 'transition:transform 220ms var(--ease-out)',
+  '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
+  'dialog.ob': 'transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out),overlay 250ms allow-discrete,display 250ms allow-discrete',
+  'dialog.ob::backdrop': 'transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete',
+  '.ob-bar i': 'transition:transform 360ms var(--ease-out)',
+  '.ob .chip': 'transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)',
+  '.dropdown::details-content': 'transition:content-visibility 250ms allow-discrete',
+  '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
+  '.switch input::after': 'transition:transform 260ms var(--spring-snappy)',
+  'input[type=range]::-webkit-slider-thumb': 'transition:transform 160ms var(--ease-out)',
+  '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
+  // Phone help and sheet rows grow to height:auto where the browser can (M .tip timing; M .faq's optional 260 ms height).
+  '.sheet-b .tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),height 180ms var(--ease-out),padding 180ms var(--ease-out),margin 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
+  '.sheet-b .dropdown::details-content': 'transition:height 260ms var(--ease-out),content-visibility 260ms allow-discrete',
+  '.sheet-b .dropdown[open]::details-content': 'transition:height 260ms var(--ease-out)',
+  '.hd': 'transition:transform 240ms var(--ease-out)',
+  '.hd-in': 'transition:transform 240ms var(--ease-out)',
+  '.mark,.filters-btn': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
+  // Batch 3 C2: in the compact header only the wordmark fades; the tile stays.
+  '.mark h1': 'transition:opacity 160ms,transform 240ms var(--ease-out)',
   '.row,.btn,.inp,.option,.dropdown>summary': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.cols button': 'transition:background-color var(--t-fast) var(--ease-out)',
   '.item:not(.is-sel)>.row:hover': 'transition:background-color var(--t-fast) var(--ease-out)',
@@ -3667,25 +3977,34 @@ const motionAllowed = {
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
-  '.sheet': 'transition:transform var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
-  '.sheet::backdrop': 'transition:opacity var(--t-slow) var(--ease-out),display var(--t-slow) allow-discrete,overlay var(--t-slow) allow-discrete',
+  // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
+  '.sheet': 'transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
+  '.sheet[open]': 'transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
+  '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
+  '.sheet::backdrop': 'transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
+  '.sheet[open]::backdrop': 'transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
   const sel = r.selector.split(',').map((x) => x.trim()).join(',');
   if (legacyMotion.includes(r.selector.trim())) return false;
   const want = motionAllowed[sel];
-  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px/.test(m));
+  return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px|^@supports \(interpolate-size:allow-keywords\)$/.test(m));
 }).map((r) => r.selector);
 check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
   transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
     && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
   motionProblems(allCss).join(', '));
-check('§8: no keyframes, stagger, reorder or count/filter animation; no smooth scrolling; no animation property anywhere but print/reduced-motion resets',
-  !/@keyframes|transition-delay|animation-delay|scroll-behavior\s*:\s*smooth|view-transition/.test(cssRules)
-    && allCss.every((r) => !/(?:^|;)\s*animation\s*:/.test(r.body) || /animation:\s*none\s*!important/.test(r.body))
-    && ['.count', '.cshort', '.results', '.fig', '.status', '.item'].every((sel) => !/transition|animation/.test(bodyOf(sel))));
+check('round 2 animations use only opacity and transform; arbitrary keyframes and animated dimensions fail', (() => {
+  const valid = (source) => {
+    const animations = [...source.matchAll(/@keyframes ([\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)];
+    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back'].includes(name)
+      && !/(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/.test(body));
+  };
+  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}');
+})());
 check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron box turns whole, with no shift between states',
   /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
     && /min-height:0;overflow:hidden/.test(bodyOf('.expand-inner')) && !/(?:^|;)\s*transform\s*:/.test(bodyOf('.chev'))
@@ -3696,7 +4015,7 @@ check('sheet: slides from translateY(100%) with @starting-style and discrete dis
   /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
     && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
     && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet::backdrop')) && /opacity:1/.test(bodyOf('.sheet[open]::backdrop'))
-    && /transition:none/.test(bodyOf('.sheet', ['@media (min-width: 600px)'])) && /transition:none/.test(bodyOf('.sheet::backdrop', ['@media (min-width: 600px)']))
+    && ['.sheet', '.sheet[open]', '.sheet::backdrop', '.sheet[open]::backdrop'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
     && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
 // The old rule shortened every effect to 0.01ms: still a transition, still
 // firing its events late. Reduced motion is now none, backdrop included.
@@ -3704,6 +4023,25 @@ const reducedBody = allCss.filter((r) => r.media.join() === '@media (prefers-red
 check('reduced motion is instant: transition and animation none !important on every element, pseudo-element and ::backdrop; no 0.01ms',
   /\*, \*::before, \*::after, ::backdrop\s*\{[^}]*transition: none !important;[^}]*animation: none !important;[^}]*scroll-behavior: auto !important/.test(reducedBody)
     && !/0\.01ms/.test(cssRules));
+// Review of PR 1: "*" never matches ::details-content or the slider thumb, so
+// under reduced motion the phone sheet's lists still grew for 260 ms and the
+// thumb still scaled. Every pseudo-element that has a transition anywhere
+// (other than ::before, ::after and ::backdrop, which the rule above covers)
+// needs its own rule there, alone, since one unknown pseudo-element would
+// drop a shared selector list.
+const motionPseudoGaps = (source) => {
+  const tree = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+  const reduced = tree.filter((r) => r.media.join() === '@media (prefers-reduced-motion: reduce)' && /transition: ?none !important/.test(r.body)).map((r) => r.selector.trim());
+  const moving = tree.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body));
+  const pseudos = new Set(moving.flatMap((r) => [...r.selector.matchAll(/::([\w-]+)/g)].map((m) => m[1])).filter((name) => !['before', 'after', 'backdrop'].includes(name)));
+  return [...pseudos].filter((name) => !reduced.some((sel) => !sel.includes(',') && new RegExp(`::${name}$`).test(sel)));
+};
+check('reduced motion also stops ::details-content and the slider thumbs, each in a rule of its own',
+  motionPseudoGaps(cssRules).length === 0
+    && ['::details-content', 'input[type=range]::-webkit-slider-thumb', 'input[type=range]::-moz-range-thumb'].every((sel) => /transition: none !important/.test(bodyOf(sel, ['@media (prefers-reduced-motion: reduce)'])))
+    && motionPseudoGaps(cssRules + '.x::marker{transition:color 1s}').join() === 'marker'
+    && motionPseudoGaps(cssRules.replace('::details-content { transition: none !important; }', '')).join() === 'details-content',
+  motionPseudoGaps(cssRules).join(', '));
 // A05: Chrome named a row "World Bachelor in Business , BSc" (and the pane
 // "Antropologie , Bc.") because the clipped, absolute ", " counted as its own
 // block. The title's separator is inline at zero size; the global utility is
@@ -3712,7 +4050,7 @@ check('A05: the title/degree separator is inline and zero-sized only inside a ro
   /position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;font-size:0;line-height:0/.test(bodyOf('.open>.visually-hidden'))
     && bodyOf('.open>.visually-hidden') === bodyOf('.d-title>.visually-hidden')
     && /position: absolute;/.test(css.match(/\.visually-hidden \{[^}]*\}/)?.[0] ?? '')
-    && (renderSrc.match(/el\('span', 'visually-hidden', ', '\)/g) ?? []).length === 2);
+    && (renderSrc.match(/el\('span', 'visually-hidden', ','\)/g) ?? []).length === 1);
 check('renderSlot wraps the reduced detail in one .expand-inner; ids and names unchanged', live.slice(0, 40).every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.children.length === 1 && slot.children[0].className === 'expand-inner' && slot.children[0].children.length === 1
@@ -3869,7 +4207,7 @@ appCheck('L09 a: a short list schedules no frame and no timer', ({ run, frames, 
 appCheck('L09 b: the first update draws 40 rows at the top, the count is whole at once, and the rest arrive in order with no duplicates', ({ run, get, drain }) => {
   const want = l09(run);
   if (want.length !== live.length || get('results').children.length !== 40 || run('currentlyShown') !== live.length
-    || !get('result-count').textContent.includes(String(live.length))) return false;
+    || !get('result-count').textContent.includes(new Intl.NumberFormat('en-IE').format(live.length))) return false;
   drain();
   return sameList(get, want) && run('pendingRows') === null;
 });
@@ -4084,15 +4422,30 @@ const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x
   check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
     `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
 }
-check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, but never the sample warning',
-  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail']
+// Batch 3 · A: and the compare tray, the header Compare button and every compare control.
+check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
+  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
+    '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
-    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn') + printBody('.src-more')));
+    && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+// The header and footer do not print, so paper had neither the site's name nor
+// the warning (the old check read a .src-more rule nothing renders any more).
+// smoke "PR print head" measures both on emulated print media.
+check('A08 paper carries the site name and the check-the-official-page warning: .print-head holds both, hidden on screen, shown in print',
+  /<div class="print-head"><p class="print-name" data-i18n="r2_wordmark">[^<]+<\/p><p data-i18n="r2_footer_p">[^<]+<\/p><\/div>/.test(read('index.html'))
+    && indexHtml.includes(`<div class="print-head"><p class="print-name">${UI.en.r2_wordmark}</p><p>${UI.en.r2_footer_p}</p></div>`)
+    && /display:none/.test(ruleAt(cssText, '.print-head')) && /display: block/.test(printBody('.print-head')));
+// Setup and the Filters sheet printed over the list when left open: their
+// [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
+check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
+  ['dialog.sheet', 'dialog.sheet[open]', 'dialog.sheet::backdrop', 'dialog.sheet[open]::backdrop', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+    .every((sel) => /display: none/.test(printBody(sel)))
+    && /overflow: visible/.test(printBody('html:has(dialog.sheet[open])')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
-    && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody('.open:focus-visible::after')));
+    && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
   /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
@@ -4121,7 +4474,7 @@ const revisionRows = [
   { ...revisionBase, id: 'e', university: 'Echo', tuitionEu: null, ibPointsMin: null, deadline: null, deadlinePassed: false },
 ];
 const orderedIds = (key, dir) => sortRows(revisionRows, key, dir).map((r) => r.id).join('');
-for (const [key, asc, desc] of [['deadline', 'abcde', 'badce'], ['tuition', 'dabce', 'bcade'], ['points', 'dabce', 'bcade'], ['name', 'b acde'.replace(' ', ''), 'edcab']]) {
+for (const [key, asc, desc] of [['deadline', 'abcde', 'badce'], ['tuition', 'dabce', 'bcade'], ['points', 'dabce', 'bcade'], ['name', 'bacde', 'cdeab']]) {
   equal(`${key}: both directions, buckets/nulls and alphabetical ties`, [orderedIds(key, 'asc'), orderedIds(key, 'desc')], [asc, desc]);
 }
 equal('two-argument and invalid-key sorts retain the natural deadline default', [orderedIds('deadline'), orderedIds('bad')], ['abcde', 'abcde']);
@@ -4206,9 +4559,9 @@ appCheck('sort headings toggle both ways, a new key starts naturally, select/fil
   fire(context.document.querySelector('.cols [data-sort="points"]'),'click');
   if (get('f-sort').value !== 'points:asc') return false;
   get('f-sort').value = 'name:desc'; fire(get('f-sort'),'change');
-  if (context.document.querySelector('.sort-label').textContent !== 'University Z–A') return false;
+  if (context.document.querySelector('.sort-label').textContent !== 'Programme — Z to A') return false;
   get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
-  if (context.document.querySelector('.sort-label').textContent !== 'University A–Z') return false;
+  if (context.document.querySelector('.sort-label').textContent !== 'Programme — A to Z') return false;
   get('f-deadline').value = 'open'; fire(get('f-deadline'),'change'); fire(get('f-clear'),'click');
   return run('state.sort + state.dir') === 'tuitiondesc' && get('f-sort').value === 'tuition:desc' && get('f-deadline').value === 'any';
 });
@@ -4259,12 +4612,13 @@ appCheck('actual My maths / Entrance exam selects: choosing updates state and ad
   exam.value = 'none'; fire(exam, 'change');
   if (run('state.exam') !== 'none' || run('state.myMaths') !== 'AA SL') return false;
   if (urls.at(-1) !== '/?mymaths=AA+SL&exam=none' || chip('exam')?.getAttribute('data-label') !== 'Entrance exam: No exam') return false;
-  if (!maths.closest('.fld')?.classList.contains('is-set') || !exam.closest('.fld')?.classList.contains('is-set')) return false;
+  if (!maths.closest('.fld')?.classList.contains('is-set') || !exam.closest('.dropdown')?.classList.contains('is-set')) return false;
   if (more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (2)') return false;
-  // The tick is a different filter: it adds a Clear all count and a chip, but nothing to the sheet's count.
+  // The tick is a different filter: it adds a chip and one to both counts, as
+  // it sits in the phone sheet beside My maths.
   get('f-maths').checked = true; fire(get('f-maths'), 'change');
   if (run('state.hlMaths') !== true || run('state.myMaths') !== 'AA SL' || !chip('hlMaths') || !urls.at(-1).includes('maths=1&mymaths=AA+SL&exam=none')
-    || more.querySelector('span').textContent !== 'Filters (2)' || clear.textContent !== 'Clear all (3)') return false;
+    || more.querySelector('span').textContent !== 'Filters (3)' || clear.textContent !== 'Clear all (3)') return false;
   exam.value = 'skippable'; fire(exam, 'change');
   return chip('exam')?.getAttribute('data-label') === 'Entrance exam: None or skippable' && urls.at(-1).includes('exam=skippable');
 });
@@ -4314,22 +4668,17 @@ appCheck('all new controls keep identity across 599/600 focus moves; sheet chip 
   const box = get('applied-filters'); fire(box.children[0],'click');
   return stubDocument.activeElement === get('sheet-h') && get('filter-sheet').open;
 });
-// One named group holds all eight pick filters, so they wrap as one row (two groups broke
-// 3 + 5 between 768 and 1024 px). Only the pick-lists are <details>, so City is the group's
-// last <details> and the `.dropdown:last-of-type` rule keeps its end menu opening leftwards.
+// Two wrap rows preserve every filter and contain all facet panels.
 {
-  const inner = indexHtml.match(/<div class="more-filters" role="group" aria-label="Subject area, country, language, deadline, maths, entrance exam, degree type and city"[^>]*>([\s\S]*?)<div id="applied-filters"/)?.[1] ?? '';
-  const order = [...inner.matchAll(/id="(dd-subjects|dd-countries|dd-languages|f-deadline|f-mymaths|f-exam|dd-degrees|dd-cities)"/g)].map((m) => m[1]).join();
-  const outer = indexHtml.slice(indexHtml.indexOf('<div class="more-filters">'), indexHtml.indexOf('<div class="more-filters" role="group"'));
-  check('all eight pick filters wrap as one named group and the last menu still opens leftwards',
-    order === 'dd-subjects,dd-countries,dd-languages,f-deadline,f-mymaths,f-exam,dd-degrees,dd-cities'
-      && !/<details class="dropdown"/.test(outer)
-      && (indexHtml.match(/<div class="more-filters"/g) ?? []).length === 2
-      && /\.dropdown:last-of-type \.dropdown-panel,#dd-countries \.dropdown-panel\{left:auto;right:0\}/.test(cssRules));
+  const row = elementSource(indexHtml, /<div class="frow facets-row">/);
+  const valid = (source) => ['subjects','countries','languages','cities','degrees','deadline','exam','budget'].every((id) => source.includes(`id="dd-${id}"`));
+  check('round 2 puts eight facets in the second row with Budget last, maths in the first; a missing facet fails',
+    valid(row) && !valid(row.replace('id="dd-exam"', 'id="missing"')) && formSrc.includes('id="maths-seg"')
+    && formSrc.indexOf('id="dd-budget"') > formSrc.indexOf('id="dd-exam"') && !formSrc.slice(0, formSrc.indexOf('class="frow facets-row"')).includes('id="dd-budget"'));
 }
 appCheck('my-list export uses reverse direction without changing the shortlist or list filters', ({run,get,fire,context}) => {
   run("shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); shortlist.add(fixture[2].id); state.sort = 'name'; state.dir = 'desc';");
-  const expected = context.fixture.slice().sort((a,b) => b.university.localeCompare(a.university) || b.programme.localeCompare(a.programme)).map((r) => r.id).join(',');
+  const expected = context.fixture.slice().sort((a,b) => b.programme.localeCompare(a.programme) || a.university.localeCompare(b.university)).map((r) => r.id).join(',');
   fire(get('export-csv'),'click');
   return context.exportedCsv === expected && run('shortlist.size') === 3;
 });
@@ -4451,14 +4800,14 @@ const uniqueCharlesId = byClass(uniqueCharlesDOM, 'identity')[0];
 equal('U2 unique-title Charles row shows its faculty', uniqueCharlesId?.textContent, uniqueCharles.faculty.name);
 equal('U2 unique-title Charles row button is described by the faculty', byClass(uniqueCharlesDOM, 'open')[0].getAttribute('aria-describedby'), `degree-${uniqueCharles.id} ${uniqueCharlesId?.id}`);
 check('U2 every Charles row with a mapped faculty shows it on the row', charles.filter((r) => r.faculty).every((r) => byClass(d14Rows([r]), 'identity')[0]?.textContent.startsWith(r.faculty.name)));
-// U5: the Czech-language note sits inside the Language dropdown (not as a
-// fourth help line in the filter area) and describes that panel.
+// U5: the Czech note belongs to matching details, not the Language filter.
 {
-  const html = englishHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
+  const html = read('index.html');
   const panel = html.slice(html.indexOf('id="dd-languages"'), html.indexOf('</details>', html.indexOf('id="dd-languages"')));
-  check('U5 Language panel carries the Czech-taught note and is described by it',
-    panel.includes('aria-describedby="f-languages-help"') && /<p class="help dd-help" id="f-languages-help">Degrees taught in Czech at public universities are free, whatever your nationality\./.test(panel));
-  equal('U5 note appears once', html.split('id="f-languages-help"').length, 2);
+  check('U5 Language panel has no Czech help or description',
+    !/f-languages-help|aria-describedby|dd-help/.test(panel));
+  check('U5 old Czech note key is removed',
+    !read('js/i18n.js').includes('degrees_taught_in_czech_at_public_universities_are_free_whatever_you'));
 }
 for (const row of [charles.find((r) => r.identity), uniqueCharles, live.find((r) => r.identity?.unresolved)]) {
   const rowDOM = d14Rows([row]);
@@ -4562,13 +4911,19 @@ equal('D14 snapshot path computes the same identities',
 section('Reviewed English wording (S08/S09)');
 for (const text of [
   'Find European bachelor programmes by IB requirements, deadlines and EU fees.',
-  'Find European bachelor programmes by IB requirements.',
   'Try fewer words or check your spelling. Words can appear in any order: “Dublin computer” works. Typos are not corrected.',
   'Some problems hide a row; others leave a value unknown. Each message explains what happened.',
-  "Always check the university's official page before you apply. Requirements, fees and deadlines can change.",
-  'Students maintain this site.',
+  UI.en.r2_footer_p,
   '>Export CSV', '>Clear my list', '>Data problems',
 ]) check(`static wording: ${text}`, indexHtml.includes(text));
+// Jakub, 2026-11-04 (#3): the "starting point, not a source of truth" wording
+// read awkwardly and was replaced. The 2026-11-05 merge with design round 2
+// almost brought it back in the footer; keep it out of both languages.
+check('the old "starting point" warning is gone from the page and both languages',
+  !indexHtml.includes('starting point') && !JSON.stringify(UI).includes('starting point')
+    && !JSON.stringify(UI).includes('východisk'));
+check('the footer carries Jakub\'s "Students maintain this site." in both languages',
+  UI.en.r2_footer_p.endsWith('Students maintain this site.') && UI.sk.r2_footer_p.endsWith('Túto stránku spravujú študenti.'));
 // Leon, 2026-11-02: the filter hints were too long. The search hint is gone
 // (the placeholder already shows examples) and the other two are one short
 // line each. Keep them short: no hint over 60 characters, and no search hint.
@@ -4589,7 +4944,8 @@ equal('fee sorting uses EU fee in both directions',
   [filtersMod.SORTS.tuition, filtersMod.REVERSE_SORTS.tuition], ['EU fee — lowest first', 'EU fee — highest first']);
 for (const [key, text] of [
   ['your_browser_could_not_save_your_list_it_may_be_lost_when_you_leave', 'Your browser could not save your list. It may be lost when you leave this page.'],
-  ['no_programmes_are_saved_here', 'No programmes are saved here.'],
+  // Batch 3 B3: the empty My list's hint says how to save (was 'no_programmes_are_saved_here').
+  ['r3_list_empty_hint', 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'],
   ['no_programmes_are_available', 'No programmes are available.'],
   ['no_programmes_match_your_filters', 'No programmes match your filters.'],
   ['search', 'Search: {value1}'], ['my_ib_points', 'My IB points: {value1}'],
@@ -4610,7 +4966,8 @@ check('option search names its group naturally and shares the clear action with 
   const panel = new ChromeNode('div'); panel.setAttribute('aria-label', 'Subject area');
   const box = new ChromeNode('div'); panel.append(box);
   renderChips(box, Array.from({ length: 13 }, (_, i) => `Area ${i}`), new Set(), () => {});
-  return byClass(box, 'opt-q')[0].textContent === 'Search subject area options'
+  return byClass(box, 'opt-q')[0].querySelector('input').placeholder === 'Search subject area options'
+    && byClass(box, 'opt-q')[0].querySelector('input').getAttribute('aria-label') === 'Search subject area options'
     && byClass(box, 'opt-clear')[0].textContent === 'Clear the search'
     && byClass(box, 'opt-none')[0].textContent === 'No matching options. Try another spelling or clear the search.';
 }));
@@ -4795,7 +5152,7 @@ appCheck('Max yearly cost and My living costs: typing sets state, address, chips
     && !chip('maxBudget') && !chip('myLiving') && run('stateToParams(state)') === '';
 });
 check('Max yearly cost: label, help text exactly, its unit, and both fields in .more-filters naming their help and errors',
-  /<label for="f-budget">Max yearly cost<\/label>/.test(indexHtml) && /<label for="f-living">My living costs<\/label>/.test(indexHtml)
+  /<label for="f-budget">Max yearly cost \(fee \+ living\)<\/label>/.test(indexHtml) && /<label for="f-living">My living costs<\/label>/.test(indexHtml)
     && indexHtml.includes('<p class="help filter-help" id="f-budget-help">Keeps programmes whose lowest estimate fits</p>')
     && /id="f-budget"[^>]*aria-describedby="f-budget-help f-unknown-help f-budget-error"/.test(indexHtml)
     && /id="f-living"[^>]*aria-describedby="f-living-error"/.test(indexHtml)
@@ -4825,7 +5182,7 @@ await asyncAppCheck('real start: invalid budget and living in the address fill n
 section('My list: share link, shared links, address, groups, compare (2026-11-03)');
 {
   const { shareQuery, readSharedList, unknownIdsText, mergeIntoShortlist, addressQuery, groupRows, groupHeadings } = shortlistMod;
-  const { compareTable, differs, visibleFacts, prunePicks, yearlyLine, money: euro } = compareMod;
+  const { compareTable, differs, visibleFacts, yearlyLine, money: euro } = compareMod;
   const costMod = await import(new URL('../js/cost.js', import.meta.url));
 
   // --- share link: the list, and points only when ticked
@@ -4874,6 +5231,12 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
   equal('groups by deadline: year and month in date order (Dec 2026 before Mar 2027), then passed, then no date; rows keep their order',
     byDeadline.map((x) => [x.label, x.rows.map((r) => r.id)]),
     [['December 2026', ['dec']], ['March 2027', ['mar1', 'mar2']], ['April 2027', ['apr']], ['Deadline passed', ['past']], ['No date', ['none']]]);
+  // Verification of PR 1: Slovak month headings read "november 2026"; the
+  // Undo action was "Späť", the same word as Back.
+  equal('Slovak month group headings start with a capital, and Undo is not Back',
+    (() => { i18n.setLanguage('sk', { setItem() {} }); try { return groupRows(dated, 'deadline', noFilters(), filtersMod.pointsBucket).slice(0, 3).map((x) => x.label); } finally { i18n.setLanguage('en', { setItem() {} }); } })()
+      .concat(UI.sk.r2_undo === UI.sk.r2_back ? 'same as Back' : UI.sk.r2_undo),
+    ['December 2026', 'Marec 2027', 'Apríl 2027', 'Vrátiť späť']);
   equal('groups by deadline: a group with no rows is left out', groupRows([g('none')], 'deadline', noFilters(), filtersMod.pointsBucket).map((x) => x.key), ['none']);
   equal('group headings: the first row of each group carries "label · count"', [...groupHeadings(byDeadline)],
     [['dec', 'December 2026 · 1'], ['mar1', 'March 2027 · 2'], ['apr', 'April 2027 · 1'], ['past', 'Deadline passed · 1'], ['none', 'No date · 1']]);
@@ -4968,16 +5331,19 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     check('compare points: the card’s lines, then the row’s verdict words while My IB points is set',
       lines[0].text === `${within.ibPointsMin} IB points, minimum` && lines.at(-1).text === 'Within your IB points' && lines.at(-1).verdict === 'fit', JSON.stringify(lines));
   }
-  equal('compare picks: list order, never more than 4, a pick no longer in the list dropped',
-    [prunePicks(['c', 'a', 'gone'], ['a', 'b', 'c']), prunePicks(['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'c', 'b', 'a'])], [['a', 'c'], ['e', 'd', 'c', 'b']]);
   {
     const rows = [live[0], live[1]];
     const table = compareTable(rows, noFilters());
     const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, table, { onlyDifferences: false }); return div; });
     const cols = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col');
     const facts = findAll(box, (n) => n.tagName === 'th' && n.getAttribute('scope') === 'row');
-    check('compare table: one column header per programme naming it and its university; one row header per fact',
-      cols.length === 2 && cols[0].textContent === `${rows[0].programme}${rows[0].university}` && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
+    // Batch 3 · A: each column header also holds its Save toggle and "x".
+    check('compare table: one column header per programme naming it and its university, then its own controls; one row header per fact',
+      cols.length === 2 && cols[0].children.slice(0, 2).map((n) => n.textContent).join('|') === `${rows[0].programme}|${rows[0].university}`
+      && cols[0].children.length === 3 && cols[0].children[2].classList.contains('cmp-acts') && facts.map((n) => n.textContent).join('|') === table.map((x) => x.label).join('|'));
+    check('compare column accessible names reference only the programme and university, excluding action labels',
+      cols.every((col) => col.getAttribute('aria-labelledby') === col.children.slice(0, 2).map((n) => n.id).join(' ')
+        && col.children.slice(0, 2).every((n) => Boolean(n.id))));
     const diffBox = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, [live[0], live[0]], compareTable([live[0], live[0]], noFilters()), { onlyDifferences: true }); return div; });
     const left = findAll(diffBox, (n) => n.tagName === 'tr' && n.getAttribute('data-fact'));
     check('compare table, only differences: identical facts are not drawn and a line says how many are hidden',
@@ -5041,25 +5407,23 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
 });
-appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts and Compare drop it at once; the last unsave then closes the view', ({ run, get, item, fire, ids: [a, b, c] }) => {
+// Batch 3 B3 rewrote this check: Compare no longer follows the saves (A adds
+// its own check), and the last unsave leaves an empty list view instead of
+// silently closing it (Leon, 2026-11-05: an empty My list did nothing).
+appCheck('list view: unsaving keeps the row (and focus) until the list is redrawn, but the counts drop it at once; the last unsave leaves an empty list view', ({ run, get, item, fire, ids: [a, b, c] }) => {
   run('for (const r of fixture) shortlist.add(r.id); update();');
   fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  for (const box of boxes.filter((x) => x.value !== c)) { box.checked = true; fire(box, 'change'); }
-  if (get('ml-compare-go').textContent !== 'Compare 2') return false;
   const star = starOf(item(a)); star.focus();
   fire(star, 'click');
-  // Before any redraw: the row stays, the counts and the picker do not.
-  const picks = get('ml-picks').querySelectorAll('input');
+  // Before any redraw: the row stays, the counts do not.
   if (!item(a) || stubDocument.activeElement !== star || star.getAttribute('aria-pressed') !== 'false'
-    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')
-    || picks.map((x) => x.value).sort().join() !== [b, c].sort().join() || run('comparePicks.join()') !== b
-    || !get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare') return false;
+    || get('shortlist-count-text').textContent !== '2 saved · 2 shown' || !get('result-count').textContent.startsWith('2 of 2 saved programmes')) return false;
   fire(starOf(item(b)), 'click');
-  if (!get('ml-compare').hidden || get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
+  if (get('shortlist-count-text').textContent !== '1 saved · 1 shown') return false;
   fire(starOf(item(c)), 'click');
   run('update();');
-  return run('state.shortlistOnly') === false && get('results').children.length === 3;
+  return run('state.shortlistOnly') === true && get('results').children.length === 0 && !get('empty-state').hidden
+    && get('empty-title').textContent === 'Your list is empty.' && !get('empty-back').hidden && get('ml-tools').hidden;
 });
 appCheck('two tabs: each save or unsave goes on the list as stored now, so the other tab’s changes survive; its storage events update this tab', ({ run, get, item, fire, fireWindow, context, ids: [a, b, c] }) => {
   // This tab loaded with a saved; a second tab has since saved c.
@@ -5094,37 +5458,42 @@ appCheck('blocked storage: once a write fails, changes go on this tab’s list, 
   return run('shortlist.size') === 2 && context.stored.length === 0
     && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
 });
-appCheck('compare: pick 2 to 4 from the list, open the table (list hidden), only-differences, close returns focus to the picker', ({ run, get, fire, context }) => {
-  run('for (const r of fixture) shortlist.add(r.id); update();');
-  fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  if (boxes.length !== 3 || !get('ml-compare-go').disabled || get('ml-compare').hidden) return false;
-  boxes[0].checked = true; fire(boxes[0], 'change');
-  if (!get('ml-compare-go').disabled) return false;
-  boxes[1].checked = true; fire(boxes[1], 'change');
-  if (get('ml-compare-go').disabled || get('ml-compare-go').textContent !== 'Compare 2') return false;
-  fire(get('ml-compare-go'), 'click');
+// Batch 3 · A: Compare is its own set, opened from the header or the phone
+// tray at any count; the My list picker that fed it is gone.
+appCheck('compare view: opens from any view at any count, 2 columns hide the list, only-differences, close restores view, scroll and the trigger\'s focus', ({ run, get, fire, context, docBody, ids: [a, b] }) => {
+  const trigger = new ChromeNode('button'); docBody.append(trigger); context.cmpTrigger = trigger;
+  run(`compareIds = [${JSON.stringify(a)}, ${JSON.stringify(b)}]; update();`);
+  context.window.scrollY = 1234;
+  run('openCompare(cmpTrigger);');
   const cols = () => findAll(get('cmp-body'), (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col').length;
-  if (get('compare').hidden || !get('results').parent.parent.parent.hidden || cols() !== 2 || get('cmp-h').textContent !== 'Compare 2 programmes'
-    || stubDocument.activeElement !== get('compare')) return false;
-  const all = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  const facts = () => findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
+  if (get('compare').hidden || !get('results').parent.parent.parent.hidden || !get('shortlist-bar').hidden || cols() !== 2
+    || get('cmp-h').textContent !== 'Compare 2 programmes' || stubDocument.activeElement !== get('cmp-h') || get('cmp-diff-label').hidden
+    || !get('cmp-one').hidden || !get('cmp-empty').hidden) return false;
+  const all = facts();
   get('cmp-diff').checked = true; fire(get('cmp-diff'), 'change');
-  const fewer = findAll(get('cmp-body'), (n) => n.tagName === 'tr' && n.getAttribute('data-fact')).length;
-  // My living costs changes the compare table's totals at once.
+  if (facts() > all) return false;
+  // My living costs changes the totals at once, with the view still open.
   run('state.myLiving = 0; update();');
   const yearly = findAll(get('cmp-body'), (n) => n.getAttribute('data-fact') === 'yearly')[0];
+  if (get('compare').hidden || (yearly && !yearly.textContent.includes('your €0/month') && !yearly.textContent.includes('Not known'))) return false;
+  context.window.scrollY = 0;
   fire(get('cmp-close'), 'click');
-  return fewer <= all && (!yearly || yearly.textContent.includes('your €0/month') || yearly.textContent.includes('Not known'))
-    && get('compare').hidden && !get('results').parent.parent.parent.hidden
-    && stubDocument.activeElement === get('ml-compare').querySelector('summary');
-});
-appCheck('compare picker: a fifth pick is disabled at four', ({ run, get, fire, context }) => {
-  context.fixture.push(...context.live.slice(1, 3));
-  run('allRows = fixture; for (const r of fixture) shortlist.add(r.id); update();');
+  if (!get('compare').hidden || get('results').parent.parent.parent.hidden || stubDocument.activeElement !== trigger || context.window.scrollY !== 1234) return false;
+  // From My list: back in the list view with its bar.
+  run(`shortlist.add(${JSON.stringify(a)}); update();`);
   fire(get('f-shortlist-only'), 'click');
-  const boxes = get('ml-picks').querySelectorAll('input');
-  for (const box of boxes.slice(0, 4)) { box.checked = true; fire(box, 'change'); }
-  return boxes.length === 5 && boxes[4].disabled && !boxes[0].disabled && get('ml-compare-go').textContent === 'Compare 4';
+  run('openCompare(cmpTrigger);');
+  if (!get('shortlist-bar').hidden) return false;
+  run(`onToggleStar(${JSON.stringify(b)});`);
+  if (!get('shortlist-bar').hidden) return false;
+  fire(get('cmp-close'), 'click');
+  if (run('state.shortlistOnly') !== true || get('shortlist-bar').hidden || get('ml-tools').hidden) return false;
+  // At 0: an empty state whose Browse closes the view.
+  run('compareIds = []; openCompare(null);');
+  if (get('cmp-empty').hidden || cols() !== 0 || get('cmp-h').textContent !== 'Compare' || !get('cmp-diff-label').hidden) return false;
+  fire(get('cmp-browse'), 'click');
+  return get('compare').hidden && !get('results').parent.parent.parent.hidden;
 });
 appCheck('share: the link is ?list= of the saves only; no search, country or fee travels; points only with the tick', ({ run, get, fire, ids: [a, b] }) => {
   run("shortlist.add(fixture[1].id); shortlist.add(fixture[0].id); shortlist.add('gone-row'); state.search = 'x'; state.countries.add('Ireland'); state.maxTuition = 5000; state.myIbPoints = 36; update();");
@@ -5173,6 +5542,308 @@ appCheck('keepAddress never adds list= outside a shared view, my list view inclu
 });
 check('keepAddress builds the address through addressQuery with the shared list', /function keepAddress\(\) \{[\s\S]*?addressQuery\(stateToParams\(state\), shared\)/.test(appSrc));
 // END shortlist checks
+
+appCheck('Escape dismisses only the picked detail and returns focus to its row; a dialog protects the pick', ({run,click,flip,get,fire,ids:[a]}) => {
+  click(a); fire(get('results'),'keydown',{key:'Escape'});
+  if(run('selectedId')!==null || get('results').querySelector('button.open').getAttribute('aria-expanded')!=='false')return false;
+  flip(true); click(a); fire(get('results'),'keydown',{key:'Escape'});
+  return run('selectedId')===null && !get('results').querySelector('.is-sel');
+});
+check('phone Sort can shrink below its longest native option instead of widening a 320px page',
+  /min-width:0/.test(ruleAt(cssText, '.listp>.f-sort .inp')));
+check('Country search is available even with eleven options and matches Slovak country names', withStubDocument(() => {
+  const parent = new ChromeNode('div'), box = new ChromeNode('div'); parent.setAttribute('aria-label','Country'); parent.append(box);
+  i18n.setLanguage('sk', {setItem(){}});
+  try {
+    renderChips(box,['Ireland','Germany'],new Set(),()=>{}, {forceSearch:true});
+    const search = byTag(box,'input').find((n)=>n.type==='search');
+    if(!search)return false; search.value='Írsko'; dispatchStub(search,{type:'input'});
+    return byClass(box,'option').filter((n)=>!n.hidden).length===1 && byClass(box,'option')[0].textContent==='Írsko';
+  } finally { i18n.setLanguage('en', {setItem(){}}); }
+}));
+section('Round 2 saved filters and transactional onboarding');
+{
+  const { restoration, storedFilters, validateFilters, validateLoadedFacets, hasFilterParams, hasSetupAnswers, FILTER_KEY, ONBOARDING_KEY } = savedState;
+  // Leon, 2026-11-05: clicking through setup with nothing chosen showed "Your answers are now filters".
+  check('setup with no answers is not reported as applied filters; any one answer is', !hasSetupAnswers(validateFilters({})) && !hasSetupAnswers(validateFilters({cities:['Dublin'], search:'law', deadlineWindow:'30'})) && [{myIbPoints:36},{hlMaths:true},{maxBudget:0},{subjectAreas:['Law']},{countries:['Ireland']},{languages:['English']}].every((raw) => hasSetupAnswers(validateFilters(raw))));
+  const saved = { version: 1, filters: { search: 'Dublin', myIbPoints: 36, maxBudget: 15000, maxTuition: 0, hlMaths: true, countries: ['Ireland', 'Atlantis'], languages: ['English'], subjectAreas: ['Law'], cities: ['Dublin'], degreeTypes: ['BA'] } };
+  for (const query of ['?q=', '?points=bad', '?maths=0', '?mymaths=bad', '?exam=bad', '?fee=', '?budget=bad', '?living=0', '?subject=bad', '?country=bad', '?lang=English', '?degree=bad', '?city=bad', '?deadline=bad', '?sort=bad', '?dir=bad', '?list=']) {
+    const choice = restoration(query, saved);
+    check(`URL parameter ${query} suppresses saved filters and onboarding`, choice.source === 'url' && !choice.onboarding && choice.state.search === '' && choice.state.myIbPoints === null);
+  }
+  check('UI-language-only and unrelated URL parameters still restore saved filters', ['?ui=sk', '?ui=en', '?ref=school'].every((query) => restoration(query, saved).state.myIbPoints === 36));
+  check('teaching-language lang remains a recognised filter, distinct from UI language', hasFilterParams('?lang=English') && !hasFilterParams('?ui=sk'));
+  check('first visit alone shows onboarding; dismissed/completed, saved filters and list links suppress it', restoration('', null).onboarding && !restoration('', null, true).onboarding && !restoration('', saved).onboarding && !restoration('?list=x', null).onboarding);
+  check('corrupt, old-version and array preferences are ignored', [null, {}, {version: 0, filters:{}}, {version:1, filters:[]}].every((value) => restoration('', value).source === 'defaults'));
+  const invalid = validateFilters({myIbPoints: '36', maxTuition:-1, maxBudget:Infinity, myLiving:1.5, hlMaths:'true', myMaths:'bad', exam:'bad', deadlineWindow:'bad', countries:['Ireland', 9, null], shortlistOnly:true, shared:['x'], compare:['x']});
+  check('stored scalars require valid JSON types, ranges and enum values; unknown UI state is discarded', invalid.myIbPoints === null && invalid.maxTuition === null && invalid.maxBudget === null && invalid.myLiving === null && !invalid.hlMaths && invalid.myMaths === null && invalid.exam === null && invalid.deadlineWindow === 'any' && !invalid.shortlistOnly && !invalid.shared && [...invalid.countries].join() === 'Ireland');
+  const coerced = validateFilters({myMaths:['AA HL'], exam:['none'], deadlineWindow:['30']});
+  check('stored enum arrays cannot masquerade as valid strings', coerced.myMaths === null && coerced.exam === null && coerced.deadlineWindow === 'any');
+  const exact = validateFilters({myIbPoints:45, maxTuition:0, maxBudget:50000, myLiving:0});
+  check('explicit zero and beyond-slider amounts survive storage validation', exact.myIbPoints === 45 && exact.maxTuition === 0 && exact.maxBudget === 50000 && exact.myLiving === 0);
+  const chosen = restoration('', saved).state;
+  chosen.countries.delete('Ireland'); chosen.countries.add('Germany'); chosen.search = 'loading edit'; chosen.myIbPoints = 40;
+  const real = {countries:['Ireland','Germany'], languages:['English'], subjectAreas:['Law'], cities:['Dublin'], degreeTypes:['BA']};
+  validateLoadedFacets(chosen, real);
+  check('post-load facet validation drops unknown saved values and preserves edits made during loading', [...chosen.countries].join() === 'Germany' && chosen.search === 'loading edit' && chosen.myIbPoints === 40);
+  const stored = storedFilters({...chosen, shortlistOnly:true, sort:'points', dir:'desc', selectedId:'secret', shared:['x'], compare:['y'], panels:['z']}, real);
+  equal('storage contains exactly the fourteen validated filter fields, no view/list/sort/selection/panels', Object.keys(stored.filters).sort(), ['search','subjectAreas','countries','languages','degreeTypes','cities','deadlineWindow','maxTuition','maxBudget','myLiving','myIbPoints','hlMaths','myMaths','exam'].sort());
+  check('storage representation is versioned, JSON serializable and uses a separate onboarding key', stored.version === 1 && JSON.parse(JSON.stringify(stored)).filters.countries[0] === 'Germany' && FILTER_KEY !== ONBOARDING_KEY);
+}
+await asyncAppCheck('URL hydration never writes saved preferences; a later explicit edit does', async ({run,get,fire,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{myIbPoints:42}}; context.location.search = '?points=36';
+  run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  if ((context.prefWrites ?? []).length || get('f-points').value !== '36') return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  return context.prefWrites?.at(-1)?.filters.myIbPoints === 38;
+}, {boot:true});
+await asyncAppCheck('saved restoration keeps points edits during loading; Clear all removes only filters', async ({run,get,fire,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{myIbPoints:42,countries:['Ireland','Atlantis']}};
+  run('applyUrlFields();'); get('f-points').value = '37'; fire(get('f-points'),'input');
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  if (run('state.myIbPoints') !== 37 || run('state.countries.has("Atlantis")')) return false;
+  run('clearAll();'); advance(500);
+  return context.prefWrites.at(-1) === null && run('preferencesDirty') === false;
+}, {boot:true});
+appCheck('removing an applied filter persists the explicit edit, without storing the current sort', ({run,context,advance}) => {
+  run("state.countries.add('Ireland'); state.sort = 'name'; state.dir = 'desc'; update(); preferencesDirty = false; removeChip('countries:Ireland');");
+  advance(500);
+  return context.prefWrites?.at(-1)?.filters.countries.length === 0 && !('sort' in context.prefWrites.at(-1).filters);
+});
+await asyncAppCheck('onboarding apply callback preserves sort and persists exactly once through the shared debounce', async ({run,get,context,settle,advance}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  run("state.sort = 'tuition'; state.dir = 'desc';");
+  context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:38}));
+  advance(500);
+  return get('f-points').value === '38' && run('state.sort') === 'tuition' && run('state.dir') === 'desc'
+    && context.prefWrites.length === 1 && context.prefWrites[0].filters.myIbPoints === 38;
+}, {boot:true});
+await asyncAppCheck('facet change handlers preserve edits made while data is loading', async ({run,get,fire,context,settle}) => {
+  context.savedPrefs = {version:1,filters:{countries:['Ireland','Atlantis']}};
+  run('applyUrlFields(); facets = buildFacets(fixture); drawChips();');
+  const option = byTag(get('f-countries'),'input').find(n=>n.value==='Ireland');
+  option.checked = false; fire(option,'change');
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  return run('state.countries.size') === 0 && !byTag(get('f-countries'),'input').find(n=>n.value==='Ireland').checked;
+}, {boot:true});
+appCheck('another tab refreshes the unselected summary pane and Undo returns focus to its row star', ({run,get,fireWindow,context,ids:[id]}) => {
+  run('state.myIbPoints = 36; update();');
+  context.stored = [id]; fireWindow('storage',{key:shortlistMod.SHORTLIST_KEY});
+  if (!get('pane').textContent.includes('My list · 1 saved')) return false;
+  run('onToggleStar(fixture[0].id);'); context.toastAction();
+  return stubDocument.activeElement === get('results').querySelector(`[data-save-id="${id}"]`)
+    && run('shortlist.has(fixture[0].id)') === true;
+});
+appCheck('heading sort cycles include the default order, announced next state and URL/phone synchronization', ({run,get,fire,context}) => {
+  const urls=[]; context.history.replaceState=(s,t,url)=>{urls.push(url);context.location.search=new URL(url,'http://localhost').search;};
+  for (const key of ['name','points','tuition']) {
+    const button=context.document.querySelector(`[data-sort="${key}"]`);
+    fire(button,'click');
+    if (run('state.sort')!==key || run('state.dir')!=='asc' || get('f-sort').value!==`${key}:asc` || button.getAttribute('aria-pressed')!=='true') return false;
+    fire(button,'click');
+    if (run('state.dir')!=='desc' || !button.querySelector('.visually-hidden').textContent.includes('default order') || !urls.at(-1).includes('dir=desc')) return false;
+    fire(button,'click');
+    if(run('state.sort')!=='deadline' || run('state.dir')!=='asc' || get('f-sort').value!=='deadline:asc' || /sort=|dir=/.test(urls.at(-1))) return false;
+  }
+  const deadline=context.document.querySelector('[data-sort="deadline"]');
+  fire(deadline,'click'); if(run('state.dir')!=='desc')return false;
+  fire(deadline,'click'); if(run('state.dir')!=='asc')return false;
+  get('f-sort').value='points:desc'; fire(get('f-sort'),'change');
+  return run('state.sort')==='points' && run('state.dir')==='desc';
+});
+// The real setup dialog on the app harness's page. apply() returns the number
+// shown, as app.js's callback does; media queries default to desktop.
+// Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
+// closeCompare is counted; phone picks the narrow media query's answer.
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+  const writes=[], applied=[], toasts=[], compareCloses=[];
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+  const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
+  const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
+  // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
+  const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
+    text:section.textContent,focused:stubDocument.activeElement===get('ob-title'),noStep:!dialog.querySelector('.ob-n'),bar:dialog.querySelector('.ob-bar i').style.transform,barShown:!dialog.querySelector('.ob-bar').hidden,
+    buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
+  return {writes,applied,toasts,compareCloses,dialog,primary,next,doneScreen,api};
+}
+// Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
+// done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
+for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {
+  const {get,fire,resultsSection}=h, {writes,applied,toasts,compareCloses,dialog,next,doneScreen}=realSetup(h);
+  if(!dialog.querySelector('.ob-bar').hidden || dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0)')return false;
+  next(); const points=get('ob-points'); points.value='38'; fire(points,'input'); next();
+  if(dialog.querySelector('.ob-bar i').style.transform!=='scaleX(0.5)')return false;
+  if(outcome==='apply'){
+    next();next();
+    if(dialog.querySelector('.ob-foot .btn-p').textContent!==t('r3_ob_finish'))return false;
+    next();
+    const d=doneScreen();
+    if(!dialog.open||!d||d.heading!==t('r2_answers_applied')||!d.focused||!d.noStep||d.bar!=='scaleX(1)'||!d.barShown)return false;
+    if(JSON.stringify(d.buttons)!==JSON.stringify([t('r2_show_mine'),t('r3_ob_faq')])||dialog.querySelector('.skipwrap'))return false;
+    if(writes.length!==1||writes[0][1]!=='completed'||applied.length!==1)return false;
+    next();
+  }
+  else if(outcome==='skip')fire(dialog.querySelector('.skipwrap button'),'click');
+  else fire(dialog,'cancel');
+  return !dialog.open && writes.length===1 && writes[0][1]===(outcome==='apply'?'completed':'dismissed')
+    && applied.length===(outcome==='apply'?1:0) && (outcome!=='apply'||applied[0].myIbPoints===38) && toasts.length===0 && !dialog.querySelector('.ob-done')===(outcome!=='apply')
+    && stubDocument.activeElement===(outcome==='apply'?resultsSection:get('f-search'))
+    && compareCloses.length===(outcome==='apply'?1:0)
+    && !(stubDocument.scrolls??[]).some(s=>s.node===resultsSection);
+});
+// Leon, 2026-11-05: finishing setup with nothing chosen still said "Your answers are now filters".
+appCheck('real onboarding handlers: clicking through with no answers shows the no-answers done screen and no toast', (h) => {
+  const {writes,applied,toasts,dialog,next,doneScreen}=realSetup(h,{shown:2915});
+  for(let i=0;i<5;i++)next();
+  const d=doneScreen();
+  return dialog.open && applied.length===1 && toasts.length===0 && writes.length===1 && writes[0][1]==='completed'
+    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
+    && !d.text.includes(t('r2_answers_applied')) && d.focused;
+});
+// Was "onboarding completion toast uses the compact Edit action…": the toast is
+// gone (the done screen says it), and r2_edit_short with it. The native maths
+// half still stands.
+check('setup ends with no toast and no Edit toast key; native maths shares the segmented label',
+  !read('js/onboarding.js').includes('showToast') && !('r2_edit_short' in UI.en) && !('r2_edit_short' in UI.sk)
+  && /value="" data-i18n="r2_any_maths"/.test(read('index.html')));
+
+
+section('Review round 1 presentation regressions');
+check('active fields cannot style nested panel searches or unset budget inputs',
+  !cssRules.includes('.is-set .inp{') && cssRules.includes('.fld.is-set>.inp,.fld.is-set>.affix>.inp{')
+  && cssRules.includes('.budget .fld.is-set>.affix>.inp{border-width:1px;border-color:var(--hairline);background:var(--panel)'));
+check('invalid points keep the first filter row aligned; all buttons inherit the font and have press feedback',
+  !/\.chipbox:has\(\[aria-invalid=true\]\)\{[^}]*margin-bottom/.test(cssRules)
+  && cssRules.includes('button{font-family:inherit}') && cssRules.includes('.btn:active{transform:scale(.97)}'));
+check('compact unknown cells use the same short wording and retain the phone/tablet labels', (()=>{
+  const row=rowOf({...fxRow('fx-fee-blank'),ibPointsMin:null,deadline:null});
+  return ['c-pts','c-ddl','c-fee'].every(name=>byClass(row,name)[0].textContent.includes('Not published'))
+    && cssRules.includes('.row .v-unk .verd,.row .v-unk .fig{font-size:13px;font-weight:400;white-space:nowrap}')
+    && cssRules.includes('@container (min-width: 800px){.row .v-unk .lab{display:none}}');
+})());
+check('compact cells lead with the value, deadline tiles hug their content, the fee figure omits the annual unit its label carries', (()=>{
+  const row=rowOf(fxRow('fx-34'),fstate(36)),cell=byClass(row,'c-ddl')[0];
+  return cell.children.findIndex(n=>n.className==='fig')<cell.children.findIndex(n=>n.className==='verd')
+    && !byClass(byClass(row,'c-fee')[0],'fig')[0].textContent.includes('/ year')
+    && cssRules.includes('justify-self:start;width:max-content;max-width:100%')
+    && cssRules.includes('.row .c-ddl{flex-direction:column;align-items:flex-start;text-align:left}');
+})());
+appCheck('pane close clears the pick and restores its row button',({click,get,fire,flip,run,ids:[id]})=>{
+  flip(true); click(id); fire(get('pane-close'),'click');
+  return run('selectedId')===null && get('pane').textContent.includes('Pick a programme')
+    && stubDocument.activeElement===get('results').querySelector('button.open');
+});
+check('phone help sits directly after its chip and opens inline; compact badge hides zero and no Budget info button remains',
+  read('js/round2.js').includes("button.closest('.fld').after(tip)")
+  && cssRules.includes('.sheet-b .tip{display:none;') && cssRules.includes('.sheet-b .tip.is-open{display:block}')
+  && read('js/round2.js').includes("getElementById('compact-count').hidden = active === 0")
+  && !read('index.html').includes('class="info budget-info"'));
+// The 44 px hit areas themselves are measured in a real browser (smoke R3G).
+check('the slider keeps its thin visual track inside the 44 px hit area',
+  /::-webkit-slider-runnable-track\{height:4px/.test(cssRules));
+check('status count can shrink at 320px, verdicts sit outside its sticky row and only the number is bold',withStubDocument(()=>{
+  const node=new ChromeNode('p');renderCount(node,'2,915 programmes',[]);
+  return byTag(node,'b')[0].textContent==='2,915' && node.textContent==='2,915 programmes'
+    && cssRules.includes('.status .count{min-width:0;flex:1;')
+    && read('index.html').indexOf('id="count-summary"')>read('index.html').indexOf('id="f-copy"');
+}));
+check('popover alignment uses its full layout width, never the opening animation scale',
+  read('js/round2.js').includes('box.left + panel.offsetWidth') && !read('js/round2.js').includes('const box = panel.getBoundingClientRect()'));
+check('facet counts report real full-dataset occurrences without adding to the option name', withStubDocument(()=>{
+  const panel=new ChromeNode('div'),box=new ChromeNode('div');panel.setAttribute('aria-label','Country');panel.append(box);
+  renderChips(box,['Ireland','Germany'],new Set(),()=>{},{counts:new Map([['Ireland',548],['Germany',61]])});
+  return byClass(box,'option-count').map(n=>n.textContent).join() === '548,61'
+    && byClass(box,'option-count').every(n=>n.getAttribute('aria-hidden')==='true');
+}));
+// This used to assert display:none on the wordmark, and that is what took the
+// page's only h1 out of the accessibility tree below 700 px (batch 2, A2). What
+// it looks like there is measured in a real browser (smoke R4B).
+check('reviewed chrome keeps phone search short, the wordmark clipped but readable up to 700 px, heading columns aligned and FAQ icons sized',
+  read('js/round2.js').includes("innerWidth >= 600 && longHintFits(dom.search) ? 'r2_searchph' : 'search_2'")
+  && cssRules.includes('@media(min-width:600px) and (max-width:700px){.slot{width:36px}}')
+  && !/\.mark h1\{[^}]*display:none/.test(cssRules)
+  && /@media \(max-width:700px\)\{\s*\.mark h1\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(cssRules)
+  && !read('index.html').includes('data-sort="deadline" class="r"')
+  && read('index.html').includes('data-i18n="r2_fee_heading"') && cssRules.includes('.row{gap:10px 12px;')
+  && cssRules.includes('.faq summary>.ic{width:16px;height:16px;') && cssRules.includes('.foot{margin-top:48px}'));
+// The old 1024-1199 rule also narrowed the points field and the row gap. What is
+// left is measured in smoke R4C, which also proves the placeholder is not clipped.
+check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px, never the row gap or the points field',
+  !cssRules.includes('(max-width:1199px)') && cssRules.includes('.frow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}')
+  && cssRules.includes('.fbar .more-filters{gap:8px}') && !cssRules.includes('.frow{gap:6px}')
+  && cssRules.includes('.pts input.inp{width:68px;') && !cssRules.includes('.pts input.inp{width:64px}')
+  && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules)
+  && cssRules.includes('#budget-value:empty{display:none}'));
+section('Review round 2 regressions');
+check('the facet panel is not still hidden when its toggle event focuses the search',
+  cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
+  && cssRules.includes('.dropdown[open]::details-content{transition:none}'));
+check('radios never get a blank value from a panel Clear; the select stays the source of truth',
+  read('js/round2.js').includes("input:not([type=range],[type=radio]),select") && read('js/round2.js').includes('input.checked = input.value === select.value'));
+check('one wording for a verdict: rows, legend and status all say "V rámci tvojich IB bodov"', (()=>{
+  const sk=Object.entries(UI.sk).filter(([k])=>k.startsWith('within_your_ib_points')).map(([,v])=>typeof v==='string'?v:'');
+  return !Object.hasOwn(UI.en,'r2_within') && !Object.hasOwn(UI.sk,'r2_within')
+    && UI.sk.within_your_ib_points==='V rámci tvojich IB bodov'
+    && !JSON.stringify(UI.sk).includes('V dosahu tvojich') && !JSON.stringify(UI.sk).includes('v dosahu tvojich') && sk.length>0;
+})());
+check('"Typ titulu neznámy" stays whole; a compact verdict wraps at spaces only and balances',
+  /\.unk-t\{[^}]*white-space:nowrap/.test(cssRules) && cssRules.includes('.row .cell{overflow-wrap:normal}') && cssRules.includes('.row .verd{text-wrap:balance}'));
+check('a phone verdict list ends no line in a separator, in a span the phone can drop, with the text unchanged', withStubDocument(()=>{
+  const node=new ChromeNode('p');renderCount(node,'',[{kind:'fit',text:'3 within'},{kind:'cond',text:'1 only'}]);
+  return node.textContent==='3 within · 1 only' && byClass(node,'sep').length===1 && cssRules.includes('.count-summary .sep{display:none}');
+}));
+check('every programme count on the page is grouped (2,915), including the sheet button and the footer', (()=>{
+  const app=read('js/app.js'),render=read('js/render.js');
+  return app.includes("t('show', { value1: formatCount(shown)") && render.includes('${formatCount(rows.length)}') && i18n.formatCount(2915)==='2,915';
+})());
+check('the row label above a tile is out of flow, and only the phone/tablet layout shows it',
+  cssRules.includes('.row .cell .lab{position:absolute;bottom:100%') && cssRules.includes('@container (min-width: 800px){.row .cell{margin-top:0}}'));
+check('facet search keeps about seven and a half option rows, pointer autofocus and formatted budgets',
+  cssRules.includes('.dropdown-panel>.options:has(.opt-q){max-height:356px}')
+  && read('js/round2.js').includes("matchMedia('(pointer:fine)').matches")
+  && read('js/round2.js').includes("new Intl.NumberFormat(getLanguage() === 'sk' ? 'sk-SK' : 'en-IE').format(amounts[0])"));
+check('quiet degree labels use a real leading space; phone chevrons, switch, buttons and selects match the mockup',
+  read('js/render.js').includes("heading.append(title, document.createTextNode(' '), degree)")
+  && cssRules.includes('.unk-t{display:inline;padding:0;border:0;')
+  && cssRules.includes('.deg{white-space:nowrap;margin-left:0;')
+  && cssRules.includes('.ob .big-pts .btn{font-size:22px}') && cssRules.includes('.ob .switch{padding-left:0}')
+  && cssRules.includes('.sheet-b .dropdown>summary .dd-chev{transform:rotate(-90deg)}')
+  && cssRules.includes('.sheet-b .f-hl .switch>span{white-space:nowrap}')
+  && cssRules.includes('.maths-control>select{border-color:var(--hairline);font-size:15px}')
+  && read('index.html').includes('<use href="#i-filter"/></svg><span data-i18n="filters_2">'));
+check('switch track (off) and slider thumb (unset) use the --edge-soft token; on/set states carry the accent instead',
+  /--edge-soft:#[0-9a-f]{6}/i.test(css)
+  && cssRules.includes('.switch input{appearance:none;width:34px;height:20px;border:1px solid var(--edge-soft);')
+  && cssRules.includes('input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft);')
+  && cssRules.includes('input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--edge-soft)}')
+  && cssRules.includes('.switch input:checked{background:var(--accent);border-color:var(--accent)}')
+  && cssRules.includes('input[type=range].set::-webkit-slider-thumb{border-color:var(--accent)}')
+  && cssRules.includes('input[type=range].set::-moz-range-thumb{border-color:var(--accent)}')
+  && !/\.switch input\{[^}]*var\(--edge\)/.test(cssRules)
+  && !/slider-thumb\{[^}]*var\(--edge\)/.test(cssRules) && !/range-thumb\{[^}]*var\(--edge\)/.test(cssRules));
+appCheck('Slovak subjects and degree types agree between onboarding, pane and facet labels',({get,fire,resultsSection})=>{
+  i18n.setDataTranslations(csvToObjects(read('data/i18n/sk.csv')).rows); i18n.setLanguage('sk',{setItem(){}});
+  try {
+    const state=savedState.validateFilters({subjectAreas:['Engineering'],degreeTypes:['Bachelor']});
+    const subject=new ChromeNode('div'),degree=new ChromeNode('div');
+    renderChips(subject,['Engineering'],state.subjectAreas,()=>{},{field:'subject_area'});
+    renderChips(degree,['Bachelor'],state.degreeTypes,()=>{},{field:'degree_type'});
+    const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
+    renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
+    const pane=stubDocument.querySelector('.pane-body').textContent;
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
+    setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
+    fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
+    return subjectLabel!=='Engineering' && degreeLabel!=='Bachelor' && pane.includes(subjectLabel) && pane.includes(degreeLabel)
+      && get('onboarding').querySelector('.chip').textContent===subjectLabel;
+  } finally {i18n.setLanguage('en',{setItem(){}});i18n.setDataTranslations([]);}
+});
+check('Programme sort orders programme titles before university names in both directions',
+  sortRows([{programme:'Zoology',university:'Alpha'},{programme:'Arts',university:'Zulu'}],'name')[0].programme==='Arts'
+  && sortRows([{programme:'Zoology',university:'Alpha'},{programme:'Arts',university:'Zulu'}],'name','desc')[0].programme==='Zoology');
 
 // BEGIN i18n checks
 section('SK/EN interface and data translations');
@@ -5370,6 +6041,1523 @@ appCheck('switching the interface language never touches the teaching-language f
 });
 i18n.initLanguage('', { getItem: () => 'en' });
 // END i18n checks
+
+section('Batch 2 · A');
+// batch 2 · A checks go here
+// The app harness stubs wireCompactHeader and wireRound2, so code in them would
+// never run there. These run the real functions on a small fake page.
+const realRound2 = await import('../js/round2.js');
+function withGlobals(globals, fn) {
+  const saved = Object.keys(globals).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  for (const [name, value] of Object.entries(globals)) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  try { return fn(); } finally {
+    for (const [name, was] of saved) { if (was) Object.defineProperty(globalThis, name, was); else delete globalThis[name]; }
+  }
+}
+const fakeObserver = class { observe() {} };
+// Batch 3 C2: the logo and the phone tile ([data-home]) go home, then scroll
+// to the top and focus the logo; `home` counts goHome() calls and `order`
+// records what happened in which order.
+function logoClick(init, { reduced = false, target = 'mark' } = {}) {
+  const order = [];
+  const fake = (extra = {}) => ({ listeners: {}, tabIndex: 0, style: { setProperty() {} }, classList: { toggle() {} }, contains: () => false,
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }, getBoundingClientRect: () => ({ height: 0, bottom: 0 }), ...extra });
+  const doc = { activeElement: null };
+  const mark = fake({ tabIndex: -1, focus(options) { doc.activeElement = mark; order.push(['focus', options]); } }), tile = fake();
+  const header = fake({ querySelector: () => mark }), parts = { '.hd': header, '.fslot': fake(), '.cols': fake() };
+  const scrolls = [], location = { hash: '', search: '?country=Ireland' };
+  let home = 0;
+  const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...init };
+  withGlobals({
+    document: Object.assign(doc, { querySelector: (s) => parts[s], querySelectorAll: (s) => (s === '[data-home]' ? [tile] : []), getElementById: () => fake(), body: fake(), addEventListener() {} }),
+    window: { addEventListener() {} }, innerWidth: 1280, innerHeight: 900, ResizeObserver: fakeObserver, IntersectionObserver: fakeObserver,
+    getComputedStyle: () => ({ display: 'none' }), requestAnimationFrame: () => 0, location, scrollTo: (options) => { scrolls.push(options); order.push(['scroll']); },
+    matchMedia: (query) => ({ matches: reduced && query === '(prefers-reduced-motion: reduce)' }),
+  }, () => {
+    realRound2.wireCompactHeader({ status: fake(), points: fake(), shortlistOnly: fake() }, { goHome() { home++; order.push(['home']); } });
+    for (const fn of (target === 'tile' ? tile : mark).listeners.click) fn(event);
+  });
+  return { prevented: event.prevented, scrolls, hash: location.hash, search: location.search, home, focused: doc.activeElement === mark, tabIndex: mark.tabIndex, order };
+}
+// Batch 3 C2: the name changes from "back to top" to going home, on both links.
+check('the logo link has a translated name: below 700 px it would have none, the wordmark clipped and the tile aria-hidden',
+  /<a class="mark" href="#top-marker" aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label">/.test(read('index.html'))
+  && /<a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"\/><\/svg><\/span><\/a>/.test(read('index.html'))
+  && UI.en.r3_home_label === 'University Finder, all programmes' && UI.sk.r3_home_label === 'University Finder, všetky programy'
+  && !('r2_home_label' in UI.en) && !('r2_home_label' in UI.sk));
+// Batch 3 C2 changed this: the click now also goes home (goHome, which the app
+// harness checks below), and focus lands on the logo after the scroll starts.
+for (const target of ['mark', 'tile']) equal(`a plain ${target === 'mark' ? 'logo' : 'phone home tile'} click goes home, scrolls to the top, focuses the logo and leaves the address alone, so #top-marker cannot reach a copied link`,
+  logoClick({}, { target }), { prevented: true, scrolls: [{ top: 0, behavior: 'smooth' }], hash: '', search: '?country=Ireland', home: 1, focused: true, tabIndex: 0,
+    order: [['home'], ['scroll'], ['focus', { preventScroll: true }]] });
+equal('with reduced motion the logo scroll is instant',
+  logoClick({}, { reduced: true }).scrolls, [{ top: 0, behavior: 'instant' }]);
+check('a modified or middle click on the logo keeps the browser\'s own behaviour',
+  [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }].every((init) => {
+    const click = logoClick(init);
+    return click.prevented === false && click.scrolls.length === 0 && click.home === 0 && !click.focused;
+  }));
+
+// ChromeNode's dataset is a read-only copy; the real radio builder writes to it.
+class WiredNode extends ChromeNode {
+  get dataset() {
+    return new Proxy({}, { get: (_, name) => this.getAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`) ?? undefined,
+      set: (_, name, value) => { this.setAttribute(`data-${String(name).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, value); return true; } });
+  }
+}
+const noteCheck = (() => {
+  const page = new WiredNode('div');
+  const make = (id, className = '') => { const n = new WiredNode('div'); n.id = id; n.className = className; page.append(n); return n; };
+  const select = (id, options) => {
+    const n = make(id); n.setAttribute('aria-label', id); n.setAttribute('aria-describedby', 'f-unknown-help'); n.setAttribute('data-i18n-attr', 'aria-label:deadline');
+    n.options = options.map(([value, i18n]) => ({ value, dataset: { i18n } }));
+    return n;
+  };
+  for (const id of ['header-list', 'f-budget-help']) make(id);
+  make('', 'budget-panel');
+  const fakeDocument = { documentElement: {}, querySelectorAll: (s) => page.querySelectorAll(s), querySelector: (s) => page.querySelector(s),
+    getElementById: (id) => page.querySelector(`#${id}`), createElement: (tag) => new WiredNode(tag), addEventListener() {} };
+  const dom = { search: make('f-search'), points: make('f-points'), myMaths: make('f-mymaths'), dropdowns: [], sheet: make('filter-sheet'),
+    deadline: select('f-deadline', [['any', 'any_date'], ['open', 'not_passed_yet'], ['30', 'within_30_days'], ['60', 'within_60_days']]),
+    exam: select('f-exam', [['', 'any'], ['none', 'no_exam'], ['skippable', 'none_or_skippable']]),
+    subjects: make('f-subjects'), countries: make('f-countries'), languages: make('f-languages'), degrees: make('f-degrees'), cities: make('f-cities') };
+  return withGlobals({ document: fakeDocument, window: { addEventListener() {} }, innerWidth: 1280, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) }, () => {
+    realRound2.wireRound2(dom);
+    const note = page.querySelector('#f-deadline-open-note'), openRadio = page.querySelectorAll('input').find((n) => n.value === 'open');
+    const result = { described: page.querySelectorAll('input').filter((n) => n.getAttribute('aria-describedby')).map((n) => `${n.name}=${n.value}`),
+      points: openRadio.getAttribute('aria-describedby') === note.id, tag: note.tagName, beside: note.previousElementSibling === openRadio.parent && !openRadio.parent.contains(note), en: note.textContent };
+    i18n.setLanguage('sk', { setItem() {} });
+    try { i18n.applyLanguage(fakeDocument); result.sk = note.textContent; } finally { i18n.initLanguage('', { getItem: () => 'en' }); }
+    return result;
+  });
+})();
+equal('the Deadline note describes only "Not passed yet", beside its label so the name stays short, and follows the language', noteCheck, {
+  described: ['f-deadline-radio=open'], points: true, tag: 'small', beside: true,
+  en: 'Uses the recorded deadline dates. Programmes with no recorded date stay in the list.',
+  sk: 'Riadi sa zaznamenanými termínmi. Programy bez zaznamenaného termínu zostávajú v zozname.' });
+// Through the real parser, so "unknown" is what a blank or ? cell really becomes.
+appCheck('"Not passed yet" follows recorded dates, as its note says: unknown and future stay, a past date goes even with rolling admission in its notes', ({ run, get, fire, drain, context }) => {
+  context.deadlineRows = sheetsModule.readSheets(lintSheets().universities, lintCsv(lintProgHeader, [
+    { ...lintProg, programme_id: 'd-blank', application_deadline: '' },
+    { ...lintProg, programme_id: 'd-unknown', application_deadline: '?' },
+    { ...lintProg, programme_id: 'd-future', application_deadline: '2099-01-15' },
+    { ...lintProg, programme_id: 'd-past', application_deadline: '2020-01-15' },
+    { ...lintProg, programme_id: 'd-rolling', application_deadline: '2020-01-15', deadline_notes: 'Rolling admission: applications stay open until places are full.' },
+  ]), new Date()).programmes;
+  run('allRows = deadlineRows; sourceMeta = { issues: [] }; facets = buildFacets(allRows); drawChips(); update();');
+  drain();
+  const shown = () => get('results').children.map((n) => n.dataset.id).sort().join();
+  const any = shown();
+  get('f-deadline').value = 'open'; fire(get('f-deadline'), 'change'); drain();
+  const open = shown();
+  get('f-deadline').value = 'any'; fire(get('f-deadline'), 'change'); drain();
+  return any === 'd-blank,d-future,d-past,d-rolling,d-unknown' && open === 'd-blank,d-future,d-unknown' && shown() === any;
+});
+
+section('Batch 2 · B');
+// Batch 2 B review: a failed list copy selects the link that failed, even if
+// the list or the points tick changed while the clipboard was pending.
+check('B1 failed list copy restores the snapshot link before selecting it',
+  /catch \{[^}]*dom\.shareUrl\.value = url;\s*dom\.shareUrl\.select\(\);/.test(appSrc));
+const { linkContents } = filtersMod;
+check('B1 link contents covers all nine states, HL Maths and descending sort', (() => {
+  const plain = createFilterState();
+  const points = { ...plain, myIbPoints: 36 };
+  const filtered = { ...plain, hlMaths: true };
+  return linkContents(plain) === 'none' && linkContents({ ...plain, sort: 'name' }) === 'sort'
+    && linkContents({ ...plain, dir: 'desc' }) === 'sort'
+    && linkContents(points) === 'points' && linkContents(filtered) === 'filters'
+    && linkContents({ ...filtered, myIbPoints: 36 }) === 'filters_points'
+    && linkContents(plain, { shared: true }) === 'shared'
+    && linkContents(points, { shared: true }) === 'shared_points'
+    && linkContents(filtered, { shared: true }) === 'shared_filters'
+    && linkContents({ ...filtered, myIbPoints: 36 }, { shared: true }) === 'shared_filters_points';
+})());
+check('B1 bare and ui-only links restore recipient filters; sort links use URL defaults', (() => {
+  const stored = { version: 1, filters: { countries: ['Ireland'] } };
+  return ['', '?ui=sk'].every((q) => {
+    const r = savedState.restoration(q, stored);
+    return r.source === 'saved' && r.state.countries.has('Ireland');
+  }) && (() => { const r = savedState.restoration('?sort=name', stored); return r.source === 'url' && !r.state.countries.size; })();
+})());
+await asyncAppCheck('B1 each of the nine actual copy results describes its URL, without a hash', async ({run,get,fire,settle,context,clipboard}) => {
+  context.location.origin = 'http://localhost:8765'; context.location.hash = '#top-marker';
+  const messages = []; context.showToast = message => messages.push(message);
+  // The exact address, not just "has a list=": the fixture's shared list once
+  // had no raw value, so the copied link said list=undefined and still passed.
+  // raw is copied as the address had it, two ids and their comma included.
+  const list = run('fixture[0].id + "," + fixture[1].id');
+  for (const [kind, shared, points, filters, sort, query] of [
+    ['none',false,false,false,false,''],['sort',false,false,false,true,'?sort=name'],
+    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36'],['filters_points',false,true,true,false,'?q=biology&points=36'],
+    ['shared',true,false,false,false,`?list=${list}`],['shared_filters',true,false,true,false,`?list=${list}&q=biology`],
+    ['shared_points',true,true,false,false,`?list=${list}&points=36`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36`]
+  ]) {
+    context.copyCase = {shared,points,filters,sort};
+    run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {raw:fixture[0].id+','+fixture[1].id,ids:[fixture[0].id,fixture[1].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
+    fire(get('f-copy'),'click'); await settle();
+    const url = clipboard.written.at(-1);
+    if(messages.at(-1)!==t('r2_copied_'+kind) || url !== `http://localhost:8765/${query}`) return false;
+  }
+  return messages.length===9;
+});
+await asyncAppCheck('B1 pending copies keep their snapshot, including language, success and rejection', async ({ run, get, fire, settle, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  for (const reject of [false, true]) {
+    run("state.countries = new Set(['Ireland']); dom.points.value = ''; dom.search.value = ''; switchLanguage('en');");
+    let done; let url;
+    context.navigator.clipboard = { writeText(value) { url = value; return new Promise((resolve, fail) => { done = reject ? fail : resolve; }); } };
+    fire(get('f-copy'), 'click');
+    run("dom.points.value = '36'; dom.search.value = 'law'; switchLanguage('sk');");
+    done(); await settle();
+    if (!url.includes('country=Ireland') || /points=|q=|#/.test(url) || messages.at(-1) !== UI.en[reject ? 'r2_copy_failed_desktop' : 'r2_copied_filters']) return false;
+  }
+  return true;
+});
+await asyncAppCheck('B1 sheet status repeats once and clears on every close route, language change and widening', async ({ run, get, fire, settle, flushFrame, advance, flip600, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  const sheet = get('filter-sheet'), status = get('f-copy-status');
+  for (const close of ['done', 'apply', 'escape', 'backdrop', 'language', 'widen']) {
+    flip600(false); fire(get('f-more'), 'click');
+    for (let i = 0; i < 2; i++) {
+      fire(get('f-copy'), 'click'); await settle();
+      if (status.textContent !== '') return false;
+      flushFrame(); if (status.textContent !== t('r2_copied_none') || messages.length) return false;
+    }
+    if (close === 'done') fire(get('sheet-done'), 'click');
+    if (close === 'apply') fire(get('sheet-show'), 'click');
+    if (close === 'escape') { sheet.close(); }
+    if (close === 'backdrop') fire(sheet, 'click', { clientX: -10, clientY: -10 });
+    if (close === 'language') run("switchLanguage('sk');");
+    if (close === 'widen') flip600(true);
+    advance(0); flushFrame();
+    if (status.textContent !== '' || sheet.open) return false;
+    run("switchLanguage('en');");
+  }
+  fire(get('f-more'), 'click');
+  let done; context.navigator.clipboard = { writeText: () => new Promise((resolve) => { done = resolve; }) };
+  fire(get('f-copy'), 'click'); fire(get('sheet-done'), 'click'); advance(0); done(); await settle(); flushFrame();
+  if (!(status.textContent === '' && messages.length === 1 && messages[0] === t('r2_copied_none'))) return false;
+  // A rejection that settles after the sheet closed says the desktop failure, not "close Filters".
+  fire(get('f-more'), 'click');
+  let fail; context.navigator.clipboard = { writeText: () => new Promise((_, reject) => { fail = reject; }) };
+  fire(get('f-copy'), 'click'); fire(get('sheet-done'), 'click'); advance(0); fail(new Error('denied')); await settle(); flushFrame();
+  return status.textContent === '' && messages.length === 2 && messages[1] === t('r2_copy_failed_desktop');
+});
+await asyncAppCheck('B1 sheet missing clipboard and rejection show only the sheet failure', async ({ run, get, fire, settle, flushFrame, clipboard, context }) => {
+  context.location.origin = 'http://localhost:8765';
+  const messages = []; context.showToast = (message) => messages.push(message);
+  fire(get('f-more'), 'click');
+  for (const api of [clipboard, undefined]) {
+    clipboard.mode = 'reject'; context.navigator.clipboard = api;
+    fire(get('f-copy'), 'click'); await settle(); flushFrame();
+    if (get('f-copy-status').textContent !== t('r2_copy_failed_sheet')) return false;
+  }
+  return messages.length === 0;
+});
+await asyncAppCheck('B1 list share uses EN and SK plurals, points opt-in, failure selection and pending snapshots', async ({ run, get, fire, settle, context }) => {
+  const messages = []; context.showToast = (message) => messages.push(message);
+  get('ml-share-url').select = () => { context.linkSelected = true; };
+  run('allRows = live.slice(0, 5);');
+  const button = get('ml-share-copy'), label = button.textContent;
+  for (const ui of ['en', 'sk']) for (const count of [1, 2, 3, 4, 5]) for (const points of [false, true]) {
+    context.n = count; context.ui = ui; context.points = points;
+    run("switchLanguage(ui); shortlist.clear(); allRows.slice(0,n).forEach(r => shortlist.add(r.id)); dom.points.value = '36'; readFields(); dom.sharePoints.checked = points; update();");
+    fire(button, 'click'); await settle();
+    if (messages.at(-1) !== t(count === 1 ? (points ? 'r2_list_copied_points_one' : 'r2_list_copied_one') : (points ? 'r2_list_copied_points' : 'r2_list_copied'), { count })) return false;
+  }
+  run("switchLanguage('en'); shortlist.clear(); allRows.slice(0,3).forEach(r => shortlist.add(r.id)); dom.sharePoints.checked = true;");
+  let done; let url;
+  context.navigator.clipboard = { writeText(value) { url = value; return new Promise((resolve) => { done = resolve; }); } };
+  fire(button, 'click');
+  run('shortlist.clear(); dom.sharePoints.checked = false;'); done(); await settle();
+  if (!url.includes('points=36') || messages.at(-1) !== t('r2_list_copied_points', { count: 3 })) return false;
+  context.navigator.clipboard = undefined; fire(button, 'click'); await settle();
+  return context.linkSelected && messages.at(-1) === t('r2_copy_failed_list') && button.textContent === label;
+});
+appCheck('B1 shared help and copy names stay truthful in EN and SK', ({ run, get, ids: [a] }) => {
+  // The shared harness strips translation attributes for legacy source checks.
+  const original = parseHtml(read('index.html'));
+  for (const id of ['f-copy', 'ml-share-help']) for (const attr of ['data-i18n', 'data-i18n-attr']) {
+    const value = original.querySelector('#' + id).getAttribute(attr);
+    if (value) get(id).setAttribute(attr, value);
+  }
+  for (const cls of ['copy-long', 'copy-short']) get('f-copy').querySelector('.' + cls).setAttribute('data-i18n', original.querySelector('.' + cls).getAttribute('data-i18n'));
+  for (const language of ['en', 'sk']) {
+    run(`switchLanguage('${language}'); shared = null; renderListBar();`);
+    if (get('f-copy-help').textContent !== t('r2_copy_help')) return false;
+    run(`shared = { ids: ['${a}'], unknown: [] }; state.shortlistOnly = true; update();`);
+    if (get('f-copy-help').textContent !== t('r2_copy_help_shared')) return false;
+    const name = get('f-copy').getAttribute('aria-label');
+    if (!name.includes(get('f-copy').querySelector('.copy-long').textContent)
+      || !name.toLowerCase().includes(t('copy_link').toLowerCase()) || get('ml-share-help').textContent !== t('r2_share_help')) return false;
+  }
+  return true;
+});
+check('B1 tablet Share panel anchors within its toolbar only at 600–1023 px', (() => {
+  const rules = cssTree(cssRules);
+  const tablet = '@media(min-width:600px) and (max-width:1023.98px)';
+  const contains = (selector, declarations) => rules.some(r => r.selector === selector
+    && r.media.length === 1 && r.media[0] === tablet && declarations.every(d => r.body.includes(d)));
+  return contains('.ml-tools', ['position:relative']) && contains('#ml-share', ['position:static'])
+    && contains('#ml-share>.ml-panel', ['left:auto', 'right:0', 'top:auto'])
+    && rules.filter(r => r.selector === '#ml-share>.ml-panel').every(r => r.media[0] === tablet);
+})());
+i18n.initLanguage('', { getItem: () => 'en' });
+
+
+section('Batch 2 · C');
+// Verifier finding: the 44 px centred action block also printed; print keeps a plain left-aligned link.
+check('C1 print resets the detail actions to a plain left-aligned link',
+  /@media print\{\.d-actions\{display:block\}\.d-actions \.btn\{min-height:0;text-align:left\}\}/.test(cssText));
+{
+  const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
+    lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
+  // Batch 3 · A: the detail also carries the compare button (Leon's compare
+  // icon on every programme), so the actions are official, save, compare.
+  const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false, inCompare: false }));
+  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0];
+  equal('C1 actions contain official, then save, then compare', actions.children.map((n) => [n.tagName, n.className]),
+    [['a', 'btn btn-p'], ['button', 'btn save'], ['button', 'btn cmpb']]);
+  check('C1 Student life and provenance stay outside actions',
+    actions.parent === foot && byClass(foot, 'lnk')[0]?.parent === foot && byClass(foot, 'ok')[0]?.parent === foot);
+  const solo = withStubDocument(() => renderDetail({ ...row, officialUrl: null }, noFilters(), { saved: false }));
+  equal('C1 no official URL leaves one action', byClass(solo, 'd-actions')[0]?.childElementCount, 1);
+  check('C1 actions use equal grid tracks and 10px gap',
+    /\.d-actions\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,15rem\),1fr\)\);gap:10px/.test(read('css/styles.css')));
+}
+appCheck('C2 second wide activation focuses the pane without navigation; narrow still toggles', ({ run, flip, click, pane, context, ids: [a] }) => {
+  let opened = false, changed = false;
+  context.window.open = () => { opened = true; };
+  context.history.replaceState = () => { changed = true; };
+  const href = context.location.href;
+  flip(true); click(a);
+  if (run('selectedId') !== a || stubDocument.activeElement === pane) return false;
+  changed = false;
+  click(a);
+  if (stubDocument.activeElement !== pane || run('selectedId') !== a || opened || changed || context.location.href !== href) return false;
+  flip(false);
+  // Crossing reopens the selected row inline; close it before the two-click pair.
+  click(a); click(a);
+  if (!run('openIds.has(fixture[0].id)')) return false;
+  click(a);
+  return !run('openIds.has(fixture[0].id)');
+});
+{
+  const czech = live.find((r) => r.country === 'Czechia' && r.languages.includes('Czech') && r.tuitionEu === 0);
+  for (const lang of ['en', 'sk']) {
+    i18n.initLanguage('', { getItem: () => lang });
+    const note = t('r2_czech_free');
+    check('C3 free Czech detail note is in Language (' + lang + ')',
+      kvOf(detailOf(czech))[t('language')]?.textContent.includes(note));
+    for (const [name, row] of [
+      ['English taught', { ...czech, languages: ['English'] }],
+      ['paid', { ...czech, tuitionEu: 2000 }],
+      ['non-Czech', { ...czech, country: 'Austria' }],
+    ]) {
+      const detail = detailOf(row);
+      check('C3 no note for ' + name + ' (' + lang + ')', !detail.textContent.includes(note));
+      check('C3 note-free detail keeps the fee wording guard (' + name + ', ' + lang + ')',
+        !/Tuition \(EU\)|no tuition fee/.test(detail.textContent));
+    }
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
+  for (const [name, fee, defaultFee, expected] of [
+    ['inherited zero', '', '0', true], ['explicit zero', '0', '2000', true],
+    ['unknown override', '?', '0', false], ['blank unknown', '', '', false],
+    ['question unknown', '', '?', false], ['positive override', '2000', '0', false],
+  ]) {
+    const uni = 'university_id,name,city,country,tuition_eu_default,verified_by\nfx,Fixture,Prague,Czechia,' + defaultFee + ',AI-DRAFT\n';
+    const prog = 'programme_id,university_id,programme,language,tuition_eu,application_deadline,official_url,verified_by\np,fx,Fixture,Czech,' + fee + ',,https://example.org,AI-DRAFT\n';
+    const { programmes } = await load(uni, prog);
+    equal('C3 parser-to-render ' + name, detailOf(programmes[0]).textContent.includes(t('r2_czech_free')), expected);
+  }
+}
+
+section('Batch 2 follow-up');
+// At 600–700 px the compact Filters button (87–120 px) sat in the 36/44 px logo
+// slot, so Search covered it ("Fil…", right part unclickable). It shows its icon
+// alone there, filling the slot; the label stays for screen readers and the count
+// moves to the corner. smoke.mjs measures it in Chrome.
+check('F1 compact Filters at 600–700 px is icon-only, fills the slot, label kept for screen readers, count on the corner',
+  /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.filters-btn\{width:100%;padding:0\}\s*\.filters-btn>span:not\(\.badge\)\{[^}]*clip-path:inset\(50%\)[^}]*\}\s*\.filters-btn>\.badge\{position:absolute;[^}]*\}/.test(cssText)
+  && /<button class="btn filters-btn" id="compact-filters"[^>]*><svg class="ic" aria-hidden="true">[^]*?<span data-i18n="filters_2">Filters<\/span><span id="compact-count" class="badge">/.test(read('index.html')));
+// "Podľa univerzity" was clipped in the 112 px living-costs field (Leon chose
+// "Podľa školy", 2026-11-05). English keeps "University's".
+check('F2 Slovak living-costs placeholder is "Podľa školy" (smoke F2 measures the fit)',
+  UI.sk.university_s === 'Podľa školy' && UI.en.university_s === "University's"
+  && /id="f-living"[^>]*data-i18n-attr="placeholder:university_s"/.test(read('index.html')));
+check('F3 the unused .dd-help rule stays removed', !/\.dd-help\b/.test(cssText));
+
+section('Batch 3 · A');
+// Compare is its own set of up to four programmes, apart from My list (Leon,
+// 2026-11-05). js/compare-set.js holds it; app.js keeps it in step.
+{
+  const { toggleIn, restoreAt, normalizeCompare, readStoredCompare, saveCompare, loadCompare, COMPARE_KEY } = compareSetMod;
+  const known = new Set(['a', 'b', 'c', 'd', 'e']);
+  equal('A1 toggleIn: add, add last, remove, re-add goes last',
+    [toggleIn([], 'a', known), toggleIn(['a'], 'b', known), toggleIn(['a', 'b'], 'a', known), toggleIn(['b'], 'a', known)],
+    [{ ids: ['a'], result: 'added' }, { ids: ['a', 'b'], result: 'added' }, { ids: ['b'], result: 'removed' }, { ids: ['b', 'a'], result: 'added' }]);
+  equal('A1 toggleIn: a fifth is refused and the set is unchanged; one in the set still comes out',
+    [toggleIn(['a', 'b', 'c', 'd'], 'e', known), toggleIn(['a', 'b', 'c', 'd'], 'c', known)],
+    [{ ids: ['a', 'b', 'c', 'd'], result: 'full' }, { ids: ['a', 'b', 'd'], result: 'removed' }]);
+  equal('A1 toggleIn: ids no longer in the data do not count toward four',
+    toggleIn(['gone', 'a', 'b', 'c'], 'd', known), { ids: ['gone', 'a', 'b', 'c', 'd'], result: 'added' });
+  equal('A1 restoreAt: back at its old index; refused when full; already there is unchanged, never doubled or moved',
+    [restoreAt(['a', 'c'], 'b', 1, known), restoreAt(['a', 'b', 'c', 'd'], 'e', 0, known), restoreAt(['b', 'a'], 'a', 0, known), restoreAt(['a'], 'b', 9, known)],
+    [{ ids: ['a', 'b', 'c'], result: 'restored' }, { ids: ['a', 'b', 'c', 'd'], result: 'full' }, { ids: ['b', 'a'], result: 'restored' }, { ids: ['a', 'b'], result: 'restored' }]);
+  equal('A1 normalizeCompare: duplicates go, the first four known stay in order, unknown ids are kept, a reappearing fifth is dropped',
+    [normalizeCompare(['a', 'a', 'b'], known), normalizeCompare(['a', 'x', 'b', 'c', 'd', 'e'], known), normalizeCompare(['x', 'a', 'b', 'c', 'd'], new Set([...known, 'x']))],
+    [['a', 'b'], ['a', 'x', 'b', 'c', 'd'], ['x', 'a', 'b', 'c']]);
+  const store = (text) => fakeStorage(text === undefined ? {} : { [COMPARE_KEY]: text });
+  const blocked = Object.assign(fakeStorage(), { blocked: true });
+  equal('A1 storage reads: missing, corrupt, not a list and blocked',
+    [readStoredCompare(store()), readStoredCompare(store('{oops')), readStoredCompare(store('{"a":1}')), readStoredCompare(blocked), loadCompare(blocked)],
+    [[], [], [], null, []]);
+  equal('A1 storage reads keep string ids once each, in stored order', readStoredCompare(store('["b",1,"a","b",null]')), ['b', 'a']);
+  const full = Object.assign(fakeStorage(), { full: true }), ok = fakeStorage();
+  check('A1 saveCompare reports a failed write and writes JSON otherwise',
+    saveCompare(['a'], full) === false && saveCompare(['a', 'b'], ok) === true && ok.data[COMPARE_KEY] === '["a","b"]');
+  check('A1 the compare key is its own, never the saves\' key', COMPARE_KEY === 'ib-university-finder:compare:v1' && COMPARE_KEY !== shortlistMod.SHORTLIST_KEY);
+}
+const cmpStored = (context) => JSON.parse(context.compareStorage.data[compareSetMod.COMPARE_KEY] ?? 'null');
+const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.stringify(id)}, knownIds()))`);
+{
+  const rows = live.slice(0, 3);
+  const make = (lang) => { i18n.initLanguage('', { getItem: () => lang }); return withStubDocument(() => { const ul = new ChromeNode('ul'); renderRows(ul, rows, { state: noFilters(), compare: new Set([rows[0].id]) }); return ul; }); };
+  for (const lang of ['en', 'sk']) {
+    const ul = make(lang);
+    const toggles = ul.children.map((li) => li.querySelector('button.cmpi'));
+    const main = ul.children[0].querySelector('.r-main');
+    const kids = main.children.filter((n) => typeof n !== 'string');
+    const name = toggles[0].querySelector('.visually-hidden').textContent;
+    check(`A2 rows: the compare toggle is pressed with the filled-pan symbol only for a programme in Compare, and comes before the star (${lang})`,
+      toggles[0].getAttribute('aria-pressed') === 'true' && toggles[0].querySelector('use').getAttribute('href') === '#i-compare-on'
+      && toggles[1].getAttribute('aria-pressed') === 'false' && toggles[1].querySelector('use').getAttribute('href') === '#i-compare'
+      && toggles.every((b, i) => b.type === 'button' && b.getAttribute('data-compare-id') === rows[i].id && !b.disabled)
+      && kids.indexOf(toggles[0]) === kids.length - 2 && kids.at(-1).classList.contains('star'));
+    check(`A2 rows: the toggle is named by the programme and its university (${lang})`,
+      name === t('r3_cmp_add_label', { programme: rows[0].programme, university: rows[0].university })
+      && name.includes(rows[0].programme) && name.includes(rows[0].university) && name.startsWith(lang === 'sk' ? 'Pridať' : 'Add'));
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
+  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null }, noFilters(), { saved: true, inCompare: true }));
+  const pair = byClass(solo, 'd-actions')[0].children;
+  check('A2 detail without an official link: Save and Compare are the pair, Compare says "In compare" with its symbol',
+    pair.length === 2 && pair[0].classList.contains('save') && pair[1].classList.contains('cmpb') && pair[1].getAttribute('aria-pressed') === 'true'
+    && pair[1].querySelector('.cmpb-w').textContent === 'In compare' && pair[1].querySelector('use').getAttribute('href') === '#i-compare-on'
+    && pair[1].textContent.endsWith(`: ${rows[0].programme}, ${rows[0].university}`));
+  const none = withStubDocument(() => renderDetail(rows[0], noFilters()));
+  check('A2 a detail drawn without inCompare has no compare button (the print and CSV paths)', !byClass(none, 'cmpb').length);
+  check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
+    /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)
+    && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)
+    && /<symbol id="i-compare" /.test(indexHtml) && /<symbol id="i-compare-on" /.test(indexHtml));
+}
+check('A2 both row actions retain 44 px targets with a mouse as well as touch',
+  /\.r-main>:(?:is|where)\(\.cmpi,\.star\)\{min-width:44px;min-height:44px\}/.test(cssText));
+const cmpOf = (node) => node.querySelector('button[data-compare-id]');
+appCheck('A2 a compare click toggles the row, its open slot and the pane together, and never opens or selects a row', ({ run, get, click, flip, item, fire, pane, ids: [a, b] }) => {
+  click(b);
+  const before = [run('selectedId'), run('[...openIds].join()')].join('|');
+  fire(cmpOf(item(a)), 'click');
+  if ([run('selectedId'), run('[...openIds].join()')].join('|') !== before || item(a).querySelector('.expand')) return false;
+  if (cmpOf(item(a)).getAttribute('aria-pressed') !== 'true' || run('compareIds.join()') !== a) return false;
+  const slotButton = item(b).querySelector('.expand button.cmpb');
+  if (!slotButton || slotButton.getAttribute('aria-pressed') !== 'false') return false;
+  fire(slotButton, 'click');
+  if (cmpOf(item(b)).getAttribute('aria-pressed') !== 'true' || slotButton.querySelector('.cmpb-w').textContent !== 'In compare' || run('selectedId') !== b) return false;
+  flip(true);
+  const paneButton = pane.querySelector('button.cmpb');
+  if (!paneButton || paneButton.getAttribute('aria-pressed') !== 'true') return false;
+  fire(paneButton, 'click');
+  return cmpOf(item(b)).getAttribute('aria-pressed') === 'false' && cmpOf(item(b)).querySelector('use').getAttribute('href') === '#i-compare'
+    && paneButton.getAttribute('aria-pressed') === 'false' && run('compareIds.join()') === a && run('selectedId') === b;
+});
+appCheck('A2 programmes already in Compare draw pressed: a slot opened later, the pane, and rows that arrive after the first screen', ({ run, get, click, flip, item, pane, drain, context }) => {
+  const late = context.live[70].id, early = context.live[1].id;
+  run(`allRows = live.slice(0, 120); compareIds = [${JSON.stringify(late)}, ${JSON.stringify(early)}]; update();`);
+  if (item(late)) return false;
+  drain();
+  if (cmpOf(item(late))?.getAttribute('aria-pressed') !== 'true' || cmpOf(item(context.live[2].id)).getAttribute('aria-pressed') !== 'false') return false;
+  click(early);
+  if (item(early).querySelector('.expand button.cmpb')?.getAttribute('aria-pressed') !== 'true') return false;
+  flip(true);
+  return pane.querySelector('button.cmpb')?.getAttribute('aria-pressed') === 'true';
+});
+const cmpCols = (get) => findAll(get('cmp-body'), (n) => n.tagName === 'th' && n.getAttribute('scope') === 'col');
+const cmpColIds = (get) => cmpCols(get).map((th) => th.getAttribute('data-id'));
+const cmpX = (get, id) => get('cmp-body').querySelector(`[data-compare-remove="${id}"]`);
+const cmpSave = (get, id) => get('cmp-body').querySelector(`th [data-save-id="${id}"]`);
+// Seeds this tab and its storage alike: every change re-reads storage first.
+const cmpSet = (ids) => `compareIds = ${JSON.stringify(ids)}; saveCompare(compareIds);`;
+appCheck('A3 three columns: "x" on the middle one leaves two with focus on the new middle "x" and an Undo toast; Undo puts it back in its place', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  if (cmpColIds(get).join() !== [a, b, c].join()) return false;
+  const x = cmpX(get, b); x.focus(); fire(x, 'click');
+  const toast = context.toasts.at(-1);
+  if (cmpColIds(get).join() !== [a, c].join() || stubDocument.activeElement !== cmpX(get, c) || toast.message !== 'Removed from compare.' || toast.label !== 'Undo'
+    || cmpStored(context).join() !== [a, c].join() || get('compare').hidden) return false;
+  toast.action();
+  return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
+});
+appCheck('A3 Undo after two removals puts the programme back before the ones that came after it', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  context.fixture.push(...context.live.slice(1, 2));
+  const d = context.fixture[3].id;
+  run(`allRows = fixture; ${cmpSet([a, b, c, d])} update(); openCompare(null);`);
+  fire(cmpX(get, b), 'click');
+  const undoB = context.toasts.at(-1).action;
+  fire(cmpX(get, a), 'click');
+  undoB();
+  return cmpColIds(get).join() === [b, c, d].join() && cmpStored(context).join() === [b, c, d].join();
+});
+appCheck('A3 two, one, none: one column asks for another and hides "Show only differences"; none is the empty state with focus on Browse, which closes the view', ({ run, get, fire, ids: [a, b] }) => {
+  run(`${cmpSet([a, b])} update(); openCompare(null);`);
+  cmpX(get, b).focus(); fire(cmpX(get, b), 'click');
+  if (cmpColIds(get).join() !== a || get('cmp-one').hidden || !get('cmp-diff-label').hidden || get('compare').hidden
+    || get('cmp-h').textContent !== 'Compare 1 programme' || stubDocument.activeElement !== cmpX(get, a)) return false;
+  cmpX(get, a).focus(); fire(cmpX(get, a), 'click');
+  if (cmpCols(get).length !== 0 || get('cmp-empty').hidden || !get('cmp-one').hidden || stubDocument.activeElement !== get('cmp-browse') || get('compare').hidden) return false;
+  fire(get('cmp-browse'), 'click');
+  return get('compare').hidden && !get('results').parent.parent.parent.hidden;
+});
+appCheck('A3 a column\'s Save toggles the saves with the row star both ways, in place: focus and the hidden bar stay, Compare never changes', ({ run, get, fire, item, ids: [a, b] }) => {
+  run(`${cmpSet([a, b])} update(); openCompare(null);`);
+  const save = cmpSave(get, a); save.focus(); fire(save, 'click');
+  if (save.getAttribute('aria-pressed') !== 'true' || save.querySelector('.save-s').textContent !== 'Saved' || cmpSave(get, a) !== save
+    || stubDocument.activeElement !== save || !get('shortlist-bar').hidden || starOf(item(a)).getAttribute('aria-pressed') !== 'true'
+    || run('compareIds.join()') !== [a, b].join()) return false;
+  fire(starOf(item(a)), 'click');
+  return save.getAttribute('aria-pressed') === 'false' && save.querySelector('.save-s').textContent === 'Save' && run('shortlist.size') === 0
+    && run('compareIds.join()') === [a, b].join() && !get('compare').hidden;
+});
+appCheck('A3 redraws keep focus and the sideways scroll: a filter (columns come from all programmes), another tab dropping the focused column, the language', ({ run, get, fireWindow, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  get('cmp-body').querySelector('.cmp-scroll').scrollLeft = 120;
+  cmpSave(get, b).focus();
+  run("state.search = 'zzzz-no-match'; update();");
+  if (cmpColIds(get).join() !== [a, b, c].join() || stubDocument.activeElement !== cmpSave(get, b) || get('cmp-body').querySelector('.cmp-scroll').scrollLeft !== 120) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([a, c]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  if (cmpColIds(get).join() !== [a, c].join() || stubDocument.activeElement !== cmpX(get, c)) return false;
+  run("switchLanguage('sk');");
+  const ok = stubDocument.activeElement === cmpX(get, c) && get('cmp-body').querySelector('.cmp-scroll').scrollLeft === 120
+    && get('cmp-h').textContent === 'Porovnať 2 programy' && cmpSave(get, a).querySelector('.save-s').textContent === 'Uložiť';
+  run("switchLanguage('en');");
+  return ok;
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+appCheck('A3 a passed deadline stays in Compare, with its label, while the list filters it out', ({ run, get, context, ids: [a] }) => {
+  context.past = { ...context.fixture[0], id: 'past-fixture', deadline: new Date('2026-01-15'), deadlinePassed: true, daysUntilDeadline: -30, isUrgent: false };
+  run(`allRows = [...fixture, past]; ${cmpSet(['past-fixture', a])} state.deadlineWindow = 'open'; update(); openCompare(null);`);
+  const deadline = findAll(get('cmp-body'), (n) => n.getAttribute('data-fact') === 'deadline')[0];
+  return !run("shownRows.has('past-fixture')") && cmpColIds(get).join() === ['past-fixture', a].join()
+    && deadline.children[1].textContent.includes('Passed, check next cycle');
+});
+appCheck('A3 closeCompare(false) hides the view and moves neither focus nor the page', ({ run, get, context, ids: [a] }) => {
+  run(`${cmpSet([a])} update(); openCompare(null);`);
+  context.window.scrollY = 500;
+  const log = stubDocument.focusLog.length, active = stubDocument.activeElement;
+  run('closeCompare(false);');
+  return get('compare').hidden && stubDocument.focusLog.length === log && stubDocument.activeElement === active && context.window.scrollY === 500;
+});
+await asyncAppCheck('A3 a shared list stays open, with ?list= in the address, after Compare closes', async ({ run, get, fire, context, settle }) => {
+  const [a, b] = [context.fixture[0].id, context.fixture[1].id];
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+  context.location.search = `?list=${a}`;
+  run('applyUrlFields();');
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  run(`${cmpSet([b])} openCompare(null); state.search = 'x'; update();`);
+  fire(get('cmp-close'), 'click');
+  return run('state.shortlistOnly') === true && run('shared') !== null && !get('shortlist-bar').hidden && get('ml-title').textContent === 'Shared list'
+    && urls.length > 0 && urls.every((u) => u.startsWith(`/?list=${a}`));
+}, { boot: true });
+equal('A3 the heading counts in both languages: Slovak 1 program, 2 and 4 programy, 5 programov',
+  [1, 2, 4, 5].map((count) => i18n.inLanguage('sk', () => t('r3_cmp_heading', { count }))).concat([1, 2].map((count) => t('r3_cmp_heading', { count }))),
+  ['Porovnať 1 program', 'Porovnať 2 programy', 'Porovnať 4 programy', 'Porovnať 5 programov', 'Compare 1 programme', 'Compare 2 programmes']);
+appCheck('A4 the header Compare button counts the set and is pressed while the view is open; it opens and closes the view', ({ run, get, fire, ids: [a, b] }) => {
+  const button = get('header-compare');
+  if (get('header-compare-count').textContent !== '0' || button.getAttribute('aria-pressed') !== 'false') return false;
+  fire(cmpOf(get('results').children[0]), 'click'); fire(cmpOf(get('results').children[1]), 'click');
+  if (get('header-compare-count').textContent !== '2') return false;
+  button.focus(); fire(button, 'click');
+  if (get('compare').hidden || button.getAttribute('aria-pressed') !== 'true' || stubDocument.activeElement !== get('cmp-h')) return false;
+  fire(button, 'click');
+  if (!get('compare').hidden || button.getAttribute('aria-pressed') !== 'false' || stubDocument.activeElement !== button) return false;
+  // Ids no longer in the data never count.
+  run(`${cmpSet(['gone', a])} syncCompareControls();`);
+  return get('header-compare-count').textContent === '1';
+});
+appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog, behind any pick-list open outside the Filters sheet (the bar on a phone on its side, Sort on a portrait phone) and while printing; has-tray follows it', ({ run, get, fire, flip600, trayMedia, docBody, ids: [a, b] }) => {
+  // The harness starts with focus on a stand-in text field, which counts as typing.
+  stubDocument.activeElement = docBody;
+  const tray = get('cmp-tray'), shown = () => !tray.hidden && docBody.classList.contains('has-tray');
+  const gone = () => tray.hidden && !docBody.classList.contains('has-tray');
+  trayMedia.matches = true; for (const fn of trayMedia.listeners) fn({ matches: true });
+  if (!gone()) return false;
+  fire(cmpOf(get('results').children[0]), 'click');
+  if (!shown() || get('cmp-tray-text').textContent !== 'Compare 1 of 4') return false;
+  fire(cmpOf(get('results').children[1]), 'click');
+  if (get('cmp-tray-text').textContent !== 'Compare 2 of 4') return false;
+  // Typing in Search (the keyboard is up): hidden; a checkbox is not typing.
+  fire(get('f-search'), 'focusin');
+  if (!gone()) return false;
+  fire(get('f-search'), 'focusout', { relatedTarget: get('f-maths') });
+  if (!shown()) return false;
+  fire(get('f-search'), 'focusin'); fire(get('f-search'), 'focusout', { relatedTarget: null });
+  if (!shown()) return false;
+  // Opening from the tray hides it; closing brings it back with focus on Open.
+  get('cmp-tray-open').focus(); fire(get('cmp-tray-open'), 'click');
+  if (!gone() || get('compare').hidden) return false;
+  fire(get('cmp-close'), 'click');
+  if (!shown() || stubDocument.activeElement !== get('cmp-tray-open')) return false;
+  // A dialog: the filter sheet.
+  get('filter-sheet').showModal(); fire(get('sheet-h'), 'focusin');
+  if (!gone()) return false;
+  get('filter-sheet').close(); fire(get('filter-sheet'), 'close', { bubbles: false });
+  if (!shown()) return false;
+  // Review of PR 1: a phone on its side has the tray and the bar's floating
+  // pick-lists, and the tray covered Budget's first field. It goes while one
+  // is open and comes back when it closes; a list left open in the closed
+  // sheet does not count.
+  const budget = get('dd-budget'), toggle = (open) => { budget.open = open; fire(budget, 'toggle', { bubbles: false }); };
+  toggle(true); if (!shown()) return false; toggle(false);
+  // Widening moves focus to the tuition field (a keyboard field); not what is tested here.
+  flip600(true); stubDocument.activeElement = docBody; toggle(true);
+  if (!gone()) return false;
+  toggle(false);
+  if (!shown()) return false;
+  flip600(false); stubDocument.activeElement = docBody;
+  // Desktop: no tray. Printing: none.
+  trayMedia.matches = false; for (const fn of trayMedia.listeners) fn({ matches: false });
+  if (!gone()) return false;
+  trayMedia.matches = true; for (const fn of trayMedia.listeners) fn({ matches: true });
+  run('printing = true; syncTray();');
+  if (!gone()) return false;
+  run('afterPrint();');
+  if (!shown()) return false;
+  run(`${cmpSet([])} syncCompareControls();`);
+  return gone();
+});
+appCheck('A4 the tray says it in Slovak: "Porovnanie: 3 zo 4", and Open is named "Otvoriť porovnanie"', ({ run, get, trayMedia, docBody, ids: [a, b, c] }) => {
+  trayMedia.matches = true; stubDocument.activeElement = docBody;
+  run(`${cmpSet([a, b, c])} switchLanguage('sk');`);
+  const ok = get('cmp-tray-text').textContent === 'Porovnanie: 3 zo 4' && !get('cmp-tray').hidden
+    && t('r3_cmp_open_label') === 'Otvoriť porovnanie' && t('r3_tray_open') === 'Otvoriť';
+  run("switchLanguage('en');");
+  return ok;
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+// The tray is fixed to the bottom, but its place in the markup is its place
+// in Tab and screen-reader order. After </main> it came after every row
+// (about 8,700 stops on a phone), so it now sits right after the count row,
+// before My list, Compare and the results.
+check('A4 markup: the header button beside My list, the tray right after the count row (before the list) with text and button apart, one status line (regression)',
+  /<button class="btn hb" id="header-list" type="button">[^]*?<span class="hb-l" data-i18n="my_list">My list<\/span><span id="header-list-count" class="badge">0<\/span><\/button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"\/><\/svg><span class="hb-l" data-i18n="compare_2">Compare<\/span><span id="header-compare-count" class="badge">0<\/span><\/button>/.test(read('index.html'))
+  && /<p class="copy-status" id="f-copy-status" role="status" aria-live="polite"><\/p>\s*<\/div>\s*(?:<!--[^]*?-->\s*)?<div class="cmp-tray" id="cmp-tray" hidden>\s*<p id="cmp-tray-text"><\/p>\s*<button type="button" class="btn btn-p btn-s" id="cmp-tray-open"[^>]*data-i18n-attr="aria-label:r3_cmp_open_label">Open<\/button>\s*<\/div>\s*<p class="count count-summary" id="count-summary"/.test(read('index.html'))
+  && (() => { const html = read('index.html'), at = (s) => html.indexOf(s);
+    return at('<div class="status">') < at('id="cmp-tray"') && at('id="cmp-tray"') < at('id="shortlist-bar"') && at('id="cmp-tray"') < at('id="results"') && at('id="cmp-tray"') < at('</main>'); })()
+  && /<\/dialog>\s*<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"><\/p>\s*<footer/.test(read('index.html')));
+check('A4 CSS: the header button hides where the tray serves; icon-only header buttons at 600–1023; the tray reserves its height, scroll padding and the toasts\' lift, none in print',
+  /@media \(max-width:599\.98px\),\(max-height:500px\)\{#header-compare\{display:none\}\}/.test(cssText)
+  && /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\s*\.hb \.hb-l\{position:absolute;[^}]*clip-path:inset\(50%\)/.test(cssText)
+  && /body\.has-tray\{padding-bottom:var\(--tray-h,0px\)\}/.test(cssText) && /html\{scroll-padding-bottom:var\(--tray-h,0px\)\}/.test(cssText)
+  && /\.toasts\{bottom:calc\(24px \+ var\(--tray-h,0px\)\)\}/.test(cssText)
+  && /@media print\{\s*body\.has-tray\{padding-bottom:0\}\s*html\{scroll-padding-bottom:0\}\s*\.cmp:not\(\[hidden\]\) ~ \.split\{display:none\}/.test(cssText)
+  && appSrc.includes("matchMedia('(max-width: 599.98px), (max-height: 500px)')"));
+appCheck('A5 a fifth is refused: the set stays, the button is neither pressed nor disabled, and the limit toast opens Compare', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  const ids = context.fixture.map((r) => r.id);
+  run(`allRows = fixture; ${cmpSet(ids.slice(0, 4))} update();`);
+  const fifth = cmpOf(get('results').children.find((n) => n.dataset.id === ids[4]));
+  fire(fifth, 'click');
+  const toast = context.toasts.at(-1);
+  if (run('compareIds.join()') !== ids.slice(0, 4).join() || fifth.getAttribute('aria-pressed') !== 'false' || fifth.disabled || fifth.getAttribute('aria-disabled')
+    || toast.message !== 'You can compare up to 4 programmes. Remove one first.' || toast.label !== 'Open compare' || get('header-compare-count').textContent !== '4') return false;
+  toast.action();
+  return !get('compare').hidden && cmpColIds(get).join() === ids.slice(0, 4).join() && stubDocument.activeElement === get('cmp-h');
+});
+appCheck('A5 desktop: an add shows one toast with the count and "Open compare"; a removal a plain toast; nothing in the status line', ({ get, fire, context, flushFrame }) => {
+  const button = cmpOf(get('results').children[0]);
+  fire(cmpOf(get('results').children[1]), 'click');
+  fire(button, 'click');
+  const added = context.toasts.at(-1);
+  if (context.toasts.length !== 2 || added.message !== 'Added to compare (2 of 4).' || added.label !== 'Open compare') return false;
+  fire(button, 'click');
+  flushFrame();
+  const removed = context.toasts.at(-1);
+  return context.toasts.length === 3 && removed.message === 'Removed from compare.' && !removed.action && get('cmp-status').textContent === '';
+});
+// "Added to compare (3 of 4) · Open compare" stayed up over the open
+// comparison until its timer ran out.
+appCheck('A5 desktop: opening Compare from the header retires the "Open compare" toast of an add and of a refused fifth, and no other (regression)', ({ run, get, fire, context }) => {
+  context.fixture.push(...context.live.slice(1, 3));
+  const ids = context.fixture.map((r) => r.id);
+  run('allRows = fixture; update();');
+  const toasts = [];
+  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  fire(cmpOf(get('results').children[0]), 'click');
+  const added = toasts.at(-1);
+  if (added?.label !== 'Open compare' || added.gone) return false;
+  fire(get('header-compare'), 'click');
+  if (get('compare').hidden || !added.gone) return false;
+  fire(get('header-compare'), 'click');
+  run(`${cmpSet(ids.slice(0, 4))} update();`);
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[4])), 'click');
+  const full = toasts.at(-1);
+  if (full?.message !== 'You can compare up to 4 programmes. Remove one first.' || full.gone) return false;
+  fire(cmpOf(get('results').children.find((n) => n.dataset.id === ids[0])), 'click');
+  const removed = toasts.at(-1);
+  fire(get('header-compare'), 'click');
+  return !get('compare').hidden && full.gone && removed.message === 'Removed from compare.' && !removed.gone;
+});
+appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 leave one line, "4 of 4"', ({ run, get, fire, context, trayMedia, frames, flushFrame }) => {
+  trayMedia.matches = true;
+  context.fixture.push(...context.live.slice(1, 2));
+  run('update();');
+  const rows = get('results').children;
+  fire(cmpOf(rows[0]), 'click');
+  if (get('cmp-status').textContent !== '' || frames.size !== 1) return false;
+  flushFrame();
+  if (get('cmp-status').textContent !== 'Added to compare, 1 of 4.' || (context.toasts ?? []).length) return false;
+  fire(cmpOf(rows[0]), 'click');
+  for (const row of rows) fire(cmpOf(row), 'click');
+  if (frames.size !== 1 || get('cmp-status').textContent !== '') return false;
+  flushFrame();
+  if (get('cmp-status').textContent !== 'Added to compare, 4 of 4.') return false;
+  fire(cmpOf(rows[3]), 'click'); flushFrame();
+  return get('cmp-status').textContent === 'Removed from compare.' && (context.toasts ?? []).length === 0;
+});
+{
+  // The real showToast, on a stand-in page with a fake clock.
+  const toastPage = (test) => {
+    let now = 0, nextId = 1; const timers = new Map();
+    const advance = (ms) => {
+      const end = now + ms;
+      for (;;) {
+        const due = [...timers].filter(([, x]) => x.at <= end).sort((p, q) => p[1].at - q[1].at)[0];
+        if (!due) break;
+        timers.delete(due[0]); now = due[1].at; due[1].fn();
+      }
+      now = end;
+    };
+    const region = Object.assign(new ChromeNode('div'), { id: 'toasts' });
+    const page = { ...stubDocument, activeElement: null, getElementById: (id) => (id === 'toasts' ? region : null), listeners: {} };
+    return withGlobals({
+      document: page, matchMedia: () => ({ matches: false }),
+      setTimeout: (fn, ms = 0) => { const id = nextId++; timers.set(id, { at: now + ms, fn }); return id; },
+      clearTimeout: (id) => { timers.delete(id); },
+    }, () => {
+      const focus = (node) => { const was = page.activeElement; page.activeElement = node;
+        if (was) dispatchStub(was, { type: 'focusout', relatedTarget: node }); if (node) dispatchStub(node, { type: 'focusin' }); };
+      return test({ region, advance, focus, show: realRound2.showToast, buttonOf: (toast) => toast.querySelector('button') });
+    });
+  };
+  check('A5 toasts: one leaves after 6 s with its 160 ms exit; a new one replaces an unfocused one', toastPage(({ region, advance, show }) => {
+    show('One'); show('Two');
+    if (region.children.length !== 1 || region.textContent !== 'Two') return false;
+    advance(5999); if (region.children.length !== 1 || region.children[0].classList.contains('out')) return false;
+    advance(1); if (!region.children[0].classList.contains('out')) return false;
+    advance(160); return region.children.length === 0;
+  }));
+  check('A5 toasts: hovering pauses the timer; leaving starts it again', toastPage(({ region, advance, show }) => {
+    show('One'); const toast = region.children[0];
+    dispatchStub(toast, { type: 'mouseenter', bubbles: false }); advance(20000);
+    if (region.children[0] !== toast) return false;
+    dispatchStub(toast, { type: 'mouseleave', bubbles: false }); advance(6160);
+    return region.children.length === 0;
+  }));
+  check('A5 toasts: a focused Undo is never replaced or timed out; the new toast goes beside it, and each Undo keeps its own action', toastPage(({ region, advance, focus, show, buttonOf }) => {
+    const done = [];
+    show('Removed A', 'Undo', () => done.push('A'));
+    const first = region.children[0];
+    focus(buttonOf(first));
+    show('Removed B', 'Undo', () => done.push('B'));
+    const second = region.children[1];
+    if (region.children.length !== 2 || region.children[0] !== first || stubDocument !== stubDocument) return false;
+    advance(20000);
+    if (!region.children.includes(first) || region.children.includes(second)) return false;
+    // A third while the first still holds focus: at most two, the focused one kept.
+    show('Removed C', 'Undo', () => done.push('C'));
+    const third = region.children.at(-1);
+    if (region.children.length !== 2 || region.children[0] !== first) return false;
+    dispatchStub(buttonOf(first), { type: 'click' });
+    focus(buttonOf(third));
+    dispatchStub(buttonOf(third), { type: 'click' });
+    advance(200);
+    return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 hovering during toast exit cancels removal until the pointer leaves', toastPage(({ region, advance, show }) => {
+    show('Removed'); const toast = region.children[0];
+    advance(6000);
+    dispatchStub(toast, { type: 'mouseenter', bubbles: false }); advance(1000);
+    if (region.children[0] !== toast || toast.classList.contains('out')) return false;
+    dispatchStub(toast, { type: 'mouseleave', bubbles: false }); advance(6160);
+    return region.children.length === 0;
+  }));
+  check('A5 toasts: focus arriving during the exit keeps the toast; leaving it starts the timer again', toastPage(({ region, advance, focus, show, buttonOf }) => {
+    show('Removed', 'Undo', () => {});
+    const toast = region.children[0];
+    advance(6000); if (!toast.classList.contains('out')) return false;
+    focus(buttonOf(toast)); advance(1000);
+    if (region.children[0] !== toast || toast.classList.contains('out')) return false;
+    focus(null); dispatchStub(buttonOf(toast), { type: 'focusout', relatedTarget: null });
+    advance(6160);
+    return region.children.length === 0;
+  }));
+}
+check('A6 the My list picker is gone: no #ml-compare, #ml-compare-open or #ml-compare-hint in the page, no prunePicks, and its words are out of both languages',
+  !/id="ml-compare|id="ml-picks"/.test(read('index.html')) && !/prunePicks|comparePicks|drawPicks|syncPicks/.test(appSrc + read('js/compare.js'))
+  && ['r2_compare_hint', 'r2_compare_n', 'pick_2_to_4_programmes', 'compare', 'compare_programmes'].every((key) => !Object.hasOwn(UI.en, key) && !Object.hasOwn(UI.sk, key))
+  && !/\.ml-hint|\.cmp-cta|\.ml-picks/.test(cssText));
+equal('A6 the range says "z" for 2 and 3 and "zo" for 4 in Slovak; English is "of"',
+  [i18n.inLanguage('sk', () => t('r3_cmp_range', { from: 1, to: 2, total: 3 })), i18n.inLanguage('sk', () => t('r3_cmp_range_zo', { from: 3, to: 4, total: 4 })), t('r3_cmp_range_zo', { from: 1, to: 2, total: 4 })],
+  ['Programy 1–2 z 3', 'Programy 3–4 zo 4', 'Programmes 1–2 of 4']);
+appCheck('A6 three or four programmes get the arrows and the range above a framed scroll box they control; two do not', ({ run, get, context }) => {
+  context.fixture.push(...context.live.slice(1, 2));
+  const ids = context.fixture.map((r) => r.id);
+  run(`allRows = fixture; ${cmpSet(ids.slice(0, 2))} update(); openCompare(null);`);
+  if (get('cmp-body').querySelector('.cmp-nav') || !get('cmp-body').querySelector('.cmp-frame .cmp-scroll')) return false;
+  const texts = [];
+  for (const [n, lang] of [[3, 'sk'], [4, 'sk'], [3, 'en']]) {
+    run(`switchLanguage('${lang}'); ${cmpSet(ids.slice(0, n))} syncCompareControls();`);
+    const nav = get('cmp-body').querySelector('.cmp-nav'), box = get('cmp-body').querySelector('.cmp-scroll');
+    if (!nav || nav.parent !== get('cmp-body') || get('cmp-body').children[0] !== nav || box.id !== 'cmp-scroll'
+      || [nav.querySelector('.cmp-prev'), nav.querySelector('.cmp-next')].some((b) => b.getAttribute('aria-controls') !== 'cmp-scroll' || !b.getAttribute('aria-label'))
+      || nav.querySelector('.cmp-range').getAttribute('aria-live')) return false;
+    texts.push(nav.querySelector('.cmp-range').textContent, nav.querySelector('.cmp-next').getAttribute('aria-label'));
+  }
+  run("switchLanguage('en');");
+  return /z 3$/.test(texts[0]) && texts[1] === 'Nasledujúci program' && /zo 4$/.test(texts[2]) && /of 3$/.test(texts[4]) && texts[5] === 'Next programme';
+});
+i18n.initLanguage('', { getItem: () => 'en' });
+check('A6 CSS: below 600 px Close is a 44 px icon at the heading\'s right, its words kept for screen readers, the differences tick on row 2; the nav shows only there; the fade stops at the end',
+  /@media \(max-width:599\.98px\)\{\s*\.cmp-head\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;[^}]*\}\s*#cmp-h\{grid-column:1;grid-row:1\}\s*#cmp-close\{grid-column:2;grid-row:1;width:44px;height:44px;padding:0\}\s*\.cmp-close-t\{position:absolute;[^}]*clip-path:inset\(50%\)[^}]*\}\s*#cmp-diff-label\{grid-column:1\/-1;grid-row:2\}/.test(cssText)
+  && /@media \(min-width:600px\)\{\.cmp-nav\{display:none\}\}/.test(cssText) && /\.cmp-frame\.at-end::after\{display:none\}/.test(cssText)
+  && /\.cmp-frame::after\{[^}]*pointer-events:none\}/.test(cssText) && /<span class="cmp-close-t" data-i18n="close_compare">Close compare<\/span>/.test(read('index.html')));
+// Found in Chrome (smoke B3A): each has its browser check there too.
+check('A6 the view is shown before its table is drawn: a hidden box kept its sideways scroll at 0 and measured the phone cue as "1–3 of 3"',
+  (() => { const body = appSrc.slice(appSrc.indexOf('function drawCompare()'), appSrc.indexOf('function wireCompareCue'));
+    return body.indexOf('dom.compare.hidden = false;') > 0 && body.indexOf('dom.compare.hidden = false;') < body.indexOf('renderCompare(') && body.indexOf('renderCompare(') < body.indexOf('wireCompareCue(next)'); })());
+check('A6 a dashed unknown wraps inside a compare column (it poked 28 px past the last column, so the last snap never reached the end)',
+  /\.cmp-t \.unk-t\{white-space:normal\}/.test(cssText));
+check('A3 compare column names use the whole column below the "x" (a float spacer, not padding down the whole cell) and Save never breaks inside its word',
+  /\.cmp-t th\.cmp-p::before\{content:"";float:right;width:36px;height:34px\}/.test(cssText) && !/th\.cmp-p\{[^}]*padding-right:48px/.test(cssText)
+  && /\.cmp-save\{[^}]*overflow-wrap:normal/.test(cssText));
+// After the merge B's 2 x 2 toolbar owns this: Clear is an outlined grid cell
+// beside Print, and no rule may stretch it across the row (smoke R3H checks
+// the layout in Chrome).
+check('A6 with the picker gone the phone My list toolbar keeps Clear my list beside Print, not Print alone on a row (smoke R3H)',
+  /border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist', '(max-width: 599.98px)'))
+  && !/#clear-shortlist[^{]*\{[^}]*grid-column:1\s*\/\s*-1/.test(cssText) && !/\.ml-tools>\.btn-q\{[^}]*grid-column:1/.test(cssText));
+check('A4 a wide but short window keeps the pane\'s end above the tray',
+  /@media \(min-width:1200px\)\{body\.has-tray \.pane\{max-height:calc\(100dvh - var\(--header-visible\) - 24px - var\(--tray-h,0px\)\)\}\}/.test(cssText));
+appCheck('A1 two tabs: an add here goes on the set as stored now, so the other tab\'s add survives; its storage events update this tab, key null too', ({ run, context, fireWindow, ids: [a, b, c] }) => {
+  cmpToggle(run, a);
+  // A second tab adds c before this tab hears of it.
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([a, c]);
+  cmpToggle(run, b);
+  if (JSON.stringify(cmpStored(context)) !== JSON.stringify([a, c, b]) || run('compareIds.join()') !== [a, c, b].join()) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([c]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  if (run('compareIds.join()') !== c) return false;
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([b, c]);
+  fireWindow('storage', { key: 'something-else' });
+  if (run('compareIds.join()') !== c) return false;
+  // Storage cleared in another tab: key null refreshes both sets, even when the saves cannot be read.
+  context.compareStorage.data = {};
+  fireWindow('storage', { key: null });
+  return run('compareIds.length') === 0;
+});
+// A storage event takes another tab's set through normalizeCompare: a set of
+// five (an older tab, or one edited by hand) must not open a fifth column, and
+// an id missing from the data is kept aside without taking one of the four.
+appCheck('A1 another tab stores five programmes and one unknown id: this tab keeps the first four known, in order, and the unknown id uncounted', ({ run, get, context, fireWindow }) => {
+  // The harness has three programmes; Compare needs five known ones here.
+  context.fiveRows = live.slice(0, 5);
+  run('allRows = fiveRows; facets = buildFacets(allRows); drawChips(); update();');
+  const five = context.fiveRows.map((r) => r.id);
+  if (new Set(five).size !== 5 || five.includes('not-in-the-data')) return false;
+  run(`${cmpSet(five.slice(0, 2))} update(); openCompare(null);`);
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([five[0], 'not-in-the-data', ...five.slice(1)]);
+  fireWindow('storage', { key: compareSetMod.COMPARE_KEY });
+  return run('compareIds.join()') === [five[0], 'not-in-the-data', ...five.slice(1, 4)].join()
+    && cmpColIds(get).join() === five.slice(0, 4).join() && /\b4\b/.test(get('cmp-h').textContent);
+});
+appCheck('A1 a failed write keeps this tab\'s edits: later changes go on its own copy, not on what storage still holds', ({ run, context, ids: [a, b, c] }) => {
+  context.compareStorage.data[compareSetMod.COMPARE_KEY] = JSON.stringify([c]);
+  context.compareStorage.full = true;
+  cmpToggle(run, a);
+  if (run('compareFailed') !== true || run('compareIds.join()') !== [c, a].join()) return false;
+  cmpToggle(run, b);
+  return run('compareIds.join()') === [c, a, b].join() && cmpStored(context).join() === c;
+});
+appCheck('A1 saves, unsaves, Clear my list and Clear all never change the compare set', ({ run, get, item, fire, ids: [a, b] }) => {
+  cmpToggle(run, a); cmpToggle(run, b);
+  fire(item(a).querySelector('button.star'), 'click');
+  fire(item(a).querySelector('button.star'), 'click');
+  fire(item(b).querySelector('button.star'), 'click');
+  if (run('compareIds.join()') !== [a, b].join()) return false;
+  run("state.search = 'x'; update(); clearAll();");
+  const confirm = globalThis.window;
+  run('window.confirm = () => true;');
+  fire(get('clear-shortlist'), 'click');
+  return confirm === globalThis.window && run('shortlist.size') === 0 && run('compareIds.join()') === [a, b].join();
+});
+{
+  // The harness's fixture: live[0], sdu-mma and the first Trinity row.
+  const [fa, fc] = [live[0].id, live.find((r) => r.id.startsWith('tcd-')).id];
+  for (const [name, search] of [['a bare address', ''], ['?ui=sk', '?ui=sk'], ['a filter address', '?country=Ireland&points=36'], ['a shared ?list=', `?list=${fa}`]]) {
+    await asyncAppCheck(`A1 ${name} restores the compare set on its own: filters, saved preferences and links are untouched`, async ({ run, context, settle, advance }) => {
+      const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); };
+      context.location.search = search;
+      run('applyUrlFields();');
+      context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle(); advance(500);
+      return run('compareIds.join()') === [fc, 'gone', fa].join() && run('shownCompare().join()') === [fc, fa].join()
+        && !(context.prefWrites ?? []).length && run('state.shortlistOnly') === search.startsWith('?list=')
+        && urls.every((u) => !u.includes(fc) && !/compare|cmp/.test(u)) && !run('shareLink()').includes(fc)
+        && cmpStored(context).join() === [fc, 'gone', fa, fc].join();
+    }, { boot: true, compare: [fc, 'gone', fa, fc] });
+  }
+}
+
+section('Batch 3 · B');
+// B1 (Leon, Q2): on a phone the main view's My list box was a half-empty
+// second row above the cards. The stub has no layout, so the state is checked
+// here and the computed display:none in smoke "B3B main top".
+check('B3B1 on a phone the main-view My list bar is hidden unless a failure note shows', (() => {
+  // With Compare out of the bar (A), the rule needs no phone scope: the bar
+  // shows only for a failure note at every width.
+  const rule = ruleAt(cssText, '.mylist:not(.is-list):not(:has(.ml-note:not([hidden])))');
+  return /display:none/.test(rule) && !/\.ml-hint|cmp-cta/.test(cssText.match(/\.mylist:not\(\.is-list\):not\(:has\([^{]*\{/g)?.join('') || '');
+})());
+appCheck('B3B1 with 3 saved and no note the main-view bar carries no note (so the phone rule hides it); a failed save shows the note', ({ run, get, item, fire, context, ids: [a] }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  const bar = get('shortlist-bar');
+  if (bar.hidden || bar.classList.contains('is-list') || !get('ml-note').hidden) return false;
+  context.saveWorks = false;
+  fire(starOf(item(a)), 'click');
+  return !bar.hidden && !bar.classList.contains('is-list') && !get('ml-note').hidden && get('ml-note').textContent !== '';
+});
+// B2 (Leon, 2026-11-05): the phone list toolbar. The back button keeps its
+// chevron because the text goes in its own span; a language switch wrote the
+// whole button's textContent before, which would wipe the icon.
+appCheck('B3B2 the back button text sits in .ml-open-t beside its chevron, through a language switch; Clear my list keeps its trash icon', ({ run, get, fire }) => {
+  const back = get('f-shortlist-only'), clear = get('clear-shortlist');
+  const icons = () => back.querySelector('use')?.getAttribute('href') === '#i-chevron' && clear.querySelector('use')?.getAttribute('href') === '#i-trash';
+  run('shortlist.add(fixture[0].id); update();');
+  if (back.querySelector('.ml-open-t').textContent !== 'Open my list' || !icons()) return false;
+  fire(back, 'click');
+  if (back.querySelector('.ml-open-t').textContent !== 'Back to all programmes' || !icons()) return false;
+  try {
+    run("switchLanguage('sk')");
+    // (The harness strips data-i18n, so Clear's static label is left to the HTML i18n check.)
+    return back.querySelector('.ml-open-t').textContent === UI.sk.back_to_all_programmes && icons();
+  } finally { run("switchLanguage('en')"); }
+});
+check('B3B2 the back chevron shows only in the list view, pointing left; the trash icon and the outlined Clear only below 600 px', (() => {
+  const phone = '(max-width: 599.98px)';
+  return /display:none/.test(ruleAt(cssText, '.ml-open>.ic'))
+    && /display:block/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic')) && /rotate\(90deg\)/.test(ruleAt(cssText, '.mylist.is-list .ml-open>.ic'))
+    && /display:none/.test(ruleAt(cssText, '#clear-shortlist>.ic')) && /display:block/.test(ruleAt(cssText, '#clear-shortlist>.ic', phone))
+    && /border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist', phone))
+    && /order:-1/.test(ruleAt(cssText, '.mylist.is-list .ml-open', phone))
+    // The old quiet-text Clear rules are gone (they made it look like an empty cell).
+    && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
+})());
+// B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
+// turned an empty list view straight off. The header button is wired in
+// round2.js, which the harness stubs, so the real wireRound2 runs here.
+appCheck('B3B3 with 0 saves the real header My list opens an empty list view that says how to save (EN, SK); its button goes back with focus on the header', ({ run, get, fire }) => {
+  const header = get('header-list');
+  // The stand-in nodes lack prepend, which wireRound2 uses before it wires the
+  // header, and click(), which its handler calls; lent for this check only.
+  const hadPrepend = Object.hasOwn(ChromeNode.prototype, 'prepend');
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadPrepend) ChromeNode.prototype.prepend = function (node) { this.append(node); };
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try {
+    withGlobals({ window: { addEventListener() {} }, innerWidth: 390, ResizeObserver: fakeObserver, matchMedia: () => ({ matches: false }) },
+      () => realRound2.wireRound2(run('dom')));
+  } catch { /* Only the header listener (attached early) is needed; later stand-in gaps are not this check's subject. */ } finally {
+    if (!hadPrepend) delete ChromeNode.prototype.prepend;
+  }
+  try { return emptyListFlow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function emptyListFlow() {
+  if (run('shortlist.size') !== 0 || run('state.shortlistOnly') !== false) return false;
+  fire(header, 'click');
+  const texts = () => [get('empty-title').textContent, get('empty-hint').textContent, get('empty-back').textContent];
+  if (run('state.shortlistOnly') !== true || get('empty-state').hidden || get('empty-back').hidden
+    || JSON.stringify(texts()) !== JSON.stringify([UI.en.your_list_is_empty, UI.en.r3_list_empty_hint, UI.en.back_to_all_programmes])
+    || !get('empty-clear').hidden || !get('empty-tips').hidden || get('shortlist-bar').hidden || !get('shortlist-bar').classList.contains('is-list')
+    || !get('ml-tools').hidden || !get('ml-origin').hidden || !get('ml-show-all').hidden || get('shortlist-count-text').textContent !== '0 saved') return false;
+  try {
+    run("switchLanguage('sk')");
+    if (JSON.stringify(texts()) !== JSON.stringify([UI.sk.your_list_is_empty, UI.sk.r3_list_empty_hint, UI.sk.back_to_all_programmes])) return false;
+  } finally { run("switchLanguage('en')"); }
+  fire(get('empty-back'), 'click');
+  return run('state.shortlistOnly') === false && stubDocument.activeElement === header && get('empty-state').hidden
+    && get('results').children.length === 3;
+  }
+});
+appCheck('B3B3 Clear my list still returns to all programmes', ({ run, get, fire, context }) => {
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  context.window.confirm = () => true;
+  fire(get('clear-shortlist'), 'click');
+  return run('shortlist.size') === 0 && run('state.shortlistOnly') === false && get('empty-state').hidden;
+});
+await asyncAppCheck('B3B3 a shared link whose programmes have all gone keeps its own message, with no back button in the empty state', async ({ run, get, context, settle }) => {
+  context.location.search = '?list=ghost';
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('empty-title').textContent === 'None of the programmes in this link are listed any more.'
+    && get('empty-hint').textContent === UI.en.close_the_shared_list_to_see_every_programme && get('empty-back').hidden;
+}, { boot: true });
+check('B3B3 the empty-list hint exists in EN and SK',
+  UI.en.r3_list_empty_hint === 'Use the bookmark next to any programme to save it here. Your list stays in this browser.'
+  && UI.sk.r3_list_empty_hint === 'Program sem uložíš záložkou vedľa neho. Tvoj zoznam zostane v tomto prehliadači.');
+
+section('Batch 3 · C');
+// C1: setup ends on a done screen (Leon, 2026-11-05), replacing step 1's FAQ
+// link and the completion toast.
+{
+  const sk = (key, count) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, { count }); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  // Review of PR 1, 2026-11-07: "match your answers" counted rows outside the
+  // student's IB points (HL-Maths-only, can't be compared); the count says "shown".
+  equal('B3C1 done screen EN copy', [t('r3_ob_finish'), t('r3_ob_done_count', { count: 1 }), t('r3_ob_done_count', { count: 3 }), t('r3_ob_shown_count', { count: 1 }), t('r3_ob_shown_count', { count: 0 }), t('r3_ob_done_p'), t('r3_ob_done_h_none'), t('r3_ob_done_p_none'), t('r3_ob_faq'), t('r2_show_mine'), t('r2_answers_applied')],
+    ['Finish', '1 programme shown', '3 programmes shown', '1 programme shown', '0 programmes shown', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
+  equal('B3C1 done screen SK plurals for 1, 3, 312 and 0 (0 takes "other")',
+    [1, 3, 312, 0].flatMap((n) => [sk('r3_ob_done_count', n), sk('r3_ob_shown_count', n)]),
+    ['1 zobrazený program', 'Zobrazený je 1 program', '3 zobrazené programy', 'Zobrazené sú 3 programy',
+      '312 zobrazených programov', 'Zobrazených je 312 programov', '0 zobrazených programov', 'Zobrazených je 0 programov']);
+  equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+  // Verification of PR 1: only the no-answers count ended with a full stop,
+  // so the two done-screen counts read differently.
+  check('done-screen counts never end with a full stop, EN and SK',
+    [UI.en, UI.sk].every((ui) => ['r3_ob_done_count', 'r3_ob_shown_count'].every((key) => Object.values(ui[key]).every((v) => !v.endsWith('.')))));
+  check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
+}
+appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {
+  const {dialog,next,doneScreen,applied,writes}=realSetup(h);
+  if (dialog.querySelector('.ob-faq') || dialog.querySelector('a')) return false;
+  next(); next(); h.fire(dialog.querySelector('.skipwrap button'), 'click');
+  return !dialog.open && !doneScreen() && applied.length === 0 && writes[0][1] === 'dismissed';
+});
+appCheck('B3C1 Esc on the done screen keeps the answers and writes "completed" once', (h) => {
+  const {get,fire,resultsSection}=h, {dialog,next,doneScreen,applied,writes}=realSetup(h,{shown:1});
+  next(); const points=get('ob-points'); points.value='40'; fire(points,'input'); next(); next(); next(); next();
+  const d=doneScreen();
+  if (!d || d.count !== '1 programme shown') return false;
+  fire(dialog, 'cancel');
+  return !dialog.open && applied.length === 1 && applied[0].myIbPoints === 40 && writes.length === 1 && writes[0][1] === 'completed'
+    && stubDocument.activeElement === resultsSection;
+});
+appCheck('B3C1 a second Finish click applies nothing more; the done screen formats the count', (h) => {
+  const {dialog,next,doneScreen,applied,primary}=realSetup(h,{shown:2915,state:savedState.validateFilters({countries:['Ireland']})});
+  for (let i = 0; i < 4; i++) next();
+  const finish = primary(); h.fire(finish, 'click'); h.fire(finish, 'click');
+  // The second click of a double-click (detail 2) lands on "Show my programmes".
+  h.fire(primary(), 'click', { detail: 2 });
+  return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes shown';
+});
+appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
+  const {get}=h, {dialog,next,writes}=realSetup(h);
+  for (let i = 0; i < 5; i++) next();
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed'
+    && (stubDocument.scrolls ?? []).some((s) => s.node === get('faq')) && stubDocument.activeElement === get('faq').querySelector('summary');
+});
+// Found by smoke R2M: Finish re-renders the list, which fills in after the FAQ
+// scroll starts, so a quick tap landed mid-list. The FAQ aims once more when the
+// list stops growing; never every frame (a restarted smooth scroll crawls), and
+// not at all once the reader scrolls.
+for (const [name, grow, input] of [['aims once more after the list grows', true, false], ['does not aim again when nothing grew', false, false], ['stops when the reader scrolls', true, true]]) appCheck(`B3C1 the done screen FAQ ${name}`, (h) => {
+  const {get}=h, frames=new Map(); let id=0;
+  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+  for (let i = 0; i < 5; i++) next();
+  stubDocument.scrolls = [];
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  const aims = () => stubDocument.scrolls.filter((s) => s.node === get('faq')).length;
+  if (aims() !== 1) return false;
+  if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
+  for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
+  return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+});
+appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
+  const {dialog,next,doneScreen,api,writes}=realSetup(h);
+  for (let i = 0; i < 6; i++) next();
+  if (dialog.open) return false;
+  api.open(null);
+  const ok = dialog.open && !doneScreen() && dialog.querySelector('.ob-foot .btn-p').textContent === t('r2_start')
+    && !!dialog.querySelector('.skipwrap') && !dialog.querySelector('.ob-foot').classList.contains('ob-done-foot');
+  h.fire(dialog, 'cancel');
+  return ok && writes.at(-1)[1] === 'dismissed';
+});
+check('B3C1 the done screen stacks full width on phones, primary first; 44 px buttons',
+  /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
+  && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
+  && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
+// Was a source pin on "return currentlyShown". Review of PR 1 (2026-11-07):
+// with My list's "Show all saves" on, setup's answers did not filter the list
+// and the done screen counted a 42-point save for 24 points. apply() now ends
+// "Show all saves" and returns the count, the count line's points parts and
+// whether any filter is on.
+await asyncAppCheck('B3C1 the app apply callback ends "Show all saves" and returns the shown count, the points parts and whether a filter is on', async ({run,context,settle,ids:[a,b]}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.shortlistOnly = true; listAll = true; update();`);
+  if (run('listAll') !== true) return false;
+  const result = context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:24}));
+  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist).filter((row) => shortlist.has(row.id)), state).map((p) => p.text)');
+  return run('listAll') === false && result.shown === run('currentlyShown') && result.shown === run('applyFilters(allRows, state, shortlist).length')
+    && JSON.stringify(result.summary) === JSON.stringify(parts) && result.summary.length >= 1 && result.filtered === true;
+}, {boot:true});
+appCheck('B3C1 the done screen says "shown" and splits it as the count line does when IB points are set', (h) => {
+  const {get,fire}=h, summary=['10 within your IB points','2 only with HL Maths 4+','24 can’t be compared'];
+  const {next,doneScreen}=realSetup(h,{shown:36,summary});
+  next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
+  return doneScreen()?.count === '36 programmes shown · 10 within your IB points · 2 only with HL Maths 4+ · 24 can’t be compared';
+});
+// Review of PR 1 (2026-11-07): setup's last line named Filters, which only
+// phones have, and "Your existing filters still apply" showed with none on.
+for (const [name, opts, answers, key] of [
+  ['answers, from 600 px', {}, true, 'r5_ob_done_p_wide'], ['answers, phone', {phone:true}, true, 'r3_ob_done_p'],
+  ['no answers, a filter on, from 600 px', {filtered:true}, false, 'r5_ob_done_p_none_wide'], ['no answers, a filter on, phone', {filtered:true,phone:true}, false, 'r3_ob_done_p_none'],
+  ['no answers, no filter, from 600 px', {}, false, 'r5_ob_done_p_empty_wide'], ['no answers, no filter, phone', {phone:true}, false, 'r5_ob_done_p_empty'],
+]) appCheck(`B3C1 the done screen's filters line: ${name}`, (h) => {
+  const {get,fire}=h, {next,doneScreen}=realSetup(h,opts);
+  next(); if (answers) { const points=get('ob-points'); points.value='30'; fire(points,'input'); } next(); next(); next(); next();
+  const d=doneScreen(), still=['r3_ob_done_p_none','r5_ob_done_p_none_wide'].some((k)=>d?.text.includes(t(k)));
+  return !!d && d.text.includes(t(key)) && still === !!opts.filtered && !answers === (d.heading === t('r3_ob_done_h_none'));
+});
+// Verification of PR 1: with only Search on, phones said "Your existing
+// filters still apply … in Filters", but Search is in the header, not Filters.
+for (const [name, phone, key] of [['phone', true, 'r5_ob_done_p_empty'], ['from 600 px', false, 'r5_ob_done_p_none_wide']])
+  appCheck(`the done screen with only Search on: ${name}`, (h) => {
+    const {next,doneScreen}=realSetup(h,{filtered:true,sheetFiltered:false,phone});
+    next(); next(); next(); next(); next();
+    const d=doneScreen(); return !!d && d.text.includes(t(key)) && (phone ? !d.text.includes(t('r3_ob_done_p_none')) : true);
+  });
+check('the app tells setup whether a Filters-sheet filter (not Search) is on', /sheetFiltered: active - \(state\.search\.trim\(\) \? 1 : 0\) > 0/.test(read('js/app.js')));
+appCheck('B3C1 the done screen\'s filters line follows a crossing of 600 px', (h) => {
+  const phone = { matches: false, addEventListener(type, listener) { this.change = listener; } };
+  const {next,doneScreen}=realSetup(h,{env:{matchMedia:()=>phone}});
+  for (let i = 0; i < 5; i++) next();
+  if (!doneScreen()?.text.includes(t('r5_ob_done_p_empty_wide'))) return false;
+  phone.matches = true; phone.change();
+  return doneScreen().text.includes(t('r5_ob_done_p_empty')) && !doneScreen().text.includes(t('r5_ob_done_p_empty_wide'));
+});
+appCheck('B3C1 each step heading is described by its "Step n of 5", so focus on it reads the step', (h) => {
+  const {dialog,next}=realSetup(h);
+  const steps=[];
+  for (let i = 0; i < 5; i++) { const head=dialog.querySelector('#ob-title'), label=dialog.querySelector('.ob-n'); steps.push(!!label && head.getAttribute('aria-describedby')===label.id && label.id==='ob-step-n' && stubDocument.activeElement===head && label.textContent===t('r2_step',{step:i+1})); next(); }
+  return steps.every(Boolean) && !dialog.querySelector('#ob-title').getAttribute('aria-describedby');
+});
+{
+  const sk = (key, vars) => { i18n.setLanguage('sk', { setItem() {} }); try { return t(key, vars); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('B3C1 setup copy: step 2 says points hide programmes above the total; the filters line by width and filter (EN, SK)',
+    ['r2_ob2p', 'r5_ob_done_p_wide', 'r5_ob_done_p_none_wide', 'r5_ob_done_p_empty', 'r5_ob_done_p_empty_wide'].flatMap((k) => [t(k), sk(k)]),
+    ['We’ll hide programmes above your total and mark the rest.', 'Programy nad tvojím počtom bodov skryjeme, ostatné označíme.',
+      'You can change these filters any time above the list.', 'Tieto filtre môžeš kedykoľvek zmeniť nad zoznamom.',
+      'Your existing filters still apply. You can change them any time above the list.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť nad zoznamom.',
+      'You can set filters any time in Filters.', 'Filtre si môžeš kedykoľvek nastaviť vo Filtroch.',
+      'You can set filters any time above the list.', 'Filtre si môžeš kedykoľvek nastaviť nad zoznamom.']);
+  equal('B3C1 the points count with SK parts reads naturally', [sk('r3_ob_done_count', { count: 36 }), sk('within_your_ib_points_2', { value1: 10 })],
+    ['36 zobrazených programov', '10 v rámci tvojich IB bodov']);
+}
+
+// C2: the logo goes home (Leon, 2026-11-05). goHome() leaves My list, a shared
+// list and Compare; filters, search, sort, saves and the pane's pick stay.
+// Batch 2 A2 kept the list view; this reverses it. The scroll, the hash and the
+// focus on .mark are checked on the real handler above (logoClick).
+appCheck('B3C2 home from My list: the main list, with filters, sort, saves and the pick unchanged', ({ run, ids: [a, b] }) => {
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.myIbPoints = 36; state.sort = 'name'; state.dir = 'desc'; state.shortlistOnly = true; update(); selectedId = '${a}';`);
+  if (run('state.shortlistOnly') !== true) return false;
+  run('goHome();');
+  return run('state.shortlistOnly') === false && run('listAll') === false && run('state.myIbPoints') === 36 && run('state.sort') === 'name' && run('state.dir') === 'desc'
+    && run('shortlist.size') === 2 && run('selectedId') === a && run('currentlyShown') === 3;
+});
+appCheck('B3C2 home from a shared list: shared is gone and list= leaves the address, filters stay', ({ run, context, ids: [a, b] }) => {
+  const urls = []; context.history.replaceState = (s, t, u) => { urls.push(u); context.location.search = new URL(u, 'http://localhost').search; };
+  run(`shared = { ids: ['${a}', '${b}'], unknown: [] }; state.shortlistOnly = true; state.myIbPoints = 36; update();`);
+  if (!urls.at(-1)?.includes('list=')) return false;
+  run('goHome();');
+  return run('shared') === null && run('state.shortlistOnly') === false && !urls.at(-1).includes('list=') && urls.at(-1).includes('points=36') && !urls.at(-1).includes('#');
+});
+appCheck('B3C2 home from Compare: the view closes and the list shows; open panels close', ({ run, get }) => {
+  run('compareOpen = true; dom.compare.hidden = false; dom.split.hidden = true;');
+  get('ml-share').open = true; get('dd-countries').open = true;
+  run('goHome();');
+  return run('dom.compare.hidden') === true && run('dom.split.hidden') === false && get('ml-share').open === false && get('dd-countries').open === false;
+});
+check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
+check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
+check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
+  /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
+  && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
+  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
+
+section('Alignment · list, detail, Compare');
+// The 2026-11-05 alignment audit (list-detail and compare findings). Layout is
+// measured in Chrome (smoke runAlignListCompare); these pin the rules and the
+// one DOM change, so a later edit cannot quietly undo them.
+{
+  const block = cssText.slice(cssText.indexOf('.deg,.d-title .deg{'), cssText.indexOf('.r-main{grid-template-columns:minmax(0,1fr) auto auto;'));
+  check('AL degree: wraps inside itself as one unit, never nowrap past the pane or the row (Slovak long-cycle degree, 384 px)',
+    /\.deg,\.d-title \.deg\{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:normal\}/.test(block));
+  check('AL faculty identity wraps only between words instead of shrinking into word fragments',
+    /\.sub \.identity\{overflow-wrap:normal\}/.test(block));
+  check('AL row labels start with the value text (the cell padding), the fee label ends with it',
+    /\.row \.cell \.lab\{padding-left:inherit\}\s*\.row \.c-fee \.lab\{padding-left:0;padding-right:inherit\}/.test(block));
+  check('AL row toggles centre on the title\'s first line, out-ranking the old -4 px margin',
+    /\.r-main>:is\(\.cmpi,\.star\)\{margin-top:calc\(var\(--fs-16\) \* 1\.35 \/ 2 - 22px\)\}/.test(block)
+    && /@media \(pointer:coarse\)\{\s*\.r-main>:is\(\.star,\.cmpi\):hover\{background:none\}/.test(block));
+  check('AL the last open row is clipped to the card corners; a sort heading is as wide as its label',
+    /#results>\.item:last-child>\.expand>\.expand-inner\{border-radius:0 0 calc\(var\(--r-panel\) - 1px\)/.test(block)
+    && /@container \(min-width: 800px\)\{\.cols>button\{justify-self:start\}\}/.test(block) && /\.expand-inner\{min-height:0;overflow:hidden\}/.test(cssText));
+  check('AL detail pair: labels break only between words; stacked below 450 px of footer (330 px in English); equal icons',
+    /\.d-foot\{container:dfoot \/ inline-size\}\s*\.d-actions \.btn\{overflow-wrap:normal\}\s*\.d-actions :is\(\.save,\.cmpb\) \.ic\{width:18px;height:18px\}/.test(block)
+    && /@container dfoot \(max-width: 449\.98px\)\{\.d-foot>\.d-actions\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(block)
+    && /@container dfoot \(min-width: 330px\)\{\.d-foot>\.d-actions:lang\(en\)\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/.test(block));
+  check('AL compare Save sits at the foot of every header cell, one width; columns keep room for it from 600 px',
+    /\.cmp-t th\.cmp-p\{padding-bottom:66px\}/.test(block) && /\.cmp-t th\.cmp-p \.cmp-save\{position:absolute;left:12px;bottom:10px;/.test(block)
+    && /@media \(min-width:600px\)\{\s*\.cmp-t th\.cmp-p\{min-width:110px\}\s*\.cmp-t th\.cmp-p \.cmp-save\{width:86px;border-radius:8px\}\s*\}/.test(block));
+  check('AL compare "x": its own strip below 1024 px, 4 px from the cell edge so its focus ring is not clipped',
+    /@media \(max-width:1023\.98px\)\{\s*\.cmp \.cmp-t th\.cmp-p::before\{display:none\}\s*\.cmp-t th\.cmp-p\{padding-top:44px\}\s*\}/.test(block)
+    && /\.cmp-x\{position:absolute;top:4px;right:4px;/.test(cssText));
+  check('AL compare fact names are 6.5rem from 600 to 1023 px; one programme sizes its column to its facts',
+    /@media \(min-width:600px\) and \(max-width:1023\.98px\)\{\.cmp \.cmp-t tbody th,\.cmp \.cmp-t \.cmp-c\{width:6\.5rem;padding-inline:10px\}\}/.test(block)
+    && /@media \(min-width:600px\)\{\.cmp-t\[data-n="1"\]\{width:auto\}\}/.test(block));
+  // Review of PR 1: as display:inline its padding never counted, so the
+  // link was 42 px with a coarse pointer; it is an inline-block of --tap.
+  check('AL compare: shared first baseline, the link wraps as text in an inline-block at least --tap tall, 44 px Close and Browse, landing clear of what sticks',
+    /\.cmp \.cmp-t tbody th\{line-height:20px\}/.test(block) && /\.cmp-t \.lnk\{display:inline-block;min-height:var\(--tap\);padding-block:calc\(\(var\(--tap\) - 20px\) \/ 2\);margin-block:calc\(\(20px - var\(--tap\)\) \/ 2\);line-height:20px\}/.test(block) && /\.cmp-t \.lnk-end\{white-space:nowrap\}/.test(block)
+    && /#cmp-close,#cmp-browse\{height:44px\}/.test(block) && /\.cmp\{scroll-margin-top:calc\(var\(--header-visible\) \+ 8px\)\}/.test(block)
+    && /@media \(max-width:599\.98px\)\{\.cmp\{scroll-margin-top:calc\(var\(--count-height\) \+ 8px\)\}\}/.test(block));
+  // Review of PR 1: visibility:hidden kept the count's width, a gap before
+  // "Edit my answers" on desktop; display:none takes it out of the row.
+  check('AL while Compare is open the list count is not shown and keeps no width; toast actions are one line and 44 px wide; print keeps no room for Save',
+    /\.stream:has\(>#compare:not\(\[hidden\]\)\) :is\(#result-count,\.status \.cshort\)\{display:none\}/.test(block) && !/visibility:hidden/.test(block)
+    && /\.toast button\{flex:none;min-width:44px;white-space:nowrap\}/.test(block)
+    && /@media print\{\.cmp \.cmp-t th\.cmp-p\{padding-block:10px\}\.cmp \.cmp-t \.lnk \.ic\{display:none\}\}/.test(block));
+  // The section must sit before Batch 3 · A, whose later rules it does not
+  // override by order: each override above wins by specificity instead.
+  check('AL the section sits just above Batch 3 · A', css.indexOf('/* Alignment fixes · list, detail, Compare */') > 0
+    && css.indexOf('/* Alignment fixes · list, detail, Compare */') < css.indexOf('/* Batch 3 · A: Compare */'));
+  const rows = [live.find((r) => r.officialUrl), live.filter((r) => r.officialUrl)[1]];
+  const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, compareMod.compareTable(rows, noFilters()), { onlyDifferences: false }); return div; });
+  const links = findAll(box, (n) => n.tagName === 'a' && n.classList.contains('lnk'));
+  check('AL compare link: the last word and its icon share a no-wrap span, before the hidden "opens in a new tab"; the text reads as before',
+    links.length === 2 && links.every((a) => {
+      const [text, end, hidden] = a.children;
+      return text === 'Official admissions ' && end.classList?.contains('lnk-end') && end.children[0] === 'page' && end.children[1]?.tagName === 'svg'
+        && hidden.classList?.contains('visually-hidden') && a.children.length === 3
+        && a.textContent.startsWith('Official admissions page');
+    }), JSON.stringify(links.map((a) => a.children.map((c) => typeof c === 'string' ? c : c.className))));
+}
+
+// Alignment audit fixes (2026-11-05, Leon: "all is aligned"). Layout is
+// measured in Chrome by runAlignChromeSetup in tools/smoke.mjs; these pin the
+// rules so a later edit cannot quietly undo them.
+section('Alignment · header, My list, setup');
+{
+  const round2Src = read('js/round2.js');
+  check('AL-H1 Search shows its long hint only where it fits whole, measured with offsetWidth, re-measured on field resize, font load and every update',
+    /innerWidth >= 600 && longHintFits\(dom\.search\) \? 'r2_searchph' : 'search_2'/.test(round2Src)
+    && /input\.offsetWidth - \[borderLeftWidth, borderRightWidth, paddingLeft, paddingRight\]/.test(round2Src) && !/input\.clientWidth/.test(round2Src)
+    && /new ResizeObserver\(\(\) => searchPlaceholder\(\)\)\.observe\(dom\.search\)/.test(round2Src)
+    && /fonts\?\.ready\?\.then\(\(\) => searchPlaceholder\(\)\)/.test(round2Src)
+    && /syncSegments\(\);\s*searchPlaceholder\(\);/.test(round2Src)
+    && /text-overflow:ellipsis/.test(ruleAt(cssText, '.search .inp'))
+    && /display:none/.test(ruleAt(cssText, '.search kbd', '(min-width:600px) and (max-width:700px)')));
+  check('AL-H1 without canvas measurement Search falls back to its short hint', (() => {
+    const measure = (createElement) => runInNewContext(round2Src.replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '') + '\nlongHintFits;', { document: { createElement } });
+    return [() => ({ getContext: () => null }), () => { throw new Error('canvas unavailable'); }]
+      .every(create => measure(create)({}) === false);
+  })());
+  check('AL-H2 phones: no doubled hairline under the header (empty filter band and the stuck-row marker)',
+    /border-bottom:0/.test(ruleAt(cssText, '.fslot', '(max-width:599.98px)'))
+    && /margin-inline:calc\(-1 \* var\(--gut\)\);background:var\(--panel\)/.test(ruleAt(cssText, '.stuck-mark', '(max-width:599.98px)')));
+  check('AL-H3 Filters sheet: Edit my answers comes first and its text, Copy link and its help share one left edge; the points label wraps before the field shrinks',
+    /<div class="more-filters"><button type="button" class="btn btn-a sheet-edit" data-edit/.test(read('index.html'))
+    && /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /margin:0/.test(ruleAt(cssText, '.sheet-b .copy'))
+    && !/margin-top:12px/.test(ruleAt(cssText, '.sheet-b .copy', '(max-width: 599.98px)'))
+    && /flex:1 1 0;white-space:normal/.test(ruleAt(cssText, '.sheet-b .pts>label')) && /min-width:64px/.test(ruleAt(cssText, '.sheet-b .pts input.inp')));
+  check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
+    /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
+    && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+  // Review of PR 1: the -15 px margin puts the button 1 px from the sheet's
+  // scrolling edge, which cut off the left of its 2 px ring at offset 2.
+  check('AL-H4 Edit my answers in the sheet draws its focus ring inside the button, so the sheet does not clip it',
+    /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /outline-offset:-3px/.test(ruleAt(cssText, '.sheet-b .sheet-edit:focus-visible')));
+}
+
+{
+  const html = read('index.html');
+  check('AL-M1 My list from 600 px: Clear is a small outlined button at the right end; Group by has its own row to 1023 px; the CSV note is its own line',
+    /height:var\(--tap\);margin-left:auto;padding:0 10px;border:1px solid var\(--edge\)/.test(ruleAt(cssText, '.mylist .ml-tools>#clear-shortlist', '(min-width:600px)'))
+    && /flex:0 0 100%;display:flex/.test(ruleAt(cssText, '.ml-group', '(min-width:600px) and (max-width:1023.98px)'))
+    && /flex:0 0 100%/.test(ruleAt(cssText, '.ml-tools>.ml-export-note')));
+  check('AL-M2 the CSV note is hidden with Export on a shared list',
+    /<p class="help ml-mine ml-export-note" data-i18n="export_note">/.test(html));
+  check('AL-M3 phones: one-line tool labels (SK "Vymazať zoznam", no icons under 360 px), centred if a label still wraps',
+    UI.sk.clear_my_list === 'Vymazať zoznam'
+    && /display:none/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist>.ic', '(max-width:359.98px)'))
+    && /padding-inline:6px/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>#clear-shortlist.btn', '(max-width:359.98px)'))
+    && /flex-wrap:wrap;align-content:center/.test(ruleAt(cssText, '.mylist.is-list .ml-tools>.btn', '(max-width:599.98px)')));
+}
+appCheck('AL-M4 an empty My list has one way back, the empty card\'s button; the bar\'s back button returns with saves', ({ run, get, fire }) => {
+  // The empty card's button clicks the bar's; the stand-in nodes lack click().
+  const hadClick = Object.hasOwn(ChromeNode.prototype, 'click');
+  if (!hadClick) ChromeNode.prototype.click = function () { fire(this, 'click'); };
+  try { return flow(); } finally { if (!hadClick) delete ChromeNode.prototype.click; }
+  function flow() {
+  fire(get('f-shortlist-only'), 'click');
+  if (run('state.shortlistOnly') !== true || get('empty-back').hidden || !get('f-shortlist-only').hidden) return false;
+  fire(get('empty-back'), 'click');
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  return run('state.shortlistOnly') === true && !get('f-shortlist-only').hidden && get('empty-state').hidden;
+  }
+});
+check('AL-M5 the empty list card lines up with the pane, and the bar is joined only to a shown list',
+  /margin-top:0/.test(ruleAt(cssText, '.mylist:not([hidden]) ~ .split .empty'))
+  && /border-bottom:0/.test(ruleAt(cssText, '.mylist.is-list:has(~ .split:not([hidden]) .listp:not([hidden]))', '(max-width: 599.98px)')));
+
+appCheck('AL-S3 setup footer follows visual order on phones and preserves focus across the breakpoint', (h) => {
+  const phone = { matches: true, addEventListener(type, listener) { this.change = listener; } };
+  const { dialog, primary, next } = realSetup(h, { env: { matchMedia: () => phone } });
+  next();
+  const foot = dialog.querySelector('.ob-foot');
+  if (foot.querySelector('button') !== primary()) return false;
+  primary().focus();
+  phone.matches = false; phone.change();
+  if (foot.children.at(-1) !== primary() || stubDocument.activeElement !== primary()) return false;
+  phone.matches = true; phone.change();
+  return foot.querySelector('button') === primary() && stubDocument.activeElement === primary();
+});
+check('AL-S1 setup: the step column never outgrows the dialog; the switch label wraps',
+  /grid-template-columns:minmax\(0,1fr\)/.test(ruleAt(cssText, '.ob-step.on')) && /white-space:normal/.test(ruleAt(cssText, '.ob .switch')));
+check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',
+  /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
+  && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
+  && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
+check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
+  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
+
+section("Phone My list and Compare, 2026-11-06");
+// Leon (iPhone 16, 393 x 852): the phone My list box took half the screen,
+// and Compare looked rough. Layout is measured in Chrome by smoke
+// runPhoneMyListCompare; these pin the markup, the state and the rules.
+{
+  const phone = '(max-width:599.98px)';
+  const rawHtml = read('index.html');
+  const pmCss = css.slice(css.indexOf('/* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */'),
+    css.indexOf("/* ------------------------------------------------- Leon's review, 2026-11-06 */"));
+  check('PM0 the section sits just above Leon\'s review', pmCss.length > 0
+    && css.indexOf('Phone My list and Compare, 2026-11-06 */') < css.indexOf("Leon's review, 2026-11-06 */"));
+  check('PM1 My list has a phone-only More toggle in its first row, closed, controlling the tools, in EN and SK',
+    /<div class="ml-row">[\s\S]*?<button type="button" id="ml-more" class="btn btn-s ml-more" aria-expanded="false" aria-controls="ml-tools" hidden><span data-i18n="ml_more">More<\/span>[\s\S]*?<\/div>\s*<p class="ml-note"/.test(rawHtml)
+    && UI.en.ml_more === 'More' && UI.sk.ml_more === 'Viac'
+    && /display:none/.test(ruleAt(cssText, '.ml-more')) && /display:inline-flex/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone)));
+  check('PM2 phones: while More is closed Share, Export, Print, Clear and both footnotes are hidden; Group by never is',
+    /@media \(max-width:599\.98px\)\{[^@]*\.mylist\.is-list:not\(\.ml-more-open\) :is\(#ml-share,\.ml-tools>\.ml-mine,#ml-origin\)\{display:none\}/.test(pmCss)
+    && /class="btn btn-s ml-mine"[^>]*id="export-csv"|id="export-csv" class="btn btn-s ml-mine"/.test(rawHtml)
+    && /id="print-shortlist" class="btn btn-s ml-mine"/.test(rawHtml) && /id="clear-shortlist" class="btn btn-q ml-mine"/.test(rawHtml)
+    && /class="help ml-mine ml-export-note"/.test(rawHtml) && !/ml-group/.test(pmCss));
+  check('PM3 phones: Back and More share the first line (Back gives way, never More), and the title starts the next',
+    /flex:1 1 0;min-width:0/.test(ruleAt(cssText, '.mylist.is-list .ml-open', phone))
+    && /order:-1/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone)) && /flex:none/.test(ruleAt(cssText, '.mylist.is-list .ml-more:not([hidden])', phone))
+    && /content:"";flex:0 0 100%;height:0/.test(ruleAt(cssText, '.mylist.is-list .ml-row:has(>.ml-more:not([hidden]))::before', phone)));
+}
+appCheck('PM4 More opens and closes the list tools, closes Share with it, and is shut and hidden again outside the own list', ({ run, get, fire }) => {
+  const more = get('ml-more'), bar = get('shortlist-bar');
+  const state = () => [more.hidden, more.getAttribute('aria-expanded'), bar.classList.contains('ml-more-open')].join();
+  run('for (const r of fixture) shortlist.add(r.id); update();');
+  if (!more.hidden) return false;
+  fire(get('f-shortlist-only'), 'click');
+  if (state() !== 'false,false,false') return false;
+  fire(more, 'click');
+  if (state() !== 'false,true,true') return false;
+  get('ml-share').open = true;
+  fire(more, 'click');
+  if (state() !== 'false,false,false' || get('ml-share').open) return false;
+  fire(more, 'click');
+  fire(get('f-shortlist-only'), 'click');
+  if (run('state.shortlistOnly') !== false || state() !== 'true,false,false') return false;
+  fire(get('f-shortlist-only'), 'click');
+  return state() === 'false,false,false';
+});
+appCheck('PM5 an empty My list has no More', ({ run, get, fire }) => {
+  run('shortlist.add(fixture[0].id); update();');
+  fire(get('f-shortlist-only'), 'click');
+  fire(get('ml-more'), 'click');
+  run('shortlist.clear(); update();');
+  return run('state.shortlistOnly') === true && get('ml-more').hidden && get('ml-more').getAttribute('aria-expanded') === 'false'
+    && !get('shortlist-bar').classList.contains('ml-more-open');
+});
+await asyncAppCheck('PM6 a shared list has no More (none of its tools apply)', async ({ run, get, context, settle }) => {
+  context.location.search = `?list=${context.fixture[0].id}`;
+  context.resolveData({ programmes: context.fixture, meta: { issues: [] } }); await settle();
+  return run('state.shortlistOnly') === true && get('ml-title').textContent === 'Shared list' && get('ml-more').hidden;
+}, { boot: true });
+{
+  const rows = [live[0], live[1], live[2]];
+  const table = compareMod.compareTable(rows, noFilters());
+  const box = withStubDocument(() => { const div = new ChromeNode('div'); renderCompare(div, rows, table, { onlyDifferences: false }); return div; });
+  const body = findAll(box, (n) => n.tagName === 'tbody')[0];
+  const trs = body.children;
+  const pairs = table.map((fact, i) => [trs[2 * i], trs[2 * i + 1], fact]);
+  check('PM7 Compare draws each fact\'s name as an aria-hidden line spanning every column, just before the fact\'s own row; the row headers stay',
+    trs.length === 2 * table.length && pairs.every(([caption, row, fact]) => caption.classList.contains('cmp-lr') && caption.getAttribute('aria-hidden') === 'true'
+      && caption.children.length === 1 && caption.children[0].tagName === 'td' && caption.children[0].getAttribute('colspan') === '4'
+      && caption.textContent === fact.label && row.getAttribute('data-fact') === fact.key
+      && row.children[0].tagName === 'th' && row.children[0].getAttribute('scope') === 'row' && row.children[0].textContent === fact.label));
+  const phone = '(max-width:599.98px)';
+  check('PM8 the fact-name line shows only on phones, where the name column shrinks to zero width but stays in the table',
+    /display:none/.test(ruleAt(cssText, '.cmp-lr')) && /display:table-row/.test(ruleAt(cssText, '.cmp-t tr.cmp-lr', phone))
+    && /width:0;padding:0;border:0;overflow:hidden;white-space:nowrap;clip-path:inset\(50%\)/.test(ruleAt(cssText, '.cmp .cmp-t tbody th', phone))
+    && /width:0/.test(ruleAt(cssText, '.cmp .cmp-t .cmp-c', phone)) && !/display:none/.test(ruleAt(cssText, '.cmp .cmp-t tbody th', phone))
+    && /position:sticky;left:0/.test(ruleAt(cssText, '.cmp-lr span', phone))
+    && /width:150%/.test(ruleAt(cssText, '.cmp-t[data-n="3"]', phone)) && /width:200%/.test(ruleAt(cssText, '.cmp-t[data-n="4"]', phone))
+    && /scroll-padding-left:0/.test(ruleAt(cssText, '.cmp-scroll', phone)));
+  check('PM9 phones: Save and the "x" share one line at the foot of the programme\'s header; Close and the arrows are quiet like the header buttons',
+    /position:absolute;left:12px;right:12px;bottom:8px;display:flex/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-acts', phone))
+    && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-save', phone)) && /position:static/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p .cmp-x', phone))
+    && /padding:10px 12px 64px/.test(ruleAt(cssText, '.cmp .cmp-t th.cmp-p', phone))
+    && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone))
+    && /border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.cmp-nav .btn', phone))
+    && /border-bottom:1px solid var\(--hairline\)/.test(ruleAt(cssText, '.cmp-one', phone)));
+}
+
+section("Leon's review, 2026-11-06");
+// The last value set for a property across every plain rule for a selector:
+// later rules win, so an old nowrap above a later normal is fine.
+const lastValue = (selector, prop, query) => [...ruleAt(cssText, selector, query).matchAll(new RegExp(`(?:^|;)${prop}:([^;]+)`, 'g'))].at(-1)?.[1];
+check('LR1 rows never cut off the university name: the line wraps and the country tag follows inline',
+  lastValue('.sub', 'display') === 'block' && lastValue('.sub .uc', 'white-space') === 'normal' && lastValue('.sub .uc', 'overflow') === 'visible');
+check('LR2 phones: the header and count row are one block, and the list starts 12 px below it',
+  /border-bottom:0/.test(ruleAt(cssText, '.hd', '(max-width:599.98px)'))
+  && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
+// 2026-11-07: the tile grew to 44 px and fills its tap area, so it needs no -4 px nudge;
+// a leftover nudge would push the tile 4 px into the margin.
+check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
+  /width:44px;height:44px/.test(ruleAt(cssText, '.mono', '(max-width:599.98px),(pointer:coarse)'))
+  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
+check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
+  /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
+  && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
+  && /function syncSort\(\) \{\s*dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
+  && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
+check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
+  /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
+  && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
+check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
+  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\)\)/.test(read('js/onboarding.js'))
+  && ['r4_faq_tools', 'r4_faq_stored'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
+  && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
+check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
+  lastValue('.detail-originals', 'border-radius') === '8px');
+
+section('Compare and header, round 2, 2026-11-06');
+// Leon's second look at Compare and the header. Layout is measured in Chrome
+// by smoke runCompareHeaderR2; these pin the rules.
+{
+  const phone = '(max-width:599.98px)';
+  const chCss = css.slice(css.indexOf('/* ------------------------------------------------- Compare and header, round 2, 2026-11-06 */'),
+    css.indexOf('/* ------------------------------------------------- motion preferences */'));
+  check('CH0 the section sits just above the motion preferences', chCss.length > 0
+    && css.indexOf('Compare and header, round 2, 2026-11-06 */') > css.indexOf("Leon's review, 2026-11-06 */"));
+  check('CH1 phones: while Compare is open the count row is gone, Compare keeps its 12 px gap and opens with it at the top',
+    /display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status', phone))
+    && /margin-top:12px;scroll-margin-top:12px/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.cmp', phone))
+    && !/display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status')));
+  check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
+    /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
+    && lastValue('.foot', 'margin-top') === '48px');
+  check('CH2b phones: an open Compare puts the footer 36 px lower so its heading sits 44 px under the card, as on desktop; the list keeps 48 px',
+    /margin-top:36px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', phone))
+    && lastValue('.foot', 'margin-top') === '48px');
+  check('CH3 Close comparison has the 8 px corners of the other outlined buttons at every width',
+    lastValue('#cmp-close', 'border-radius') === '8px' && /border-radius:8px/.test(ruleAt(cssText, '#cmp-close', phone)));
+// Leon, 2026-11-07: corners nest concentrically, outer = inner + inset. The 8 px
+// controls sit 8 px into a panel's corner (Close comparison, phone Sort), so panels are 16 px.
+check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from the top and right of the list card',
+  /--r-panel:16px;/.test(cssText) && lastValue('.listp>.f-sort', 'padding') === '8px 8px 8px 12px'
+  // My list's Group by lines up with Sort below it (smoke R3H), so it has the same 8 px inset.
+  && lastValue('.mylist', 'padding') === '8px 8px 8px 12px');
+  check('CH3b desktop Compare: Save and the "x" have the same 8 px corners as Close comparison (the table is not a rounded container, so no concentric inset applies); the card keeps --r-panel',
+    /border-radius:8px/.test(ruleAt(cssText, '.cmp-t th.cmp-p .cmp-save', '(min-width:600px)'))
+    && lastValue('.cmp-x', 'border-radius') === '8px' && lastValue('.cmp', 'border-radius') === 'var(--r-panel)');
+  check('CH4 phones: the one My list button moves into the count row before Filters, and back before Compare from 600 px; focus survives the move',
+    /if \(bar\) put\(headerRight, dom\.headerList, dom\.headerCompare\);\s*else put\(dom\.status, dom\.headerList, dom\.more\);/.test(appSrc)
+    && /if \(listFocused && document\.activeElement !== dom\.headerList\) dom\.headerList\.focus/.test(appSrc)
+    && (read('index.html').match(/id="header-list"/g) ?? []).length === 1);
+  check('CH6 crossing 600 px keeps focus in My list: widening moves it off the hidden More, narrowing opens More for a hidden tool (regression, smoke "PM list focus")',
+    /function keepListFocus\(was, bar\)/.test(appSrc) && /else if \(listWas\) keepListFocus\(listWas, bar\)/.test(appSrc)
+    && /listFocus = isListTool\(document\.activeElement\)/.test(appSrc) && /listMoreOpen = true;\s*syncListMore\(\);/.test(appSrc));
+  check('CH5 phones: in the count row My list is 44 px tall with Filters\' hairline and corners, takes the free space before Filters, and keeps its words for screen readers',
+    /flex:none;height:44px;margin-left:auto;[^}]*border-color:var\(--hairline\);border-radius:8px/.test(ruleAt(cssText, '.status #header-list', phone))
+    && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))
+    && /display:block;position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(ruleAt(cssText, '.status #header-list>.hb-l', phone)));
+}
+
+// Verification of PR 1: the focused Compare heading printed its blue ring.
+check('print removes every focus outline, even the Compare heading\'s ID rule', (() => { const print = cssText.slice(cssText.indexOf('@media print {\n  *, *::before')); return print.includes(':focus, :focus-visible, :focus-visible::after { outline: none !important; }'); })());
+
+// Verification of PR 1: the two-line HL Maths help kept the bubble 260 px
+// wide, 12 px past its longest line (smoke R2L measures it in Chrome).
+check('an opened help bubble is narrowed to its longest line', /selectNodeContents\(tip\)[\s\S]{0,300}tip\.style\.width = `\$\{Math\.ceil\(text \+ pad\) \+ 1\}px`/.test(read('js/round2.js')));
+
+section('Facts and copy, review of PR 1, 2026-11-07');
+{
+  const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  // The source FAQ said unchecked rows "are marked"; none are (every row is
+  // AI-DRAFT and only signed rows carry a badge). It now quotes the badge a
+  // signed row really shows, so the two cannot drift apart.
+  equal('FAQ source answer quotes the real "Checked" badge, names the CAO and no longer claims unchecked rows are marked',
+    ['en', 'sk'].map((lang) => inLang(lang, () => {
+      const a = t('r2_faq_source_a');
+      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), a.includes('CAO'), /are marked|sú označené/.test(a)];
+    })), [[true, true, false], [true, true, false]]);
+  check('FAQ CAO answer names the UCD exception in EN and SK',
+    /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
+  // Verification of PR 1: with the UCD sentence in between, "We convert it" /
+  // "Prepočítavame ju" pointed at UCD's minimum (or UCD itself); the footer
+  // still said all data comes from the universities' pages; and the source
+  // answer left out living costs borrowed from another university in the city.
+  check('CAO answer names the cutoff it converts, EN and SK',
+    UI.en.r2_faq_cao_a.includes('We convert the cutoff') && !UI.en.r2_faq_cao_a.includes('convert it')
+      && UI.sk.r2_faq_cao_a.includes('Hranicu prepočítavame') && !UI.sk.r2_faq_cao_a.includes('Prepočítavame ju')
+      && read('index.html').includes('We convert the cutoff with the CAO’s IB table'));
+  check('footer source line names the CAO and calls living costs estimates, EN and SK',
+    /CAO/.test(UI.en.r2_footer_data) && /estimates/.test(UI.en.r2_footer_data)
+      && /CAO/.test(UI.sk.r2_footer_data) && /odhady/.test(UI.sk.r2_footer_data));
+  check('source answer covers living costs from another university and says "podrobnosti" in SK',
+    /another university’s in the same city/.test(UI.en.r2_faq_source_a)
+      && /inej univerzity v tom istom meste/.test(UI.sk.r2_faq_source_a) && /v podrobnostiach programu/.test(UI.sk.r2_faq_source_a)
+      && !/v detailoch/.test(UI.sk.r2_faq_source_a));
+  // On phones the points field is in the Filters sheet, not "above".
+  check('share help points to the filters, not "above", in EN and SK',
+    /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
+      && /vo filtroch/.test(UI.sk.enter_your_ib_points_above_to_include_them) && !/vyššie/.test(UI.sk.enter_your_ib_points_above_to_include_them));
+  equal('My list pane button uses Slovak plurals for 0, 1, 2, 4, 5 and 21 saved',
+    inLang('sk', () => [0, 1, 2, 4, 5, 21].map((count) => t('r2_pane_list', { count }))),
+    ['Môj zoznam · 0 uložených', 'Môj zoznam · 1 uložený', 'Môj zoznam · 2 uložené', 'Môj zoznam · 4 uložené', 'Môj zoznam · 5 uložených', 'Môj zoznam · 21 uložených']);
+  equal('Slovak sort, setup and done-screen grammar',
+    [inLang('sk', () => t('sorted_activate_to_sort', { value1: 'X', value2: t('r2_default_order') })), UI.sk.r2_ob2m, UI.sk.r3_ob_done_h_none,
+      UI.sk.r4_ob_done_tools.replace('{bookmark}', UI.sk.r4_icon_bookmark).replace('{scales}', UI.sk.r4_icon_scales)],
+    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'V nastavení nie sú žiadne odpovede.',
+      'Tlačidlom so záložkou si programy uložíš do Môjho zoznamu a tlačidlom s váhami porovnáš až 4 vedľa seba.']);
+  // WebKit and VoiceOver drop list semantics from a list with list-style:none
+  // (the results) or display:grid items (the points lines).
+  check('results and points-line lists keep an explicit list role for Safari',
+    /<ul class="results" id="results" role="list"/.test(read('index.html'))
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').filter((u) => u.className === 'plines').every((u) => u.getAttribute('role') === 'list')
+      && byTag(detailOf(fxRow('fx-plain')), 'ul').some((u) => u.className === 'plines'));
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

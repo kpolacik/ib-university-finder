@@ -2,7 +2,7 @@ import { t, dateFormatter, facetLabel, getLanguage } from './i18n.js';
 // What the detail says about a fact, in words, and the compare table built
 // from the same words. Pure, no DOM, so tools/check.mjs can test every cell.
 //
-// The compare table (2 to 4 saved programmes side by side) must never say a
+// The compare table (up to 4 programmes side by side) must never say a
 // fact differently from the detail, or a student comparing two rows would
 // read two versions of the same programme. So the few sentences both need
 // live here and js/render.js imports them: the entrance-exam line, the
@@ -157,11 +157,4 @@ export function differs(entry) {
 // The facts to draw. With onlyDifferences, a fact every programme shares goes.
 export function visibleFacts(table, onlyDifferences) {
   return onlyDifferences ? table.filter((entry) => entry.always || differs(entry)) : table;
-}
-
-// Picks still in the list, in list order, at most MAX_COMPARE. A pick whose
-// programme left the list (unsaved, or a different shared link) is dropped.
-export function prunePicks(picks, listIds) {
-  const keep = new Set(picks);
-  return listIds.filter((id) => keep.has(id)).slice(0, MAX_COMPARE);
 }

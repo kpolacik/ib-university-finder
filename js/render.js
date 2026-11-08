@@ -1,4 +1,4 @@
-import { t, dateFormatter, dataParts, facetLabel, getLanguage } from './i18n.js';
+import { t, dateFormatter, dataParts, facetLabel, getLanguage, formatCount } from './i18n.js';
 // Everything that touches the DOM.
 //
 // Values are written with textContent, never innerHTML: the data comes from a
@@ -7,7 +7,7 @@ import { t, dateFormatter, dataParts, facetLabel, getLanguage } from './i18n.js'
 
 import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
-import { pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
+import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
 // The detail's wording for the exam, the countdown, money and the yearly
@@ -23,29 +23,31 @@ const shortDate = dateFormatter({
 });
 
 // shortlist: the saved programme ids (js/shortlist.js), for each row's save
-// star. headings: programme_id → group heading, put above that row in the
+// star. compare: the ids in Compare (js/compare-set.js), for its toggle.
+// headings: programme_id → group heading, put above that row in the
 // list view (groupHeadings in js/shortlist.js); empty outside it.
-export function renderRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
-  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide, shortlist, headings)));
+export function renderRows(container, rows, { state, shortlist = new Set(), compare = new Set(), wide = false, headings = new Map() }) {
+  container.replaceChildren(...rows.map((row) => renderRow(row, state, wide, shortlist, headings, compare)));
 }
 
 // The rest of a long list, a slice at a time after the first screen is drawn
 // (L09). The same rows renderRows builds; the items are returned so app.js can
 // open a slot or mark the selection on a row that arrives late.
-export function appendRows(container, rows, { state, shortlist = new Set(), wide = false, headings = new Map() }) {
-  const items = rows.map((row) => renderRow(row, state, wide, shortlist, headings));
+export function appendRows(container, rows, { state, shortlist = new Set(), compare = new Set(), wide = false, headings = new Map() }) {
+  const items = rows.map((row) => renderRow(row, state, wide, shortlist, headings, compare));
   container.append(...items);
   return items;
 }
 
 // Keep the aside and its fallback heading connected while its detail is rebuilt.
 // saved: whether the programme is in the student's list, for the detail's
-// "Save to my list" button; left out, there is no button.
-export function renderPane({ pane, heading, body }, row, shown, state, { saved } = {}) {
+// "Save to my list" button; left out, there is no button. inCompare: the
+// same for its compare button.
+export function renderPane({ pane, heading, body }, row, shown, state, { saved, inCompare, savedCount = 0 } = {}) {
   let content;
   const mode = !row ? 'empty' : shown ? 'content' : 'hidden';
   if (mode === 'content') {
-    content = renderDetail(row, state, { saved });
+    content = renderDetail(row, state, { saved, inCompare });
   } else {
     content = el('div', 'pane-empty');
     const lead = el('b');
@@ -58,6 +60,7 @@ export function renderPane({ pane, heading, body }, row, shown, state, { saved }
       ? t('change_your_filters_or_choose_another_programme')
       : t('its_details_appear_here_use_the_up_and_down_arrow_keys_to_move_throu')));
   }
+  if (!row) content = filterOverview(state, savedCount);
   heading.hidden = false;
   pane.setAttribute('aria-labelledby', 'pane-h');
   body.replaceChildren(content);
@@ -68,9 +71,40 @@ export function renderPane({ pane, heading, body }, row, shown, state, { saved }
   return mode;
 }
 
+function filterOverview(state, savedCount) {
+  const box = el('div', 'filter-overview');
+  if (activeFilterCount(state)) {
+    box.append(el('h2', '', t('r2_pane_for')));
+    const facts = el('dl', 'overview-kv');
+    const add = (label, value) => { if (value !== null && value !== '') facts.append(el('dt', '', t(label)), el('dd', '', value)); };
+    add('my_ib_points_2', state.myIbPoints);
+    if (state.hlMaths) add('hl_maths_4', t('r2_plus25'));
+    add('search_2', state.search.trim());
+    for (const [field, label] of [['subjectAreas','subject_area'], ['countries','country'], ['languages','language'], ['cities','city'], ['degreeTypes','degree_type']]) {
+      add(label, [...state[field]].map((value) => field === 'subjectAreas' || field === 'degreeTypes' ? dataValue(field === 'subjectAreas' ? 'subject_area' : 'degree_type', value).textContent : facetLabel(value)).join(', '));
+    }
+    add('my_maths_2', state.myMaths);
+    add('entrance_exam', state.exam ? EXAM_OPTIONS[state.exam] : null);
+    add('deadline', state.deadlineWindow !== 'any' ? DEADLINE_WINDOWS[state.deadlineWindow] : null);
+    add('max_eu_fee', state.maxTuition === null ? null : money.format(state.maxTuition));
+    add('max_yearly_cost_2', state.maxBudget === null ? null : money.format(state.maxBudget));
+    add('my_living_costs', state.myLiving === null ? null : money.format(state.myLiving));
+    box.append(facts);
+  } else box.append(el('h2', '', t('r2_pane_heading')), el('p', '', t('r2_pane_pick')));
+  const edit = el('button', 'btn btn-a', t('r2_edit')); edit.type = 'button'; edit.setAttribute('data-edit', '');
+  const list = el('button', 'btn btn-q', t('r2_pane_list', { count: savedCount })); list.type = 'button'; list.setAttribute('data-open-list', '');
+  if (activeFilterCount(state)) { const actions = el('div', 'overview-actions'); actions.append(edit, list); box.append(actions); }
+  box.append(el('h3', '', t('r2_legend')));
+  const legend = el('div', 'legend');
+  for (const [type, key] of [['fit','within_your_ib_points'], ['cond','only_with_hl_maths_4'], ['time','r2_legend_time'], ['unknown','r2_legend_unknown']]) {
+    const line = el('div'), mark = el('i', `legend-${type}`); mark.setAttribute('aria-hidden', 'true'); line.append(mark, document.createTextNode(t(key))); legend.append(line);
+  }
+  box.append(legend); return box;
+}
+
 // The full entry for one programme (design spec §6.7). The pane has the full
 // head and cells; the slot keeps the full points lines and other facts.
-export function renderDetail(row, state, { slot = false, saved } = {}) {
+export function renderDetail(row, state, { slot = false, saved, inCompare } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
@@ -98,7 +132,9 @@ export function renderDetail(row, state, { slot = false, saved } = {}) {
       row.degreeType && row.degreeType !== '?' ? '' : t('degree_type_unknown'));
     if (row.degreeType && row.degreeType !== '?') degree.append(dataValue('degree_type', row.degreeType));
     if (title.lang) degree.lang = 'en';
-    title.append(el('span', 'visually-hidden', ', '), degree);
+    // Only the comma is hidden. A trailing space in the zero-size span collapsed
+    // the visible one after it ("DesignBcA.", review round 2).
+    title.append(el('span', 'visually-hidden', ','), document.createTextNode(' '), degree);
     // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
     const city = row.cityUnknown ? t('city_not_published') : (!row.city || row.city === '?' ? t('city_unknown') : row.city);
     const place = [city, facetLabel(row.country)].filter(Boolean).join(', ');
@@ -129,7 +165,7 @@ export function renderDetail(row, state, { slot = false, saved } = {}) {
   const said = notes(row, state, pointsSays);
   if (said) article.append(said);
 
-  const foot = footer(row, saved);
+  const foot = footer(row, saved, inCompare);
   if (foot) article.append(foot);
   detailOriginals(article, row.id, state);
   return article;
@@ -167,6 +203,8 @@ function pointsCell(row, state) {
 
 function pointsList(row) {
   const list = el('ul', 'plines');
+  // Safari and VoiceOver drop list semantics from a list without markers.
+  list.setAttribute('role', 'list');
   for (const line of pointsLines(row)) {
     const item = el('li');
     if (line.number === null) {
@@ -181,7 +219,7 @@ function pointsList(row) {
   return list;
 }
 
-function renderRow(row, state, wide, shortlist, headings) {
+function renderRow(row, state, wide, shortlist, headings, compare) {
   const item = el('li', 'item');
   item.setAttribute('data-id', row.id);
   // The list view's group heading ("March 2027 · 2") sits inside the group's
@@ -208,7 +246,7 @@ function renderRow(row, state, wide, shortlist, headings) {
   if (title.lang) degree.lang = 'en';
   degree.id = `degree-${row.id}`;
   title.setAttribute('aria-describedby', degree.id);
-  heading.append(title, el('span', 'visually-hidden', ', '), degree);
+  heading.append(title, document.createTextNode(' '), degree);
   const sub = el('p', 'sub');
   const city = row.cityUnknown ? t('city_not_published') : (!row.city || row.city === '?' ? t('city_unknown') : row.city);
   sub.append(el('span', 'uc', [row.university, city].filter(Boolean).join(' · ')));
@@ -230,7 +268,7 @@ function renderRow(row, state, wide, shortlist, headings) {
     sub.append(document.createTextNode(' · '), identity);
   }
   if (row.isSample) sub.append(el('span', 'tag tag-strong', t('invented_sample_row_not_real_data')));
-  main.append(heading, sub, starButton(row, shortlist.has(row.id)));
+  main.append(heading, sub, compareToggle(row, compare.has(row.id)), starButton(row, shortlist.has(row.id)));
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
   chevron.append(icon('i-chevron', 'ic'));
@@ -276,34 +314,30 @@ function rowPointsCell(row, state) {
   const bucket = pointsBucket(row, state);
   let fill = 'v-none';
   let verdict = '';
-  if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.verdict];
+  if (short.unknown) [fill, verdict] = ['v-unk', short.unknown.cell];
   else if (bucket === 'within') [fill, verdict] = ['v-fit', row.rankedWithHpat ? t('within_your_ib_points_then_hpat') : t('within_your_ib_points')];
   else if (bucket === 'maths') [fill, verdict] = ['v-cond', t('only_with_hl_maths_4')];
   else if (bucket === 'unknown') [fill, verdict] = ['v-unk', t('cutoff_may_include_test_marks')];
   cell.classList.add(fill);
-  if (verdict) cell.append(el('span', `verd m m-${fill.slice(2)}`, verdict));
   if (short.parts.length) {
     const fig = el('span', 'fig');
     short.parts.forEach((part, i) => {
       if (i) fig.append(document.createTextNode(' · '));
-      const pt = el('span', 'pt');
-      if (part.figure !== null) pt.append(document.createTextNode(`${part.figure} `));
+      const pt = el('span', row.pointsKind === 'cutoff' ? 'pt cutoff' : 'pt');
+      if (part.figure !== null) pt.append(document.createTextNode(`${part.figure}${!verdict || short.parts.length > 1 || String(part.figure).startsWith('≈') ? ' ' : ''}`));
       const label = row.rankedWithHpat && bucket === 'within' ? t('minimum') : part.label;
-      pt.append(el('small', '', label));
+      if (!verdict || short.parts.length > 1 || String(part.figure).startsWith('≈')) pt.append(el('small', '', label));
       fig.append(pt);
     });
     cell.append(fig);
-  } else if (short.unknown.reason) {
-    const fig = el('span', 'fig');
-    fig.append(el('small', '', short.unknown.reason));
-    cell.append(fig);
   }
+  if (verdict) cell.append(el('span', 'verd', verdict));
   if (short.after && !verdict) cell.append(el('span', 'q', short.after));
   if (roundTwoOnly(row, state)) cell.append(el('span', 'r2', t('round_2_cutoff_only')));
   return cell;
 }
 
-export function renderSlot(row, state, { saved } = {}) {
+export function renderSlot(row, state, { saved, inCompare } = {}) {
   const slot = el('div', 'expand');
   slot.id = `x-${row.id}`;
   slot.setAttribute('role', 'region');
@@ -311,18 +345,24 @@ export function renderSlot(row, state, { saved } = {}) {
   // The slot opens by animating its one grid row from 0fr to 1fr (spec §8).
   // That needs a single child that may shrink below its content and clips it.
   const inner = el('div', 'expand-inner');
-  inner.append(renderDetail(row, state, { slot: true, saved }));
+  inner.append(renderDetail(row, state, { slot: true, saved, inCompare }));
   slot.append(inner);
   return slot;
 }
 
 // The count is the one live region: identical text must leave its nodes alone.
 export function renderCount(node, lead, parts) {
-  const text = [lead, ...parts.map((p) => p.text)].join(' · ');
+  const text = [...(lead ? [lead] : []), ...parts.map((p) => p.text)].join(' · ');
   if (node.textContent === text) return false;
-  node.replaceChildren(el('b', '', lead));
+  const number = lead.match(/^[\d\s,\u00a0\u202f]+/)?.[0].trimEnd() ?? '';
+  node.replaceChildren();
+  if (lead) node.append(el('span', 'count-lead'));
+  if (lead) node.lastChild.append(el('b', '', number), document.createTextNode(lead.slice(number.length)));
   for (const part of parts) {
-    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, part.text));
+    // In a span so a phone can drop it: each verdict sits on its own line there,
+    // and a line must not end in a dangling "·" (review round 2).
+    if (lead || part !== parts[0]) node.append(el('span', 'sep', ' · '));
+    node.append(el('span', `k k-${part.kind} m m-${part.kind}`, part.text));
   }
   return true;
 }
@@ -331,14 +371,9 @@ export function renderCount(node, lead, parts) {
 // with its mark ("1130 of 1240 programmes · 410 · 41 · 679"). The node is
 // aria-hidden; the full sentence stays the live region. Every
 // pointsSummaryParts text starts with its count.
-export function renderCountShort(node, lead, parts) {
-  const numbers = parts.map((p) => p.text.match(/^\d+/)?.[0] ?? p.text);
-  const text = [lead, ...numbers].join(' · ');
-  if (node.textContent === text) return false;
-  node.replaceChildren(el('b', '', lead));
-  parts.forEach((part, i) => {
-    node.append(document.createTextNode(' · '), el('span', `k k-${part.kind} m m-${part.kind}`, numbers[i]));
-  });
+export function renderCountShort(node, lead) {
+  if (node.textContent === lead) return false;
+  node.textContent = lead;
   return true;
 }
 
@@ -351,7 +386,12 @@ function deadlineCell(row, { compact = false } = {}) {
     return cell;
   }
   const date = (compact ? shortDate : longDate).format(row.deadline);
-  if (row.deadlinePassed) {
+  if (compact) {
+    const fig = el('span', 'fig');
+    if (row.deadlinePassed) { cell.classList.add('v-past'); fig.append(el('s', '', date)); }
+    else { fig.textContent = date; if (row.isUrgent) cell.classList.add('v-time'); }
+    cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : countdown(row.daysUntilDeadline).toLowerCase()));
+  } else if (row.deadlinePassed) {
     // Neutral, never red and never dimmed: it is still a fact worth reading.
     cell.classList.add('v-past');
     const fig = el('span', 'fig');
@@ -373,7 +413,9 @@ function deadlineCell(row, { compact = false } = {}) {
 // Max yearly cost set, the verdict on the year (budgetFit, the filter's own test).
 function feeCell(row, { compact = false, state = null } = {}) {
   const cell = el(compact ? 'p' : 'div', 'cell c-fee');
-  cell.append(el('span', 'lab', t('eu_fee')));
+  // The compact row has no "/ year" on the figure, so where the column headings
+  // are hidden its label has to say it (review round 2).
+  cell.append(el('span', 'lab', t(compact ? 'r2_fee_heading' : 'eu_fee')));
   const cost = yearlyCost(row, state?.myLiving ?? null);
   const fit = budgetFit(cost, state?.maxBudget ?? null);
   if (fit === 'maybe') {
@@ -392,7 +434,8 @@ function feeCell(row, { compact = false, state = null } = {}) {
     zero.append(el('span', 'dot', '· '), document.createTextNode(t('no_tuition_fee')));
     fig.append(document.createTextNode(`${money.format(0)} `), zero);
   } else {
-    fig.append(document.createTextNode(`${money.format(row.tuitionEu)} `), el('small', '', t('year')));
+    fig.append(document.createTextNode(money.format(row.tuitionEu)));
+    if (!compact) fig.append(document.createTextNode(' '), el('small', '', t('year')));
   }
   cell.append(fig);
   // The Irish figure is the Free Fees student contribution plus levy, not the
@@ -526,7 +569,13 @@ function applyingSection(row, state) {
   // Only with a living figure: without one there is no year to add up, and
   // the fee cell already says "Living cost not published".
   if (cost.monthlyMin !== null) reqRow(list, t('fee_12_months_living_estimate'), [yearlyText(row, cost)]);
-  if (row.languages.length) reqRow(list, t('language'), [row.languages.map(facetLabel).join(', ')]);
+  if (row.languages.length) {
+    const language = el('span', '', row.languages.map(facetLabel).join(', '));
+    if (row.country === 'Czechia' && row.languages.includes('Czech') && row.tuitionEu === 0) {
+      language.append(el('span', 'dd-note', t('r2_czech_free')));
+    }
+    reqRow(list, t('language'), [language]);
+  }
   if (row.applicationSystem) reqRow(list, t('apply_via'), [dataValue('application_system', row.applicationSystem)]);
   if (list.childElementCount === 0) return null;
 
@@ -611,8 +660,9 @@ function notes(row, state, pointsSays) {
   return box.childElementCount ? box : null;
 }
 
-function footer(row, saved) {
+function footer(row, saved, inCompare) {
   const foot = el('footer', 'd-foot');
+  const actions = el('div', 'd-actions');
 
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
@@ -620,13 +670,15 @@ function footer(row, saved) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
     const identity = row.identity?.text || row.faculty?.name;
-    foot.append(externalLink('btn btn-p', t('official_admissions_page'), row.officialUrl,
+    actions.append(externalLink('btn btn-p', t('official_admissions_page'), row.officialUrl,
       t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' })));
   }
+  if (typeof saved === 'boolean') actions.append(saveButton(row, saved));
+  if (typeof inCompare === 'boolean') actions.append(compareButton(row, inCompare));
+  if (actions.childElementCount) foot.append(actions);
   if (row.studentLifeUrl) {
     foot.append(externalLink('lnk', t('student_life'), row.studentLifeUrl));
   }
-  if (typeof saved === 'boolean') foot.append(saveButton(row, saved));
 
   // Every card used to end "Gathered <date> · nobody has checked this yet".
   // Removed 2026-10-24 at Jakub's request: the source line at the top of the
@@ -712,14 +764,56 @@ export function setSaved(button, saved) {
   if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
   const words = button.querySelector('.save-t');
   if (words) words.textContent = saved ? t('saved_to_my_list') : t('save_to_my_list_2');
+  // A compare column's short "Save" / "Saved".
+  const short = button.querySelector('.save-s');
+  if (short) short.textContent = t(saved ? 'r3_cmp_saved' : 'r3_cmp_save');
+}
+
+// Batch 3 · A. The row's compare toggle, beside the save star and built the
+// same way: a stable name, aria-pressed, and a different symbol when on (an
+// outline scale, then one with filled pans), never colour alone, for the same
+// content-visibility reason. app.js finds every one by data-compare-id.
+function compareToggle(row, on) {
+  const button = el('button', 'cmpi');
+  button.type = 'button';
+  button.setAttribute('data-compare-id', row.id);
+  button.append(icon(on ? 'i-compare-on' : 'i-compare', 'ic'),
+    el('span', 'visually-hidden', t('r3_cmp_add_label', { programme: row.programme, university: row.university })));
+  button.setAttribute('aria-pressed', String(on));
+  return button;
+}
+
+// The detail's compare button, paired with Save: "Add to compare", then
+// "In compare".
+function compareButton(row, on) {
+  const button = el('button', 'btn cmpb');
+  button.type = 'button';
+  button.setAttribute('data-compare-id', row.id);
+  button.append(icon(on ? 'i-compare-on' : 'i-compare', 'ic'), el('span', 'cmpb-w'),
+    el('span', 'visually-hidden', `: ${row.programme}, ${row.university}`));
+  setInCompare(button, on);
+  return button;
+}
+
+// Brings one compare toggle (row or detail) to the set, in place.
+export function setInCompare(button, on) {
+  button.setAttribute('aria-pressed', String(on));
+  const use = button.querySelector('use');
+  const mark = on ? '#i-compare-on' : '#i-compare';
+  if (use && use.getAttribute('href') !== mark) use.setAttribute('href', mark);
+  const words = button.querySelector('.cmpb-w');
+  if (words) words.textContent = t(on ? 'r3_cmp_in' : 'r3_cmp_add');
 }
 
 // The compare table: one column per programme, one row per fact
 // (compareTable in compare.js). Row headers are real <th scope=row>, and each
 // column is headed by the programme, so a screen reader names every cell.
-export function renderCompare(container, rows, table, { onlyDifferences = false } = {}) {
+// saved: the saved ids, for each column's Save toggle (batch 3 · A); every
+// column also has an "x" that takes it out of Compare.
+export function renderCompare(container, rows, table, { onlyDifferences = false, saved = new Set() } = {}) {
   const facts = visibleFacts(table, onlyDifferences);
   const wrap = el('div', 'cmp-scroll');
+  wrap.id = 'cmp-scroll';
   wrap.setAttribute('tabindex', '0');
   wrap.setAttribute('role', 'region');
   wrap.setAttribute('aria-label', t('compare_table_scrolls_sideways'));
@@ -735,12 +829,29 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
     th.setAttribute('scope', 'col');
     const name = el('span', 'cmp-n', row.programme);
     if (row.languages.length === 1 && row.languages[0] === 'Czech') name.lang = 'cs';
-    th.append(name, el('span', 'cmp-u', row.university));
+    th.setAttribute('data-id', row.id);
+    const university = el('span', 'cmp-u', row.university);
+    name.id = `cmp-name-${top.children.length}`;
+    university.id = `cmp-university-${top.children.length}`;
+    // Cell navigation announces the column's names, not its Save/Remove controls.
+    th.setAttribute('aria-labelledby', `${name.id} ${university.id}`);
+    th.append(name, university, compareActions(row, saved.has(row.id)));
     top.append(th);
   }
   head.append(top);
   const body = el('tbody');
   for (const fact of facts) {
+    // Phones show the fact's name on its own line above the values (styles.css,
+    // "Phone My list and Compare"): in a 6.5rem column the long Slovak names
+    // wrapped to five lines. It is a copy for the eye; the row header below
+    // still names every cell for screen readers, so this one is hidden from them.
+    const caption = el('tr', 'cmp-lr');
+    caption.setAttribute('aria-hidden', 'true');
+    const captionCell = el('td');
+    captionCell.setAttribute('colspan', String(rows.length + 1));
+    captionCell.append(el('span', '', fact.label));
+    caption.append(captionCell);
+    body.append(caption);
     const tr = el('tr');
     tr.setAttribute('data-fact', fact.key);
     const th = el('th', '', fact.label);
@@ -750,8 +861,18 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
       const td = el('td');
       for (const line of cell.lines) {
         const p = el('p', line.verdict ? `verd m m-${line.verdict}` : line.strong ? 'note note-strong' : '');
-        if (line.href) p.append(externalLink('lnk', line.text, line.href, line.name));
-        else p.append(lineNode(line));
+        if (line.href) {
+          // The link wraps as text here (styles.css). Its last word and icon
+          // share a no-wrap span, so the icon never sits on a line alone (a
+          // word joiner did not stop Chrome breaking before the icon).
+          const words = line.text.split(' ');
+          const end = el('span', 'lnk-end', words.pop());
+          const link = externalLink('lnk', words.length ? `${words.join(' ')} ` : '', line.href, line.name);
+          end.append(link.lastChild);
+          // Before the hidden "(opens in a new tab)", so the name still reads in order.
+          link.lastChild.before(end);
+          p.append(link);
+        } else p.append(lineNode(line));
         td.append(p);
       }
       tr.append(td);
@@ -760,11 +881,52 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
   }
   grid.append(head, body);
   wrap.append(grid);
+  // A phone shows two programmes at a time. With three or four, the arrows and
+  // "Programmes 1–2 of 3" say more are off to the side, and the frame's fade
+  // marks the edge (app.js keeps them in step with the scroll; CSS shows them
+  // below 600 px only).
+  const frame = el('div', 'cmp-frame');
+  frame.append(wrap);
+  const out = [frame];
+  if (rows.length >= 3) out.unshift(compareNav());
   const hidden = table.length - facts.length;
-  const out = [wrap];
   if (hidden) out.push(el('p', 'help cmp-same', t('facts_hidden_count', { count: hidden })));
   container.replaceChildren(...out);
   return facts.length;
+}
+
+function compareNav() {
+  const nav = el('div', 'cmp-nav');
+  const arrow = (className, symbol, label) => {
+    const button = el('button', `btn ${className}`);
+    button.type = 'button';
+    button.setAttribute('aria-label', t(label));
+    button.setAttribute('aria-controls', 'cmp-scroll');
+    button.append(icon(symbol, 'ic'));
+    return button;
+  };
+  nav.append(arrow('cmp-prev', 'i-chevron-left', 'r3_cmp_prev'), el('p', 'cmp-range'), arrow('cmp-next', 'i-chevron-right', 'r3_cmp_next'));
+  return nav;
+}
+
+// A column's own controls: Save (the bookmark, "Save" / "Saved", the same
+// toggle as the row's star) and the "x" that drops it from Compare, each a
+// 44 px target. Named by the programme, since every column has the same pair.
+function compareActions(row, saved) {
+  const box = el('div', 'cmp-acts');
+  const save = el('button', 'btn btn-s cmp-save');
+  save.type = 'button';
+  save.setAttribute('data-save-id', row.id);
+  save.append(icon(saved ? 'i-bookmark-fill' : 'i-bookmark', 'ic'), el('span', 'save-s'),
+    el('span', 'visually-hidden', `: ${row.programme}, ${row.university}`));
+  setSaved(save, saved);
+  const remove = el('button', 'cmp-x');
+  remove.type = 'button';
+  remove.setAttribute('data-compare-remove', row.id);
+  remove.setAttribute('aria-label', t('r3_cmp_remove_label', { programme: row.programme, university: row.university }));
+  remove.append(icon('i-x', 'ic'));
+  box.append(save, remove);
+  return box;
 }
 
 // ------------------------------------------------------------ filter chips
@@ -773,7 +935,7 @@ export function renderCompare(container, rows, table, { onlyDifferences = false 
 // pill-shaped chips until the filters moved into a bar above the results.)
 // flags maps a value to a sprite symbol (the Country list only). The flag is
 // aria-hidden, so the option is still named by the country alone.
-export function renderChips(container, values, selected, onToggle, { flags, field } = {}) {
+export function renderChips(container, values, selected, onToggle, { flags, field, counts, forceSearch = false } = {}) {
   const options = values.map((value) => {
     const label = el('label', 'option');
     const input = document.createElement('input');
@@ -784,13 +946,16 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     label.append(input);
     if (flags?.[value]) label.append(icon(flags[value], 'flag'));
     label.append(field ? dataValue(field, value) : el('span', '', facetLabel(value)));
+    if (counts) { const count = el('span', 'option-count', counts.get(value) ?? 0); count.setAttribute('aria-hidden', 'true'); label.append(count); }
     return label;
   });
   container.replaceChildren();
-  if (values.length > 12) {
-    const searchLabel = el('label', 'help opt-q', t('search_options', { value1: container.parentElement.getAttribute('aria-label').toLowerCase() }));
+  if (forceSearch || values.length > 12) {
+    const searchLabel = el('label', 'help opt-q');
     const search = el('input', 'inp');
     search.type = 'search';
+    search.placeholder = t('search_options', { value1: container.parentElement.getAttribute('aria-label').toLowerCase() });
+    search.setAttribute('aria-label', search.placeholder);
     const clear = el('button', 'btn btn-q opt-clear', t('clear_the_search'));
     clear.type = 'button';
     clear.hidden = true;
@@ -799,7 +964,7 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     searchLabel.append(search);
     const filter = () => {
       const query = foldAccents(search.value.trim()).toLowerCase();
-      options.forEach((option, i) => { option.hidden = !foldAccents(`${values[i]} ${field ? dataParts(field, values[i], 'sk').map((part) => part.text).join(' ') : ''}`).toLowerCase().includes(query); });
+      options.forEach((option, i) => { option.hidden = !foldAccents(`${values[i]} ${facetLabel(values[i])} ${field ? dataParts(field, values[i], 'sk').map((part) => part.text).join(' ') : ''}`).toLowerCase().includes(query); });
       empty.hidden = options.some((option) => !option.hidden);
       clear.hidden = !query;
     };
@@ -858,9 +1023,9 @@ export function renderSourceLine(node, rows, meta) {
   const universities = new Set(rows.map((r) => r.university)).size;
   const countries = new Set(rows.map((r) => r.country).filter(Boolean)).size;
   node.append(
-    el('b', 'stat', `${rows.length} ${t('programme_count', { count: rows.length })} · ${universities} ${t('university_count', { count: universities })} · ${countries} ${t('country_count', { count: countries })}.`),
-    t('always_check_the_official_page_before_you_apply'),
-    el('span', 'src-more', t('requirements_fees_and_deadlines_can_change')),
+    el('span', 'stat', `${formatCount(rows.length)} ${t('programme_count', { count: rows.length })} · ${formatCount(universities)} ${t('university_count', { count: universities })} · ${formatCount(countries)} ${t('country_count', { count: countries })}.`),
+    ' ',
+    el('span', '', t('r2_footer_data')),
   );
 }
 
@@ -968,7 +1133,10 @@ function detailOriginals(article, id, state) {
     sync();
   });
   sync();
-  article.insertBefore(button, article.firstChild);
+  // Under the title, never above it: at the top of the pane the button sat
+  // beneath the × close (review round 2).
+  const head = article.querySelector('.d-head');
+  if (head) head.after(button); else article.insertBefore(button, article.firstChild);
 }
 
 function personalLiving(cost, universityLiving) {
