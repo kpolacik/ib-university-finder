@@ -1935,22 +1935,25 @@ function wireSheet() {
   });
 }
 
-// WebKit's long list layouts compete with the opening slide. Leave the
-// pending slice intact until the sheet has painted; print/widen can still
+// WebKit's long list layouts compete with either direction of the slide.
+// Leave the pending slice intact until it ends; print/widen can still
 // flush it synchronously. The timer covers a cancelled/missing transition.
 function pauseSheetRows() {
   if (motionQuery.matches) return;
   if (pendingRows) stopRows(pendingRows);
   clearTimeout(sheetSlideTimer);
-  // At 4x CPU the 150 ms transition can start late. A 250 ms fallback
-  // resumed mounting before its end event and delayed the last frame.
-  sheetSlideTimer = setTimeout(resumeSheetRows, 400);
+  dom.sheet.classList.add('is-sliding');
+  dom.sheetScrim.classList.add('is-sliding');
+  // Allow the 280 ms slide plus its first-frame work at 4x CPU.
+  sheetSlideTimer = setTimeout(resumeSheetRows, 500);
 }
 
 function resumeSheetRows() {
   if (sheetSlideTimer === undefined) return;
   clearTimeout(sheetSlideTimer);
   sheetSlideTimer = undefined;
+  dom.sheet.classList.remove('is-sliding');
+  dom.sheetScrim.classList.remove('is-sliding');
   if (pendingRows) {
     const pending = pendingRows;
     pending.timer = setTimeout(() => moreRows(pending), 0);
@@ -1997,7 +2000,9 @@ function closeSheet(returnFocus = true) {
 function finishSheetClose() {
   // close is queued: it must not undo a reopen or repeat synchronous cleanup.
   if (dom.sheet.open || !document.documentElement.classList.contains('sheet-open')) return;
-  resumeSheetRows();
+  // Closing used to resume mounting immediately, stalling the downward slide.
+  if (barQuery.matches || motionQuery.matches) resumeSheetRows();
+  else pauseSheetRows();
   cancelAnimationFrame(dom.copyStatusFrame);
   dom.copyStatus.textContent = '';
   document.documentElement.classList.remove('sheet-open');

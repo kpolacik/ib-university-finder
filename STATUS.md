@@ -603,6 +603,43 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Phone Filters slide (2026-11-09, local `fu-sheet-anim`):** Keep both
+slides, now 280 ms up / 220 ms down with `cubic-bezier(.32,.72,0,1)`.
+The old 150/140 ms curve left too little visible travel after the first
+frame; the longer tail lets the sheet settle, with a faster close. The
+sheet contains layout and paint. The sheet and scrim request separate
+transform/opacity layers only while moving, then release them (also on
+reduced motion, widening or a cancelled tap). Closing now pauses row slices
+until the transform ends, instead of resuming the long list under the slide.
+The lost-event fallback is 500 ms to allow the longer slide and its first
+frame. Hidden prewarming, focus, Tab/Escape and scroll locking stay intact.
+
+Three fresh WebKit 26 contexts per case at 390 x 844 @3x: median open
+first frame is 60 -> 52 ms settled, 75 -> 70 ms early (500 ms after the
+first rows paint). Fully shown is 189 -> 280 ms and 126 -> 251 ms:
+within the intentional 130 ms duration increase. Early-close missed-frame
+median is 4 -> 1, worst frame 88 -> 38 ms. These are two-rAF paint proxies,
+not iPhone measurements. Timeline shows initial style/layout/compositing
+work and row work between slides, not repeated content painting in WebKit.
+Three paired Chrome 157 runs at 4x CPU put the early-close missed-frame
+median at 4 -> 0 and worst gap at 49 -> 19 ms. Early open first frame is
+72 -> 86 ms; fully shown is 222 -> 358 ms (the 130 ms duration change plus
+6 ms of measured overhead). Chrome confirms accelerated transform and
+opacity layers; the scrim and scrolling-content layers retain their paint. Chrome still records shallow
+outer-sheet layout/paint updates, so this is not a claim of zero per-frame
+paint work in that engine.
+
+`check.mjs` pins containment, temporary promotion, the curve, both durations,
+instant reduced motion and row-pause cleanup. Smoke `--sheet-pacing-only`
+bounds each slide at Chrome 4x (390 and 320 px @3x, settled and early):
+no gap of 50 ms or more and at most two missed 60 Hz frames. The old
+150/140 ms pins were updated deliberately; the cold-open total budget grows
+by exactly 130 ms, while its first-frame budget stays unchanged. All 14
+focused `--sheet-only` checks pass (behavior, cold timing and pacing).
+Restoring the old CSS/JS makes three source checks and all four pacing
+checks fail; the candidate files were then restored byte-for-byte. The full
+smoke suite and physical iPhone Safari were not run.
+
 **Phone Filters first open (2026-11-08, local `fu-sheet2`):** The results
 list is a flex column so WebKit does not revisit every previous row on each
 append. Row slices pause from finger-down through the opening slide, with a
@@ -720,7 +757,7 @@ heights of 500 px or less. Column headings sit below its visible height;
 the pane starts 12 px below it and its maximum height allows for the header.
 Skip and arrow targets clear the header plus column headings plus 8 px;
 below 600 px they clear the sticky count bar plus 8 px (A07). The build
-matches the 85dvh phone sheet (now 150 ms open / 140 ms close), 180 ms help reveal, right-edge
+matches the 85dvh phone sheet (now 280 ms open / 220 ms close), 180 ms help reveal, right-edge
 popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
 page overflow. The phone maths control uses the mockup's native select.
 Onboarding headings return to the top of each step after scrolling the real
