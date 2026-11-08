@@ -4422,6 +4422,49 @@ const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x
   check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
     `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
 }
+// Phone scroll (2026-11-08, "the rows pop in weirdly" on an iPhone). A row
+// not drawn yet holds its placeholder, then takes its real height; Safari has
+// no scroll anchoring, so the difference moved the rows on screen. The old
+// 260 / 200 / 120 px placeholders were 40-60% taller than the real rows. Each
+// placeholder must stay near the measured average row at its width: 320 px
+// 230-264, 390 px 186, 430 px 174, 600-899 px 152-156, an 800 px list 85-102.
+{
+  const at = (media) => allCss.filter((r) => r.media.join() === media && r.selector.split(',').some((x) => x.trim() === '.item'))
+    .map((r) => Number(r.body.match(/contain-intrinsic-size:\s*auto\s+(\d+)px/)?.[1])).filter(Boolean);
+  const between = (media, lo, hi) => { const v = at(media); return v.length === 1 && v[0] >= lo && v[0] <= hi; };
+  check('row placeholders match the measured row height at each width (phone scroll pop-in)',
+    between('', 170, 195) && between('@media (max-width: 359.98px)', 225, 255)
+      && between('@media (min-width: 600px)', 145, 165) && between('@container (min-width: 800px)', 80, 105),
+    JSON.stringify(['', '@media (max-width: 359.98px)', '@media (min-width: 600px)', '@container (min-width: 800px)'].map(at)));
+  // Safari draws a content-visibility:auto row only once it is on screen, so
+  // rows near the window get .near and are drawn early. .near keeps the
+  // containment auto gives a drawn row: dropping it on each toggle made Chrome
+  // restyle the rows after it (0.1 s to 1.9 s of style work per phone scroll).
+  const near = ruleBody('.item.near');
+  check('.near rows are drawn and keep layout, style and paint containment on screen, and print uncontained',
+    /content-visibility:\s*visible/.test(near) && /contain:\s*layout style paint/.test(near) && /contain: none/.test(printBody('.item.near')));
+  check('rows are marked .near from one passive scroll listener, not an IntersectionObserver on every row',
+    /window\.addEventListener\('scroll', scheduleNear, \{ passive: true \}\)/.test(appSrc)
+      && Number(appSrc.match(/const NEAR_SCREENS = ([\d.]+);/)?.[1]) >= 1
+      && (appSrc.match(/new IntersectionObserver/g) ?? []).length === 1);
+}
+appCheck('scrolling marks the rows within 1.5 screens of the window .near, and only those; a burst of scroll events is one frame', ({ run, get, drain, fireWindow, frames, flushFrame }) => {
+  l09(run); drain();
+  const rows = get('results').children;
+  if (rows.length < 30) return false;
+  run('window.innerHeight = 844;');
+  const place = (offset) => rows.forEach((row, i) => { row.rect = { top: i * 200 - offset, bottom: i * 200 - offset + 200, left: 0, right: 390, width: 390, height: 200 }; });
+  const marked = () => rows.flatMap((row, i) => (row.classList.contains('near') ? [i] : []));
+  const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  // The margin is 1.5 x 844 = 1,266 px each way: tops from -1,466 to 2,110.
+  place(3000);
+  fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
+  if (frames.size !== 1) return false;
+  flushFrame();
+  if (marked().join() !== span(8, 25).join()) return false;
+  place(1000); fireWindow('scroll'); flushFrame();
+  return marked().join() === span(0, 15).join() && frames.size === 0;
+});
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
   ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',

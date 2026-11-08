@@ -1118,6 +1118,28 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   and reduced motion is still instant. Never give `.item` another display
   value. `check.mjs` and smoke A10 guard this.
 
+- **Rows popped in while scrolling on an iPhone (fixed 2026-11-08).** Safari
+  draws a `content-visibility: auto` row only once it is already on screen
+  (WebKit's observer has no margin; Chrome's reaches half a screen further),
+  and Safari before 27 has no scroll anchoring. Each row therefore scrolled in
+  as an empty placeholder, then drew and shrank, and the rows under it jumped.
+  The placeholders were also 40-60% too tall: 260 px for phone rows that
+  average 186 px at 390 px. Now the placeholders are the measured average row
+  at each width (180, 240 below 360 px, 152 from 600 px, 90 for a list of
+  800 px or more). While the page scrolls, rows within 1.5 screens of the
+  window get `.near`, which draws them early. In Chrome with Safari's
+  behaviour imitated (4× CPU, 390 px), frames with a blank row went from 94 of
+  161 to 0 and layout shift from 1.10 to 0.004. Chrome itself showed no
+  change in scroll or filter-change timing. Two traps: an IntersectionObserver
+  on all 2,915 rows cost about 1 s of main thread per scroll at 4×, so a
+  binary search once a frame finds the rows instead. And `.near` must keep
+  `contain: layout style paint`: without it, each toggle made Chrome restyle
+  the rows after it (1.9 s of style work per scroll). Scrolling *up* after a
+  long jump still shifts a little in Safari, because rows not yet drawn
+  differ from the average. Only scroll anchoring or exact sizes would fix
+  that. Not yet checked on a real iPhone. `check.mjs` and smoke ROW guard
+  this.
+
 ## Decisions already made, so they are not relitigated
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
