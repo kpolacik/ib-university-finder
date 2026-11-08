@@ -358,6 +358,74 @@ export function wireCompactHeader(dom, { goHome } = {}) {
   offsets();
 }
 
+// Phones: the header logo hands over to the stuck count row's tile (Leon,
+// 2026-11-08, option C of the handover mockups; the "Phones" comment in the
+// stylesheet has the whole story). Where scroll timelines run, CSS does all
+// the motion; this only measures the two distances its keyframes need, at
+// rest and again whenever the header, a data banner or the row changes size:
+// --logo-travel, the scroll at which the row sticks, and --logo-dock, how much
+// lower the row's tile sits than the header logo. offsetTop ignores
+// transforms, so the moving logo never skews the measurement.
+// Safari before 26 has no scroll timelines. There it runs option B instead,
+// every frame from the same clock (how far the mark above the row has passed
+// the top, d): the logo fades out as the header leaves, then the count slides
+// over and the tile fades in. Opacity and the count's slide only: a logo moved
+// by script lags the native scroll by a frame and wobbles. All three are read
+// from one d, so even a late frame never shows both logos (their ranges do not
+// overlap). With reduced motion the logo and the tile swap in one cut when the
+// row sticks.
+export function wireLogoHandover(dom) {
+  const page = document.body, header = document.querySelector('.hd'), logo = header?.querySelector('.mark');
+  const tile = dom.status?.querySelector('.home-tile'), counts = dom.status ? [...dom.status.querySelectorAll('.count')] : [];
+  if (!logo || !tile || !dom.stuckMark || typeof ResizeObserver !== 'function') return;
+  const phone = matchMedia('(max-width:599.98px)'), reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const docTop = (node) => { let y = 0; for (let n = node; n; n = n.offsetParent) y += n.offsetTop; return y; };
+  const measure = () => {
+    if (!phone.matches || !tile.offsetParent) return;
+    page.style.setProperty('--logo-travel', `${docTop(dom.stuckMark) + dom.stuckMark.offsetHeight}px`);
+    page.style.setProperty('--logo-dock', `${tile.offsetTop - docTop(logo)}px`);
+  };
+  for (const node of [header, dom.banner, dom.status]) if (node) new ResizeObserver(measure).observe(node);
+  measure();
+  const native = typeof CSS !== 'undefined' && CSS.supports?.('timeline-scope: --a') && CSS.supports('animation-timeline: --a');
+  if (native) return;
+
+  document.documentElement.dataset.handover = 'frames';
+  // Smoothstep: at most 1.5 times the average speed, so 3.4 px of slide per px
+  // of scroll; a steeper curve made a slow scroll look like a jump.
+  const ease = (x) => x * x * (3 - 2 * x);
+  const range = (d, from, to) => Math.min(1, Math.max(0, (d - from) / (to - from)));
+  const clear = () => {
+    for (const node of [logo, tile, ...counts]) node.style.removeProperty('opacity'), node.style.removeProperty('visibility'), node.style.removeProperty('transform');
+  };
+  let queued = false;
+  const frame = () => {
+    queued = false;
+    // Compare hides the row: no tile to land in, the logo just scrolls away.
+    if (!phone.matches || !tile.offsetParent) return clear();
+    const d = -dom.stuckMark.getBoundingClientRect().bottom;
+    if (reduce.matches) {
+      // One cut for both: a frame drawn late then still shows only one.
+      clear();
+      logo.style.opacity = d >= 0 ? '0' : '1';
+      tile.style.opacity = d >= 0 ? '1' : '0';
+      tile.style.visibility = d >= 0 ? 'visible' : 'hidden';
+      return;
+    }
+    const out = range(d, -38, -20), slide = ease(range(d, -20, 2)), shown = range(d, -8, 12);
+    logo.style.opacity = String(1 - out);
+    for (const count of counts) count.style.transform = `translateX(${(50 * slide).toFixed(2)}px)`;
+    tile.style.opacity = String(shown);
+    tile.style.visibility = shown > 0 ? 'visible' : 'hidden';
+    tile.style.transform = `scale(${0.85 + 0.15 * shown})`;
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(frame); } };
+  for (const type of ['scroll', 'resize']) addEventListener(type, queue, { passive: true });
+  for (const query of [phone, reduce]) query.addEventListener?.('change', queue);
+  new ResizeObserver(queue).observe(dom.status);
+  frame();
+}
+
 function syncSegments() {
   for (const segment of segments) {
     const selected = segment.group.querySelector('button[aria-pressed=true]');

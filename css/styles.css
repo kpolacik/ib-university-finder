@@ -1882,11 +1882,80 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .filters-btn{left:50px;width:44px}
 }
 /* Phones: the header scrolls away, so the stuck count row gets the same tile
-   first: [IB][count][Filters]. Hidden everywhere else. */
+   first: [IB][count][Filters]. Hidden everywhere else.
+   Leon, iPhone, 2026-11-08: the tile appeared late and pushed the count right
+   on the way down, and on the way up both logos showed for a moment. The tile
+   was display:none until app.js's observer added .is-stuck, and an observer
+   reports a frame or more after the scroll (later on iOS, which scrolls off
+   the page's thread). A reserved slot fixed that but left a 50 px gap before
+   the count at the top; Leon then chose, from mockups, "the logo travels into
+   the row" (option C):
+   - The tile lies over the row's left edge, out of the flow, and the count
+     keeps the same 50 px spare on its right instead, so its box and its line
+     breaks are the same at every scroll position. At the top the count starts
+     at the page margin; in the first 16 px of scroll it glides 50 px right,
+     into that spare, clear of the logo before the row reaches it (Search's
+     44 px ends 50 px down, the row's text starts 6 px into the row).
+   - The header logo holds its spot while the header slides away under it,
+     shrinks from 44 to 36 px (its link stays 44 px) and lands where the row's
+     tile sits; at the moment the row sticks the tile takes over at the same
+     pixel. One clock drives all of it, the 1 px mark above the row, so a late
+     frame can never show both logos. --logo-travel is how far the page
+     scrolls before the row sticks (56 px header + the mark, more under a data
+     banner) and --logo-dock how much lower the row's tile sits than the header
+     logo (8 px when a 320 px Slovak count takes three lines); round2.js
+     measures both.
+   - Reduced motion: nothing glides or shrinks. The count stays one tile in,
+     the header logo scrolls away with the header, and the tile appears when
+     the row sticks, a cut at one scroll position.
+   - Without scroll timelines (Safari before 26) round2.js runs option B from
+     the same mockup frame by frame instead (logo fades, count slides, tile
+     fades in), never a logo moved by script: that wobbles a frame behind.
+   visibility keeps the hidden tile out of reach of taps, Tab and screen
+   readers. The header logo only goes transparent: a tap on the tile moves
+   focus to it before the scroll home, and a hidden link cannot take focus. */
 .home-tile{display:none}
-@media (max-width:599.98px){
- .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
+@media screen and (max-width:599.98px){
+ .status .home-tile{display:flex;align-items:center;justify-content:center;position:absolute;left:var(--gut);top:0;bottom:0;margin-block:auto;width:44px;height:44px;border-radius:10px;text-decoration:none;opacity:0;visibility:hidden}
+ .status .home-tile .mono{transform:scale(.818)}
+ .status .count{margin-right:50px}
+ .page{--logo-travel:57px;--logo-dock:0px}
+ /* The compact header's fade is for 600 px and up; here it would delay the
+   fallback's frame-by-frame opacity. */
+ .hd .mark{transition:none}
+ /* One height in both states, so the list under the row does not hop by 4 to
+   10 px when it sticks: the stuck bar's 6 px padding at the top too (the
+   stuck tile then sits exactly where the header logo was), and the short
+   twin in the full sentence's 44 px box and 20 px lines. */
+ .status{padding-block:6px}
+ .status.is-stuck .cshort{display:flex;align-items:center;min-height:var(--ctl);line-height:20px}
 }
+@supports (timeline-scope:--a) and (animation-timeline:--a){
+ @media screen and (max-width:599.98px){
+  .page{timeline-scope:--stuck}
+  .stuck-mark{view-timeline:--stuck block}
+  :root:not([data-handover=frames]) .hd .mark{animation:logo-travel linear both,logo-off step-end both;animation-timeline:--stuck,--stuck;animation-range:cover calc(100% - var(--logo-travel)) cover 100%,cover calc(100% - 1px) cover 100%}
+  :root:not([data-handover=frames]) .hd .mono{animation:logo-shrink linear both;animation-timeline:--stuck;animation-range:cover calc(100% - 22px) cover 100%}
+  :root:not([data-handover=frames]) .status .home-tile{animation:tile-on step-end both;animation-timeline:--stuck;animation-range:cover calc(100% - 1px) cover 100%}
+  :root:not([data-handover=frames]) .status .count{animation:count-glide linear(0,.93 80%,1) both;animation-timeline:--stuck;animation-range:cover calc(100% - var(--logo-travel)) cover calc(100% - var(--logo-travel) + 16px)}
+  /* Phone Compare hides the count row: no tile to land in, so the logo
+    simply scrolls away with the header. */
+  .page:has(.stream>#compare:not([hidden]),.status[hidden]) :is(.hd .mark,.hd .mono){animation:none}
+ }
+}
+/* Reduced motion turns every animation off (end of this file). The tile's
+   step is a cut, not motion, so it is put back; the count waits one tile in. */
+@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce){
+ .status .count{transform:translateX(50px)}
+ @supports (timeline-scope:--a) and (animation-timeline:--a){
+  :root:not([data-handover=frames]) .status .home-tile{animation:tile-on step-end both !important;animation-timeline:--stuck !important;animation-range:cover calc(100% - 1px) cover 100% !important}
+ }
+}
+@keyframes logo-travel{from{transform:none}to{transform:translateY(calc(var(--logo-travel) + var(--logo-dock)))}}
+@keyframes logo-shrink{from{transform:none}to{transform:scale(.818)}}
+@keyframes logo-off{from{opacity:1}to{opacity:0}}
+@keyframes tile-on{from{opacity:0;visibility:hidden}to{opacity:1;visibility:visible}}
+@keyframes count-glide{from{transform:none}to{transform:translateX(50px)}}
 
 /* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */
 

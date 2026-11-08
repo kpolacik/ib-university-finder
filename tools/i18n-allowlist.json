@@ -978,7 +978,22 @@
       "2d",
       "function",
       "dd-sort",
-      "aria-valuetext"
+      "aria-valuetext",
+      "(max-width:599.98px)",
+      "--logo-dock",
+      "--logo-travel",
+      ".count",
+      ".home-tile",
+      "animation-timeline: --a",
+      "frames",
+      "hidden",
+      "opacity",
+      "scale(",
+      "timeline-scope: --a",
+      "transform",
+      "undefined",
+      "visibility",
+      "visible"
     ],
     "js/saved-state.js": [
       "./filters.js",

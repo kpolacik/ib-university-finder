@@ -259,8 +259,9 @@
 
     <!-- Below 600 px the count line sticks; app.js watches this 1 px mark
          with an IntersectionObserver and adds .is-stuck once it has scrolled
-         away. The full sentence is the only live region; the short twin is
-         aria-hidden. -->
+         away. The stylesheet also uses it as the scroll timeline that hands
+         the logo from the header to the row's tile. The full sentence is the
+         only live region; the short twin is aria-hidden. -->
     <div class="stuck-mark" aria-hidden="true"></div>
     <div class="status">
       <a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"/></svg></span></a>
