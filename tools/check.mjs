@@ -2811,6 +2811,16 @@ equal('pointsShort: null figures explain test, entrance exam or no minimum',
     { parts: [], after: null, unknown: { verdict: 'No IB figure', reason: 'entrance exam', cell: 'Entrance exam' } },
     { parts: [], after: null, unknown: { verdict: 'No minimum published', reason: null, cell: 'Not published' } },
   ]);
+// Verification of PR 1: rows whose admission says "Talent exam", "Online
+// entrance exam" or "Entrance examination" (entrance_exam = yes) fell through
+// to "Not published". The column decides; a row with no exam stays as it was.
+const examWorded = (admission, entranceExam) => ptsShort({ ...fxRow('fx-nothing'), admission, entranceExam }).unknown.cell;
+equal('pointsShort: any entrance-exam wording with entrance_exam=yes says Entrance exam, not Not published',
+  [examWorded(['Talent exam'], 'yes'), examWorded(['Online entrance exam'], 'yes'), examWorded(['Entrance examination'], 'yes'),
+    examWorded(['Portfolio'], 'no'), examWorded(['Portfolio'], null)],
+  ['Entrance exam', 'Entrance exam', 'Entrance exam', 'Not published', 'Not published']);
+check('live rows with entrance_exam=yes and no IB figure never say Not published',
+  live.filter((row) => row.ibPointsMin === null && row.entranceExam === 'yes').every((row) => ptsShort(row).unknown.cell !== 'Not published'));
 check('pointsShort: every live figure matches the corresponding pointsLines number, and unknown is exclusive', live.every((row) => {
   const short = ptsShort(row), lines = pts.pointsLines(row);
   return row.ibPointsMin === null ? short.parts.length === 0 && !!short.unknown

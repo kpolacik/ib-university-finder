@@ -517,7 +517,8 @@
       "Round ",
       "both rounds",
       "included",
-      "unverified"
+      "unverified",
+      "yes"
     ],
     "js/render.js": [
       " m m-",
