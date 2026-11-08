@@ -5693,7 +5693,7 @@ appCheck('real onboarding handlers: clicking through with no answers shows the n
   for(let i=0;i<5;i++)next();
   const d=doneScreen();
   return dialog.open && applied.length===1 && toasts.length===0 && writes.length===1 && writes[0][1]==='completed'
-    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown.' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
+    && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
     && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
 // Was "onboarding completion toast uses the compact Edit action…": the toast is
@@ -7021,13 +7021,17 @@ section('Batch 3 · C');
   // Review of PR 1, 2026-11-07: "match your answers" counted rows outside the
   // student's IB points (HL-Maths-only, can't be compared); the count says "shown".
   equal('B3C1 done screen EN copy', [t('r3_ob_finish'), t('r3_ob_done_count', { count: 1 }), t('r3_ob_done_count', { count: 3 }), t('r3_ob_shown_count', { count: 1 }), t('r3_ob_shown_count', { count: 0 }), t('r3_ob_done_p'), t('r3_ob_done_h_none'), t('r3_ob_done_p_none'), t('r3_ob_faq'), t('r2_show_mine'), t('r2_answers_applied')],
-    ['Finish', '1 programme shown', '3 programmes shown', '1 programme shown.', '0 programmes shown.', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
+    ['Finish', '1 programme shown', '3 programmes shown', '1 programme shown', '0 programmes shown', 'You can change these filters any time in Filters.', "You haven't added any setup answers.", 'Your existing filters still apply. You can change them any time in Filters.', 'Read the FAQ', 'Show my programmes', 'Your answers are now filters']);
   equal('B3C1 done screen SK plurals for 1, 3, 312 and 0 (0 takes "other")',
     [1, 3, 312, 0].flatMap((n) => [sk('r3_ob_done_count', n), sk('r3_ob_shown_count', n)]),
-    ['1 zobrazený program', 'Zobrazený je 1 program.', '3 zobrazené programy', 'Zobrazené sú 3 programy.',
-      '312 zobrazených programov', 'Zobrazených je 312 programov.', '0 zobrazených programov', 'Zobrazených je 0 programov.']);
+    ['1 zobrazený program', 'Zobrazený je 1 program', '3 zobrazené programy', 'Zobrazené sú 3 programy',
+      '312 zobrazených programov', 'Zobrazených je 312 programov', '0 zobrazených programov', 'Zobrazených je 0 programov']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
     ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+  // Verification of PR 1: only the no-answers count ended with a full stop,
+  // so the two done-screen counts read differently.
+  check('done-screen counts never end with a full stop, EN and SK',
+    [UI.en, UI.sk].every((ui) => ['r3_ob_done_count', 'r3_ob_shown_count'].every((key) => Object.values(ui[key]).every((v) => !v.endsWith('.')))));
   check('B3C1 the step 1 FAQ link, its key and its CSS are gone', !('r2_ob_faq' in UI.en) && !('r2_ob_faq' in UI.sk) && !/\.ob-faq\b/.test(cssText) && !read('js/onboarding.js').includes('ob-faq'));
 }
 appCheck('B3C1 step 1 has no FAQ link; Skip on any step never shows the done screen', (h) => {

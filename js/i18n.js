@@ -612,8 +612,8 @@ export const UI = {
       "other": "{count} programmes shown"
     },
     "r3_ob_shown_count": {
-      "one": "{count} programme shown.",
-      "other": "{count} programmes shown."
+      "one": "{count} programme shown",
+      "other": "{count} programmes shown"
     },
     "r3_ob_done_p": "You can change these filters any time in Filters.",
     "r3_ob_done_h_none": "You haven't added any setup answers.",
@@ -1253,9 +1253,9 @@ export const UI = {
       "other": "{count} zobrazených programov"
     },
     "r3_ob_shown_count": {
-      "one": "Zobrazený je {count} program.",
-      "few": "Zobrazené sú {count} programy.",
-      "other": "Zobrazených je {count} programov."
+      "one": "Zobrazený je {count} program",
+      "few": "Zobrazené sú {count} programy",
+      "other": "Zobrazených je {count} programov"
     },
     "r3_ob_done_p": "Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.",
     "r3_ob_done_h_none": "V nastavení nie sú žiadne odpovede.",
