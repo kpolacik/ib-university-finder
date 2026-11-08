@@ -5649,12 +5649,12 @@ appCheck('heading sort cycles include the default order, announced next state an
 // shown, as app.js's callback does; media queries default to desktop.
 // Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
 // closeCompare is counted; phone picks the narrow media query's answer.
-function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
     localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
-  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
   // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
   const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
@@ -6584,7 +6584,7 @@ appCheck('A4 the header Compare button counts the set and is pressed while the v
   run(`${cmpSet(['gone', a])} syncCompareControls();`);
   return get('header-compare-count').textContent === '1';
 });
-appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog, behind a pick-list floating from the bar and while printing; has-tray follows it', ({ run, get, fire, flip600, trayMedia, docBody, ids: [a, b] }) => {
+appCheck('A4 the tray: phones only, from one programme, "Compare n of 4"; hidden at 0, while open, while typing, in a dialog, behind any pick-list open outside the Filters sheet (the bar on a phone on its side, Sort on a portrait phone) and while printing; has-tray follows it', ({ run, get, fire, flip600, trayMedia, docBody, ids: [a, b] }) => {
   // The harness starts with focus on a stand-in text field, which counts as typing.
   stubDocument.activeElement = docBody;
   const tray = get('cmp-tray'), shown = () => !tray.hidden && docBody.classList.contains('has-tray');
@@ -7126,6 +7126,15 @@ for (const [name, opts, answers, key] of [
   const d=doneScreen(), still=['r3_ob_done_p_none','r5_ob_done_p_none_wide'].some((k)=>d?.text.includes(t(k)));
   return !!d && d.text.includes(t(key)) && still === !!opts.filtered && !answers === (d.heading === t('r3_ob_done_h_none'));
 });
+// Verification of PR 1: with only Search on, phones said "Your existing
+// filters still apply … in Filters", but Search is in the header, not Filters.
+for (const [name, phone, key] of [['phone', true, 'r5_ob_done_p_empty'], ['from 600 px', false, 'r5_ob_done_p_none_wide']])
+  appCheck(`the done screen with only Search on: ${name}`, (h) => {
+    const {next,doneScreen}=realSetup(h,{filtered:true,sheetFiltered:false,phone});
+    next(); next(); next(); next(); next();
+    const d=doneScreen(); return !!d && d.text.includes(t(key)) && (phone ? !d.text.includes(t('r3_ob_done_p_none')) : true);
+  });
+check('the app tells setup whether a Filters-sheet filter (not Search) is on', /sheetFiltered: active - \(state\.search\.trim\(\) \? 1 : 0\) > 0/.test(read('js/app.js')));
 appCheck('B3C1 the done screen\'s filters line follows a crossing of 600 px', (h) => {
   const phone = { matches: false, addEventListener(type, listener) { this.change = listener; } };
   const {next,doneScreen}=realSetup(h,{env:{matchMedia:()=>phone}});

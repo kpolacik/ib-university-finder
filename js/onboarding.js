@@ -173,14 +173,16 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   // list from 600 px, which has no Filters button (review of PR 1, 2026-11-07).
   // "Your existing filters still apply" only when a filter is on.
   let doneNote = null;
-  const noteKey = ({ any, filtered }) => {
+  // On phones only the Filters sheet's filters count: Search is not in it.
+  const noteKey = ({ any, filtered, sheetFiltered = filtered }) => {
+    const on = phone.matches ? sheetFiltered : filtered;
     const [narrow, wide] = any ? ['r3_ob_done_p', 'r5_ob_done_p_wide']
-      : filtered ? ['r3_ob_done_p_none', 'r5_ob_done_p_none_wide'] : ['r5_ob_done_p_empty', 'r5_ob_done_p_empty_wide'];
+      : on ? ['r3_ob_done_p_none', 'r5_ob_done_p_none_wide'] : ['r5_ob_done_p_empty', 'r5_ob_done_p_empty_wide'];
     return phone.matches ? narrow : wide;
   };
   // done is true only while the done screen is up.
   const syncDoneNote = () => { if (done && doneNote) doneNote.node.textContent = t(noteKey(doneNote)); };
-  const drawDone = (answers, { shown, summary = [], filtered = false }) => {
+  const drawDone = (answers, { shown, summary = [], filtered = false, sheetFiltered = filtered }) => {
     fill.style.transform = 'scaleX(1)'; progress.hidden = false;
     const any = hasSetupAnswers(answers);
     const section = el('section', 'ob-step on ob-done');
@@ -193,7 +195,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       .replace(/\d+/g, (value) => formatCount(Number(value)));
     // Without answers the count is whatever the page's own filters (search,
     // city…) leave, so it must not claim those rows match anything.
-    doneNote = { node: el('p', ''), any, filtered };
+    doneNote = { node: el('p', ''), any, filtered, sheetFiltered };
     doneNote.node.textContent = t(noteKey(doneNote));
     section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint());
     body.replaceChildren(section); body.scrollTop = 0;

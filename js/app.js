@@ -375,8 +375,12 @@ async function start() {
         fillFields(state); drawChips(); preferencesDirty = true; update();
         // Setup's done screen says how many programmes this leaves, how they
         // stand against the IB points (the count line's own parts) and whether
-        // any filter is on at all.
-        return { shown: currentlyShown, summary: currentSummary.map((part) => part.text), filtered: activeFilterCount(state) > 0 };
+        // any filter is on at all. On phones Search sits in the header, not in
+        // Filters, so there the note counts the sheet's filters only, as the
+        // Filters (n) button does (verification of PR 1).
+        const active = activeFilterCount(state);
+        return { shown: currentlyShown, summary: currentSummary.map((part) => part.text),
+          filtered: active > 0, sheetFiltered: active - (state.search.trim() ? 1 : 0) > 0 };
       },
     });
   } catch (err) {
@@ -818,10 +822,11 @@ function syncCompareEntry() {
 // The tray shows on phones (trayQuery) once a programme is in Compare. It
 // hides while Compare is open, while a field that brings up the on-screen
 // keyboard has focus, while a dialog is open, while a pick-list floats open
-// from the filter bar and while printing. The pick-lists float only where the
-// window is short and wide (a phone on its side); with 390 px of height the
-// tray covered Budget's first field and Sort's list (review of PR 1), and
-// there is no room below them to give the list instead.
+// from outside the Filters sheet and while printing. That is every pick-list
+// in the bar on a short, wide window (a phone on its side), and Sort above the
+// list on a portrait phone; with 390 px of height the tray covered Budget's
+// first field and Sort's list (review of PR 1), and there is no room below
+// them to give the list instead.
 // body.has-tray reserves its height at the end of the page; the height itself
 // comes from the ResizeObserver in wireTray, never read here, since a layout
 // read after the rows are rebuilt costs a full layout of the list (L09).
