@@ -1150,7 +1150,7 @@ check('compact header keeps its full visible height and offsets; translated-head
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
   // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
   // 180 ms up / 140 ms down (still slow on the iPhone, Leon, 2026-11-08).
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 180ms') && text.includes('transition:transform 140ms')
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 150ms') && text.includes('transition:transform 140ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -3815,6 +3815,66 @@ appCheck('actual sheet: background focus redirects inside; handled Escape stays 
   flip600(false); fire(more, 'click'); sheet.close(); advance(0);
   return !locked() && stubDocument.activeElement === more;
 });
+// A flex column avoids WebKit re-laying out every previous block on append.
+check('sheet warm stays hidden and untappable until opened',
+  /\.sheet\.is-warm\{display:flex;flex-direction:column;visibility:hidden;pointer-events:none/.test(css)
+    && /\.sheet\.is-warm\[open\]\{visibility:visible;pointer-events:auto/.test(css));
+check('results use a flex column on screen and block flow in print',
+  /\.results\{[^}]*display:flex;flex-direction:column/.test(css)
+    && /@media print[\s\S]*\.results[^}]*display: ?block/.test(css));
+appCheck('row slices pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
+  run('allRows = live; update();');
+  const count = get('results').children.length;
+  fire(get('f-more'), 'pointerdown'); flushFrame(); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('f-more'), 'click'); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('filter-sheet'), 'transitionend', { propertyName: 'opacity' }); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('filter-sheet'), 'transitionend', { propertyName: 'transform' }); advance(0);
+  return get('results').children.length === run('allRows.length');
+});
+appCheck('paused slices recover on early close, widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
+  for (const action of ['close', 'wide', 'reduce', 'timeout', 'print']) {
+    flip600(false); motionMedia.matches = false;
+    run('closeSheet(); allRows = live; update();'); fire(get('f-more'), 'click');
+    flushFrame(); advance(0);
+    if (get('results').children.length === run('allRows.length')) return false;
+    if (action === 'close') fire(get('sheet-done'), 'click');
+    if (action === 'wide') flip600(true);
+    if (action === 'reduce') { motionMedia.matches = true; for (const fn of motionMedia.listeners) fn(); }
+    if (action === 'timeout') {
+      advance(250);
+      if (get('results').children.length === run('allRows.length')) return false;
+      advance(150);
+    }
+    if (action === 'print') fireWindow('beforeprint');
+    advance(0);
+    if (get('results').children.length !== run('allRows.length')) return false;
+    if (action === 'print') fireWindow('afterprint');
+  }
+  return true;
+});
+appCheck('sheet warm waits until the last row slice and two frames, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
+  run('sheetWarmScheduled = false; allRows = live; update();');
+  const sheet = get('filter-sheet');
+  context.warms = 0; run('const actualWarm = warmSheet; warmSheet = () => { warms++; actualWarm(); };');
+  const before = stubDocument.activeElement;
+  let writes = 0; context.history.replaceState = () => writes++; context.writeSaved = () => writes++;
+  sheet.show = sheet.close = () => { throw Error('warming opened/closed the dialog'); };
+  flushFrame(); if (context.warms) return false;
+  advance(0); if (context.warms || run('pendingRows !== null')) return false;
+  flushFrame(); if (context.warms) return false;
+  flushFrame(); run('scheduleSheetWarm();'); flushFrame(); flushFrame();
+  return sheet.classList.contains('is-warm') && context.warms === 1 && !sheet.open && !writes && stubDocument.activeElement === before
+    && !get('sheet-scrim').classList.contains('is-open');
+});
+appCheck('an early open or widening cancels the pending warm without affecting the sheet', ({ run, get, flushFrame, fire, flip600 }) => {
+  run('scheduleSheetWarm();'); flushFrame(); fire(get('f-more'), 'click'); flushFrame();
+  if (!get('filter-sheet').open || get('filter-sheet').classList.contains('is-warm')) return false;
+  fire(get('sheet-done'), 'click'); flip600(true); run('warmSheet();');
+  return !get('filter-sheet').classList.contains('is-warm') && !get('filter-sheet').open;
+});
 // Each arrow press in the Sort pick-list committed a sort and closed the
 // list, sending focus back to its button after one step.
 appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on the new radio; Enter, Space on the chosen one, and a click close it (regression)', ({ run, get, fire, context }) => {
@@ -4046,13 +4106,13 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
-  // Leon 2026-11-08: still slow on the iPhone; 180 ms up, 140 ms down.
-  '.sheet': 'transition:transform 140ms var(--ease-out),display 140ms allow-discrete',
-  '.sheet[open]': 'transition:transform 180ms var(--ease-out),display 180ms allow-discrete',
+  // First-open follow-up: post-mount layout plus 150 ms up, still 140 ms down.
+  '.sheet': 'transition:transform 140ms var(--ease-out),display 140ms allow-discrete,visibility 140ms',
+  '.sheet[open]': 'transition:transform 150ms var(--ease-out),display 150ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
   '.sheet-scrim': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete',
-  '.sheet-scrim.is-open': 'transition:opacity 180ms var(--ease-out),display 180ms allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity 150ms var(--ease-out),display 150ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {

@@ -603,6 +603,36 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Phone Filters first open (2026-11-08, local `fu-sheet2`):** The results
+list is a flex column so WebKit does not revisit every previous row on each
+append. Row slices pause from finger-down through the opening slide, with a
+400 ms fallback; closing, widening and reduced motion release them, and print
+still flushes all rows. After the last slice and two frames, the closed phone
+sheet prepares its layout while hidden and untappable, without opening or
+focusing it. There is no one-second timer or dependency on Safari idle callbacks.
+Opening is 150 ms; closing stays 140 ms. Setup is unchanged.
+
+Local WebKit 26 measurements at 390 x 844 (three fresh contexts per delay)
+put first-frame medians at 72/93/98 ms for taps 0.5/1/2 seconds after the
+first rows paint; fully shown at 130/120/161 ms. A settled first open is
+91/159 ms (first frame/fully shown), versus 138/191 ms on `42fee75`.
+One early first-frame sample was 133 ms, above the roughly 120 ms target.
+Chrome 4x also takes longer to finish mounting under repeated early taps:
+at the 0.5-second starting delay, 3,106 -> 3,558 ms; at one second,
+2,869 -> 3,483 ms, with a slower second open in that busy window.
+Separate paired no-tap runs put median mounting at 3,131 -> 2,090 ms in
+WebKit and 3,353 -> 3,321 ms in Chrome; first-row paint is 350 -> 343 ms
+and 823 -> 823 ms respectively. These are local headless measurements,
+not real-iPhone acceptance or an L09 result. The remaining timing tradeoff
+needs review before calling the performance task complete. A separate settled
+WebKit Setup-close probe still took 541 ms to its next painted-frame proxy
+(744 ms on the baseline, one sample each); Setup remains modal.
+
+Focused checks: `tools/smoke.mjs --sheet-only` covers first frames, focus,
+scroll lock, reduced motion and sheet printing; `--sheet-list-only` covers
+expanded rows, the wide pane, keyboard scroll targets, list accessibility,
+Safari-model row drawing and print. The full smoke suite was not run.
+
 **Compare and header, round 2 (2026-11-06, local `compare-header-r2`):**
 Leon's second look. On phones, while Compare is open, the count row (an IB
 tile and Filters over an empty gap, since the count hides in Compare) is
@@ -690,7 +720,7 @@ heights of 500 px or less. Column headings sit below its visible height;
 the pane starts 12 px below it and its maximum height allows for the header.
 Skip and arrow targets clear the header plus column headings plus 8 px;
 below 600 px they clear the sticky count bar plus 8 px (A07). The build
-matches the 85dvh phone sheet (now 180 ms open / 140 ms close), 180 ms help reveal, right-edge
+matches the 85dvh phone sheet (now 150 ms open / 140 ms close), 180 ms help reveal, right-edge
 popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
 page overflow. The phone maths control uses the mockup's native select.
 Onboarding headings return to the top of each step after scrolling the real
