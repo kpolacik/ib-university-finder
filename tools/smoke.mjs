@@ -593,7 +593,7 @@ async function interactions(page, at, want) {
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
       const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
-      assert(opening === '0.15s, 0.15s / 0.15s, 0.15s', `open sheet transitions ${opening}`);
+      assert(opening === '0.28s, 0.28s / 0.28s, 0.28s', `open sheet transitions ${opening}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
