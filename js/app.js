@@ -210,6 +210,11 @@ let appliedBar = null;
 // CSS can clear focus (hide the control) before the change callback runs.
 let filterFocus = null;
 let returnFocusOnClose = true;
+// Whether the last input was a key, for the sheet's scripted focus. iOS never
+// focuses a tapped button, so the heading focused on open matched
+// :focus-visible, and the Filters button inherited it on close: a blue ring
+// after a tap (Leon, 2026-11-08). The ring now follows the input.
+let keyboardInput = false;
 let sentinelAbove = false;
 // L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
 // almost all of them are off screen. update() now draws enough rows to fill the
@@ -1853,6 +1858,8 @@ function afterPrint() {
 // The phone sheet: a native modal dialog, so the focus trap, Escape, the inert
 // page and the scrim come from the browser.
 function wireSheet() {
+  document.addEventListener('keydown', () => { keyboardInput = true; }, true);
+  document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
   dom.more.addEventListener('click', openSheet);
   dom.sheetDone.addEventListener('click', () => closeSheet());
   // Filters apply live, so "Show N programmes" only closes the sheet.
@@ -1871,7 +1878,7 @@ function wireSheet() {
     if (dom.sheet.open) return;
     dom.more.setAttribute('aria-expanded', 'false');
     // iOS does not focus a tapped button, so the browser's own return can miss.
-    if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus();
+    if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus({ focusVisible: keyboardInput });
     returnFocusOnClose = true;
   });
 }
@@ -1881,7 +1888,11 @@ function openSheet() {
   returnFocusOnClose = true;
   dom.sheet.showModal();
   dom.more.setAttribute('aria-expanded', 'true');
-  dom.sheetHeading.focus();
+  // showModal() has already focused the heading, its first focusable element,
+  // with the browser's own guess at a ring, and focusing a focused element
+  // changes nothing, so it lets go first.
+  if (document.activeElement === dom.sheetHeading) dom.sheetHeading.blur();
+  dom.sheetHeading.focus({ focusVisible: keyboardInput });
 }
 
 // returnFocus false: widening or total failure, where Filters is hidden.

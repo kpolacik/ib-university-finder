@@ -110,6 +110,7 @@ export function wireRound2(dom) {
     };
     new ResizeObserver(position).observe(summary);
     window.addEventListener('resize', position);
+    holdDropdownClose(d, () => dom.sheet.contains(d));
     d.addEventListener('toggle', () => {
       summary.setAttribute('aria-expanded', String(d.open));
       position();
@@ -161,11 +162,53 @@ export function wireRound2(dom) {
       event.preventDefault(); dom.search.focus();
     }
     if (event.key !== 'Escape' || document.getElementById('onboarding')?.open) return;
-    const panel = document.querySelector('.dropdown[open],.ml-pop[open]');
+    // A list fading shut keeps [open] for 150 ms; it must not swallow the
+    // next Escape (holdDropdownClose).
+    const panel = document.querySelector('.dropdown[open]:not(.closing),.ml-pop[open]');
     if (panel) {
       event.preventDefault(); event.stopImmediatePropagation(); panel.open = false; panel.querySelector('summary').focus();
     } else if (help) { event.preventDefault(); event.stopImmediatePropagation(); closeHelp(); }
   }, true);
+}
+
+// iPhone (Leon, 2026-11-08): a pick-list in the bar, Sort above the list too,
+// faded in but snapped shut. A closed <details> hides its content at once.
+// Chrome held it for a ::details-content content-visibility transition, but
+// Safari does not transition content-visibility (Playwright's WebKit 26 hides
+// it at once), so the fade never showed there. Closing now keeps [open] for
+// the fade under .closing, while d.open already reads false: every caller
+// (Escape, an outside click, Tab out, one-at-a-time, Sort's pick) sees a
+// closed list at once, and the toggle event fires when the fade ends. Not in
+// the phone sheet, where the lists are inline rows, nor under reduced motion.
+export const DROPDOWN_CLOSE_MS = 150;
+export function holdDropdownClose(d, inSheet) {
+  if (typeof HTMLDetailsElement !== 'function' || !(d instanceof HTMLDetailsElement)) return;
+  const native = Object.getOwnPropertyDescriptor(HTMLDetailsElement.prototype, 'open');
+  let timer = 0;
+  const stop = () => { clearTimeout(timer); timer = 0; d.classList.remove('closing'); };
+  Object.defineProperty(d, 'open', {
+    configurable: true,
+    get() { return !timer && native.get.call(d); },
+    set(value) {
+      value = Boolean(value);
+      if (timer) {
+        if (!value) return;
+        // Reopened mid-fade: [open] never went, so no toggle event would run
+        // the open handlers (one at a time, aria-expanded).
+        stop(); d.dispatchEvent(new Event('toggle')); return;
+      }
+      if (value || !native.get.call(d) || inSheet() || matchMedia('(prefers-reduced-motion: reduce)').matches) { native.set.call(d, value); return; }
+      d.classList.add('closing');
+      d.querySelector('summary').setAttribute('aria-expanded', 'false');
+      timer = setTimeout(() => { stop(); native.set.call(d, false); }, DROPDOWN_CLOSE_MS);
+    },
+  });
+  // A tap or Enter on the button of an open list would close it natively, at once.
+  d.querySelector('summary').addEventListener('click', (event) => {
+    if (!native.get.call(d)) return;
+    event.preventDefault();
+    d.open = !d.open;
+  });
 }
 
 export function syncSlider(slider, value) {

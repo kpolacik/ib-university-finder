@@ -1143,8 +1143,9 @@ check('compact header keeps its full visible height and offsets; translated-head
     && !fullHeight(css + '.page.compact{--header-visible:44px}');
 })());
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
-  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06).
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 240ms') && text.includes('transition:transform 200ms')
+  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
+  // 180 ms up / 140 ms down (still slow on the iPhone, Leon, 2026-11-08).
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 180ms') && text.includes('transition:transform 140ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -3741,6 +3742,30 @@ appCheck('actual sheet: Filters opens it on the heading; Done, Show N, Escape an
   fire(get('f-tuition'), 'click', { clientX: 0, clientY: 0 }); advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true';
 });
+// iPhone (Leon, 2026-11-08): after a tap the Filters button showed a focus
+// ring. iOS never focuses a tapped button, so the scripted heading focus
+// matched :focus-visible and the close's focus return inherited it. The ring
+// now follows the last input: none after a pointer, shown after a key.
+appCheck('actual sheet: after a tap neither the heading nor Filters gets a focus ring; after a key both do', ({ get, fire, advance, docBody }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), heading = get('sheet-h'), done = get('sheet-done');
+  const ring = (node) => stubDocument.activeElement === node && stubDocument.focusOptions?.focusVisible;
+  // As in a browser: showModal() focuses the heading itself (its first
+  // focusable element) with the browser's own ring, and focusing a focused
+  // element changes nothing.
+  const showModal = sheet.showModal;
+  sheet.showModal = function () { showModal.call(this); stubDocument.activeElement = heading; stubDocument.focusOptions = { focusVisible: true }; };
+  heading.focus = function (options) { if (stubDocument.activeElement !== heading) ChromeNode.prototype.focus.call(this, options); };
+  heading.blur = function () { if (stubDocument.activeElement === heading) stubDocument.activeElement = docBody; };
+  stubDocument.activeElement = docBody;
+  fire(more, 'pointerdown'); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== false) return false;
+  fire(done, 'pointerdown'); fire(done, 'click'); advance(0);
+  if (sheet.open || ring(more) !== false) return false;
+  fire(more, 'keydown', { key: 'Enter' }); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== true) return false;
+  fire(heading, 'keydown', { key: 'Escape' }); if (fire(sheet, 'cancel', { bubbles: false })) sheet.close(); advance(0);
+  return !sheet.open && ring(more) === true;
+});
 appCheck('actual sheet: widening closes it without a focus return; a queued close after a quick reopen neither steals focus nor clears aria-expanded', ({ get, fire, flip600, advance }) => {
   const sheet = get('filter-sheet'), more = get('f-more'), fee = get('f-tuition');
   fire(more, 'click'); fee.focus(); fire(fee, 'focusin'); flip600(true); advance(0);
@@ -3956,8 +3981,9 @@ const motionAllowed = {
   'dialog.ob::backdrop': 'transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete',
   '.ob-bar i': 'transition:transform 360ms var(--ease-out)',
   '.ob .chip': 'transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)',
-  '.dropdown::details-content': 'transition:content-visibility 250ms allow-discrete',
   '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
+  // Leon 2026-11-08: the bar's lists fade shut in Safari too (round2.js holds [open]).
+  '.dropdown.closing>.dropdown-panel': 'transition:transform 150ms var(--ease-out),opacity 150ms var(--ease-out)',
   '.switch input::after': 'transition:transform 260ms var(--spring-snappy)',
   'input[type=range]::-webkit-slider-thumb': 'transition:transform 160ms var(--ease-out)',
   '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
@@ -3978,12 +4004,13 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
-  '.sheet': 'transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]': 'transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  // Leon 2026-11-08: still slow on the iPhone; 180 ms up, 140 ms down.
+  '.sheet': 'transition:transform 140ms var(--ease-out),display 140ms allow-discrete,overlay 140ms allow-discrete',
+  '.sheet[open]': 'transition:transform 180ms var(--ease-out),display 180ms allow-discrete,overlay 180ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet::backdrop': 'transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]::backdrop': 'transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  '.sheet::backdrop': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete,overlay 140ms allow-discrete',
+  '.sheet[open]::backdrop': 'transition:opacity 180ms var(--ease-out),display 180ms allow-discrete,overlay 180ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -5777,9 +5804,12 @@ check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px,
   && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules)
   && cssRules.includes('#budget-value:empty{display:none}'));
 section('Review round 2 regressions');
+// The bar's lists no longer hold their content with a ::details-content
+// transition (Safari ignored it; round2.js holds [open] while closing), so
+// nothing delays the content on opening either.
 check('the facet panel is not still hidden when its toggle event focuses the search',
-  cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
-  && cssRules.includes('.dropdown[open]::details-content{transition:none}'));
+  !/(?:^|\})\s*\.dropdown(?:\[open\])?::details-content\{[^}]*transition:(?!none)/.test(cssRules)
+  && /\.sheet-b \.dropdown\[open\]::details-content\{height:auto;transition:height/.test(cssRules));
 check('radios never get a blank value from a panel Clear; the select stays the source of truth',
   read('js/round2.js').includes("input:not([type=range],[type=radio]),select") && read('js/round2.js').includes('input.checked = input.value === select.value'));
 check('one wording for a verdict: rows, legend and status all say "V rámci tvojich IB bodov"', (()=>{
@@ -6967,6 +6997,52 @@ check('B3B2 the back chevron shows only in the list view, pointing left; the tra
     // The old quiet-text Clear rules are gone (they made it look like an empty cell).
     && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
 })());
+// iPhone (Leon, 2026-11-08): the bar's pick-lists (Sort too) faded in but
+// snapped shut, because Safari ignores a ::details-content content-visibility
+// transition. holdDropdownClose keeps [open] for the fade under .closing while
+// .open already reads false; a tap on the button mid-fade reopens it.
+{
+  class FakeDetails {
+    constructor() {
+      this.attr = true; this.classes = new Set(); this.events = [];
+      const summary = this.summary = { aria: 'true', listeners: [], setAttribute: (name, value) => { summary.aria = value; }, addEventListener: (type, fn) => summary.listeners.push(fn) };
+      this.classList = { add: (c) => this.classes.add(c), remove: (c) => this.classes.delete(c) };
+    }
+    get open() { return this.attr; }
+    set open(value) { if (this.attr !== Boolean(value)) this.events.push('native'); this.attr = Boolean(value); }
+    querySelector() { return this.summary; }
+    dispatchEvent(event) { this.events.push(event.type); }
+  }
+  let reduced = false;
+  const globals = { HTMLDetailsElement: FakeDetails, matchMedia: () => ({ matches: reduced }) };
+  const make = (inSheet = false) => withGlobals(globals, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => inSheet); return d; });
+  const set = (d, value) => withGlobals(globals, () => { d.open = value; });
+  const tap = (d) => withGlobals(globals, () => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; d.summary.listeners.forEach((fn) => fn(event)); return event.prevented; });
+  const fade = () => new Promise((ok) => setTimeout(ok, (realRound2.DROPDOWN_CLOSE_MS ?? 0) + 40));
+  const state = (d) => ({ reads: d.open, attr: d.attr, closing: d.classes.has('closing'), aria: d.summary.aria, events: d.events.join() });
+  const closing = make(); set(closing, false); const during = state(closing); await fade(); const after = state(closing);
+  check('bar pick-list: closing keeps [open] under .closing for the fade, reads closed at once, and closes for real after it',
+    realRound2.DROPDOWN_CLOSE_MS >= 120 && realRound2.DROPDOWN_CLOSE_MS <= 150
+      && JSON.stringify(during) === JSON.stringify({ reads: false, attr: true, closing: true, aria: 'false', events: '' })
+      && JSON.stringify(after) === JSON.stringify({ reads: false, attr: false, closing: false, aria: 'false', events: 'native' }),
+    JSON.stringify({ during, after }));
+  const back = make(); const tapClosed = tap(back); const midFade = state(back); const tapOpened = tap(back); const reopened = state(back); await fade();
+  check('bar pick-list: a tap on the open button fades it; a second tap mid-fade reopens it with a toggle event, and it stays open',
+    tapClosed && midFade.closing && !midFade.reads && tapOpened && JSON.stringify(reopened) === JSON.stringify(state(back))
+      && reopened.reads && reopened.attr && !reopened.closing && reopened.events === 'toggle',
+    JSON.stringify({ midFade, reopened, now: state(back) }));
+  const sheetList = make(true); set(sheetList, false); const inSheet = state(sheetList);
+  reduced = true; const still = make(); set(still, false); const reducedNow = state(still); reduced = false;
+  const plain = withGlobals({ matchMedia: () => ({ matches: false }) }, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => false); d.open = false; return d.attr; });
+  check('bar pick-list: in the phone sheet, under reduced motion, and without a real <details> it closes at once',
+    !inSheet.attr && !inSheet.closing && !reducedNow.attr && !reducedNow.closing && plain === false, JSON.stringify({ inSheet, reducedNow, plain }));
+  const round2Src = read('js/round2.js');
+  check('bar pick-list: every dropdown is wired to fade shut, Escape skips a fading list, and the fading panel is transparent and takes no taps',
+    /holdDropdownClose\(d, \(\) => dom\.sheet\.contains\(d\)\)/.test(round2Src)
+      && round2Src.includes("document.querySelector('.dropdown[open]:not(.closing),.ml-pop[open]')")
+      && /\.dropdown\.closing>\.dropdown-panel\{transform:scale\(\.97\);opacity:0;pointer-events:none;transition:transform 150ms/.test(cssRules)
+      && cssRules.includes('.dropdown.closing>summary .dd-chev{transform:none}'));
+}
 // B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
 // turned an empty list view straight off. The header button is wired in
 // round2.js, which the harness stubs, so the real wireRound2 runs here.

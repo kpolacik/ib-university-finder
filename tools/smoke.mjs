@@ -553,9 +553,10 @@ async function interactions(page, at, want) {
   if (phone) {
     // 2026-11-06: list-item rows that content-visibility had never drawn made
     // showModal() stall ~500 ms (4x CPU) before the sheet moved. Rows are
-    // block and still list items to assistive tech; the sheet takes 240 ms up
-    // and 200 ms down, and none at all with reduced motion.
-    await check(at, 'A10', 'rows are display:block list items; the sheet takes 200 ms to close, none with reduced motion', async () => {
+    // block and still list items to assistive tech; the sheet takes 180 ms up
+    // and 140 ms down (was 240/200, still slow on the iPhone, 2026-11-08), and
+    // none at all with reduced motion.
+    await check(at, 'A10', 'rows are display:block list items; the sheet takes 140 ms to close, none with reduced motion', async () => {
       const row = await page.ev(`getComputedStyle(document.querySelector('#results>li.item')).display`);
       assert(row === 'block', `a result row is display:${row}, expected block`);
       const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>li.item')` });
@@ -563,7 +564,7 @@ async function interactions(page, at, want) {
       assert(nodes[0]?.role?.value === 'listitem', `a result row's role is ${nodes[0]?.role?.value}, expected listitem`);
       const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(s, '::backdrop').transitionDuration; })()`;
       const closed = await page.ev(times);
-      assert(closed === '0.2s, 0.2s, 0.2s / 0.16s, 0.2s, 0.2s', `closed sheet transitions ${closed}`);
+      assert(closed === '0.14s, 0.14s, 0.14s / 0.14s, 0.14s, 0.14s', `closed sheet transitions ${closed}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(times);
@@ -581,7 +582,7 @@ async function interactions(page, at, want) {
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
       const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
-      assert(opening === '0.24s, 0.24s, 0.24s / 0.2s, 0.24s, 0.24s', `open sheet transitions ${opening}`);
+      assert(opening === '0.18s, 0.18s, 0.18s / 0.18s, 0.18s, 0.18s', `open sheet transitions ${opening}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
@@ -3981,6 +3982,85 @@ async function runCssA11yFixes(base) {
   }
 }
 
+// iPhone (Leon, 2026-11-08). 1. The bar's pick-lists, Sort above the list
+// too, faded in but snapped shut: Safari ignores the ::details-content
+// content-visibility transition that held a closing list in Chrome. Here that
+// transition is switched off to behave like Safari, and the list must still
+// fade for about 150 ms, take no taps while it does, and keep Escape's focus
+// return. 2. The Filters sheet opens in 180 ms and closes in 140 ms. 3. After
+// a tap, Filters showed a focus ring: iOS never focuses a tapped button, so the
+// scripted heading focus matched :focus-visible and the focus return inherited
+// it. Taps here are made to not focus their button, as on iOS.
+async function runPhoneMotion(base) {
+  watchdog.refresh();
+  const ready = `({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`;
+  const page = await openPage(`${base}?ui=en`, 390, 844);
+  try {
+    await page.waitFor(ready, 15000, 'page');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    await check(390, 'PMO sort fade', 'Sort fades shut in about 150 ms when Safari would snap it, reads closed at once, takes no taps meanwhile; a tap mid-fade reopens it', async () => {
+      await page.ev(`document.head.insertAdjacentHTML('beforeend','<style id="like-safari">::details-content{transition:none!important}</style>')`);
+      const settled = `(()=>{const d=document.querySelector('#dd-sort');return {ok:d.open&&!d.querySelector('.dropdown-panel').getAnimations().some((a)=>a.playState==='running'),why:'not open'}})()`;
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      // Sampled from inside the page: two frames after the closing tap, and
+      // when the toggle event finally reports it closed.
+      await page.ev(`(()=>{const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');window.__fade=null;
+        s.addEventListener('click',()=>{const t0=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=p.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
+          window.__fade={reads:d.open,attr:d.hasAttribute('open'),shown:p.checkVisibility(),opacity:Number(getComputedStyle(p).opacity),hitPanel:!!hit&&p.contains(hit),aria:s.getAttribute('aria-expanded')};
+          d.addEventListener('toggle',()=>{window.__fade.toggle=Math.round(performance.now()-t0);window.__fade.after=d.open||d.hasAttribute('open')},{once:true});}));},{once:true});})()`);
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort again');
+      const m = await page.waitFor(`(()=>{const f=window.__fade;return {ok:!!f&&f.toggle!==undefined,why:JSON.stringify(f),...f}})()`, 3000, 'the fade to end');
+      assert(m.reads === false && m.attr && m.shown && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
+      assert(m.toggle >= 120 && m.toggle <= 400 && m.after === false, `closed after ${m.toggle} ms: ${JSON.stringify(m)}`);
+      // A second tap during the fade brings the list back, open and settled.
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      await page.ev(`document.querySelector('#dd-sort>summary').click();document.querySelector('#dd-sort>summary').click()`);
+      await page.ev('new Promise((r)=>setTimeout(r,400))');
+      const back = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,attr:d.hasAttribute('open'),closing:d.classList.contains('closing'),aria:d.querySelector('summary').getAttribute('aria-expanded'),opacity:getComputedStyle(d.querySelector('.dropdown-panel')).opacity}})()`);
+      assert(back.open && back.attr && !back.closing && back.aria === 'true' && back.opacity === '1', `reopened mid-fade: ${JSON.stringify(back)}`);
+      await page.key('Escape', 'Escape', 27);
+      const esc = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,focus:document.activeElement===d.querySelector('summary')}})()`);
+      assert(!esc.open && esc.focus, `Escape: ${JSON.stringify(esc)}`);
+      await page.waitFor(`({ok:!document.querySelector('#dd-sort').hasAttribute('open'),why:'still open'})`, 2000, 'Sort to close');
+      await page.ev(`document.querySelector('#like-safari').remove()`);
+    });
+    await check(390, 'PMO sheet time', 'the Filters sheet slides up in 180 ms and down in 140 ms', async () => {
+      const times = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),c=getComputedStyle(s);const closed=c.transitionDuration;s.showModal();const open=getComputedStyle(s).transitionDuration;s.close();return {closed,open}})()`);
+      assert(times.closed.startsWith('0.14s') && times.open.startsWith('0.18s'), JSON.stringify(times));
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().length,why:'closing'})`, 3000, 'the sheet to settle');
+    });
+    await check(390, 'PMO no ring', 'after a tap Filters and the sheet heading show no focus ring; after a key they do', async () => {
+      await page.ev(`for(const id of ['f-more','sheet-done'])document.getElementById(id).addEventListener('mousedown',(e)=>e.preventDefault())`);
+      const ring = (id) => `(()=>{const n=document.getElementById('${id}');return {focused:document.activeElement===n,ring:n.matches(':focus-visible'),outline:getComputedStyle(n).outlineStyle}})()`;
+      // Browsers guess a scripted focus's ring from how focus last moved. On
+      // iOS a tap never moves it, so start from a key-moved focus, as there.
+      await page.ev(`document.querySelector('#f-search').focus()`);
+      await page.key('Tab', 'Tab', 9);
+      await page.ev('document.activeElement?.blur()');
+      await page.click(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet');
+      const heading = await page.ev(ring('sheet-h'));
+      await page.click(`document.querySelector('#sheet-done')`, 'Done');
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const tapped = await page.ev(ring('f-more'));
+      assert(heading.focused && !heading.ring && tapped.focused && !tapped.ring && tapped.outline === 'none', JSON.stringify({ heading, tapped }));
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet from Enter');
+      const keyHeading = await page.ev(ring('sheet-h'));
+      await page.key('Escape', 'Escape', 27);
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const keyed = await page.ev(ring('f-more'));
+      assert(keyHeading.ring && keyed.focused && keyed.ring && keyed.outline !== 'none', JSON.stringify({ keyHeading, keyed }));
+    });
+    assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+  } finally { await page.close(); }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4016,7 +4096,8 @@ async function main() {
     await runPrintFixes(base);
     await runCssA11yFixes(base);
     await runSetupCompareReview(base);
-    await runPhoneFixes(base); }
+    await runPhoneFixes(base);
+    await runPhoneMotion(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

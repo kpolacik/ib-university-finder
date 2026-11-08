@@ -1118,6 +1118,31 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   and reduced motion is still instant. Never give `.item` another display
   value. `check.mjs` and smoke A10 guard this.
 
+- **Three iPhone motion problems (2026-11-08).**
+  - The bar's pick-lists, Sort included, faded in but snapped shut. Their
+    close relied on a `::details-content` transition, which Safari ignores.
+    `holdDropdownClose` in `js/round2.js` now keeps `[open]` for a 150 ms
+    fade under `.closing`. During the fade `.open` already reads false, and
+    the fading panel takes no taps. The lists inside the phone sheet still
+    close at once.
+  - The Filters sheet now takes 180 ms to open and 140 ms to close. In
+    Chrome at 4× slowdown, the time from tap to fully shown went from 460 to
+    341 ms, and to fully hidden from 406 to 292 ms. **Safari is still slow, and
+    the length of the slide is not the cause.** In WebKit (Playwright's
+    WebKit 26, on a Mac with no slowdown), each `showModal()` and `close()` blocks
+    for about 500 ms. The browser makes the whole page inert, so it restyles all
+    116,000 elements in the 2,915 rows. Unlike Chrome, WebKit does not skip
+    rows that `content-visibility` has not drawn. A non-modal `show()` takes
+    about 30 ms. No CSS fix was found. Fixing it needs a decision: a
+    non-modal sheet (own focus trap, Escape, scrim and `aria-modal`) or fewer
+    rows in the page.
+  - After a tap, Filters showed a focus ring. iOS never focuses a tapped
+    button, so `showModal()`'s own focus of the heading counted as keyboard
+    focus, and the focus return after closing inherited the ring. Both
+    focus calls now pass `focusVisible`, true only when the last input was a
+    key.
+  `check.mjs` and smoke PMO guard all three.
+
 ## Decisions already made, so they are not relitigated
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,

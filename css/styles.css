@@ -452,12 +452,13 @@ svg:not(.sprite) {
    the end, so a closing sheet keeps its place on top until it is gone. A
    browser without @starting-style or allow-discrete just opens and closes.
    Leon 2026-11-06: 240 ms up, 200 ms down (was 320 ms both ways, which felt
-   sluggish). A transition uses the timing of the state it goes to, so the
-   closed rules carry the closing times and the [open] rules the opening ones. */
-.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
-.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
-.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete}
-.sheet[open]::backdrop{opacity:1;transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete}
+   sluggish); 2026-11-08 still slow on the iPhone, so 180 ms up, 140 ms down.
+   A transition uses the timing of the state it goes to, so the closed rules
+   carry the closing times and the [open] rules the opening ones. */
+.sheet{position:fixed;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 140ms var(--ease-out),display 140ms allow-discrete,overlay 140ms allow-discrete}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 180ms var(--ease-out),display 180ms allow-discrete,overlay 180ms allow-discrete}
+.sheet::backdrop{background:var(--scrim);opacity:0;transition:opacity 140ms var(--ease-out),display 140ms allow-discrete,overlay 140ms allow-discrete}
+.sheet[open]::backdrop{opacity:1;transition:opacity 180ms var(--ease-out),display 180ms allow-discrete,overlay 180ms allow-discrete}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet[open]::backdrop{opacity:0}}
 html:has(.sheet[open]){overflow:hidden}
 .sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
@@ -1172,15 +1173,17 @@ body.compact .filters-btn{opacity:1;visibility:visible;transform:none}
 .toast.out{animation:toast-out 160ms ease-in forwards}
 @keyframes toast-out{to{opacity:0;transform:translateY(6px)}}
 @keyframes toast-in{from{opacity:0;transform:translateY(10px) scale(.98)}}
-.dropdown::details-content{transition:content-visibility 250ms allow-discrete}
-/* Only closing waits for the panel's fade. Delayed on opening too, the content was
-   still hidden when the toggle event fired, so focusing the facet search silently
-   did nothing (review round 2). */
-.dropdown[open]::details-content{transition:none}
 .dropdown>.dropdown-panel{transform-origin:top left;transform:scale(.97);opacity:0;transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)}
 .dropdown[open]>.dropdown-panel{transform:none;opacity:1}
 .dropdown>.dropdown-panel.right{transform-origin:top right}
 @starting-style{.dropdown[open]>.dropdown-panel{transform:scale(.97);opacity:0}}
+/* Closing: round2.js keeps [open] for 150 ms under .closing so the panel can
+   fade in every browser. It was a ::details-content content-visibility
+   transition, which Safari ignores, so on the iPhone the list snapped shut
+   (Leon, 2026-11-08). The fading panel takes no taps, and the chevron turns
+   back with it. */
+.dropdown.closing>.dropdown-panel{transform:scale(.97);opacity:0;pointer-events:none;transition:transform 150ms var(--ease-out),opacity 150ms var(--ease-out)}
+.dropdown.closing>summary .dd-chev{transform:none}
 @media (min-width: 600px){
  .cols{top:var(--header-visible);border-bottom-color:var(--hairline)}
  #results,#results :is(li,a,button){scroll-margin-top:calc(var(--header-visible) + var(--columns-height) + 8px)}
