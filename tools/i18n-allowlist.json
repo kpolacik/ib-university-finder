@@ -282,6 +282,8 @@
       "sheet-done",
       "sheet-h",
       "sheet-open",
+      "is-warm",
+      "transform",
       "sheet-scrim",
       "sheet-show",
       "shortlist-bar",

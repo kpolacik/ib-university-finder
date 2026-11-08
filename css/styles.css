@@ -445,14 +445,21 @@ svg:not(.sprite) {
 
 /* The sheet uses show(), not the top layer: making 2,915 rows inert stalls
    Safari. Its own scrim and stacking sit above the header, tray and toasts.
-   Only [open] renders the dialog. Discrete display keeps the slide/fade on
+   Only [open] is visible; after mounting, prepare its closed layout.
+   Discrete display keeps the slide/fade on
    close; reduced motion is instant, and from 600 px neither transitions.
-   Open 180 ms / close 140 ms (Leon, 2026-11-08). */
-.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 140ms var(--ease-out),display 140ms allow-discrete}
-.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 180ms var(--ease-out),display 180ms allow-discrete}
+   Open 150 ms / close 140 ms (Leon, 2026-11-08). */
+.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 140ms var(--ease-out),display 140ms allow-discrete,visibility 140ms}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 150ms var(--ease-out),display 150ms allow-discrete}
 .sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity 140ms var(--ease-out),display 140ms allow-discrete}
-.sheet-scrim.is-open{display:block;opacity:1;transition:opacity 180ms var(--ease-out),display 180ms allow-discrete}
+.sheet-scrim.is-open{display:block;opacity:1;transition:opacity 150ms var(--ease-out),display 150ms allow-discrete}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet-scrim.is-open{opacity:0}}
+/* After mounting, prepare layout without opening the dialog or exposing its controls.
+   Visibility waits for the closing slide; pointer events stop immediately. */
+@media (max-width:599px){
+  .sheet.is-warm{display:flex;flex-direction:column;visibility:hidden;pointer-events:none}
+  .sheet.is-warm[open]{visibility:visible;pointer-events:auto}
+}
 html.sheet-open{overflow:hidden}
 .sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
 .sheet-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
@@ -621,7 +628,8 @@ html.sheet-open{overflow:hidden}
    right of the title, under sort headings, only once the LIST is at least
    900 px wide, whether or not the pane is open. Below that the facts stack and
    the Sort select replaces the headings, so exactly one sort control shows. */
-.results{list-style:none;margin:0;padding:0}
+/* Flex avoids WebKit walking every preceding row on each mount slice. */
+.results{display:flex;flex-direction:column;list-style:none;margin:0;padding:0}
 .row :where(h3,p){margin:0}
 .listp{background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);container-type:inline-size}
 .cols{display:none}
@@ -2082,7 +2090,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   .hd, .toasts, .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
   .cmp-tray, #header-compare, .cmpi, .cmpb, .cmp-acts, .cmp-nav,
   .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
-  .sheet, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
+  .sheet, .sheet.is-warm, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
 
   .shell { display: block; }
   .split{display:block}

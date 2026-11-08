@@ -266,6 +266,8 @@ const PARK_ROWS = 200;
 // (49,901 px came back as 7,553). So the first draw after such a visit draws
 // every row, as before L09. A fresh visit starts at the top and needs no more.
 let firstDraw = true;
+let sheetWarmScheduled = false;
+let sheetSlideTimer;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
@@ -346,7 +348,7 @@ async function start() {
   wideQuery.addEventListener('change', crossWide);
   document.addEventListener('focusin', rememberFocus);
   document.addEventListener('focusout', forgetFocus);
-  motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
+  motionQuery.addEventListener('change', () => { if (motionQuery.matches) { settleSlots(); resumeSheetRows(); } });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
   window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); syncTray(); });
@@ -381,6 +383,7 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    scheduleSheetWarm();
     setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
       // Compare covers the results, so "Show my programmes" closes it first.
       // The Compare set stays (review of PR 1, 2026-11-07).
@@ -1357,11 +1360,12 @@ function scheduleRows(rows, next) {
 function moreRows(pending) {
   if (pendingRows !== pending) return;
   stopRows(pending);
+  if (sheetSlideTimer !== undefined) return;
   const start = performance.now();
   do appendSlice(pending, CHUNK_ROWS);
   while (pending.next < pending.rows.length && performance.now() - start < SLICE_MS);
   if (pending.next < pending.rows.length) pending.timer = setTimeout(() => moreRows(pending), 0);
-  else pendingRows = null;
+  else { pendingRows = null; scheduleSheetWarm(); }
 }
 
 function appendSlice(pending, count) {
@@ -1897,6 +1901,9 @@ function afterPrint() {
 function wireSheet() {
   document.addEventListener('keydown', () => { keyboardInput = true; }, true);
   document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+  // Stop slices at finger-down, before the browser synthesises the click.
+  // A cancelled tap is released by the same bounded fallback as a lost end.
+  dom.more.addEventListener('pointerdown', () => { if (!barQuery.matches) pauseSheetRows(); });
   dom.more.addEventListener('click', openSheet);
   dom.sheetDone.addEventListener('click', () => closeSheet());
   // Filters apply live, so "Show N programmes" only closes the sheet.
@@ -1922,11 +1929,51 @@ function wireSheet() {
     if (dom.sheet.open && !dom.sheet.contains(event.target)) dom.sheetHeading.focus({ preventScroll: true, focusVisible: keyboardInput });
   });
   dom.sheet.addEventListener('close', finishSheetClose);
+  dom.sheet.addEventListener('transitionend', (event) => {
+    if (event.target === dom.sheet && event.propertyName === 'transform') resumeSheetRows();
+  });
+}
+
+// WebKit's long list layouts compete with the opening slide. Leave the
+// pending slice intact until the sheet has painted; print/widen can still
+// flush it synchronously. The timer covers a cancelled/missing transition.
+function pauseSheetRows() {
+  if (motionQuery.matches) return;
+  if (pendingRows) stopRows(pendingRows);
+  clearTimeout(sheetSlideTimer);
+  // At 4x CPU the 150 ms transition can start late. A 250 ms fallback
+  // resumed mounting before its end event and delayed the last frame.
+  sheetSlideTimer = setTimeout(resumeSheetRows, 400);
+}
+
+function resumeSheetRows() {
+  if (sheetSlideTimer === undefined) return;
+  clearTimeout(sheetSlideTimer);
+  sheetSlideTimer = undefined;
+  if (pendingRows) {
+    const pending = pendingRows;
+    pending.timer = setTimeout(() => moreRows(pending), 0);
+  }
+}
+
+// Prepare the closed layout only after the final slice has painted. Safari
+// need not support requestIdleCallback, and a timer must not add work halfway
+// through the mount. Hidden controls never receive focus or open a dialog.
+function scheduleSheetWarm() {
+  if (sheetWarmScheduled || pendingRows || barQuery.matches) return;
+  sheetWarmScheduled = true;
+  requestAnimationFrame(() => requestAnimationFrame(warmSheet));
+}
+
+function warmSheet() {
+  if (pendingRows || dom.sheet.open || barQuery.matches || isPrinting()) return;
+  dom.sheet.classList.add('is-warm');
 }
 
 function openSheet() {
   if (dom.sheet.open || barQuery.matches) return;
   returnFocusOnClose = true;
+  pauseSheetRows();
   dom.sheet.show();
   document.documentElement.classList.add('sheet-open');
   dom.sheetScrim.classList.add('is-open');
@@ -1949,6 +1996,7 @@ function closeSheet(returnFocus = true) {
 function finishSheetClose() {
   // close is queued: it must not undo a reopen or repeat synchronous cleanup.
   if (dom.sheet.open || !document.documentElement.classList.contains('sheet-open')) return;
+  resumeSheetRows();
   cancelAnimationFrame(dom.copyStatusFrame);
   dom.copyStatus.textContent = '';
   document.documentElement.classList.remove('sheet-open');

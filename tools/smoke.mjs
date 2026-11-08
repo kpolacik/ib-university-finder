@@ -1,6 +1,8 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
+//   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
@@ -554,7 +556,7 @@ async function interactions(page, at, want) {
   if (phone) {
     // 2026-11-06: list-item rows that content-visibility had never drawn made
     // showModal() stall ~500 ms (4x CPU) before the sheet moved. Rows are
-    // block and still list items to assistive tech; the sheet takes 180 ms up
+    // block and still list items to assistive tech; the sheet takes 150 ms up
     // and 140 ms down (was 240/200, still slow on the iPhone, 2026-11-08), and
     // none at all with reduced motion.
     await check(at, 'A10', 'rows are display:block list items; the sheet takes 140 ms to close, none with reduced motion', async () => {
@@ -565,7 +567,7 @@ async function interactions(page, at, want) {
       assert(nodes[0]?.role?.value === 'listitem', `a result row's role is ${nodes[0]?.role?.value}, expected listitem`);
       const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration; })()`;
       const closed = await page.ev(times);
-      assert(closed === '0.14s, 0.14s / 0.14s, 0.14s', `closed sheet transitions ${closed}`);
+      assert(closed === '0.14s, 0.14s, 0.14s / 0.14s, 0.14s', `closed sheet transitions ${closed}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(times);
@@ -4213,7 +4215,7 @@ async function runCompareTouchScroll(base) {
 // content-visibility transition that held a closing list in Chrome. Here that
 // transition is switched off to behave like Safari, and the list must still
 // fade for about 150 ms, take no taps while it does, and keep Escape's focus
-// return. 2. The Filters sheet opens in 180 ms and closes in 140 ms. 3. After
+// return. 2. The Filters sheet opens in 150 ms and closes in 140 ms. 3. After
 // a tap, Filters showed a focus ring: iOS never focuses a tapped button, so the
 // scripted heading focus matched :focus-visible and the focus return inherited
 // it. Taps here are made to not focus their button, as on iOS.
@@ -4255,9 +4257,9 @@ async function runPhoneMotion(base) {
       await page.waitFor(`({ok:!document.querySelector('#dd-sort').hasAttribute('open'),why:'still open'})`, 2000, 'Sort to close');
       await page.ev(`document.querySelector('#like-safari').remove()`);
     });
-    await check(390, 'PMO sheet time', 'the Filters sheet slides up in 180 ms and down in 140 ms', async () => {
+    await check(390, 'PMO sheet time', 'the Filters sheet slides up in 150 ms and down in 140 ms', async () => {
       const times = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),c=getComputedStyle(s);const closed=c.transitionDuration;document.querySelector('#f-more').click();const open=getComputedStyle(s).transitionDuration;s.close();return {closed,open}})()`);
-      assert(times.closed.startsWith('0.14s') && times.open.startsWith('0.18s'), JSON.stringify(times));
+      assert(times.closed.startsWith('0.14s') && times.open.startsWith('0.15s'), JSON.stringify(times));
       await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().length,why:'closing'})`, 3000, 'the sheet to settle');
     });
     await check(390, 'PMO no ring', 'after a tap Filters and the sheet heading show no focus ring; after a key they do', async () => {
@@ -4285,6 +4287,102 @@ async function runPhoneMotion(base) {
     });
     assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
   } finally { await page.close(); }
+}
+
+// Cold contexts: no earlier open may warm the sheet for this regression.
+async function runColdSheet(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    await check(width, 'cold sheet', 'cold and early touch: first frame below 150 ms at Chrome 4x; warming has no focus or state effects', async () => {
+      const times = [];
+      for (let trial = 0; trial < 4; trial++) {
+        watchdog.refresh();
+        const page = await openPage('about:blank', width, height);
+        try {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+          await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+          await page.send('Network.enable');
+          await page.send('Network.setCacheDisabled', { cacheDisabled: true });
+          await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+            localStorage.setItem('ibuf.onboarding.v1','dismissed');
+            window.__cold={focus:[],start:0,end:0,frame:0,paint:0};
+            const mo=new MutationObserver(()=>{if(document.querySelector('#results>.item')){mo.disconnect();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__cold.paint=performance.now()))}});mo.observe(document,{childList:true,subtree:true});
+            document.addEventListener('click',e=>{if(e.target.closest('#f-more'))requestAnimationFrame(()=>requestAnimationFrame(()=>window.__cold.frame=performance.now()))},true);
+            document.addEventListener('focusin',e=>window.__cold.focus.push(e.target.id),true);
+            document.addEventListener('pointerdown',e=>{if(e.target.closest('#f-more'))window.__cold.start=performance.now()},true);
+            document.addEventListener('transitionend',e=>{if(e.target.id==='filter-sheet'&&e.propertyName==='transform')window.__cold.end=performance.now()},true);
+          ` });
+          await page.send('Page.navigate', { url: base });
+          if (trial === 0) {
+            await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'cold catalogue');
+            await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          } else {
+            await page.waitFor(`({ok:window.__cold.paint>0,why:'first rows not painted'})`, 15000, 'first rows');
+            await page.ev(`new Promise(r=>setTimeout(r,Math.max(0,window.__cold.paint+${[0,500,1000,2000][trial]}-performance.now())))`);
+          }
+          const before = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');return {warm:s.classList.contains('is-warm'),hidden:getComputedStyle(s).visibility==='hidden',open:s.open,focus:window.__cold.focus,locked:document.documentElement.classList.contains('sheet-open'),scrim:getComputedStyle(document.querySelector('#sheet-scrim')).display,url:location.href,saved:localStorage.getItem('ibuf.filters.v1'),expanded:document.querySelector('#f-more').getAttribute('aria-expanded')}})()`);
+          const { x, y } = await page.ev(`(()=>{const b=document.querySelector('#f-more'),r=b.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;if(!b.contains(document.elementFromPoint(x,y)))throw Error('Filters covered');return {x,y}})()`);
+          await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+          await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await page.waitFor('({ok:window.__cold.end>window.__cold.start&&window.__cold.frame>window.__cold.start,why:"first slide not finished"})', 5000, 'first slide');
+          const ms = await page.ev('Math.max(window.__cold.end,window.__cold.frame)-window.__cold.start'); times.push(ms);
+          const frame = await page.ev('window.__cold.frame-window.__cold.start');
+          console.log(`MEASURE cold sheet ${width} trial ${trial + 1}: first frame ${Math.round(frame)} ms, full ${Math.round(ms)} ms`);
+          assert(frame < 150, `first frame ${Math.round(frame)} ms (limit 150 ms at 4x)`);
+          assert(ms < 300, `first open ${Math.round(ms)} ms (limit 300 ms at 4x)`);
+          assert((trial > 0 || (before.warm && before.hidden)) && !before.open && !before.locked && before.scrim === 'none' && before.focus.length === 0
+            && before.expanded === 'false' && before.url === base && before.saved === null, `prewarm side effects: ${JSON.stringify(before)}`);
+          assert(await page.ev(`document.querySelector('#filter-sheet').open&&document.activeElement.id==='sheet-h'&&getComputedStyle(document.querySelector('#filter-sheet')).visibility==='visible'`), 'first open did not show/focus the sheet');
+        } finally { await page.close(); }
+      }
+      console.log(`MEASURE cold sheet ${width} first taps ms ${JSON.stringify(times.map(Math.round))}`);
+    });
+  }
+}
+
+// Flex must retain row/slot geometry, keyboard scroll margins, wide details,
+// list semantics and print flow. The Safari-model flick check below guards
+// .near and the measured placeholder heights as well.
+async function runSheetListLayout(base, want) {
+  for (const width of [320, 390, 700, 1300]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'mounting'})`, 20000, 'list mount');
+      await check(width, 'sheet flex list', 'expanded rows, pane, keyboard targets, list semantics and print keep their geometry', async () => {
+        assert(await page.ev(`getComputedStyle(document.querySelector('#results')).display==='flex'&&getComputedStyle(document.querySelector('#results>.item')).display==='block'`), 'list/row display');
+        const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>.item')` });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+        assert(nodes[0]?.role?.value === 'listitem', 'row lost list semantics (A10)');
+        await page.click(`document.querySelector('#results>.item button.open')`, 'first row');
+        if (width < 1200) {
+          await page.waitFor(`({ok:(()=>{const s=document.querySelector('#results>.item .expand[data-state=open]');return s&&!s.getAnimations().some(a=>a.playState==='running')&&s.getBoundingClientRect().height>100})(),why:'slot opening'})`, 3000, 'expanded row');
+          assert(await page.ev(`(()=>{const a=document.querySelector('#results>.item'),b=a.nextElementSibling,s=a.querySelector('.expand');return s.getBoundingClientRect().height>100&&b.getBoundingClientRect().top>=s.getBoundingClientRect().bottom-1&&a.getBoundingClientRect().bottom>=s.getBoundingClientRect().bottom-1})()`), 'expanded row overlaps the next row');
+        } else {
+          assert(await page.ev(`(()=>{const p=document.querySelector('#pane'),r=p.getBoundingClientRect();return !!p.querySelector('.d-title')&&r.width>200&&r.right<=innerWidth})()`), 'wide pane clipped/missing');
+        }
+        await page.ev(`document.querySelector('.skip-link').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        // Headings can still be below their sticky inset in normal flow.
+        // A07 reserves their stuck height, not an extra gap below that flow.
+        assert(await page.ev(`(()=>{const r=document.querySelector('#results').getBoundingClientRect(),edge=Math.max(0,...[...document.querySelectorAll('.hd,.cols,.status')].filter(e=>getComputedStyle(e).position==='sticky'&&e.getClientRects().length).map(e=>{const r=e.getBoundingClientRect();return Math.min(r.top,parseFloat(getComputedStyle(e).top)||0)+r.height}));return location.hash==='#results'&&r.top>=edge+8-1&&r.top<innerHeight})()`), 'skip target behind sticky chrome (A07)');
+        if (width >= 1200) {
+          await page.ev(`document.querySelectorAll('#results>.item')[20].querySelector('button.open').focus({preventScroll:true})`);
+          await page.key('ArrowDown', 'ArrowDown', 40);
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row===document.querySelectorAll('#results>.item')[21]&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
+        }
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`(()=>{const list=document.querySelector('#results'),rows=[...list.children];return getComputedStyle(list).display==='block'&&rows.length===${want.total}&&rows.every(r=>getComputedStyle(r).contentVisibility==='visible')&&getComputedStyle(document.querySelector('#pane')).display==='none'})()`), 'print lost rows or kept containment/pane');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+      });
+    } finally { await page.close(); }
+  }
+  await runRowScroll(base);
+  await runPrintFixes(base);
 }
 
 // --sheet-only runs this bounded regression without the rest of the catalogue
@@ -4404,8 +4502,13 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sheet-only')) {
+  if (args.has('--sheet-list-only')) {
+    await runSheetListLayout(base, want);
+  } else if (args.has('--cold-sheet-only')) {
+    await runColdSheet(base, want);
+  } else if (args.has('--sheet-only')) {
     await runNonModalSheet(base, want);
+    await runColdSheet(base, want);
   } else {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
@@ -4428,6 +4531,7 @@ async function main() {
       await runPhoneFixes(base);
       await runPhoneMotion(base);
       await runNonModalSheet(base, want);
+      await runColdSheet(base, want);
       await runBadgeFlush(base);
       await runCompareTouchScroll(base);
       await runRowScroll(base); }
