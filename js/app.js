@@ -226,10 +226,22 @@ const CHUNK_ROWS = 5;
 // The smallest height a drawn row can take, used to work out how many rows fill
 // the window. A laid-out row is never under 76 px (measured at 320-2560 px), and
 // a row Chrome has not laid out yet takes its contain-intrinsic-size
-// placeholder (120-260 px). If a CSS change makes rows or those placeholders
+// placeholder (90-240 px). If a CSS change makes rows or those placeholders
 // shorter than 60 px, lower this, or the page can end above the scroll position
 // and jump. tools/check.mjs checks the placeholders against it.
 const MIN_ROW_PX = 60;
+// Safari draws a content-visibility:auto row only once it is already on
+// screen: WebKit's observer for it has no margin, where Chrome's reaches half
+// a screen past the window. On an iPhone each row scrolled in as a blank
+// placeholder, then drew and changed height, and the rows under it jumped
+// ("the rows pop in weirdly", 2026-11-08). While the page scrolls, the rows
+// within NEAR_SCREENS screens of the window get .near, which draws them before
+// they arrive. Found by a binary search once a frame, not an
+// IntersectionObserver: one watching all 2,915 rows cost about 1 s of main
+// thread per 18,000 px of scroll at 4x CPU in Chrome.
+const NEAR_SCREENS = 1.5;
+let nearMarked = [];
+let nearFrame = 0;
 // The rows still to append: { rows, next, frame, timer }. Only one at a time;
 // every rebuild cancels it first.
 let pendingRows = null;
@@ -312,6 +324,7 @@ async function start() {
     }
   });
   dom.results.addEventListener('click', toggleRow);
+  window.addEventListener('scroll', scheduleNear, { passive: true });
   document.getElementById('pane-close').addEventListener('click', () => {
     const id = selectedId; clearSelection(); selectedId = null; drawPane();
     dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
@@ -1426,6 +1439,28 @@ function arrive(items) {
     if (!appliedWide && openIds.has(id)) openRow(item, shownRows.get(id));
     else if (appliedWide && id === selectedId) markSelected(item);
   }
+}
+
+function scheduleNear() {
+  if (!nearFrame) nearFrame = requestAnimationFrame(markNear);
+}
+
+// Rows are in page order, so the first one ending below the margin's top is a
+// binary search; the walk then stops at the first one starting past its end.
+function markNear() {
+  nearFrame = 0;
+  const rows = dom.results.children;
+  const top = -NEAR_SCREENS * window.innerHeight, end = (1 + NEAR_SCREENS) * window.innerHeight;
+  let lo = 0, hi = rows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (rows[mid].getBoundingClientRect().bottom < top) lo = mid + 1; else hi = mid;
+  }
+  const near = [];
+  for (let i = lo; i < rows.length && rows[i].getBoundingClientRect().top <= end; i++) near.push(rows[i]);
+  for (const row of nearMarked) if (!near.includes(row)) row.classList.remove('near');
+  for (const row of near) row.classList.add('near');
+  nearMarked = near;
 }
 
 // animate is only for a direct narrow toggle. Rebuilds and 1200 crossings put

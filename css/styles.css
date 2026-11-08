@@ -641,7 +641,21 @@ html:has(.sheet[open]){overflow:hidden}
    ~500 ms at 4x CPU slowdown before the sheet moved; with block rows that
    showModal() call takes ~90 ms (measured 2026-11-06, 393 px, Chrome 157).
    The list has no markers (list-style:none), so nothing visible changes. */
-.item{display:block;position:relative;content-visibility:auto;contain-intrinsic-size:auto 260px}
+.item{display:block;position:relative;content-visibility:auto;contain-intrinsic-size:auto 180px}
+/* A row not drawn yet holds its placeholder height, then takes its real one
+   once drawn; Safari has no scroll anchoring, so every difference moved the
+   rows on screen. The placeholders are the measured average row at each width
+   (2026-11-08, all 2,915 rows, EN and SK): 320 px 230-264, 390 px 186, 430 px
+   174, 600-899 px 152-156, a list of 800 px or more 85-102. The old 260 / 200 /
+   120 px were 40-60% too tall, so each row shrank as it was drawn. */
+@media (max-width: 359.98px){.item{contain-intrinsic-size:auto 240px}}
+/* .near (app.js markNear) draws rows before they reach the window, because
+   WebKit draws a content-visibility:auto row only once it is already on
+   screen. It keeps the containment auto gives a drawn row: without it each
+   toggle moved the <li> out of style containment, and Chrome restyled the
+   rows after it (style work during a phone scroll went from 0.1 to 1.9 s at
+   4x CPU). */
+.item.near{content-visibility:visible;contain:layout style paint}
 .item+.item{border-top:1px solid var(--hairline)}
 .row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main main" "pts ddl fee";gap:8px;padding:12px}
 .row:hover{background:var(--hover)}
@@ -814,7 +828,7 @@ html:has(.sheet[open]){overflow:hidden}
   .is-stuck .cfull{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
   .is-stuck .cshort{display:none}
   .status .copy{display:inline-flex}
-  .item{contain-intrinsic-size:auto 200px}
+  .item{contain-intrinsic-size:auto 152px}
   /* Stacked facts on a tablet-width list: one band of three. */
   .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee";padding:14px 16px}
   .chev{top:17px;right:16px}
@@ -852,7 +866,7 @@ html:has(.sheet[open]){overflow:hidden}
   .cols,.row{grid-template-columns:minmax(0,1fr) 168px 148px 128px 16px;column-gap:12px;padding-inline:16px}
   .cols{display:grid}
   .row{grid-template-areas:"main pts ddl fee chev";row-gap:6px;padding-block:12px;align-items:start}
-  .item{contain-intrinsic-size:auto 120px}
+  .item{contain-intrinsic-size:auto 90px}
   .r-main{padding-right:0}
   .chev{position:static;grid-area:chev;margin-top:3px}
   .row .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -2115,6 +2129,8 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
      whole; a long open detail may run on to the next page. */
   .item { content-visibility: visible; contain-intrinsic-size: none; }
+  /* Rows the screen drew early (.near) print like the rest, uncontained. */
+  .item.near { contain: none; }
   .row { break-inside: avoid; page-break-inside: avoid; }
   /* An open slot prints open, mid-animation or not; one that is closing goes. */
   .expand { grid-template-rows: 1fr; opacity: 1; }

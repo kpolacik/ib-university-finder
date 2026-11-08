@@ -3981,6 +3981,53 @@ async function runCssA11yFixes(base) {
   }
 }
 
+// Phone scroll (2026-11-08): on an iPhone "the rows pop in weirdly". Safari
+// draws a content-visibility:auto row only once it is already on screen
+// (WebKit's observer has no margin; Chrome's reaches half a screen further)
+// and has no scroll anchoring, so each row scrolled in blank at its
+// placeholder height, then drew and the rows under it jumped. Chrome hides
+// all of this, so the page here runs under a model of Safari: anchoring off
+// and a row drawn only once it is on screen, unless the site drew it early
+// (.near). Before the fix a blank row was on screen in 51 of 254 frames at
+// 390 px (64 of 252 at 320); after, none. Unslowed, the shift stays small
+// either way (it reached about 1.0 at 4x CPU, measured by hand), so the old
+// placeholder sizes are caught by the placeholder comparison instead.
+async function runRowScroll(base) {
+  watchdog.refresh();
+  const safari = `document.addEventListener('DOMContentLoaded',()=>{
+    const st=document.createElement('style');st.textContent='html,body{overflow-anchor:none}.item:not(.wk-on):not(.near){content-visibility:hidden}';document.head.append(st);
+    const io=new IntersectionObserver((es)=>{for(const e of es)e.target.classList.toggle('wk-on',e.isIntersecting)});
+    new MutationObserver((ms)=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1&&n.classList.contains('item'))io.observe(n)}).observe(document.documentElement,{childList:true,subtree:true});
+    window.__shift=0;new PerformanceObserver((l)=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__shift+=e.value}).observe({type:'layout-shift'});
+  });`;
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    const page = await openPage(`${base}?ui=en`, width, height);
+    try {
+      await check(`${width}/en`, 'ROW scroll', 'flicking down the list under a Safari model shows no blank row and no layout shift; row placeholders are within 15% of the real rows', async () => {
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+        await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed')`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: safari });
+        await page.send('Page.reload');
+        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n===t,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
+        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if(it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
+        for (let i = 0; i < 8; i++) {
+          await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
+        }
+        const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
+        // Every row drawn once, to compare its real height with the placeholder.
+        const h = await page.ev(`(()=>{const it=[...document.querySelectorAll('#results .item')];const cis=parseFloat(getComputedStyle(it[0]).containIntrinsicSize.replace('auto',''));it.forEach(e=>e.style.contentVisibility='visible');const hs=it.map(e=>e.getBoundingClientRect().height);it.forEach(e=>e.style.contentVisibility='');return {cis,mean:Math.round(hs.reduce((a,b)=>a+b,0)/hs.length)}})()`);
+        assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
+        assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
+        assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
+        assert(Math.abs(h.mean - h.cis) <= h.mean * 0.15, `placeholder ${h.cis} px, real rows average ${h.mean} px`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 // The country badge on a row's second line had margin-left:6px. When the
 // badge wrapped onto a line of its own (long Masaryk or Charles names on a
 // phone), that margin stayed and the badge started 6 px in from the text
@@ -4197,7 +4244,8 @@ async function main() {
     await runSetupCompareReview(base);
     await runPhoneFixes(base);
     await runBadgeFlush(base);
-    await runCompareTouchScroll(base); }
+    await runCompareTouchScroll(base);
+    await runRowScroll(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
