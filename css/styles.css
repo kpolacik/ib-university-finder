@@ -66,7 +66,7 @@
   --alarm-ink:#86171d;   /* ONLY the failure-alert sentence. 9.75 on panel. */
 
   /* ---------- Depth ---------- */
-  --scrim:rgb(22 32 44 / .45);   /* behind the phone filter sheet only. */
+  --scrim:rgb(22 32 44 / .45);   /* behind Filters and Setup. */
   --thumb-shadow:0 1px 3px rgb(22 32 44 / .22);
   --pop-shadow:0 1px 2px rgb(22 32 44 / .08),0 12px 32px -10px rgb(22 32 44 / .28);
   --dialog-shadow:0 24px 64px -16px rgb(22 32 44 / .4);
@@ -1219,13 +1219,15 @@ body.compact .filters-btn{opacity:1;visibility:visible;transform:none}
  .sheet .dropdown>.dropdown-panel{transform:none;opacity:1;animation:none}
 }
 
-dialog.ob{border:0;padding:0;border-radius:16px;overflow:hidden;width:min(560px,calc(100vw - 32px));max-height:90dvh;box-shadow:var(--dialog-shadow);color:var(--ink);
-  opacity:0;transform:scale(.96) translateY(8px);transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out),overlay 250ms allow-discrete,display 250ms allow-discrete}
-dialog.ob[open]{opacity:1;transform:none;display:flex;flex-direction:column}
+/* Setup owns its scrim too: modal inert updates stall WebKit on the full list. */
+html.onboarding-open{overflow:hidden}
+dialog.ob{pointer-events:none;position:fixed;z-index:80;inset:0;margin:auto;height:fit-content;border:0;padding:0;border-radius:16px;overflow:hidden;width:min(560px,calc(100vw - 32px));max-height:90dvh;box-shadow:var(--dialog-shadow);color:var(--ink);
+  opacity:0;transform:scale(.96) translateY(8px);transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete}
+dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-direction:column;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),display 180ms allow-discrete}
 @starting-style{dialog.ob[open]{opacity:0;transform:scale(.96) translateY(8px)}}
-dialog.ob::backdrop{background:var(--scrim);opacity:0;transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete}
-dialog.ob[open]::backdrop{opacity:1}
-@starting-style{dialog.ob[open]::backdrop{opacity:0}}
+.ob-scrim{pointer-events:none;display:none;position:fixed;z-index:79;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity 140ms var(--ease-out),display 140ms allow-discrete}
+.ob-scrim.is-open{pointer-events:auto;display:block;opacity:1;transition:opacity 180ms var(--ease-out),display 180ms allow-discrete}
+@starting-style{.ob-scrim.is-open{opacity:0}}
 .ob-bar{height:4px;background:var(--hover);flex:none}
 .ob-bar i{display:block;height:100%;background:var(--accent);width:100%;transform-origin:left;transition:transform 360ms var(--ease-out)}
 .ob-body{padding:22px 28px 8px;min-height:240px;overflow:auto;flex:1}
@@ -1282,7 +1284,6 @@ dialog.ob[open]::backdrop{opacity:1}
 .ob .rng-top .inp{max-width:164px;text-align:right;height:24px;border:0;background:transparent;padding:0;font-size:15px;font-weight:600;color:var(--ink)}
 .ob .rng-top .inp::placeholder{color:var(--ink)}
 .ob .chips .flag{width:20px;height:14px;border-radius:2px}
-html:has(.ob[open]){overflow:hidden}
 .sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
 .sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
 @media (max-width: 599.98px){
@@ -2171,8 +2172,8 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
      is overflow:hidden on screen; Chrome prints every page anyway, but a
      browser that applies it to paper could stop after the first. */
   dialog.sheet, dialog.sheet[open], .sheet-scrim, .sheet-scrim.is-open,
-  dialog.ob, dialog.ob[open], dialog.ob::backdrop, dialog.ob[open]::backdrop { display: none; }
-  html.sheet-open, html:has(dialog.ob[open]) { overflow: visible; }
+  dialog.ob, dialog.ob[open], .ob-scrim, .ob-scrim.is-open { display: none; }
+  html.sheet-open, html.onboarding-open { overflow: visible; }
 
   /* Paper keeps the site's name and the warning to check the official page,
      as the printed header did before round 2 (the live site at a6fed60). */

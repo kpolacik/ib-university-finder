@@ -119,6 +119,9 @@ class ChromeNode {
     stubDocument.activeElement = this; stubDocument.focusOptions = options;
     stubDocument.focusLog?.push({ node: this, options });
   }
+  blur() { if (stubDocument.activeElement === this) stubDocument.activeElement = stubDocument.body; }
+  get isConnected() { return !!stubDocument.body?.contains(this); }
+  getClientRects() { return stubDocument.canFocus?.(this) === false ? [] : [this.getBoundingClientRect()]; }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== fn); }
   dispatchEvent(event) { return dispatchStub(this, event); }
@@ -4079,8 +4082,11 @@ const motionAllowed = {
   '.faq summary>.ic': 'transition:transform 220ms var(--ease-out)',
   '.faq summary>span[aria-hidden]': 'transition:transform 220ms var(--ease-out)',
   '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
-  'dialog.ob': 'transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out),overlay 250ms allow-discrete,display 250ms allow-discrete',
-  'dialog.ob::backdrop': 'transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete',
+  // Setup now owns the scrim, since show() has no native ::backdrop.
+  'dialog.ob': 'transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete',
+  'dialog.ob[open]': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),display 180ms allow-discrete',
+  '.ob-scrim': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete',
+  '.ob-scrim.is-open': 'transition:opacity 180ms var(--ease-out),display 180ms allow-discrete',
   '.ob-bar i': 'transition:transform 360ms var(--ease-out)',
   '.ob .chip': 'transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)',
   '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
@@ -4614,9 +4620,9 @@ check('A08 paper carries the site name and the check-the-official-page warning: 
 // Setup and the Filters sheet printed over the list when left open: their
 // [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
 check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
-  ['dialog.sheet', 'dialog.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+  ['dialog.sheet', 'dialog.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open', 'dialog.ob', 'dialog.ob[open]', '.ob-scrim', '.ob-scrim.is-open']
     .every((sel) => /display: none/.test(printBody(sel)))
-    && /overflow: visible/.test(printBody('html.sheet-open')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
+    && /overflow: visible/.test(printBody('html.sheet-open')) && /overflow: visible/.test(printBody('html.onboarding-open')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
@@ -5844,6 +5850,47 @@ function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], 
     buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
   return {writes,applied,toasts,compareCloses,dialog,primary,next,doneScreen,api};
 }
+// Setup uses the same cheap modality as Filters: no page-wide inert/ARIA walk.
+check('Setup uses show(), aria-modal and its own scrim, never showModal/inert/background aria-hidden', (() => {
+  const src = read('js/onboarding.js');
+  return src.includes('dialog.show();') && !/showModal\(|\.inert\s*=|setAttribute\(['"](?:inert|aria-hidden)/.test(src.replace(/svg\.setAttribute\([^;]+;/g, ''))
+    && /id="onboarding" aria-modal="true" aria-labelledby="ob-title"/.test(read('index.html'))
+    && /class="ob-scrim" id="onboarding-scrim" aria-hidden="true"/.test(read('index.html'))
+    && !/html:has\([^}]*ob/.test(css) && !css.includes('dialog.ob::backdrop') && /html\.onboarding-open\{overflow:hidden\}/.test(css)
+    && /z-index:80/.test(bodyOf('dialog.ob')) && /z-index:79/.test(bodyOf('.ob-scrim'));
+})());
+appCheck('Setup traps Tab both ways, skips disabled/hidden controls and redirects stray focus', (h) => {
+  const {dialog, primary} = realSetup(h, {phone:true}), {get,fire} = h;
+  const skip=dialog.querySelector('.skipwrap button');
+  fire(get('ob-title'),'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==primary() || !stubDocument.focusOptions.focusVisible)return false;
+  fire(primary(),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==skip)return false;
+  fire(skip,'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==primary())return false;
+  primary().disabled=true; fire(skip,'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==skip)return false;
+  get('f-search').focus(); fire(get('f-search'),'focusin');
+  return stubDocument.activeElement===get('ob-title') && dialog.open;
+});
+appCheck('Setup Escape/Skip restore keyboard/tap focus, release scrim/lock and survive a queued close after reopen', (h) => {
+  const {dialog,api,writes}=realSetup(h), {get,fire,advance}=h;
+  fire(dialog,'keydown',{key:'Escape'});
+  if(dialog.open||writes.at(-1)[1]!=='dismissed'||stubDocument.activeElement!==get('f-search')||!stubDocument.focusOptions.focusVisible)return false;
+  const trigger=get('f-more');api.open(trigger);advance(0);
+  if(!dialog.open||!get('onboarding-scrim').classList.contains('is-open'))return false;
+  fire(dialog,'pointerdown');fire(dialog.querySelector('.skipwrap button'),'click');
+  return !dialog.open&&stubDocument.activeElement===trigger&&!stubDocument.focusOptions.focusVisible
+    &&!get('onboarding-scrim').classList.contains('is-open')&&!stubDocument.documentElement.classList.contains('onboarding-open');
+});
+appCheck('Setup opened from the sheet returns to Filters when Edit is hidden', (h) => {
+  const {dialog,api}=realSetup(h,{phone:true}), {get,fire}=h;
+  fire(dialog,'cancel');const trigger=get('filter-sheet').querySelector('[data-edit]');
+  // A closing sheet can still have boxes during its discrete display fade.
+  trigger.getClientRects=()=>[{}];
+  api.open(trigger);fire(dialog,'keydown',{key:'Escape'});
+  return stubDocument.activeElement===get('f-more');
+});
 // Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
 // done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
 for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {

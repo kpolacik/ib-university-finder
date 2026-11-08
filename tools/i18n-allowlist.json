@@ -1132,7 +1132,17 @@
       "ob-tools",
       "visually-hidden",
       "{bookmark}",
-      "{scales}"
+      "{scales}",
+      "#filter-sheet",
+      "Escape",
+      "Tab",
+      "button,input,select,textarea,a[href],summary,[tabindex]",
+      "close",
+      "f-more",
+      "focusin",
+      "is-open",
+      "onboarding-open",
+      "onboarding-scrim"
     ],
     "js/compare-set.js": [
       "./compare.js",
