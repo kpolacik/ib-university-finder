@@ -752,10 +752,10 @@ try {
   check('source counts every loaded row, university and country with final punctuation',
     !source.hidden && source.children[0].textContent === '3 programmes · 2 universities · 2 countries.'
       && source.children[0].className === 'stat' && source.children[0].tagName !== 'b'
-      && source.textContent.endsWith(' Data comes from the universities’ official pages.'));
+      && source.textContent.endsWith(' Data comes from the universities’ official pages and the CAO; living costs are estimates.'));
   renderSourceLine(source, rows.slice(0, 1), { ...base, draftCount: 1 });
   equal('one unchecked programme keeps singular source counts without repeating the footer disclaimer', source.textContent,
-    '1 programme · 1 university · 1 country. Data comes from the universities’ official pages.');
+    '1 programme · 1 university · 1 country. Data comes from the universities’ official pages and the CAO; living costs are estimates.');
   renderSourceLine(source, rows, base);
   check('checked data hides and clears the source line', source.hidden && source.children.length === 0);
   for (const meta of [base, { ...base, draftCount: 3 }]) {
@@ -7498,6 +7498,21 @@ section('Facts and copy, review of PR 1, 2026-11-07');
     })), [[true, true, false], [true, true, false]]);
   check('FAQ CAO answer names the UCD exception in EN and SK',
     /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
+  // Verification of PR 1: with the UCD sentence in between, "We convert it" /
+  // "Prepočítavame ju" pointed at UCD's minimum (or UCD itself); the footer
+  // still said all data comes from the universities' pages; and the source
+  // answer left out living costs borrowed from another university in the city.
+  check('CAO answer names the cutoff it converts, EN and SK',
+    UI.en.r2_faq_cao_a.includes('We convert the cutoff') && !UI.en.r2_faq_cao_a.includes('convert it')
+      && UI.sk.r2_faq_cao_a.includes('Hranicu prepočítavame') && !UI.sk.r2_faq_cao_a.includes('Prepočítavame ju')
+      && read('index.html').includes('We convert the cutoff with the CAO’s IB table'));
+  check('footer source line names the CAO and calls living costs estimates, EN and SK',
+    /CAO/.test(UI.en.r2_footer_data) && /estimates/.test(UI.en.r2_footer_data)
+      && /CAO/.test(UI.sk.r2_footer_data) && /odhady/.test(UI.sk.r2_footer_data));
+  check('source answer covers living costs from another university and says "podrobnosti" in SK',
+    /another university’s in the same city/.test(UI.en.r2_faq_source_a)
+      && /inej univerzity v tom istom meste/.test(UI.sk.r2_faq_source_a) && /v podrobnostiach programu/.test(UI.sk.r2_faq_source_a)
+      && !/v detailoch/.test(UI.sk.r2_faq_source_a));
   // On phones the points field is in the Filters sheet, not "above".
   check('share help points to the filters, not "above", in EN and SK',
     /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
