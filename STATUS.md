@@ -690,7 +690,7 @@ heights of 500 px or less. Column headings sit below its visible height;
 the pane starts 12 px below it and its maximum height allows for the header.
 Skip and arrow targets clear the header plus column headings plus 8 px;
 below 600 px they clear the sticky count bar plus 8 px (A07). The build
-matches the 85dvh/320 ms phone sheet, 180 ms help reveal, right-edge
+matches the 85dvh phone sheet (now 180 ms open / 140 ms close), 180 ms help reveal, right-edge
 popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
 page overflow. The phone maths control uses the mockup's native select.
 Onboarding headings return to the top of each step after scrolling the real
@@ -1127,21 +1127,59 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
     close at once.
   - The Filters sheet now takes 180 ms to open and 140 ms to close. In
     Chrome at 4× slowdown, the time from tap to fully shown went from 460 to
-    341 ms, and to fully hidden from 406 to 292 ms. **Safari is still slow, and
-    the length of the slide is not the cause.** In WebKit (Playwright's
+    341 ms, and to fully hidden from 406 to 292 ms. **That motion-only change
+    left Safari slow; the slide length was not the cause.** In WebKit (Playwright's
     WebKit 26, on a Mac with no slowdown), each `showModal()` and `close()` blocks
     for about 500 ms. The browser makes the whole page inert, so it restyles all
     116,000 elements in the 2,915 rows. Unlike Chrome, WebKit does not skip
     rows that `content-visibility` has not drawn. A non-modal `show()` takes
-    about 30 ms. No CSS fix was found. Fixing it needs a decision: a
-    non-modal sheet (own focus trap, Escape, scrim and `aria-modal`) or fewer
-    rows in the page.
+    about 30 ms. No CSS fix was found. Leon approved the non-modal sheet
+    below, keeping the complete results list.
   - After a tap, Filters showed a focus ring. iOS never focuses a tapped
     button, so `showModal()`'s own focus of the heading counted as keyboard
     focus, and the focus return after closing inherited the ring. Both
     focus calls now pass `focusVisible`, true only when the last input was a
-    key.
+    key. The same rule remains with `show()` below.
   `check.mjs` and smoke PMO guard all three.
+
+- **Non-modal phone Filters sheet (2026-11-08, local `fu-sheet`).** Leon
+  approved replacing the browser's modal machinery to avoid WebKit's inert
+  restyle. `show()` opens the labelled native dialog with `aria-modal="true"`;
+  `app.js` traps Tab/Shift+Tab, redirects stray focus inside, gives inner
+  pick-lists/help the first Escape, then closes the sheet on Escape. Done,
+  Show programmes and a tap on the scrim close it too. Focus goes to the heading
+  on open and Filters on close, keeping the tap/keyboard ring rule. A class
+  on `html` locks background scrolling; sheet and scrim stack above the
+  header, Compare tray and toasts. The scrim keeps the old colour and fade;
+  the 180/140 ms slide, instant reduced motion, print hiding and widening
+  cleanup remain. Setup still uses its native modal dialog after closing
+  Filters.
+  - `aria-hidden` on the background was measured, not adopted: on WebKit,
+    applying it to the few body-level ancestors, including the results,
+    took about 440 ms, removing it about 379 ms (116,642 result descendants).
+    `aria-modal`, focus management and the scrim avoid that work. A screen
+    reader that ignores `aria-modal` may still browse the background. Real
+    iPhone Safari and VoiceOver remain unverified; desktop engine automation
+    does not establish their behavior.
+  - WebKit 26 at 390 px, no CPU slowdown, five paired samples on the same
+    machine: median tap-to-fully-open 733 → 234 ms; fully closed 640 → 188 ms.
+    The ~250 ms target is met for repeated opens/closes. First opens remain
+    variable: 305 ms at 390 px and 275 ms at 320 px in the behavior run, with
+    one 540 ms first-open outlier in the paired run. This does not certify
+    L09 performance or a physical iPhone. Chrome at 4× CPU on the same
+    390 px page: median open 326 → 306 ms, closed 275 → 244 ms (five taps).
+  - Checks: `check.mjs` guards non-modal opening, semantics, stacking, Tab
+    cycling, handled Escape, focus return, scroll-lock/scrim cleanup and
+    queued close/reopen. Old assertions for the browser's `::backdrop` were
+    changed to the explicit scrim because non-modal dialogs have no backdrop.
+    Smoke `--sheet-only` runs only NMS at 390×844 and 320×640: touch timing
+    at Chrome 4× CPU, accessibility-tree modal dialog semantics, keyboard
+    cycling, nested Escape, focus rings, wheel/touch scroll blocking, scrim
+    hit tests, widening, reduced motion, printing and Setup handover. All
+    eight focused smoke checks and the source checks pass. Restoring the
+    three original product files made 11 source checks and all eight smoke
+    checks fail; the edited files were then restored byte-for-byte. The full
+    smoke suite was not run on this shared machine.
 
 ## Decisions already made, so they are not relitigated
 

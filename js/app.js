@@ -71,6 +71,7 @@ const dom = {
   more: document.getElementById('f-more'),
   moreFilters: document.querySelector('.more-filters'),
   sheet: document.getElementById('filter-sheet'),
+  sheetScrim: document.getElementById('sheet-scrim'),
   sheetHeading: document.getElementById('sheet-h'),
   sheetDone: document.getElementById('sheet-done'),
   sheetBody: document.querySelector('.sheet-b'),
@@ -1855,8 +1856,9 @@ function afterPrint() {
   }
 }
 
-// The phone sheet: a native modal dialog, so the focus trap, Escape, the inert
-// page and the scrim come from the browser.
+// Safari restyles all 116,000 result elements when a modal makes them inert
+// (~500 ms). aria-hidden on their ancestor costs ~440 ms too. aria-modal,
+// a scrim and managed focus avoid both; VoiceOver on a real iPhone still needs QA.
 function wireSheet() {
   document.addEventListener('keydown', () => { keyboardInput = true; }, true);
   document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
@@ -1864,31 +1866,37 @@ function wireSheet() {
   dom.sheetDone.addEventListener('click', () => closeSheet());
   // Filters apply live, so "Show N programmes" only closes the sheet.
   dom.sheetShow.addEventListener('click', () => closeSheet());
-  // A tap on the backdrop reaches the dialog itself, outside its box. A click
-  // made from the keyboard targets the button, never the dialog.
-  dom.sheet.addEventListener('click', (event) => {
-    if (event.target !== dom.sheet) return;
-    const box = dom.sheet.getBoundingClientRect();
-    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeSheet();
+  dom.sheetScrim.addEventListener('click', () => closeSheet());
+  // Bubble phase: round2.js first gives Escape to an inner pick-list/help.
+  document.addEventListener('keydown', (event) => {
+    if (!dom.sheet.open || event.defaultPrevented) return;
+    if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation(); closeSheet();
+    } else if (event.key === 'Tab') {
+      const controls = [...dom.sheet.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')]
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && canShow(node));
+      const first = controls[0] ?? dom.sheetHeading, last = controls.at(-1) ?? dom.sheetHeading;
+      const active = document.activeElement;
+      if (!controls.includes(active) || (event.shiftKey ? active === first : active === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus({ focusVisible: true });
+      }
+    }
   });
-  dom.sheet.addEventListener('close', () => {
-    cancelAnimationFrame(dom.copyStatusFrame);
-    dom.copyStatus.textContent = '';
-    // A close queued before a quick reopen must not undo the reopen.
-    if (dom.sheet.open) return;
-    dom.more.setAttribute('aria-expanded', 'false');
-    // iOS does not focus a tapped button, so the browser's own return can miss.
-    if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus({ focusVisible: keyboardInput });
-    returnFocusOnClose = true;
+  document.addEventListener('focusin', (event) => {
+    if (dom.sheet.open && !dom.sheet.contains(event.target)) dom.sheetHeading.focus({ preventScroll: true, focusVisible: keyboardInput });
   });
+  dom.sheet.addEventListener('close', finishSheetClose);
 }
 
 function openSheet() {
   if (dom.sheet.open || barQuery.matches) return;
   returnFocusOnClose = true;
-  dom.sheet.showModal();
+  dom.sheet.show();
+  document.documentElement.classList.add('sheet-open');
+  dom.sheetScrim.classList.add('is-open');
   dom.more.setAttribute('aria-expanded', 'true');
-  // showModal() has already focused the heading, its first focusable element,
+  // show() has already focused the heading, its first focusable element,
   // with the browser's own guess at a ring, and focusing a focused element
   // changes nothing, so it lets go first.
   if (document.activeElement === dom.sheetHeading) dom.sheetHeading.blur();
@@ -1900,6 +1908,20 @@ function closeSheet(returnFocus = true) {
   if (!dom.sheet.open) return;
   returnFocusOnClose = returnFocus;
   dom.sheet.close();
+  finishSheetClose();
+}
+
+function finishSheetClose() {
+  // close is queued: it must not undo a reopen or repeat synchronous cleanup.
+  if (dom.sheet.open || !document.documentElement.classList.contains('sheet-open')) return;
+  cancelAnimationFrame(dom.copyStatusFrame);
+  dom.copyStatus.textContent = '';
+  document.documentElement.classList.remove('sheet-open');
+  dom.sheetScrim.classList.remove('is-open');
+  dom.more.setAttribute('aria-expanded', 'false');
+  // iOS does not focus a tapped button, so the browser's own return can miss.
+  if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus({ preventScroll: true, focusVisible: keyboardInput });
+  returnFocusOnClose = true;
 }
 
 // Phone only: the count line is stuck once the mark above it has scrolled out
