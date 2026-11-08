@@ -448,11 +448,14 @@ svg:not(.sprite) {
    Only [open] is visible; after mounting, prepare its closed layout.
    Discrete display keeps the slide/fade on
    close; reduced motion is instant, and from 600 px neither transitions.
-   Open 150 ms / close 140 ms (Leon, 2026-11-08). */
-.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;transform:translateY(100%);transition:transform 140ms var(--ease-out),display 140ms allow-discrete,visibility 140ms}
-.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 150ms var(--ease-out),display 150ms allow-discrete}
-.sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity 140ms var(--ease-out),display 140ms allow-discrete}
-.sheet-scrim.is-open{display:block;opacity:1;transition:opacity 150ms var(--ease-out),display 150ms allow-discrete}
+   Open 280 ms / close 220 ms: give the slide a visible settling tail.
+   Containment bounds the initial paint; promote only while moving. */
+.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+.sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
+.sheet-scrim.is-open{display:block;opacity:1;transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+.sheet.is-sliding{will-change:transform}
+.sheet-scrim.is-sliding{will-change:opacity}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet-scrim.is-open{opacity:0}}
 /* After mounting, prepare layout without opening the dialog or exposing its controls.
    Visibility waits for the closing slide; pointer events stop immediately. */

@@ -1152,8 +1152,8 @@ check('compact header keeps its full visible height and offsets; translated-head
 })());
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
   // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
-  // 180 ms up / 140 ms down (still slow on the iPhone, Leon, 2026-11-08).
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 150ms') && text.includes('transition:transform 140ms')
+  // 150/140 reduced latency; 280/220 now preserves a visible settling tail.
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 280ms') && text.includes('transition:transform 220ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -3837,19 +3837,18 @@ appCheck('row slices pause during the sheet slide and resume on its transform en
   fire(get('filter-sheet'), 'transitionend', { propertyName: 'transform' }); advance(0);
   return get('results').children.length === run('allRows.length');
 });
-appCheck('paused slices recover on early close, widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
-  for (const action of ['close', 'wide', 'reduce', 'timeout', 'print']) {
+appCheck('paused slices recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
+  for (const action of ['wide', 'reduce', 'timeout', 'print']) {
     flip600(false); motionMedia.matches = false;
     run('closeSheet(); allRows = live; update();'); fire(get('f-more'), 'click');
     flushFrame(); advance(0);
     if (get('results').children.length === run('allRows.length')) return false;
-    if (action === 'close') fire(get('sheet-done'), 'click');
     if (action === 'wide') flip600(true);
     if (action === 'reduce') { motionMedia.matches = true; for (const fn of motionMedia.listeners) fn(); }
     if (action === 'timeout') {
       advance(250);
       if (get('results').children.length === run('allRows.length')) return false;
-      advance(150);
+      advance(250);
     }
     if (action === 'print') fireWindow('beforeprint');
     advance(0);
@@ -3857,6 +3856,27 @@ appCheck('paused slices recover on early close, widening, reduced motion and a m
     if (action === 'print') fireWindow('afterprint');
   }
   return true;
+});
+appCheck('both sheet slides pause rows and promote only until transform end; cancelled taps and reduced motion release promotion', ({ run, get, fire, advance, motionMedia }) => {
+  const sheet = get('filter-sheet'), scrim = get('sheet-scrim');
+  const promoted = () => sheet.classList.contains('is-sliding') && scrim.classList.contains('is-sliding');
+  run('allRows = live; update();'); fire(get('f-more'), 'click');
+  if (!promoted()) return false;
+  fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
+  if (promoted()) return false;
+  run('allRows = live; update();');
+  const count = get('results').children.length;
+  fire(get('sheet-done'), 'click'); advance(0);
+  if (!promoted() || get('results').children.length !== count) return false;
+  fire(sheet, 'transitionend', { propertyName: 'opacity' }); advance(0);
+  if (!promoted() || get('results').children.length !== count) return false;
+  fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
+  if (promoted() || get('results').children.length !== run('allRows.length')) return false;
+  fire(get('f-more'), 'pointerdown'); advance(499);
+  if (!promoted()) return false;
+  advance(1); if (promoted()) return false;
+  motionMedia.matches = true; fire(get('f-more'), 'click'); fire(get('sheet-done'), 'click');
+  return !promoted();
 });
 appCheck('sheet warm waits until the last row slice and two frames, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
   run('sheetWarmScheduled = false; allRows = live; update();');
@@ -4112,13 +4132,13 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
-  // First-open follow-up: post-mount layout plus 150 ms up, still 140 ms down.
-  '.sheet': 'transition:transform 140ms var(--ease-out),display 140ms allow-discrete,visibility 140ms',
-  '.sheet[open]': 'transition:transform 150ms var(--ease-out),display 150ms allow-discrete',
+  // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
+  '.sheet': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms',
+  '.sheet[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet-scrim': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete',
-  '.sheet-scrim.is-open': 'transition:opacity 150ms var(--ease-out),display 150ms allow-discrete',
+  '.sheet-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -4156,6 +4176,20 @@ check('sheet: slides from translateY(100%) with @starting-style and discrete dis
     && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet-scrim')) && /opacity:1/.test(bodyOf('.sheet-scrim.is-open'))
     && ['.sheet', '.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
     && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
+check('sheet slide contains paint and promotes transform and scrim opacity only while moving; missing-containment and permanent-promotion fixtures fail', (() => {
+  const valid = (source) => {
+    const rules = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+    const body = (sel) => rules.filter(r => r.selector === sel && !r.media.length).map(r => r.body).join(';');
+    return /contain:layout paint/.test(body('.sheet'))
+      && body('.sheet.is-sliding') === 'will-change:transform'
+      && body('.sheet-scrim.is-sliding') === 'will-change:opacity'
+      && !/will-change/.test(body('.sheet') + body('.sheet-scrim'))
+      && /transition:transform 280ms cubic-bezier\(\.32,\.72,0,1\),display 280ms allow-discrete/.test(body('.sheet[open]'))
+      && /transition:transform 220ms cubic-bezier\(\.32,\.72,0,1\),display 220ms allow-discrete,visibility 220ms/.test(body('.sheet'));
+  };
+  return valid(css) && !valid(css.replace('contain:layout paint;', ''))
+    && !valid(css.replace('.sheet.is-sliding{will-change:transform}', '.sheet{will-change:transform}'));
+})());
 // The old rule shortened every effect to 0.01ms: still a transition, still
 // firing its events late. Reduced motion is now none, backdrop included.
 const reducedBody = allCss.filter((r) => r.media.join() === '@media (prefers-reduced-motion: reduce)').map((r) => `${r.selector}{${r.body}}`).join('');

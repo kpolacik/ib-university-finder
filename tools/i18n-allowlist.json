@@ -213,6 +213,7 @@
       "is-open",
       "is-sel",
       "is-set",
+      "is-sliding",
       "is-stuck",
       "issues",
       "issues-list",
