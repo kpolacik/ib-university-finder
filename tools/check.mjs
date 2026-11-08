@@ -5231,6 +5231,12 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
   equal('groups by deadline: year and month in date order (Dec 2026 before Mar 2027), then passed, then no date; rows keep their order',
     byDeadline.map((x) => [x.label, x.rows.map((r) => r.id)]),
     [['December 2026', ['dec']], ['March 2027', ['mar1', 'mar2']], ['April 2027', ['apr']], ['Deadline passed', ['past']], ['No date', ['none']]]);
+  // Verification of PR 1: Slovak month headings read "november 2026"; the
+  // Undo action was "Späť", the same word as Back.
+  equal('Slovak month group headings start with a capital, and Undo is not Back',
+    (() => { i18n.setLanguage('sk', { setItem() {} }); try { return groupRows(dated, 'deadline', noFilters(), filtersMod.pointsBucket).slice(0, 3).map((x) => x.label); } finally { i18n.setLanguage('en', { setItem() {} }); } })()
+      .concat(UI.sk.r2_undo === UI.sk.r2_back ? 'same as Back' : UI.sk.r2_undo),
+    ['December 2026', 'Marec 2027', 'Apríl 2027', 'Vrátiť späť']);
   equal('groups by deadline: a group with no rows is left out', groupRows([g('none')], 'deadline', noFilters(), filtersMod.pointsBucket).map((x) => x.key), ['none']);
   equal('group headings: the first row of each group carries "label · count"', [...groupHeadings(byDeadline)],
     [['dec', 'December 2026 · 1'], ['mar1', 'March 2027 · 2'], ['apr', 'April 2027 · 1'], ['past', 'Deadline passed · 1'], ['none', 'No date · 1']]);

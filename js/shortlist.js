@@ -202,7 +202,10 @@ export function mergeIntoShortlist(shortlist, ids) {
 // test every bucket. Rows keep their sorted order inside a group.
 export const GROUP_BY = { get none() { return t('no_grouping'); }, get deadline() { return t('deadline'); }, get points() { return t('my_ib_points_2'); }, get country() { return t('country'); } };
 
-const monthYear = dateFormatter({ month: 'long', year: 'numeric', timeZone: 'UTC' });
+const monthYearFormat = dateFormatter({ month: 'long', year: 'numeric', timeZone: 'UTC' });
+// Slovak month names are lower case ("november 2026"); as a heading the
+// first letter is a capital, as in English (verification of PR 1).
+const monthYear = { format: (date) => { const text = monthYearFormat.format(date); return text.charAt(0).toLocaleUpperCase() + text.slice(1); } };
 
 // The points groups use pointsBucket (js/filters.js), the test the filter and
 // the row verdicts use, with the row's own words. 'hidden' is a figure above

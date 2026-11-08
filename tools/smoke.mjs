@@ -2901,7 +2901,7 @@ async function runAlignListCompare(base) {
   for (const [width, height] of [[320, 640], [390, 844], [844, 390]]) for (const ui of ['en', 'sk']) {
     const page = await open(`?ui=${ui}`, width, height, { compare: mix, saves: mix.slice(0, 2), touch: true });
     try {
-      await check(`${width}x${height}/${ui}`, 'AL toasts', 'toast actions stay on one line and are at least 44 x 44 ("Open compare", "Späť")', async () => {
+      await check(`${width}x${height}/${ui}`, 'AL toasts', 'toast actions stay on one line and are at least 44 x 44 ("Open compare", "Vrátiť späť")', async () => {
         await page.click(`[...document.querySelectorAll('#results li.item')].find(li=>!${JSON.stringify(mix)}.includes(li.dataset.id)).querySelector('button.cmpi')`, 'a fifth programme');
         await page.waitFor(`({ok:!!document.querySelector('#toasts .toast button'),why:'no toast'})`, 5000, 'the limit toast');
         await settle(page);
@@ -2911,7 +2911,7 @@ async function runAlignListCompare(base) {
         await page.click(`document.querySelector('#toasts .toast button')`, 'Open compare');
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare');
         await page.click(`document.querySelector('#cmp-body .cmp-x')`, 'x');
-        await page.waitFor(`({ok:document.querySelector('#toasts .toast button')?.textContent===${JSON.stringify(ui === 'sk' ? 'Späť' : 'Undo')},why:'no undo'})`, 5000, 'undo toast');
+        await page.waitFor(`({ok:document.querySelector('#toasts .toast button')?.textContent===${JSON.stringify(ui === 'sk' ? 'Vrátiť späť' : 'Undo')},why:'no undo'})`, 5000, 'undo toast');
         await settle(page);
         const undo = await page.ev(`(()=>{const r=document.querySelector('#toasts .toast button').getBoundingClientRect();return {w:r.width,h:r.height}})()`);
         assert(undo.w >= 44 && undo.h >= 44, 'undo ' + JSON.stringify(undo));

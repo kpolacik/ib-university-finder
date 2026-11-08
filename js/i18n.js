@@ -689,7 +689,7 @@ export const UI = {
     "r2_legend": "Ako čítať riadky",
     "r2_legend_time": "Termín do 60 dní",
     "r2_legend_unknown": "Nezverejnené. Nikdy neskryje program.",
-    "r2_undo": "Späť",
+    "r2_undo": "Vrátiť späť",
     "r2_saved": "Uložené do môjho zoznamu",
     "r2_removed": "Odstránené z môjho zoznamu",
 
