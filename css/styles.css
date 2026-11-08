@@ -584,8 +584,13 @@ html:has(.sheet[open]){overflow:hidden}
 .cmp-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:8px 16px;border-bottom:1px solid var(--hairline)}
 .cmp-head h2{margin:0 auto 0 0;font-size:var(--fs-16);font-weight:700;line-height:24px}
 /* Positioned, so the hidden "opens in a new tab" text in an off-screen column
-   is clipped with it instead of widening the page (measured 404 px at 390). */
-.cmp-scroll{position:relative;overflow-x:auto;overscroll-behavior-x:contain}
+   is clipped with it instead of widening the page (measured 404 px at 390).
+   overflow-y:hidden: overflow-x:auto alone makes overflow-y auto too, and the
+   phone tap padding of the last row's official links reaches 2 px below the
+   table, so the box could also scroll down. On a phone the table is nearly
+   the whole screen, and a vertical swipe over it went to that 2 px scroll,
+   not the page (Leon, iPhone, 2026-11-08: "couldn't scroll down"). */
+.cmp-scroll{position:relative;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain}
 .cmp-t{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-14);line-height:20px;font-variant-numeric:tabular-nums}
 .cmp-t :where(th,td){padding:10px 12px;border-bottom:1px solid var(--hairline);text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .cmp-t tbody tr:last-child>*{border-bottom:0}

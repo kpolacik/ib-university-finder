@@ -3981,6 +3981,101 @@ async function runCssA11yFixes(base) {
   }
 }
 
+// On an iPhone Leon "couldn't scroll down" in Compare (2026-11-08). The
+// table's sideways scroll box was also a vertical one: the phone tap padding of
+// the "Official page" links in the last row reaches 2 px below the table, and
+// overflow-x:auto makes overflow-y auto, so the box could scroll 2 px down.
+// Nearly the whole phone screen is that table, and a vertical swipe that
+// starts over it went to the box (Chrome: the first one moved it 2 px and the
+// page not at all), never the page. Each swipe here starts with the box back
+// at its top, so it is the first swipe on a fresh table every time.
+async function runCompareTouchScroll(base) {
+  watchdog.refresh();
+  const page = await openPage(`${base}?ui=en`, 390, 844);
+  const phone = (width, height) => page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 3, mobile: true,
+    screenOrientation: width > height ? { type: 'landscapePrimary', angle: 90 } : { type: 'portraitPrimary', angle: 0 } });
+  // A real tap (touchstart, touchend, then the click), on the element's
+  // middle, once it has stopped moving (the sheet slides in) and nothing else
+  // lies there.
+  const tap = async (elementJs, what) => {
+    const spot = await page.waitFor(`(() => {
+      const el = ${elementJs};
+      if (!el) return { why: 'not in the page' };
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (!r.width || (hit !== el && !el.contains(hit))) return { why: 'covered by ' + hit?.className };
+      const at = [x, y].map(Math.round).join(), stable = at === window.__tapAt;
+      window.__tapAt = at;
+      return { ok: stable, x, y, why: 'still moving' };
+    })()`, 5000, what);
+    await page.ev('window.__tapAt = undefined');
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: spot.x, y: spot.y }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  // One upward swipe of 300 px from each spot after scrolling the page to the
+  // top. It must move the page itself, by at least 100 px.
+  const swipes = async (label) => {
+    const spots = await page.ev(`(() => {
+      scrollTo({ top: 0, behavior: 'instant' });
+      const box = document.querySelector('#compare .cmp-scroll');
+      box.scrollTop = 0;
+      const mid = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; };
+      const cell = [...box.querySelectorAll('tbody td')].find((td) => { const [, y] = mid(td); return y > 320 && y < 640; });
+      return { table: cell && mid(cell), header: mid(box.querySelector('thead th.cmp-p')), page: [8, 420] };
+    })()`);
+    for (const [where, spot] of Object.entries(spots)) {
+      assert(spot, `${label}: no table cell in the middle of the screen`);
+      await page.ev(`scrollTo({ top: 0, behavior: 'instant' }); document.querySelector('#compare .cmp-scroll').scrollTop = 0`);
+      await page.send('Input.synthesizeScrollGesture', { x: spot[0], y: spot[1], xDistance: 0, yDistance: -300, gestureSourceType: 'touch', speed: 1200 }, 30000);
+      const m = await page.ev(`new Promise((r) => setTimeout(() => r({ y: Math.round(scrollY), box: document.querySelector('#compare .cmp-scroll').scrollTop,
+        html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }), 300))`);
+      assert(m.y >= 100, `${label}, swipe over the ${where}: the page moved ${m.y} px (scroll box ${m.box} px, html ${m.html}, body ${m.body})`);
+    }
+    // The columns still swipe sideways.
+    await page.ev(`scrollTo({ top: 0, behavior: 'instant' })`);
+    await page.send('Input.synthesizeScrollGesture', { x: spots.table[0], y: spots.table[1], xDistance: -200, yDistance: 0, gestureSourceType: 'touch', speed: 1200 }, 30000);
+    const left = await page.ev(`new Promise((r) => setTimeout(() => r(document.querySelector('#compare .cmp-scroll').scrollLeft), 600))`);
+    assert(left > 0, `${label}: a sideways swipe over the table did not move the columns`);
+    await page.ev(`document.querySelector('#compare .cmp-scroll').scrollLeft = 0`);
+  };
+  const openCompare = async () => {
+    await tap(`document.querySelector('#cmp-tray-open')`, "the tray's Open");
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&!!document.querySelector('#compare .cmp-scroll'),why:'compare not open'})`, 5000, 'Compare');
+  };
+  try {
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await phone(390, 844);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    await check('390/touch', 'CMP touch scroll', 'swipes up over the Compare table, its header and the page scroll the page: after the Filters sheet, opened again, after rotating', async () => {
+      for (let i = 0; i < 3; i++) {
+        await tap(`document.querySelectorAll('#results>.item .cmpi')[${i}]`, `row ${i + 1}'s Compare`);
+        await page.waitFor(`({ok:document.querySelectorAll('#results .cmpi[aria-pressed=true]').length===${i + 1},why:'not added'})`, 3000, `row ${i + 1} in Compare`);
+      }
+      // The phone filter form, Filters with it, hides while Compare is open,
+      // so the sheet opens and closes first.
+      await tap(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 3000, 'the sheet');
+      await tap(`document.querySelector('#sheet-done')`, "the sheet's close");
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#cmp-tray').hidden,why:'sheet open or no tray'})`, 3000, 'the sheet closed');
+      await openCompare();
+      await swipes('after the Filters sheet, opened from the tray');
+      await tap(`document.querySelector('#cmp-close')`, "Compare's Close");
+      await page.waitFor(`({ok:document.querySelector('#compare').hidden,why:'still open'})`, 3000, 'Compare closed');
+      await openCompare();
+      await swipes('closed and opened again');
+      await phone(844, 390);
+      await page.ev('new Promise((r) => requestAnimationFrame(() => setTimeout(r, 200)))');
+      await phone(390, 844);
+      await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&innerWidth===390,why:innerWidth})`, 3000, 'back to portrait');
+      await swipes('after rotating');
+    });
+    assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+  } finally { await page.close(); }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4016,7 +4111,8 @@ async function main() {
     await runPrintFixes(base);
     await runCssA11yFixes(base);
     await runSetupCompareReview(base);
-    await runPhoneFixes(base); }
+    await runPhoneFixes(base);
+    await runCompareTouchScroll(base); }
   else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
 
   const failed = results.filter((r) => r.status === 'FAIL').length;

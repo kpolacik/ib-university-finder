@@ -7559,5 +7559,14 @@ section('Facts and copy, review of PR 1, 2026-11-07');
       && byTag(detailOf(fxRow('fx-plain')), 'ul').some((u) => u.className === 'plines'));
 }
 
+// Leon, iPhone, 2026-11-08: "couldn't scroll down" in Compare. overflow-x:auto
+// alone made the sideways box scroll 2 px down too (the last row's link tap
+// padding), and vertical swipes over the table went to it, not the page. The
+// smoke test (CMP touch scroll) swipes on a touch phone.
+check('Compare\'s sideways scroll box never scrolls vertically: overflow-y:hidden, and no screen rule makes it a vertical scroller or limits touch panning',
+  /overflow-x:auto;overflow-y:hidden/.test(ruleAt(cssText, '.cmp-scroll'))
+    && cssTree(cssText).filter((r) => /\.cmp-scroll(?![\w-])/.test(r.selector) && !r.media.some((m) => /print/.test(m)))
+      .every((r) => !/(?:^|;)\s*(?:overflow(?:-y)?\s*:\s*(?:auto|scroll|visible)|overflow\s*:\s*\S+\s+(?:auto|scroll)|touch-action)/.test(r.body)));
+
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
