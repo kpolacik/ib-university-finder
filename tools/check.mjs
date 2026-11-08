@@ -7507,6 +7507,10 @@ check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from t
 // Verification of PR 1: the focused Compare heading printed its blue ring.
 check('print removes every focus outline, even the Compare heading\'s ID rule', (() => { const print = cssText.slice(cssText.indexOf('@media print {\n  *, *::before')); return print.includes(':focus, :focus-visible, :focus-visible::after { outline: none !important; }'); })());
 
+// Verification of PR 1: the two-line HL Maths help kept the bubble 260 px
+// wide, 12 px past its longest line (smoke R2L measures it in Chrome).
+check('an opened help bubble is narrowed to its longest line', /selectNodeContents\(tip\)[\s\S]{0,300}tip\.style\.width = `\$\{Math\.ceil\(text \+ pad\) \+ 1\}px`/.test(read('js/round2.js')));
+
 section('Facts and copy, review of PR 1, 2026-11-07');
 {
   const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };

@@ -136,6 +136,14 @@ export function wireRound2(dom) {
     button.addEventListener('click', () => {
       const was = help === button; closeHelp(false); if (was) return;
       help = button; button.setAttribute('aria-expanded', 'true'); tip.classList.add('is-open');
+      // A wrapped bubble stays max-width wide, leaving a gap beside its
+      // longest line (the two-line HL Maths help, verification of PR 1), so
+      // it is narrowed to that line. CSS cannot shrink-wrap wrapped text.
+      tip.style.width = '';
+      const lines = document.createRange(); lines.selectNodeContents(tip);
+      const pad = parseFloat(getComputedStyle(tip).paddingLeft) + parseFloat(getComputedStyle(tip).paddingRight);
+      const text = lines.getBoundingClientRect().width;
+      if (text > 0 && text + pad < tip.getBoundingClientRect().width - 1) tip.style.width = `${Math.ceil(text + pad) + 1}px`;
       if (!dom.sheet.open) {
         const box = button.getBoundingClientRect(), parent = tip.offsetParent.getBoundingClientRect();
         tip.style.left = `${Math.min(box.left, innerWidth - 280) - parent.left}px`;
