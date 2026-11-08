@@ -3049,7 +3049,7 @@ check('row wraps whole point parts without clipping requirements; containment on
     && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
-    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h'].includes(t))
+    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h', '--logo-travel', '--logo-dock'].includes(t))
     && (css.match(/var\(--shadow\)/g) ?? []).length === 1
     && /box-shadow:var\(--shadow\)/.test(cssRules.match(/\.pane\{display:block;[^}]+/)?.[0] ?? ''));
 
@@ -3398,7 +3398,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -3997,16 +3997,17 @@ check('§8: every transition is a listed effect with its token time and easing; 
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
     && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
   motionProblems(allCss).join(', '));
-// 2026-11-08: the phone logo handover (tile-in, logo-out) runs on the scroll,
-// not the clock. visibility is allowed there and only there: it is not
-// motion, it keeps the hidden tile out of reach of taps and Tab.
-check('round 2 animations use only opacity and transform (the phone tile also visibility); arbitrary keyframes and animated dimensions fail', (() => {
+// 2026-11-08: the phone logo handover (option C: logo-travel, logo-shrink,
+// logo-off, tile-on, count-glide) runs on the scroll, not the clock.
+// visibility is allowed in the tile's step and only there: it is not motion,
+// it keeps the hidden tile out of reach of taps and Tab.
+check('round 2 animations use only opacity and transform (the phone tile\'s step also visibility); arbitrary keyframes and animated dimensions fail', (() => {
   const valid = (source) => {
     const animations = [...source.matchAll(/@keyframes ([\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)];
-    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back','tile-in','logo-out'].includes(name)
-      && !(name === 'tile-in' ? /(?:^|[;{])\s*(?!opacity\b|transform\b|visibility\b)[a-z-]+\s*:/ : /(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/).test(body));
+    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back','logo-travel','logo-shrink','logo-off','tile-on','count-glide'].includes(name)
+      && !(name === 'tile-on' ? /(?:^|[;{])\s*(?!opacity\b|transform\b|visibility\b)[a-z-]+\s*:/ : /(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/).test(body));
   };
-  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}') && !valid(cssRules.replace('@keyframes logo-out{', '@keyframes logo-out{from{visibility:hidden}'));
+  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}') && !valid(cssRules.replace('@keyframes logo-shrink{', '@keyframes logo-shrink{0%{visibility:hidden}'));
 })());
 check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron box turns whole, with no shift between states',
   /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
@@ -7197,37 +7198,105 @@ appCheck('B3C2 home from Compare: the view closes and the list shows; open panel
 });
 check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
 check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
-// 2026-11-08: the phone tile keeps its slot in both states (it was display:none
-// until stuck, so the count jumped 50 px right); it is hidden, not removed.
-check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
+// 2026-11-08: the phone tile is out of the flow, over the row's left edge,
+// hidden until the handover shows it; the count keeps the 50 px on its right.
+check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile lies over the stuck row\'s left edge',
   /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
-  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.home-tile\{display:inline-flex;[^}]*width:44px;height:44px;[^}]*opacity:0;visibility:hidden\}\s*\.status\.is-stuck \.home-tile\{opacity:1;visibility:visible\}/.test(cssText));
+  && /\.home-tile\{display:none\}\s*@media screen and \(max-width:599\.98px\)\{\s*\.status \.home-tile\{display:flex;[^}]*position:absolute;left:var\(--gut\);top:0;bottom:0;margin-block:auto;width:44px;height:44px;[^}]*opacity:0;visibility:hidden\}/.test(cssText)
+  && /transform:scale\(\.818\)/.test(ruleAt(cssText, '.status .home-tile .mono', 'screen and (max-width:599.98px)'))
+  && /margin-right:50px/.test(ruleAt(cssText, '.status .count', 'screen and (max-width:599.98px)'))
+  && !/\.is-stuck \.home-tile/.test(cssText));
 
 // Leon, iPhone, 2026-11-08: the stuck row's tile came in late and pushed the
-// count right; on the way up both logos showed. The header logo and the tile
-// now fade on one scroll timeline (the 1 px mark), in ranges that do not
-// overlap, so a late frame still never shows both; the row is one height in
-// both states. Smoke runBatch3C measures it frame by frame in Chrome.
+// count right; on the way up both logos showed. Then, from mockups, option C:
+// the header logo holds its spot while the header leaves, shrinks to 36 px and
+// lands where the row's tile sits, which takes over at that pixel when the row
+// sticks; the count glides 50 px right in the first 16 px of scroll. One scroll
+// timeline (the 1 px mark) drives it all. Reduced motion: no glide or shrink,
+// the count waits one tile in and the tile is a cut. Smoke runBatch3C measures
+// it frame by frame in Chrome, natively and with the fallback forced.
 {
-  const phone = '(max-width:599.98px)', sup = '@supports (timeline-scope:--a)';
-  const inSup = (sel, extra = []) => cssTree(cssText).filter((r) => r.selector.trim() === sel && r.media.join('|') === [...extra, sup].join('|')).map((r) => r.body).join(';');
-  const tile = inSup('.status .home-tile', [`@media ${phone}`]), logo = inSup('.hd .mark', [`@media ${phone}`]);
-  const rTile = inSup('.status .home-tile', ['@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)']);
-  const rLogo = inSup('.hd .mark', ['@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)']);
-  const range = (body) => (body.match(/animation-range:cover calc\(100% ([+-]) (\d+)px\) cover calc\(100% ([+-]) (\d+)px\)/) || []).slice(1).reduce((a, v, i, all) => i % 2 ? [...a, (all[i - 1] === '-' ? -1 : 1) * Number(v)] : a, []);
-  const [ts, te] = range(tile), [ls, le] = range(logo);
-  check('B3C2b phones: header logo and stuck tile hand over on one scroll timeline, the logo gone before the tile starts; reduced motion is the same cut; the row is one height',
-    /timeline-scope:--stuck/.test(inSup('.page', [`@media ${phone}`])) && /view-timeline:--stuck block/.test(inSup('.stuck-mark', [`@media ${phone}`]))
-      && /animation:tile-in linear both;animation-timeline:--stuck/.test(tile) && /animation:logo-out linear both;animation-timeline:--stuck/.test(logo)
-      && ls < le && le <= ts && ts < te
-      && /animation:tile-in step-start both !important;animation-timeline:--stuck !important/.test(rTile) && /animation:logo-out step-end both !important;animation-timeline:--stuck !important/.test(rLogo)
-      && range(rTile).join() === range(tile).join() && range(rLogo).join() === range(logo).join()
-      && /@keyframes tile-in\{from\{opacity:0;visibility:hidden;transform:scale\(\.85\)\}to\{opacity:1;visibility:visible;transform:none\}\}/.test(cssText)
-      && /@keyframes logo-out\{to\{opacity:0\}\}/.test(cssText)
+  const phone = 'screen and (max-width:599.98px)', sup = '@supports (timeline-scope:--a) and (animation-timeline:--a)', off = ':root:not([data-handover=frames]) ';
+  const inSup = (sel, mediaFirst) => cssTree(cssText).filter((r) => r.selector.trim() === sel && r.media.join('|') === (mediaFirst ? [`@media ${mediaFirst}`, sup] : [sup, `@media ${phone}`]).join('|')).map((r) => r.body).join(';');
+  const logo = inSup(off + '.hd .mark'), mono = inSup(off + '.hd .mono'), tile = inSup(off + '.status .home-tile'), count = inSup(off + '.status .count');
+  const rTile = inSup(off + '.status .home-tile', 'screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)');
+  const kf = (name) => (cssText.match(new RegExp(`@keyframes ${name}\\{((?:[^{}]|\\{[^{}]*\\})*)\\}`)) || [])[1] || '';
+  check('B3C2b phones: the logo travels into the row on one scroll timeline: glued while the header leaves, 36 px at the stick, then the tile at the same scroll position; the count glides first; reduced motion is a cut',
+    /timeline-scope:--stuck/.test(inSup('.page')) && /view-timeline:--stuck block/.test(inSup('.stuck-mark'))
+      && /animation:logo-travel linear both,logo-off step-end both;animation-timeline:--stuck,--stuck;animation-range:cover calc\(100% - var\(--logo-travel\)\) cover 100%,cover calc\(100% - 1px\) cover 100%/.test(logo)
+      && /animation:logo-shrink linear both;animation-timeline:--stuck;animation-range:cover calc\(100% - 22px\) cover 100%/.test(mono)
+      && /animation:tile-on step-end both;animation-timeline:--stuck;animation-range:cover calc\(100% - 1px\) cover 100%/.test(tile)
+      && /animation:count-glide linear\(0,\.93 80%,1\) both;animation-timeline:--stuck;animation-range:cover calc\(100% - var\(--logo-travel\)\) cover calc\(100% - var\(--logo-travel\) \+ 16px\)/.test(count)
+      && /animation:tile-on step-end both !important;animation-timeline:--stuck !important;animation-range:cover calc\(100% - 1px\) cover 100% !important/.test(rTile)
+      && /transform:translateX\(50px\)/.test(ruleAt(cssText, '.status .count', 'screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)'))
+      && kf('logo-travel') === 'from{transform:none}to{transform:translateY(calc(var(--logo-travel) + var(--logo-dock)))}'
+      && kf('logo-shrink') === 'from{transform:none}to{transform:scale(.818)}'
+      && kf('logo-off') === 'from{opacity:1}to{opacity:0}'
+      && kf('tile-on') === 'from{opacity:0;visibility:hidden}to{opacity:1;visibility:visible}'
+      && kf('count-glide') === 'from{transform:none}to{transform:translateX(50px)}'
+      && /animation:none/.test(inSup('.page:has(.stream>#compare:not([hidden]),.status[hidden]) :is(.hd .mark,.hd .mono)'))
+      && /--logo-travel:57px;--logo-dock:0px/.test(ruleAt(cssText, '.page', phone))
       && /padding-block:6px/.test(ruleAt(cssText, '.status', phone)) && /padding:6px var\(--gut\)/.test(ruleAt(cssText, '.status.is-stuck'))
       && /min-height:var\(--ctl\);line-height:20px/.test(ruleAt(cssText, '.status.is-stuck .cshort', phone)),
-    JSON.stringify({ tile: [ts, te], logo: [ls, le] }));
+    JSON.stringify({ logo, mono, tile, count, rTile }));
+}
+
+// The keyframes need two distances CSS cannot know (a data banner pushes the
+// row down; a three-line 320 px Slovak count makes the row taller), and Safari
+// before 26 has no scroll timelines: round2.js measures the distances, and
+// there runs option B frame by frame from the same clock. Run here against a
+// fake page, with and without scroll-timeline support.
+{
+  const round2Src = read('js/round2.js');
+  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('function syncSegments'));
+  const run = ({ native, reduced = false, phone = true, statusShown = true }) => {
+    const style = () => { const s = {}; return { s, setProperty(k, v) { s[k] = v; }, removeProperty(k) { delete s[k]; }, get opacity() { return s.opacity; }, set opacity(v) { s.opacity = v; }, get visibility() { return s.visibility; }, set visibility(v) { s.visibility = v; }, get transform() { return s.transform; }, set transform(v) { s.transform = v; } }; };
+    const node = (props = {}) => ({ style: style(), offsetTop: 0, offsetHeight: 0, offsetParent: null, ...props });
+    const body = node(), hd = node({ offsetTop: 0, offsetParent: body }), slot = node({ offsetTop: 6, offsetParent: hd }), logo = node({ offsetTop: 0, offsetParent: slot });
+    const status = node({ offsetTop: 57, offsetParent: body }), tile = node({ offsetTop: 14, offsetParent: statusShown ? status : null });
+    const counts = [node(), node()], banner = node();
+    let markBottom = 57;
+    const stuckMark = node({ offsetTop: 56, offsetHeight: 1, offsetParent: body, getBoundingClientRect: () => ({ bottom: markBottom }) });
+    status.querySelector = (sel) => sel === '.home-tile' ? tile : null;
+    status.querySelectorAll = (sel) => sel === '.count' ? counts : [];
+    hd.querySelector = (sel) => sel === '.mark' ? logo : null;
+    const root = { dataset: {} }, listeners = {}, frames = [];
+    const env = {
+      document: { body, documentElement: root, querySelector: (sel) => sel === '.hd' ? hd : null },
+      ResizeObserver: class { observe() {} },
+      CSS: { supports: (q) => native && /timeline/.test(q) },
+      matchMedia: (q) => ({ matches: q.includes('reduced-motion') ? reduced : phone, addEventListener() {} }),
+      addEventListener: (type, fn) => { listeners[type] = fn; },
+      requestAnimationFrame: (fn) => frames.push(fn),
+    };
+    const wire = runInNewContext(handoverSrc.replace(/^export /, '') + '\nwireLogoHandover;', env);
+    wire({ status, stuckMark, banner });
+    const at = (bottom) => { markBottom = bottom; listeners.scroll?.(); while (frames.length) frames.shift()(); return { logo: { ...logo.style.s }, tile: { ...tile.style.s }, count: counts[0].style.s.transform }; };
+    return { body: body.style.s, root, listeners, at };
+  };
+  const nat = run({ native: true });
+  const fb = run({ native: false });
+  const steps = []; for (let d = -60; d <= 20; d++) steps.push([d, fb.at(-d)]);
+  const both = steps.filter(([, f]) => Number(f.logo.opacity) > 0 && f.logo.visibility !== 'hidden' && Number(f.tile.opacity) > 0 && f.tile.visibility !== 'hidden');
+  const slide = steps.map(([, f]) => Number((f.count || 'translateX(0px)').match(/-?[\d.]+/)[0]));
+  const jumps = slide.slice(1).map((x, i) => Math.abs(x - slide[i]));
+  const red = run({ native: false, reduced: true });
+  const redSteps = [-30, -1, 0, 1, 30].map((d) => [d, red.at(-d)]);
+  const hidden = run({ native: false, statusShown: false });
+  const hiddenAt = hidden.at(-10);
+  check('B3C2c phones: round2.js measures --logo-travel (where the row sticks) and --logo-dock (the tile\'s drop); with scroll timelines it adds nothing else',
+    nat.body['--logo-travel'] === '57px' && nat.body['--logo-dock'] === '8px' && nat.root.dataset.handover === undefined && !nat.listeners.scroll
+      && /wireLogoHandover\(dom\);/.test(appSrc) && /export function wireLogoHandover/.test(round2Src),
+    JSON.stringify(nat.body));
+  check('B3C2d without scroll timelines: option B frame by frame from one clock: the logo fades out first, the count slides 50 px without a jump, the tile fades in; never both; reduced motion is one cut for both at the stick; no row, no handover',
+    fb.root.dataset.handover === 'frames' && typeof fb.listeners.scroll === 'function'
+      && both.length === 0 && slide[0] === 0 && slide.at(-1) === 50 && Math.max(...jumps) <= 4
+      && steps.find(([d]) => d === -20)[1].logo.opacity === '0' && steps.find(([d]) => d === -8)[1].tile.visibility === 'hidden'
+      && steps.find(([d]) => d === 12)[1].tile.opacity === '1'
+      && redSteps.every(([d, f]) => f.tile.opacity === (d >= 0 ? '1' : '0') && f.logo.opacity === (d >= 0 ? '0' : '1') && f.count === undefined)
+      && hiddenAt.logo.opacity === undefined && hiddenAt.tile.opacity === undefined,
+    JSON.stringify({ both: both.slice(0, 2), maxJump: Math.max(...jumps), red: redSteps, hiddenAt }));
 }
 
 section('Alignment · list, detail, Compare');
@@ -7474,10 +7543,12 @@ check('LR2 phones: the header and count row are one block, and the list starts 1
   && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
 // 2026-11-07: the tile grew to 44 px and fills its tap area, so it needs no -4 px nudge;
 // a leftover nudge would push the tile 4 px into the margin.
+// 2026-11-08 (option C): the row's tile is placed on the margin (left:var(--gut)),
+// so the header logo lands on it at the same pixel.
 check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
   /width:44px;height:44px/.test(ruleAt(cssText, '.mono', '(max-width:599.98px),(pointer:coarse)'))
-  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.home-tile', '(max-width:599.98px)'))
-  && /width:44px;height:44px/.test(ruleAt(cssText, '.home-tile', '(max-width:599.98px)')));
+  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left/.test(ruleAt(cssText, '.status .home-tile', 'screen and (max-width:599.98px)'))
+  && /left:var\(--gut\);[^;]*;[^;]*;margin-block:auto;width:44px;height:44px/.test(ruleAt(cssText, '.status .home-tile', 'screen and (max-width:599.98px)')));
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)

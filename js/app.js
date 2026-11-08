@@ -1,6 +1,6 @@
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
-import { wireRound2, syncRound2, showToast, wireCompactHeader } from './round2.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
@@ -304,6 +304,7 @@ async function start() {
   wireInputs();
   wireRound2(dom);
   wireCompactHeader(dom, { goHome });
+  wireLogoHandover(dom);
   for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
     const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
     const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
