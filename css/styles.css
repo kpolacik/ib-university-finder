@@ -2097,8 +2097,10 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   .open, .d-title, .cell .verd, .cell .r2, .cell .ic { color: var(--ink); }
   /* The marks are the shape of the verdict; keep them when backgrounds are off. */
   .m::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  /* Focus is a screen state; a focused row printed its blue ring. */
-  :focus-visible, .open:focus-visible::after { outline: none; }
+  /* Focus is a screen state; a focused row printed its blue ring, and so did
+     the Compare heading (#cmp-h:focus-visible out-ranked this rule;
+     verification of PR 1), hence !important. */
+  :focus, :focus-visible, :focus-visible::after { outline: none !important; }
 
   /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
      whole; a long open detail may run on to the next page. */

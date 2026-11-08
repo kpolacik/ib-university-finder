@@ -4445,7 +4445,7 @@ check('A08 print is ink on white: no row, cell, selected, open or banner fill or
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
-    && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody('.open:focus-visible::after')));
+    && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
   /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
@@ -7497,6 +7497,9 @@ check('CH7 concentric corners: panels are 16 px, and phone Sort sits 8 px from t
     && /margin-left:0/.test(ruleAt(cssText, '.status #header-list~.more', phone))
     && /display:block;position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(ruleAt(cssText, '.status #header-list>.hb-l', phone)));
 }
+
+// Verification of PR 1: the focused Compare heading printed its blue ring.
+check('print removes every focus outline, even the Compare heading\'s ID rule', (() => { const print = cssText.slice(cssText.indexOf('@media print {\n  *, *::before')); return print.includes(':focus, :focus-visible, :focus-visible::after { outline: none !important; }'); })());
 
 section('Facts and copy, review of PR 1, 2026-11-07');
 {
