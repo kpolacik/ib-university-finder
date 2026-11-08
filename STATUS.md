@@ -1198,8 +1198,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   on `html` locks background scrolling; sheet and scrim stack above the
   header, Compare tray and toasts. The scrim keeps the old colour and fade;
   the 180/140 ms slide, instant reduced motion, print hiding and widening
-  cleanup remain. Setup still uses its native modal dialog after closing
-  Filters.
+  cleanup remain. Setup now uses the same non-modal pattern after closing
+  Filters (see below).
   - `aria-hidden` on the background was measured, not adopted: on WebKit,
     applying it to the few body-level ancestors, including the results,
     took about 440 ms, removing it about 379 ms (116,642 result descendants).
@@ -1226,6 +1226,64 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
     three original product files made 11 source checks and all eight smoke
     checks fail; the edited files were then restored byte-for-byte. The full
     smoke suite was not run on this shared machine.
+
+
+- **Non-modal Setup (2026-11-08, local `fu-onboard`).** Leon approved the
+  same replacement for the first-visit Setup dialog: WebKit's modal inert
+  update stalled its first painted frame on close and delayed a Filters tap.
+  `onboarding.js` now uses `show()` with `aria-modal="true"`, an explicit
+  scrim above the sheet/header/tray/toasts, Tab/Shift+Tab cycling, stray-focus
+  redirection and Escape handling. Scroll locking uses `html.onboarding-open`,
+  with no inert or background `aria-hidden` walk. The old `html:has(.ob[open])`
+  rule is removed too; it overrode the print scroll unlock.
+  - Skip/Escape still discard the draft; Finish applies once and shows the
+    done screen; Escape there keeps the answers. Results/FAQ keep their
+    existing focus destinations. Edit from the phone sheet returns to Filters,
+    since its Edit button is hidden after handover, including during the
+    sheet's closing fade. Every focus move respects tap versus keyboard rings.
+    First-visit and stored-flag rules are unchanged. Setup/scrim open in 180 ms,
+    close in 140 ms, stop intercepting taps as soon as closed, hide for print
+    and are instant with reduced motion. The Filters implementation is unchanged.
+  - The motion/print source checks now target `.ob-scrim`, since `show()` does
+    not create a native `::backdrop`. New source checks cover non-modal opening,
+    semantics, stacking, focus cycling/return, Escape and queued-close cleanup.
+    Smoke `--setup-only` selects the new NMO checks and the existing Setup
+    sections; `--onboarding-only` selects just NMO for the reverted-code check.
+  - Timing: Playwright WebKit 26 (no CPU slowdown) and Chrome 157 at 4×,
+    390×844, three fresh contexts per flow, Setup never pre-dismissed. The
+    initial open happens during boot; the other measurements wait for all
+    2,915 rows, including the new list after Finish. Paint means two animation
+    frames, not transitionend. Open starts at show/showModal; close starts at
+    the closing click. Filters is tapped immediately after Skip or the done
+    screen's Show programmes, with no wait for Setup's fade.
+
+    | Median milliseconds | WebKit before → after | Chrome 4× before → after |
+    | --- | ---: | ---: |
+    | First-visit open → paint | 97 → 88 | 49 → 44 |
+    | Edit open → paint | 549 → 69 | 218 → 118 |
+    | Skip → paint | 653 → 140 | 139 → 32 |
+    | Done: Show programmes → paint | 656 → 72 | 127 → 22 |
+    | Skip → immediate Filters paint | 656 → 140 | 351 → 166 |
+    | Done: Show programmes → immediate Filters paint | 689 → 107 | 316 → 125 |
+
+  - `check.mjs` passes. All six new Chrome NMO smoke checks pass at 390×844
+    and 320×640; restoring the original three product files makes all six
+    fail, including the 120 ms close-frame median bound (130/125 ms before,
+    25/23 ms after). Four new source checks and the two updated motion/print
+    checks fail with the originals too; final files were restored byte-for-byte.
+    WebKit behavior checks at 320, 390 and 1280 px pass Tab/Shift+Tab, Escape,
+    tap focus return without a ring, done-screen Escape, reduced motion and
+    print, with zero page errors.
+  - The complete focused Setup run has 34/38 passes: R2M's FAQ scroll fails
+    at 390 and 1280 px, then the uncleared answers make the following R2B
+    checks fail. A separate before/after Playwright reproduction proves the
+    FAQ miss also exists with the original `bb042fa` product files: after six
+    seconds it is still about 13,000 px below the viewport on phones and
+    20,000 px on desktop. That unrelated bug and its existing assertions are
+    preserved. An independent R2A/R2J/R2B rerun passes all six checks,
+    including persistence at both widths.
+    The full smoke suite was not run. Real iPhone Safari and VoiceOver remain
+    unverified; a reader that ignores aria-modal may still browse the background.
 
 ## Decisions already made, so they are not relitigated
 

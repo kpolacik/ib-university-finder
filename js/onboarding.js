@@ -27,7 +27,15 @@ const button = (label, className, action) => {
 };
 
 export function setupOnboarding({ state, facets, flags, apply, results, closeSheet, closeCompare, firstVisit }) {
-  const dialog = document.getElementById('onboarding');
+  const dialog = document.getElementById('onboarding'), scrim = document.getElementById('onboarding-scrim');
+  let keyboardInput = false, appliedOnClose = false;
+  document.addEventListener('keydown', () => { keyboardInput = true; }, true);
+  document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+  const focus = (node) => {
+    // show()/close() may already have focused it with the browser's ring guess.
+    if (document.activeElement === node) node.blur();
+    node.focus({ preventScroll: true, focusVisible: keyboardInput });
+  };
   // done: Finish has applied the answers and the "you're set" screen is up. From
   // then on every way out (Show, FAQ, Esc) keeps them; Skip is gone.
   let draft = null, step = 1, trigger = null, done = false;
@@ -41,20 +49,26 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     // CSS puts Next above Skip on phones; DOM order must follow it for Tab.
     if (phone.matches) foot.insertBefore(primary, foot.children[0]);
     else foot.append(primary);
-    if (active === primary) primary.focus({ preventScroll: true });
+    if (active === primary) focus(primary);
   };
   phone.addEventListener('change', () => { orderFooter(); syncDoneNote(); });
+  const finishClose = () => {
+    // Native close events are queued: an old one must not clean up a reopen.
+    if (dialog.open || !document.documentElement.classList.contains('onboarding-open')) return;
+    document.documentElement.classList.remove('onboarding-open'); scrim.classList.remove('is-open');
+    if (appliedOnClose) { closeCompare(); focus(results); }
+    else if (trigger?.isConnected && !trigger.closest('#filter-sheet') && trigger.getClientRects().length) focus(trigger);
+    // The sheet's Edit button is hidden after handover, so return to Filters.
+    else focus(document.getElementById(trigger?.closest('#filter-sheet') && phone.matches ? 'f-more' : 'f-search'));
+  };
   const close = (applied = false) => {
     if (!done) dismiss(applied ? 'completed' : 'dismissed');
-    draft = null; done = false; dialog.close();
-    if (applied) { closeCompare(); results.focus({ preventScroll: true }); }
-    else if (trigger?.isConnected) trigger.focus({ preventScroll: true });
-    else document.getElementById('f-search').focus({ preventScroll: true });
+    draft = null; done = false; appliedOnClose = applied; dialog.close(); finishClose();
   };
   const showFaq = () => {
     const faq = document.getElementById('faq'), behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
     faq.scrollIntoView({ block: 'start', behavior });
-    faq.querySelector('summary').focus({ preventScroll: true });
+    focus(faq.querySelector('summary'));
     // Finish has just applied the answers, and the list fills in for a while
     // after that (0.4 s on a fast laptop, more on a slow phone), pushing the FAQ
     // down while the page scrolls to it. Once the list stops growing, aim once
@@ -145,7 +159,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       const answers = validateFilters(draft, facets); done = true;
       const result = apply(answers); dismiss('completed'); drawDone(answers, result);
     });
-    foot.replaceChildren(skip, spacer, previous, next); orderFooter(); heading.focus({ preventScroll: true });
+    foot.replaceChildren(skip, spacer, previous, next); orderFooter(); focus(heading);
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
   // filters, so it says so, how many programmes that leaves, and offers the
@@ -206,12 +220,33 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     const show = button('r2_show_mine', 'btn btn-p', (event) => { if (event?.detail > 1) return; close(true); });
     const faq = button('r3_ob_faq', 'btn', () => { close(true); showFaq(); });
     foot.classList.add('ob-done-foot'); foot.replaceChildren(show, faq, el('span', 'sp'));
-    heading.focus({ preventScroll: true });
+    focus(heading);
   };
   const open = (from) => {
     if (dialog.open) return;
-    trigger = from; closeSheet(); draft = validateFilters(state, facets); step = 1; done = false; foot.classList.remove('ob-done-foot'); dialog.showModal(); draw();
+    trigger = from; appliedOnClose = false; closeSheet(); draft = validateFilters(state, facets); step = 1; done = false; foot.classList.remove('ob-done-foot');
+    // WebKit's modal inert update restyles every mounted row (~600 ms).
+    // Like Filters, own the scrim/focus/scroll lock without touching the list.
+    dialog.show(); document.documentElement.classList.add('onboarding-open'); scrim.classList.add('is-open'); draw();
   };
+  document.addEventListener('keydown', (event) => {
+    if (!dialog.open || event.defaultPrevented) return;
+    if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation(); close(done);
+    } else if (event.key === 'Tab') {
+      const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')]
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+      const first = controls[0] ?? document.getElementById('ob-title'), last = controls.at(-1) ?? first;
+      const active = document.activeElement;
+      if (!controls.includes(active) || (event.shiftKey ? active === first : active === last)) {
+        event.preventDefault(); focus(event.shiftKey ? last : first);
+      }
+    }
+  });
+  document.addEventListener('focusin', (event) => {
+    if (dialog.open && !dialog.contains(event.target)) focus(document.getElementById('ob-title'));
+  });
+  dialog.addEventListener('close', finishClose);
   // Esc on the done screen leaves the answers applied: they already are.
   dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(done); });
   document.addEventListener('click', (event) => { const button = event.target.closest('[data-edit]'); if (button) open(button); });

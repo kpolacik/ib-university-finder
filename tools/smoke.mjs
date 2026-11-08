@@ -3,6 +3,8 @@
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
+//   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
+//   node tools/smoke.mjs --onboarding-only # just the non-modal Setup regressions
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
 //   CHROME=/path/to/chrome node tools/smoke.mjs
 //
@@ -936,6 +938,7 @@ async function runRound2(base) {
         await page.ev(`document.querySelector('#f-clear').click()`);
         assert(await page.ev(`!localStorage.getItem('ibuf.filters.v1') && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Clear all removed onboarding state or retained filters');
       });
+      if (args.has('--setup-only')) { assert(!page.errors.length, JSON.stringify(page.errors)); continue; }
       await check(width,'R2C','help, inner Escape, focus return, custom zero budget and no overflow',async()=>{
         if(width<600){
           await page.click(`document.querySelector('#f-more')`,'phone Filters');
@@ -2497,6 +2500,7 @@ async function runBatch3C(base) {
       });
     } finally { await page.close(); }
   }
+  if (args.has('--setup-only')) return;
   // C2: the logo goes home from anywhere, keeps the filters, and can be reached
   // while scrolled: in the compact header from 600 px, in the stuck count row on
   // phones.
@@ -3500,6 +3504,8 @@ async function runSetupCompareReview(base) {
       why:JSON.stringify({compare:!document.querySelector('#compare').hidden,focus:document.activeElement.tagName+'#'+document.activeElement.id,n:document.querySelector('#header-compare-count').textContent})})`, 5000, 'the results, Compare closed');
   });
 
+  if (args.has('--setup-only')) return;
+
   await run('590-600/en', 'PR1 compare arrow focus', 'a focused "Next programme" arrow hands focus to the comparison when widening hides it', await open(590, 900, { compare: ids }), async (page) => {
     await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
     await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&document.querySelectorAll('th.cmp-p').length===3,why:'compare not open'})`, 5000, 'compare');
@@ -3664,6 +3670,7 @@ async function runAlignChromeSetup(base) {
   // Header: the Search hint is never cut off. The long one shows exactly where
   // it fits whole, in both languages (re-measured after a language switch).
   for (const [width, touch] of [[600, false], [700, false], [850, false], [1024, false], [1280, false], [768, true]]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 800, 'en', { touch });
     try {
       for (const lang of ['en', 'sk', 'en']) {
@@ -3689,6 +3696,7 @@ async function runAlignChromeSetup(base) {
   // Phones: one hairline under the header, and the Filters sheet's points field
   // and bottom actions.
   for (const [width, lang] of [[390, 'en'], [320, 'sk'], [320, 'en']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 844, lang);
     try {
       await check(width, 'AL-H2 header hairline', `(${lang}): between the header and the count row only white, no grey stripe`, async () => {
@@ -3727,6 +3735,7 @@ async function runAlignChromeSetup(base) {
   // Focus rings: the wordmark is not touched by the logo's ring; SK/EN keep
   // theirs inside the button, clear of the pill's border.
   for (const width of [1280, 390]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 800, 'en');
     try {
       await check(width, 'AL-H4 focus rings', 'logo ring clear of "Finder"; language ring inside its button', async () => {
@@ -3758,6 +3767,7 @@ async function runAlignChromeSetup(base) {
     const g=box(document.querySelector('.ml-group')),note=document.querySelector('.ml-export-note'),nr=box(note),card=box(document.querySelector('#ml-tools'));
     return {b,group:{left:g.left,bottom:g.bottom,top:g.top},note:{shown:getComputedStyle(note).display!=='none'&&nr.height>0,top:nr.top,left:nr.left},cardRight:card.right-parseFloat(getComputedStyle(document.querySelector('#ml-tools')).paddingRight),sw:document.documentElement.scrollWidth-innerWidth}})()`;
   for (const [width, lang] of [[1280, 'en'], [1280, 'sk'], [1024, 'sk'], [700, 'sk'], [700, 'en'], [600, 'en'], [600, 'sk']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 900, lang, { saves: 3 });
     try {
       await check(width, 'AL-M1 My list tools', `(${lang}): Share, Export, Print and Clear one row of equal buttons, Clear at the right end, labels on one line; the CSV note below`, async () => {
@@ -3783,6 +3793,7 @@ async function runAlignChromeSetup(base) {
   // Phones: the 2 x 2 grid. Every label on one line in both languages; under
   // 360 px no icons; equal 44 px buttons.
   for (const [width, lang] of [[390, 'sk'], [390, 'en'], [320, 'sk'], [320, 'en']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 844, lang, { saves: 3 });
     try {
       await check(width, 'AL-M3 phone tools', `(${lang}): four equal 44 px buttons, each label on one line${width < 360 ? ', no icons' : ''}`, async () => {
@@ -3803,6 +3814,7 @@ async function runAlignChromeSetup(base) {
   }
   // A shared list hides Export, so it hides the note about Export too.
   for (const width of [1280, 390]) {
+    if (args.has('--setup-only')) continue;
     let page = await open(width, width < 600 ? 844 : 900, 'en', { saves: 3 });
     const ids = page.ids;
     await page.close();
@@ -3819,6 +3831,7 @@ async function runAlignChromeSetup(base) {
   // An empty My list: one "Back to all programmes"; the card lines up with the
   // pane on wide screens and the bar keeps its rounded bottom on phones.
   for (const [width, lang] of [[1280, 'en'], [390, 'en'], [390, 'sk']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, width < 600 ? 844 : 900, lang);
     try {
       await check(width, 'AL-M4 empty My list', `(${lang}): one way back; the card lines up${width < 600 ? ', the bar is a whole card' : ' with the pane'}`, async () => {
@@ -3897,6 +3910,8 @@ async function runAlignChromeSetup(base) {
       });
     } finally { await page.close(); }
   }
+
+  if (args.has('--setup-only')) return;
 
   // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
   // the first question's line.
@@ -4469,7 +4484,7 @@ async function runNonModalSheet(base, want) {
         await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&getComputedStyle(document.querySelector('#sheet-scrim')).display==='none',why:'widening cleanup'})`, 5000, 'wide cleanup');
       });
       await resetSheet();
-      await check(width, 'NMS reduced motion', 'sheet and scrim are instant; Edit my answers hands over to the native Setup dialog; print hides the sheet and scrim', async () => {
+      await check(width, 'NMS reduced motion', 'sheet and scrim are instant; Edit my answers hands over to Setup; print hides the sheet and scrim', async () => {
         await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reduced-motion sheet');
@@ -4484,6 +4499,91 @@ async function runNonModalSheet(base, want) {
       });
       assert(!page.errors.length, page.errors.map(e => e.text).join(' | '));
     } finally { await page.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await page.close(); }
+  }
+}
+
+// WebKit's native Setup close restyled the entire results tree. Keep the
+// first painted frame cheap, and exercise the focus we now own with show().
+async function runNonModalSetup(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    watchdog.refresh();
+    const page = await openPage(`${base}?ui=en`, width, height);
+    const settled = `({ok:!document.querySelector('#onboarding').getAnimations({subtree:true}).some(a=>a.playState==='running'),why:'Setup moving'})`;
+    const tap = async (selector, allowCovered = false) => {
+      const spot = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!${allowCovered}&&!e.contains(document.elementFromPoint(x,y)))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
+      await page.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[spot] });
+      await page.send('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
+    };
+    const reload = async () => {
+      await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelectorAll('#results>.item').length===${want.total},why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
+      await page.waitFor(settled,5000,'Setup settled');
+    };
+    try {
+      await page.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
+      await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+      await reload();
+      await page.send('Emulation.setCPUThrottlingRate',{rate:4});
+      await check(width,'NMO timing','fresh Setup: Skip/Finish close-to-painted-frame stays cheap and an immediate Filters tap opens the sheet (4x CPU)',async()=>{
+        const times=[], opened=[];
+        for(const action of ['skip','finish','skip']) {
+          await reload();
+          if(action==='finish')for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+          // Click timestamp includes handler work and the next paint. Counting
+          // transitionend alone hid the old inert frame on WebKit.
+          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',()=>{const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
+          await tap(action==='skip'?'#onboarding .skipwrap button':'#onboarding .ob-done-foot .btn-p');
+          // Deliver the immediate tap even if the old exiting backdrop covers it.
+          await tap('#f-more', true);
+          await page.waitFor(`({ok:window.__obFrame!==null,why:'close frame pending'})`,5000,'frame after close');
+          opened.push(await page.ev(`document.querySelector('#filter-sheet').open`));
+          times.push(await page.ev('__obFrame'));
+          await page.key('Escape','Escape',27);
+        }
+        console.log(`MEASURE ${width} Chrome 4x Setup close-to-painted-frame ms ${JSON.stringify(times.map(Math.round))}`);
+        const median=[...times].sort((a,b)=>a-b)[1];
+        assert(median<120,`Setup close median ${Math.round(median)} ms: ${JSON.stringify(times)}`);
+        assert(opened.every(Boolean),`immediate Filters taps blocked: ${JSON.stringify(opened)}`);
+      });
+      await reload();
+      await check(width,'NMO focus','non-modal semantics, Tab/Shift+Tab inside, Escape discards and returns keyboard focus, tap returns without a ring',async()=>{
+        assert(await page.ev(`!document.querySelector('#onboarding').matches(':modal')&&document.querySelector('#onboarding').getAttribute('aria-modal')==='true'&&document.activeElement.id==='ob-title'`),'Setup still native-modal or missing semantics/focus');
+        await page.key('Tab','Tab',9);
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .btn-p')`),'Tab missed first control');
+        await page.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+        await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .skipwrap button')`),'Shift+Tab escaped');
+        for(let i=0;i<4;i++){await page.key('Tab','Tab',9);assert(await page.ev(`document.querySelector('#onboarding').contains(document.activeElement)`),'Tab escaped');}
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        assert(await page.ev(`document.activeElement.id==='ob-title'`),'stray focus escaped');
+        await page.key('Escape','Escape',27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open&&localStorage.getItem('ibuf.onboarding.v1')==='dismissed'&&document.activeElement.id==='f-search'&&document.activeElement.matches(':focus-visible')&&!document.documentElement.classList.contains('onboarding-open')&&!document.querySelector('#onboarding-scrim').classList.contains('is-open')`),'Escape return/cleanup');
+        // Real sheet handover, whose Edit button is hidden after opening Setup.
+        await tap('#f-more');await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().some(a=>a.playState==='running'),why:'sheet moving'})`,5000,'sheet');
+        await tap('.sheet-edit');await page.waitFor(settled,5000,'Setup handover');
+        assert(await page.ev(`document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.activeElement.matches(':focus-visible')`),'sheet handover/tap ring');
+        await tap('#onboarding .skipwrap button');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'`),'tap return ring/focus');
+      });
+      await reload();
+      await check(width,'NMO scrim','scrim covers sheet/header/tray/toasts, blocks scrolling and outside taps; reduced motion and print clean up',async()=>{
+        assert(await page.ev(`(()=>{const z=s=>+getComputedStyle(document.querySelector(s)).zIndex;return document.elementFromPoint(4,4).id==='onboarding-scrim'&&z('#onboarding')>z('#onboarding-scrim')&&z('#onboarding-scrim')>Math.max(...['#filter-sheet','.hd','#toasts','.cmp-tray'].map(z))})()`),'Setup stacking');
+        const y=await page.ev('scrollY');
+        await page.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:4,y:4,deltaY:400,deltaX:0});
+        await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:4,y:200}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:4,y:20}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:4,y:4}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        assert(await page.ev(`scrollY===${y}&&document.querySelector('#onboarding').open&&getComputedStyle(document.documentElement).overflow==='hidden'`),'background scrolled or outside dismissed');
+        await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+        assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`),'reduced motion');
+        await page.send('Emulation.setEmulatedMedia',{media:'print'});
+        assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`),'print dialog/scrim/scroll: '+JSON.stringify(await page.ev(`({display:['#onboarding','#onboarding-scrim'].map(s=>getComputedStyle(document.querySelector(s)).display),overflow:getComputedStyle(document.documentElement).overflow})`)));
+        await page.send('Emulation.setEmulatedMedia',{media:'',features:[]});await page.key('Escape','Escape',27);
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally {await page.send('Emulation.setCPUThrottlingRate',{rate:1});await page.close();}
   }
 }
 
@@ -4504,7 +4604,10 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sheet-only')) {
+  if (args.has('--setup-only') || args.has('--onboarding-only')) {
+    await runNonModalSetup(base, want);
+    if (args.has('--setup-only')) { await runRound2(base); await runBatch3C(base); await runAlignChromeSetup(base); await runSetupCompareReview(base); }
+  } else if (args.has('--sheet-only')) {
     await runNonModalSheet(base, want);
   } else {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
@@ -4528,6 +4631,7 @@ async function main() {
       await runPhoneFixes(base);
       await runPhoneMotion(base);
       await runNonModalSheet(base, want);
+      await runNonModalSetup(base, want);
       await runBadgeFlush(base);
       await runCompareTouchScroll(base);
       await runRowScroll(base); }
