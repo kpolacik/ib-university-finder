@@ -138,7 +138,9 @@ verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
 round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
 in `plans/design-round2/proposal.md`, with mockup v4 in
 `plans/design-round2/mockup.html`; its later Leon decisions override the mockup.
-`plans/` is local only (not in git), so on another machine STATUS.md is the record.
+Most of `plans/` is local only (excluded in this clone's `.git/info/exclude`);
+only `plans/scan/` and `plans/backlog/` are in git, so on another machine
+STATUS.md is the record for the rest.
 
 - Colours belong only in the `:root` tokens in `css/styles.css`. Colour is
   only for verdicts; blue is only for interaction (see STATUS.md for the

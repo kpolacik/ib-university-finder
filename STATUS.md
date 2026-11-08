@@ -15,7 +15,8 @@ filter-summary detail pane, saved filters and five-step onboarding. The
 progress bar is hidden at step 1, then shows 25/50/75/100%, while the label
 stays "Step n of 5". Column headings are sort buttons; the phone keeps its
 Sort select. The switch and unset slider thumb use a softer contrast outline.
-The footer says "Data comes from the universities' official pages." Data
+The footer says "Data comes from the universities' official pages and the
+CAO; living costs are estimates." Data
 still loads from the CSVs, then `data/fallback.json`, as before. Rules and
 sources are under *The look of it*; the sort cycles and Leon's decisions are
 under *Decisions*.
@@ -777,6 +778,25 @@ students, and where each rule lives:
   (Leon to confirm). Rules: CSS sections "Alignment fixes · header, My list,
   setup" and "· list, detail, Compare"; smoke `runAlignChromeSetup`,
   `runAlignListCompare`.
+- *Logo and corners (Leon, 2026-11-06).* The logo is "Bookmark IB": a
+  lilac tile with a violet bookmark in the header, the plum version as the tab
+  icon and apple-touch-icon. The tile is as tall as Search (44 px on phones,
+  36 px with a mouse from 600 px). Panels have 16 px corners (`--r-panel`),
+  with Sort and My list inset 8 px so the corners stay concentric.
+- *Review of PR 1 (2026-11-07) and its verification (2026-11-08).* Three
+  read-only reviews from different models (Astra, Opus, Sol) found 28 issues;
+  five fix branches fixed them, and a second Opus pass checked each fix and
+  found 11 smaller ones, also fixed. Rows with no IB figure now say why: "Test
+  in cutoff" / "Hranica s testom", "Entrance exam" / "Prijímacia skúška" (any
+  row whose `entrance_exam` is `yes`, whatever the admission wording), "No IB
+  figure" / "Bez údaja v IB", and "Not published" only when the university
+  publishes nothing (Leon approved the wording, 2026-11-07). The HL Maths help
+  says the CAO adds the 25 points for grade 4 or above, on Irish courses only.
+  At under 360 px the column labels count toward their tile's width, so a fee
+  whose Slovak label is wider than the fee moves to its own line instead of
+  overlapping "Termín". Held for the Supabase PR (`plans/backlog/supabase-pr-ui.md`):
+  one tab stop per row, a keyboard way to reach the toast's Undo, and the smoke
+  test on GitHub's checks.
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
