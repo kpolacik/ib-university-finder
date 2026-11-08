@@ -2686,6 +2686,21 @@ async function runAlignListCompare(base) {
   }
   watchdog.refresh();
 
+  // Verification of PR 1: at 320 px Slovak, the fee label "Školné pre EÚ /
+  // rok" hung left out of its narrow tile into "Termín" on entrance-exam rows
+  // and on rows with a green points box. No tile or label in a row may touch
+  // another tile's or label's box on the same line (4 px gap at least).
+  for (const query of ['q=anthropology%20masaryk', 'q=computer%20science%20ucd&points=30']) {
+    const page = await open(`?ui=sk&${query}`, 320, 640);
+    try {
+      await check('320/sk', 'V2 labels', `${query}: column labels and tiles never touch`, async () => {
+        const m = await page.ev(`[...document.querySelectorAll('#results .row')].slice(0,12).map(r=>{const b=[...r.querySelectorAll('.cell')].flatMap(c=>[c,c.querySelector('.lab')].filter(Boolean).map(e=>({k:c.className,r:e.getBoundingClientRect()})));let bad=0;for(let i=0;i<b.length;i++)for(let j=i+1;j<b.length;j++){const x=b[i],y=b[j];if(x.k===y.k)continue;const v=Math.min(x.r.bottom,y.r.bottom)-Math.max(x.r.top,y.r.top),g=Math.max(x.r.left,y.r.left)-Math.min(x.r.right,y.r.right);if(v>0&&g<4)bad++}return bad})`);
+        assert(m.length >= 1 && m.every((n) => n === 0), JSON.stringify(m));
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+
   // Faculty labels share the flex row with the country badge. Their min-content
   // width must be a whole word, not one character inherited from anywhere.
   for (const ui of ['en', 'sk']) {

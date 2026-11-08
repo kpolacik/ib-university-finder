@@ -1397,6 +1397,12 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .row .c-pts{max-width:108px}
  .row .c-fee{flex:1 1 0;width:auto;min-width:min-content}
  .row .c-fee.v-unk{flex:none;width:max-content;margin-left:auto}
+ /* Each label above a tile now counts toward the tile's width: it stays in
+    flow with no height and is lifted back above the tile (4 px padding + 3 px
+    gap + 16 px line). Out of flow, Slovak "Školné pre EÚ / rok" ran left past
+    its narrow fee tile into "Termín" (verification of PR 1); now a fee whose
+    label does not fit wraps to its own line. */
+ .row .cell .lab{position:relative;bottom:auto;left:auto;right:auto;top:-23px;order:-1;height:0;margin:0 -4px -2px}
  .listp>.f-sort>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 }
 /* Batch 2 · A: header and filter bar */
