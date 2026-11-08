@@ -66,21 +66,28 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     draft = null; done = false; appliedOnClose = applied; dialog.close(); finishClose();
   };
   const showFaq = () => {
-    const faq = document.getElementById('faq'), behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-    faq.scrollIntoView({ block: 'start', behavior });
+    const faq = document.getElementById('faq'), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // The FAQ sits below all 2,900 rows. Smooth-scrolling that far took
+    // seconds, and the rows drawn on the way and near the bottom change height
+    // (content-visibility placeholders, b14ff68), so the page stopped about
+    // 12,000 px short of the FAQ. Far away (or with reduced motion) it jumps,
+    // then keeps re-aiming for a moment while the rows there settle. Close by,
+    // it still glides, and aims once more if the list grew meanwhile.
+    const far = reduce || Math.abs(faq.getBoundingClientRect().top) > innerHeight * 2;
+    faq.scrollIntoView({ block: 'start', behavior: far ? 'auto' : 'smooth' });
     focus(faq.querySelector('summary'));
-    // Finish has just applied the answers, and the list fills in for a while
-    // after that (0.4 s on a fast laptop, more on a slow phone), pushing the FAQ
-    // down while the page scrolls to it. Once the list stops growing, aim once
-    // more if it grew. Not every frame: each new smooth scroll starts slow again
-    // and never arrives. The reader scrolling first cancels it.
+    const target = faq.getBoundingClientRect().top;
     const list = document.getElementById('results');
-    let rows = list.children.length, grew = false, still = 0, frames = 0, frame;
+    const size = () => `${list.children.length}:${list.offsetHeight}`;
+    let last = size(), grew = false, still = 0, frames = 0, frame;
+    // The reader scrolling first cancels it.
     const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
     const stop = () => { cancelAnimationFrame(frame); for (const type of inputs) document.removeEventListener(type, stop, true); };
     const watch = () => {
-      if (list.children.length !== rows) { rows = list.children.length; grew = true; still = 0; } else still++;
-      if (still >= 6 || ++frames > 300) { stop(); if (grew) faq.scrollIntoView({ block: 'start', behavior }); } else frame = requestAnimationFrame(watch);
+      const now = size();
+      if (now !== last) { last = now; grew = true; still = 0; } else still++;
+      if (far && Math.abs(faq.getBoundingClientRect().top - target) > 1) faq.scrollIntoView({ block: 'start', behavior: 'auto' });
+      if (still >= 6 || ++frames > 300) { stop(); if (grew && !far) faq.scrollIntoView({ block: 'start', behavior: 'smooth' }); } else frame = requestAnimationFrame(watch);
     };
     for (const type of inputs) document.addEventListener(type, stop, true);
     frame = requestAnimationFrame(watch);

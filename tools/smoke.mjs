@@ -592,7 +592,7 @@ async function interactions(page, at, want) {
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
       const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
-      assert(opening === '0.18s, 0.18s / 0.18s, 0.18s', `open sheet transitions ${opening}`);
+      assert(opening === '0.15s, 0.15s / 0.15s, 0.15s', `open sheet transitions ${opening}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
@@ -3289,7 +3289,7 @@ async function runPrintFixes(base) {
         else await page.click(`document.querySelector('#f-more')`, 'Filters');
         await page.waitFor(`({ok:document.querySelector('${dialog}').open,why:'dialog closed'})`, 5000, 'dialog open');
         const m = await printed(page, `dialog-${which}-${width}-${ui}`, `(()=>{const d=document.querySelector('${dialog}'),row=document.querySelector('#results>.item .row');
-          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:d.id==='filter-sheet'?getComputedStyle(document.querySelector('#sheet-scrim')).display:getComputedStyle(d,'::backdrop').display,
+          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:getComputedStyle(document.querySelector(d.id==='filter-sheet'?'#sheet-scrim':'#onboarding-scrim')).display,
             row:row.getBoundingClientRect().height,overflow:getComputedStyle(document.documentElement).overflow,
             head:${head},content:document.querySelector('#results').getBoundingClientRect().top+scrollY}})()`);
         assert(m.open && m.display === 'none' && m.rects === 0 && m.scrim === 'none' && m.row > 0 && m.overflow === 'visible', JSON.stringify(m));

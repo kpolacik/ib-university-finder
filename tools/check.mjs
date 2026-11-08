@@ -5840,7 +5840,7 @@ appCheck('heading sort cycles include the default order, announced next state an
 function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -7357,6 +7357,25 @@ for (const [name, grow, input] of [['aims once more after the list grows', true,
   if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
   for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
   return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+});
+// Full smoke after the row pop-in fix (b14ff68): the FAQ sits below all
+// 2,900 rows, a smooth scroll that far took seconds, and rows drawn near the
+// bottom grew the list after it, so the page stopped ~12,000 px short. Far
+// away it now jumps, then re-aims each frame the FAQ drifts, without smooth.
+appCheck('the done screen FAQ jumps when far away and re-aims while the rows below settle', (h) => {
+  const {get}=h, frames=new Map(); let id=0, top=20000;
+  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+  for (let i = 0; i < 5; i++) next();
+  const faq = get('faq'); faq.getBoundingClientRect = () => ({ top, bottom: top + 100, left: 0, right: 0, width: 0, height: 100 });
+  stubDocument.scrolls = [];
+  const origScroll = faq.scrollIntoView;
+  faq.scrollIntoView = function (opts) { top = 56; return origScroll.call(this, opts); };
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  const aims = () => stubDocument.scrolls.filter((s) => s.node === faq);
+  const first = aims()[0];
+  top = 900; // rows near the bottom were drawn and pushed the FAQ down
+  for (let i = 0; i < 3 && frames.size; i++) { const [[n, fn]] = frames; frames.delete(n); fn(); }
+  return aims().length >= 2 && aims().every((s) => (s.options?.behavior ?? s.behavior) === 'auto') && first !== undefined;
 });
 appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
   const {dialog,next,doneScreen,api,writes}=realSetup(h);
