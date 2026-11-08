@@ -1,6 +1,7 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
 //   CHROME=/path/to/chrome node tools/smoke.mjs
@@ -553,17 +554,18 @@ async function interactions(page, at, want) {
   if (phone) {
     // 2026-11-06: list-item rows that content-visibility had never drawn made
     // showModal() stall ~500 ms (4x CPU) before the sheet moved. Rows are
-    // block and still list items to assistive tech; the sheet takes 240 ms up
-    // and 200 ms down, and none at all with reduced motion.
-    await check(at, 'A10', 'rows are display:block list items; the sheet takes 200 ms to close, none with reduced motion', async () => {
+    // block and still list items to assistive tech; the sheet takes 180 ms up
+    // and 140 ms down (was 240/200, still slow on the iPhone, 2026-11-08), and
+    // none at all with reduced motion.
+    await check(at, 'A10', 'rows are display:block list items; the sheet takes 140 ms to close, none with reduced motion', async () => {
       const row = await page.ev(`getComputedStyle(document.querySelector('#results>li.item')).display`);
       assert(row === 'block', `a result row is display:${row}, expected block`);
       const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>li.item')` });
       const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
       assert(nodes[0]?.role?.value === 'listitem', `a result row's role is ${nodes[0]?.role?.value}, expected listitem`);
-      const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(s, '::backdrop').transitionDuration; })()`;
+      const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration; })()`;
       const closed = await page.ev(times);
-      assert(closed === '0.2s, 0.2s, 0.2s / 0.16s, 0.2s, 0.2s', `closed sheet transitions ${closed}`);
+      assert(closed === '0.14s, 0.14s / 0.14s, 0.14s', `closed sheet transitions ${closed}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(times);
@@ -580,16 +582,15 @@ async function interactions(page, at, want) {
         if (!document.querySelector('.sheet-b').contains(document.querySelector('#dd-countries'))) return { why: 'Country list is not in the sheet' };
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
-      const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
-      assert(opening === '0.24s, 0.24s, 0.24s / 0.2s, 0.24s, 0.24s', `open sheet transitions ${opening}`);
+      const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
+      assert(opening === '0.18s, 0.18s / 0.18s, 0.18s', `open sheet transitions ${opening}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
-        const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
+        const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
         assert(still === '0s / 0s', `reduced motion: open sheet transitions ${still}, expected none`);
       } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
     });
-    // A sheet that opened but cannot be seen still makes the page behind it
-    // inert, which would fail every later check for the same reason.
+    // An unseen open sheet still traps focus and locks scrolling behind it.
     if (!sheetOpen) await page.ev(`document.querySelector('#filter-sheet')?.close()`).catch(() => {});
   }
 
@@ -3182,7 +3183,7 @@ async function runPrintFixes(base) {
         else await page.click(`document.querySelector('#f-more')`, 'Filters');
         await page.waitFor(`({ok:document.querySelector('${dialog}').open,why:'dialog closed'})`, 5000, 'dialog open');
         const m = await printed(page, `dialog-${which}-${width}-${ui}`, `(()=>{const d=document.querySelector('${dialog}'),row=document.querySelector('#results>.item .row');
-          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:getComputedStyle(d,'::backdrop').display,
+          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:d.id==='filter-sheet'?getComputedStyle(document.querySelector('#sheet-scrim')).display:getComputedStyle(d,'::backdrop').display,
             row:row.getBoundingClientRect().height,overflow:getComputedStyle(document.documentElement).overflow,
             head:${head},content:document.querySelector('#results').getBoundingClientRect().top+scrollY}})()`);
         assert(m.open && m.display === 'none' && m.rects === 0 && m.scrim === 'none' && m.row > 0 && m.overflow === 'visible', JSON.stringify(m));
@@ -4207,6 +4208,185 @@ async function runCompareTouchScroll(base) {
   } finally { await page.close(); }
 }
 
+// iPhone (Leon, 2026-11-08). 1. The bar's pick-lists, Sort above the list
+// too, faded in but snapped shut: Safari ignores the ::details-content
+// content-visibility transition that held a closing list in Chrome. Here that
+// transition is switched off to behave like Safari, and the list must still
+// fade for about 150 ms, take no taps while it does, and keep Escape's focus
+// return. 2. The Filters sheet opens in 180 ms and closes in 140 ms. 3. After
+// a tap, Filters showed a focus ring: iOS never focuses a tapped button, so the
+// scripted heading focus matched :focus-visible and the focus return inherited
+// it. Taps here are made to not focus their button, as on iOS.
+async function runPhoneMotion(base) {
+  watchdog.refresh();
+  const ready = `({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`;
+  const page = await openPage(`${base}?ui=en`, 390, 844);
+  try {
+    await page.waitFor(ready, 15000, 'page');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    await check(390, 'PMO sort fade', 'Sort fades shut in about 150 ms when Safari would snap it, reads closed at once, takes no taps meanwhile; a tap mid-fade reopens it', async () => {
+      await page.ev(`document.head.insertAdjacentHTML('beforeend','<style id="like-safari">::details-content{transition:none!important}</style>')`);
+      const settled = `(()=>{const d=document.querySelector('#dd-sort');return {ok:d.open&&!d.querySelector('.dropdown-panel').getAnimations().some((a)=>a.playState==='running'),why:'not open'}})()`;
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      // Sampled from inside the page: two frames after the closing tap, and
+      // when the toggle event finally reports it closed.
+      await page.ev(`(()=>{const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');window.__fade=null;
+        s.addEventListener('click',()=>{const t0=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=p.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
+          window.__fade={reads:d.open,attr:d.hasAttribute('open'),shown:p.checkVisibility(),opacity:Number(getComputedStyle(p).opacity),hitPanel:!!hit&&p.contains(hit),aria:s.getAttribute('aria-expanded')};
+          d.addEventListener('toggle',()=>{window.__fade.toggle=Math.round(performance.now()-t0);window.__fade.after=d.open||d.hasAttribute('open')},{once:true});}));},{once:true});})()`);
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort again');
+      const m = await page.waitFor(`(()=>{const f=window.__fade;return {ok:!!f&&f.toggle!==undefined,why:JSON.stringify(f),...f}})()`, 3000, 'the fade to end');
+      assert(m.reads === false && m.attr && m.shown && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
+      assert(m.toggle >= 120 && m.toggle <= 400 && m.after === false, `closed after ${m.toggle} ms: ${JSON.stringify(m)}`);
+      // A second tap during the fade brings the list back, open and settled.
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      await page.ev(`document.querySelector('#dd-sort>summary').click();document.querySelector('#dd-sort>summary').click()`);
+      await page.ev('new Promise((r)=>setTimeout(r,400))');
+      const back = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,attr:d.hasAttribute('open'),closing:d.classList.contains('closing'),aria:d.querySelector('summary').getAttribute('aria-expanded'),opacity:getComputedStyle(d.querySelector('.dropdown-panel')).opacity}})()`);
+      assert(back.open && back.attr && !back.closing && back.aria === 'true' && back.opacity === '1', `reopened mid-fade: ${JSON.stringify(back)}`);
+      await page.key('Escape', 'Escape', 27);
+      const esc = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,focus:document.activeElement===d.querySelector('summary')}})()`);
+      assert(!esc.open && esc.focus, `Escape: ${JSON.stringify(esc)}`);
+      await page.waitFor(`({ok:!document.querySelector('#dd-sort').hasAttribute('open'),why:'still open'})`, 2000, 'Sort to close');
+      await page.ev(`document.querySelector('#like-safari').remove()`);
+    });
+    await check(390, 'PMO sheet time', 'the Filters sheet slides up in 180 ms and down in 140 ms', async () => {
+      const times = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),c=getComputedStyle(s);const closed=c.transitionDuration;document.querySelector('#f-more').click();const open=getComputedStyle(s).transitionDuration;s.close();return {closed,open}})()`);
+      assert(times.closed.startsWith('0.14s') && times.open.startsWith('0.18s'), JSON.stringify(times));
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().length,why:'closing'})`, 3000, 'the sheet to settle');
+    });
+    await check(390, 'PMO no ring', 'after a tap Filters and the sheet heading show no focus ring; after a key they do', async () => {
+      await page.ev(`for(const id of ['f-more','sheet-done'])document.getElementById(id).addEventListener('mousedown',(e)=>e.preventDefault())`);
+      const ring = (id) => `(()=>{const n=document.getElementById('${id}');return {focused:document.activeElement===n,ring:n.matches(':focus-visible'),outline:getComputedStyle(n).outlineStyle}})()`;
+      // Browsers guess a scripted focus's ring from how focus last moved. On
+      // iOS a tap never moves it, so start from a key-moved focus, as there.
+      await page.ev(`document.querySelector('#f-search').focus()`);
+      await page.key('Tab', 'Tab', 9);
+      await page.ev('document.activeElement?.blur()');
+      await page.click(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet');
+      const heading = await page.ev(ring('sheet-h'));
+      await page.click(`document.querySelector('#sheet-done')`, 'Done');
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const tapped = await page.ev(ring('f-more'));
+      assert(heading.focused && !heading.ring && tapped.focused && !tapped.ring && tapped.outline === 'none', JSON.stringify({ heading, tapped }));
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet from Enter');
+      const keyHeading = await page.ev(ring('sheet-h'));
+      await page.key('Escape', 'Escape', 27);
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const keyed = await page.ev(ring('f-more'));
+      assert(keyHeading.ring && keyed.focused && keyed.ring && keyed.outline !== 'none', JSON.stringify({ keyHeading, keyed }));
+    });
+    assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+  } finally { await page.close(); }
+}
+
+// --sheet-only runs this bounded regression without the rest of the catalogue
+// suite. Native touch events and in-page clocks include the work before paint.
+async function runNonModalSheet(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    const page = await openPage(base, width, height);
+    try {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'all rows');
+      await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const tap = async (selector) => {
+        const { x, y } = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const settled = (open) => `(()=>{const s=document.querySelector('#filter-sheet'),b=document.querySelector('#sheet-scrim');return {ok:s.open===${open}&&![...s.getAnimations(),...b.getAnimations()].some(a=>a.playState==='running')&&getComputedStyle(b).display==='${open ? 'block' : 'none'}',why:'sheet moving'}})()`;
+      // Each check starts closed even if the preceding regression failed.
+      const resetSheet = async () => {
+        await page.ev(`document.querySelector('#filter-sheet').close()`);
+        await page.waitFor(`(()=>{const s=document.querySelector('#filter-sheet');return {ok:!s.open&&!s.getAnimations().some(a=>a.playState==='running'),why:'closing'}})()`, 5000, 'sheet cleanup');
+      };
+      await check(width, 'NMS timing', 'touch opens/closes the non-modal sheet with its scrim at 4x CPU', async () => {
+        await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');window.__sheetTimes={};for(const id of ['f-more','sheet-done']){const e=document.getElementById(id);e.addEventListener('pointerdown',()=>{window.__sheetTimes={start:performance.now()}});s.addEventListener('transitionend',e=>{if(e.target===s&&e.propertyName==='transform')window.__sheetTimes.end=performance.now()})}})()`);
+        const times = { open: [], close: [] };
+        for (let i = 0; i < 3; i++) {
+          for (const [selector, kind, open] of [['#f-more', 'open', true], ['#sheet-done', 'close', false]]) {
+            await tap(selector);
+            await page.waitFor(`({ok:!!window.__sheetTimes.end,why:'no transform end'})`, 5000, 'transition end');
+            await page.waitFor(settled(open), 5000, 'settled sheet and scrim');
+            times[kind].push(await page.ev('Math.round(window.__sheetTimes.end-window.__sheetTimes.start)'));
+            assert(await page.ev(`!document.querySelector('#filter-sheet').matches(':modal')`), 'sheet entered the modal top layer');
+          }
+        }
+        // Chrome 4x gets a scheduling allowance; WebKit's ~250 ms target is
+        // measured separately on its own engine, with no CPU emulation.
+        assert([...times.open, ...times.close].every(ms => ms < 500), JSON.stringify(times));
+        console.log(`MEASURE ${width} Chrome 4x tap-to-settled ms ${JSON.stringify(times)}`);
+      });
+      await resetSheet();
+      await check(width, 'NMS focus', 'Tab wraps inside, nested Escape closes only its panel, then Escape returns focus with a ring', async () => {
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
+        assert(await page.ev(`document.activeElement.id==='sheet-h'&&!document.activeElement.matches(':focus-visible')&&document.querySelector('#filter-sheet').getAttribute('aria-modal')==='true'`), 'tap focus/ARIA');
+        const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#filter-sheet')` });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+        assert(nodes[0]?.role?.value === 'dialog' && nodes[0]?.properties?.some(p => p.name === 'modal' && p.value.value === true), 'accessibility tree lost modal dialog semantics');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.id==='sheet-done'`), 'heading Tab missed first control');
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        assert(await page.ev(`document.activeElement.id==='sheet-show'`), 'Shift+Tab escaped first control');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.id==='sheet-done'`), 'Tab escaped last control');
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        assert(await page.ev(`document.activeElement.id==='sheet-h'`), 'background took focus');
+        await page.click(`document.querySelector('#dd-countries>summary')`, 'Country');
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`document.querySelector('#filter-sheet').open&&!document.querySelector('#dd-countries').open`), 'inner Escape closed sheet');
+        await page.key('Escape', 'Escape', 27); await page.waitFor(settled(false), 5000, 'Escape close');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&document.activeElement.matches(':focus-visible')`), 'keyboard focus return');
+      });
+      await resetSheet();
+      await check(width, 'NMS scroll', 'background stays still, scrim covers tray/toasts, tap close returns focus without a ring, widening cleans up', async () => {
+        await page.ev(`window.scrollTo(0,500)`);
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
+        const before = await page.ev('scrollY');
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: 40, deltaX: 0, deltaY: 450 });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: width / 2, y: 100 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: width / 2, y: 20 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`scrollY===${before}&&getComputedStyle(document.documentElement).overflow==='hidden'&&document.elementFromPoint(10,10).id==='sheet-scrim'`), 'background scrolled or scrim missed');
+        assert(await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),z=e=>+getComputedStyle(e).zIndex;return z(s)>z(document.querySelector('#sheet-scrim'))&&z(document.querySelector('#sheet-scrim'))>Math.max(z(document.querySelector('.hd')),z(document.querySelector('#toasts')),z(document.querySelector('.cmp-tray'))||0)})()`), 'stack below tray/header/toasts');
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 10, y: 10 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await page.waitFor(settled(false), 5000, 'scrim close');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'&&scrollY===${before}&&!document.documentElement.classList.contains('sheet-open')`), 'tap return/scroll cleanup');
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reopen');
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 800, height, deviceScaleFactor: 1, mobile: true });
+        await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&getComputedStyle(document.querySelector('#sheet-scrim')).display==='none',why:'widening cleanup'})`, 5000, 'wide cleanup');
+      });
+      await resetSheet();
+      await check(width, 'NMS reduced motion', 'sheet and scrim are instant; Edit my answers hands over to the native Setup dialog; print hides the sheet and scrim', async () => {
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reduced-motion sheet');
+        assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`), 'reduced motion still transitions');
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print scrim/scroll lock');
+        await page.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.querySelector('#sheet-scrim').classList.contains('is-open'),why:'setup handover'})`, 5000, 'Setup taking over');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#onboarding').open,why:'setup open'})`, 5000, 'Setup closing');
+      });
+      assert(!page.errors.length, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4224,29 +4404,35 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
-  // A page that never started at any width would only spend another 30 s
-  // failing the same way here.
-  if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
-    await runBatch2A(base);
-    await runBatch2B(base);
-    await runBatch2C(base);
-    await runBatch2Followup(base);
-    await runBatch3A(base);
-    await runBatch3B(base);
-    await runBatch3C(base);
-    await runAlignListCompare(base);
-    await runAlignChromeSetup(base);
-    await runPhoneMyListCompare(base);
-    await runCompareHeaderR2(base);
-    await runPrintFixes(base);
-    await runCssA11yFixes(base);
-    await runSetupCompareReview(base);
-    await runPhoneFixes(base);
-    await runBadgeFlush(base);
-    await runCompareTouchScroll(base);
-    await runRowScroll(base); }
-  else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
+  if (args.has('--sheet-only')) {
+    await runNonModalSheet(base, want);
+  } else {
+    for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
+    // A page that never started at any width would only spend another 30 s
+    // failing the same way here.
+    if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+      await runBatch2A(base);
+      await runBatch2B(base);
+      await runBatch2C(base);
+      await runBatch2Followup(base);
+      await runBatch3A(base);
+      await runBatch3B(base);
+      await runBatch3C(base);
+      await runAlignListCompare(base);
+      await runAlignChromeSetup(base);
+      await runPhoneMyListCompare(base);
+      await runCompareHeaderR2(base);
+      await runPrintFixes(base);
+      await runCssA11yFixes(base);
+      await runSetupCompareReview(base);
+      await runPhoneFixes(base);
+      await runPhoneMotion(base);
+      await runNonModalSheet(base, want);
+      await runBadgeFlush(base);
+      await runCompareTouchScroll(base);
+      await runRowScroll(base); }
+    else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
+  }
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
   const skipped = results.filter((r) => r.status === 'SKIP').length;

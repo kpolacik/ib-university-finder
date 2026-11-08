@@ -424,10 +424,11 @@
 
 </main>
 
-<!-- The phone filter sheet. showModal() gives the focus trap, Escape, the inert
-     page and ::backdrop as the scrim. Its body and footer stay empty until
-     app.js moves the controls in below 600 px. -->
-<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">
+<!-- The phone filter sheet. app.js owns the scrim, focus trap and Escape:
+     making the whole results list inert stalls Safari. Its body and footer stay
+     empty until app.js moves the controls in below 600 px. -->
+<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"></div>
+<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">
   <div class="sheet-h">
     <h2 id="sheet-h" tabindex="-1" data-i18n="filters_2">Filters</h2>
     <button type="button" id="sheet-done" class="btn btn-q" aria-label="Close filters" data-i18n-attr="aria-label:r2_close_filters"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>

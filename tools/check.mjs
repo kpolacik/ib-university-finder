@@ -124,9 +124,10 @@ class ChromeNode {
   dispatchEvent(event) { return dispatchStub(this, event); }
   getBoundingClientRect() { return this.rect ?? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; }
   scrollIntoView(options) { (stubDocument.scrolls ??= []).push({ node: this, options, selected: this.classList.contains('is-sel') }); }
-  // <dialog>: close() puts focus back on what had it before showModal() and
+  // <dialog>: show() and showModal() focus a heading; close() returns focus and
   // queues the close event, so it can run after a reopen.
-  showModal() {
+  showModal() { this.show(); }
+  show() {
     if (this.open) throw new Error('InvalidStateError: the dialog is already open');
     this.open = true; this.returnTo = stubDocument.activeElement;
   }
@@ -138,6 +139,10 @@ class ChromeNode {
       stubDocument.activeElement = stubDocument.body; back?.focus();
     }
     stubDocument.queueTask?.(() => dispatchStub(this, { type: 'close', bubbles: false }));
+  }
+  get tabIndex() {
+    const explicit = this.getAttribute('tabindex');
+    return explicit !== null ? Number(explicit) : (/^(button|input|select|textarea|summary)$/.test(this.tagName) || (this.tagName === 'a' && this.getAttribute('href')) ? 0 : -1);
   }
   get nextElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) + 1] ?? null; }
   get previousElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) - 1] ?? null; }
@@ -1143,8 +1148,9 @@ check('compact header keeps its full visible height and offsets; translated-head
     && !fullHeight(css + '.page.compact{--header-visible:44px}');
 })());
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
-  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06).
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 240ms') && text.includes('transition:transform 200ms')
+  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
+  // 180 ms up / 140 ms down (still slow on the iPhone, Leon, 2026-11-08).
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 180ms') && text.includes('transition:transform 140ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -3587,9 +3593,16 @@ check('.status holds the live count, its aria-hidden twin and Copy link after a 
     && statusSrc.includes('id="f-copy"') && !statusSrc.includes('f-sort') && /<div class="stuck-mark" aria-hidden="true"><\/div>\s*<div class="status">/.test(indexHtml)
     && elementSource(indexHtml, /<div class="sheet-f">/).includes('id="sheet-show"') && !indexHtml.includes('sort-field'));
 check('the sheet is a labelled native dialog with a focusable heading and Done, controlled by Filters',
-  /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
-    && /id="sheet-done"[^>]*aria-label="Close filters"[^>]*><svg/.test(sheetSrc) && !/role="dialog"|aria-modal/.test(indexHtml)
+  /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
+    && /id="sheet-done"[^>]*aria-label="Close filters"[^>]*><svg/.test(sheetSrc) && /<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"><\/div>/.test(indexHtml)
     && /<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet">/.test(statusSrc));
+// Modal/inert and aria-hidden on the large results ancestor both stall WebKit.
+// The old tests pinned browser-owned backdrop/focus; the sheet now owns them.
+check('the sheet uses show(), never showModal/inert or background aria-hidden; its own scrim and sheet stack above header, tray and toasts',
+  appSrc.includes('dom.sheet.show();') && !/dom\.sheet\.showModal\(/.test(appSrc)
+    && !/\.sheet(?:::backdrop|:modal)|html:has\(\.sheet\[open\]\)/.test(css)
+    && /z-index:70/.test(paneRule('.sheet')) && /z-index:69/.test(paneRule('.sheet-scrim'))
+    && !/setAttribute\('aria-hidden'|\.inert\s*=/.test(appSrc.slice(appSrc.indexOf('function wireSheet()'), appSrc.indexOf('function wireStuck()'))));
 check('every button in the filter form and the sheet is type="button" (no implicit submit)', [formSrc, sheetSrc].every((src) => {
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
@@ -3607,8 +3620,8 @@ check('the globe and funnel licence lines sit directly on their own symbols',
 check('app and CSS share the 600 px query', appSrc.includes("matchMedia('(min-width: 600px)')") && paneCss.some((r) => atMedia(r, '(min-width: 600px)')));
 check('the closed sheet never renders: no screen display on bare .sheet, flex only when open, print may hide it; the page behind does not scroll',
   paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes('.sheet') && /display\s*:/.test(r.body)).every((r) => atMedia(r, 'print') && /display:none/.test(r.body))
-    && /display:flex/.test(paneRule('.sheet[open]')) && /overflow:hidden/.test(paneRule('html:has(.sheet[open])'))
-    && /background:var\(--scrim\)/.test(paneRule('.sheet::backdrop')) && /min-height:0;overflow:auto/.test(paneRule('.sheet-b'))
+    && /display:flex/.test(paneRule('.sheet[open]')) && /overflow:hidden/.test(paneRule('html.sheet-open'))
+    && /background:var\(--scrim\)/.test(paneRule('.sheet-scrim')) && /min-height:0;overflow:auto/.test(paneRule('.sheet-b'))
     && /margin:0;padding:0;border:0/.test(paneRule('.sheet')));
 check('stuck: the full sentence is clipped like .visually-hidden, never display:none; the 600 block resets every clip and hides the twin',
   /position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect\(0 0 0 0\);clip-path:inset\(50%\);white-space:nowrap/.test(paneRule('.is-stuck .cfull'))
@@ -3734,12 +3747,36 @@ appCheck('actual sheet: Filters opens it on the heading; Done, Show N, Escape an
   const closed = () => { advance(0); return !sheet.open && more.getAttribute('aria-expanded') === 'false' && stubDocument.activeElement === more; };
   if (!open()) return false; fire(get('sheet-done'), 'click'); if (!closed()) return false;
   if (!open()) return false; fire(get('sheet-show'), 'click'); if (!closed()) return false;
-  if (!open()) return false; if (fire(sheet, 'cancel', { bubbles: false })) sheet.close(); if (!closed()) return false;
-  if (!open()) return false; fire(sheet, 'click', { clientX: 200, clientY: 120 }); if (!closed()) return false;
+  if (!open()) return false; fire(heading, 'keydown', { key: 'Escape' }); if (!closed()) return false;
+  if (!open()) return false; fire(get('sheet-scrim'), 'click'); if (!closed()) return false;
   if (!open()) return false;
   fire(sheet, 'click', { clientX: 200, clientY: 500 }); fire(heading, 'click', { clientX: 0, clientY: 0 });
   fire(get('f-tuition'), 'click', { clientX: 0, clientY: 0 }); advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true';
+});
+// iPhone (Leon, 2026-11-08): after a tap the Filters button showed a focus
+// ring. iOS never focuses a tapped button, so the scripted heading focus
+// matched :focus-visible and the close's focus return inherited it. The ring
+// now follows the last input: none after a pointer, shown after a key.
+appCheck('actual sheet: after a tap neither the heading nor Filters gets a focus ring; after a key both do', ({ get, fire, advance, docBody }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), heading = get('sheet-h'), done = get('sheet-done');
+  const ring = (node) => stubDocument.activeElement === node && stubDocument.focusOptions?.focusVisible;
+  // As in a browser: show() focuses the heading itself (its first
+  // focusable element) with the browser's own ring, and focusing a focused
+  // element changes nothing.
+  const show = sheet.show;
+  sheet.show = function () { show.call(this); stubDocument.activeElement = heading; stubDocument.focusOptions = { focusVisible: true }; };
+  heading.focus = function (options) { if (stubDocument.activeElement !== heading) ChromeNode.prototype.focus.call(this, options); };
+  heading.blur = function () { if (stubDocument.activeElement === heading) stubDocument.activeElement = docBody; };
+  stubDocument.activeElement = docBody;
+  fire(more, 'pointerdown'); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== false) return false;
+  fire(done, 'pointerdown'); fire(done, 'click'); advance(0);
+  if (sheet.open || ring(more) !== false) return false;
+  fire(more, 'keydown', { key: 'Enter' }); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== true) return false;
+  fire(heading, 'keydown', { key: 'Escape' }); advance(0);
+  return !sheet.open && ring(more) === true;
 });
 appCheck('actual sheet: widening closes it without a focus return; a queued close after a quick reopen neither steals focus nor clears aria-expanded', ({ get, fire, flip600, advance }) => {
   const sheet = get('filter-sheet'), more = get('f-more'), fee = get('f-tuition');
@@ -3748,6 +3785,35 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   flip600(false); fire(more, 'click'); flip600(true); flip600(false); fire(more, 'click');
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
+});
+appCheck('actual sheet: Tab and Shift+Tab wrap at both ends, skip disabled/hidden controls, and keep an empty sheet on its heading', ({ get, fire }) => {
+  const sheet = get('filter-sheet'), heading = get('sheet-h'), first = get('sheet-done'), last = get('sheet-show');
+  fire(get('f-more'), 'click');
+  const tab = (node, shiftKey = false) => { node.focus(); return fire(node, 'keydown', { key: 'Tab', shiftKey }); };
+  if (tab(heading) || stubDocument.activeElement !== first) return false;
+  if (tab(last) || stubDocument.activeElement !== first) return false;
+  if (tab(first, true) || stubDocument.activeElement !== last) return false;
+  if (tab(heading, true) || stubDocument.activeElement !== last) return false;
+  const hidden = new ChromeNode('button'); hidden.hidden = true; sheet.append(hidden);
+  const disabled = new ChromeNode('button'); disabled.disabled = true; sheet.append(disabled);
+  if (tab(last) || stubDocument.activeElement !== first) return false;
+  if (!tab(first)) return false; // Interior stops retain native keyboard behavior.
+  for (const node of sheet.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')) node.disabled = true;
+  return !tab(heading) && stubDocument.activeElement === heading;
+});
+appCheck('actual sheet: background focus redirects inside; handled Escape stays open; close/widen/reopen keep scrim and scroll lock in sync', ({ get, fire, html, advance, flip600 }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), scrim = get('sheet-scrim');
+  const locked = () => html.classList.contains('sheet-open') && scrim.classList.contains('is-open');
+  fire(more, 'click'); if (!locked()) return false;
+  get('f-search').focus(); fire(get('f-search'), 'focusin');
+  if (stubDocument.activeElement !== get('sheet-h')) return false;
+  fire(get('sheet-h'), 'keydown', { key: 'Escape', defaultPrevented: true }); if (!sheet.open) return false;
+  fire(get('sheet-h'), 'keydown', { key: 'Escape' });
+  if (locked() || sheet.open || stubDocument.activeElement !== more) return false;
+  fire(more, 'click'); advance(0); if (!sheet.open || !locked()) return false;
+  flip600(true); advance(0); if (sheet.open || locked()) return false;
+  flip600(false); fire(more, 'click'); sheet.close(); advance(0);
+  return !locked() && stubDocument.activeElement === more;
 });
 // Each arrow press in the Sort pick-list committed a sort and closed the
 // list, sending focus back to its button after one step.
@@ -3823,11 +3889,12 @@ appCheck('actual sheet Clear all clears every filter and moves focus to the shee
   return stubDocument.activeElement === get('sheet-h') && clear.disabled && clear.textContent === 'Clear all'
     && run('activeFilterCount(state)') === 0 && !get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox').checked && get('f-tuition').value === '';
 });
-appCheck('actual dropdowns: in the sheet Escape is left to the dialog and outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
+appCheck('actual dropdowns: handled inner Escape leaves the sheet open; outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
   const subjects = get('dd-subjects'), countries = get('dd-countries');
   fire(get('f-more'), 'click'); subjects.open = true;
   const summary = subjects.querySelector('summary'); summary.focus();
-  fire(summary, 'keydown', { key: 'Escape' });
+  // round2.js handles the inner Escape in capture phase (real smoke below).
+  fire(summary, 'keydown', { key: 'Escape', defaultPrevented: true });
   if (!subjects.open || stubDocument.activeElement !== summary) return false;
   fire(get('sheet-h'), 'click'); fire(subjects, 'focusout', { relatedTarget: get('sheet-done') });
   if (!subjects.open) return false;
@@ -3956,8 +4023,9 @@ const motionAllowed = {
   'dialog.ob::backdrop': 'transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete',
   '.ob-bar i': 'transition:transform 360ms var(--ease-out)',
   '.ob .chip': 'transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)',
-  '.dropdown::details-content': 'transition:content-visibility 250ms allow-discrete',
   '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
+  // Leon 2026-11-08: the bar's lists fade shut in Safari too (round2.js holds [open]).
+  '.dropdown.closing>.dropdown-panel': 'transition:transform 150ms var(--ease-out),opacity 150ms var(--ease-out)',
   '.switch input::after': 'transition:transform 260ms var(--spring-snappy)',
   'input[type=range]::-webkit-slider-thumb': 'transition:transform 160ms var(--ease-out)',
   '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
@@ -3978,12 +4046,13 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
-  '.sheet': 'transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]': 'transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  // Leon 2026-11-08: still slow on the iPhone; 180 ms up, 140 ms down.
+  '.sheet': 'transition:transform 140ms var(--ease-out),display 140ms allow-discrete',
+  '.sheet[open]': 'transition:transform 180ms var(--ease-out),display 180ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet::backdrop': 'transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]::backdrop': 'transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  '.sheet-scrim': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity 180ms var(--ease-out),display 180ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -4011,11 +4080,11 @@ check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-
     && /^transform:rotate\(180deg\)$/.test(bodyOf('.is-open .chev')));
 check('wide: the selection fill never fades in or out; only an unselected row fades its hover',
   /transition:none/.test(bodyOf('.row', ['@media (min-width: 1200px)'])) && !/transition/.test(bodyOf('.is-sel>.row', ['@media (min-width: 1200px)'])));
-check('sheet: slides from translateY(100%) with @starting-style and discrete display/overlay; the scrim fades; from 600 neither transitions',
+check('sheet: slides from translateY(100%) with @starting-style and discrete display; its own scrim fades; from 600 neither transitions',
   /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
-    && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
-    && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet::backdrop')) && /opacity:1/.test(bodyOf('.sheet[open]::backdrop'))
-    && ['.sheet', '.sheet[open]', '.sheet::backdrop', '.sheet[open]::backdrop'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
+    && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet-scrim.is-open', ['@starting-style']))
+    && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet-scrim')) && /opacity:1/.test(bodyOf('.sheet-scrim.is-open'))
+    && ['.sheet', '.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
     && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
 // The old rule shortened every effect to 0.01ms: still a transition, still
 // firing its events late. Reduced motion is now none, backdrop included.
@@ -4481,9 +4550,9 @@ check('A08 paper carries the site name and the check-the-official-page warning: 
 // Setup and the Filters sheet printed over the list when left open: their
 // [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
 check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
-  ['dialog.sheet', 'dialog.sheet[open]', 'dialog.sheet::backdrop', 'dialog.sheet[open]::backdrop', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+  ['dialog.sheet', 'dialog.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
     .every((sel) => /display: none/.test(printBody(sel)))
-    && /overflow: visible/.test(printBody('html:has(dialog.sheet[open])')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
+    && /overflow: visible/.test(printBody('html.sheet-open')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
@@ -5820,9 +5889,12 @@ check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px,
   && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules)
   && cssRules.includes('#budget-value:empty{display:none}'));
 section('Review round 2 regressions');
+// The bar's lists no longer hold their content with a ::details-content
+// transition (Safari ignored it; round2.js holds [open] while closing), so
+// nothing delays the content on opening either.
 check('the facet panel is not still hidden when its toggle event focuses the search',
-  cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
-  && cssRules.includes('.dropdown[open]::details-content{transition:none}'));
+  !/(?:^|\})\s*\.dropdown(?:\[open\])?::details-content\{[^}]*transition:(?!none)/.test(cssRules)
+  && /\.sheet-b \.dropdown\[open\]::details-content\{height:auto;transition:height/.test(cssRules));
 check('radios never get a blank value from a panel Clear; the select stays the source of truth',
   read('js/round2.js').includes("input:not([type=range],[type=radio]),select") && read('js/round2.js').includes('input.checked = input.value === select.value'));
 check('one wording for a verdict: rows, legend and status all say "V rámci tvojich IB bodov"', (()=>{
@@ -6272,7 +6344,7 @@ await asyncAppCheck('B1 sheet status repeats once and clears on every close rout
     if (close === 'done') fire(get('sheet-done'), 'click');
     if (close === 'apply') fire(get('sheet-show'), 'click');
     if (close === 'escape') { sheet.close(); }
-    if (close === 'backdrop') fire(sheet, 'click', { clientX: -10, clientY: -10 });
+    if (close === 'backdrop') fire(get('sheet-scrim'), 'click');
     if (close === 'language') run("switchLanguage('sk');");
     if (close === 'widen') flip600(true);
     advance(0); flushFrame();
@@ -7010,6 +7082,52 @@ check('B3B2 the back chevron shows only in the list view, pointing left; the tra
     // The old quiet-text Clear rules are gone (they made it look like an empty cell).
     && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
 })());
+// iPhone (Leon, 2026-11-08): the bar's pick-lists (Sort too) faded in but
+// snapped shut, because Safari ignores a ::details-content content-visibility
+// transition. holdDropdownClose keeps [open] for the fade under .closing while
+// .open already reads false; a tap on the button mid-fade reopens it.
+{
+  class FakeDetails {
+    constructor() {
+      this.attr = true; this.classes = new Set(); this.events = [];
+      const summary = this.summary = { aria: 'true', listeners: [], setAttribute: (name, value) => { summary.aria = value; }, addEventListener: (type, fn) => summary.listeners.push(fn) };
+      this.classList = { add: (c) => this.classes.add(c), remove: (c) => this.classes.delete(c) };
+    }
+    get open() { return this.attr; }
+    set open(value) { if (this.attr !== Boolean(value)) this.events.push('native'); this.attr = Boolean(value); }
+    querySelector() { return this.summary; }
+    dispatchEvent(event) { this.events.push(event.type); }
+  }
+  let reduced = false;
+  const globals = { HTMLDetailsElement: FakeDetails, matchMedia: () => ({ matches: reduced }) };
+  const make = (inSheet = false) => withGlobals(globals, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => inSheet); return d; });
+  const set = (d, value) => withGlobals(globals, () => { d.open = value; });
+  const tap = (d) => withGlobals(globals, () => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; d.summary.listeners.forEach((fn) => fn(event)); return event.prevented; });
+  const fade = () => new Promise((ok) => setTimeout(ok, (realRound2.DROPDOWN_CLOSE_MS ?? 0) + 40));
+  const state = (d) => ({ reads: d.open, attr: d.attr, closing: d.classes.has('closing'), aria: d.summary.aria, events: d.events.join() });
+  const closing = make(); set(closing, false); const during = state(closing); await fade(); const after = state(closing);
+  check('bar pick-list: closing keeps [open] under .closing for the fade, reads closed at once, and closes for real after it',
+    realRound2.DROPDOWN_CLOSE_MS >= 120 && realRound2.DROPDOWN_CLOSE_MS <= 150
+      && JSON.stringify(during) === JSON.stringify({ reads: false, attr: true, closing: true, aria: 'false', events: '' })
+      && JSON.stringify(after) === JSON.stringify({ reads: false, attr: false, closing: false, aria: 'false', events: 'native' }),
+    JSON.stringify({ during, after }));
+  const back = make(); const tapClosed = tap(back); const midFade = state(back); const tapOpened = tap(back); const reopened = state(back); await fade();
+  check('bar pick-list: a tap on the open button fades it; a second tap mid-fade reopens it with a toggle event, and it stays open',
+    tapClosed && midFade.closing && !midFade.reads && tapOpened && JSON.stringify(reopened) === JSON.stringify(state(back))
+      && reopened.reads && reopened.attr && !reopened.closing && reopened.events === 'toggle',
+    JSON.stringify({ midFade, reopened, now: state(back) }));
+  const sheetList = make(true); set(sheetList, false); const inSheet = state(sheetList);
+  reduced = true; const still = make(); set(still, false); const reducedNow = state(still); reduced = false;
+  const plain = withGlobals({ matchMedia: () => ({ matches: false }) }, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => false); d.open = false; return d.attr; });
+  check('bar pick-list: in the phone sheet, under reduced motion, and without a real <details> it closes at once',
+    !inSheet.attr && !inSheet.closing && !reducedNow.attr && !reducedNow.closing && plain === false, JSON.stringify({ inSheet, reducedNow, plain }));
+  const round2Src = read('js/round2.js');
+  check('bar pick-list: every dropdown is wired to fade shut, Escape skips a fading list, and the fading panel is transparent and takes no taps',
+    /holdDropdownClose\(d, \(\) => dom\.sheet\.contains\(d\)\)/.test(round2Src)
+      && round2Src.includes("document.querySelector('.dropdown[open]:not(.closing),.ml-pop[open]')")
+      && /\.dropdown\.closing>\.dropdown-panel\{transform:scale\(\.97\);opacity:0;pointer-events:none;transition:transform 150ms/.test(cssRules)
+      && cssRules.includes('.dropdown.closing>summary .dd-chev{transform:none}'));
+}
 // B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
 // turned an empty list view straight off. The header button is wired in
 // round2.js, which the harness stubs, so the real wireRound2 runs here.
