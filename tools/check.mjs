@@ -3997,13 +3997,16 @@ check('§8: every transition is a listed effect with its token time and easing; 
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
     && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
   motionProblems(allCss).join(', '));
-check('round 2 animations use only opacity and transform; arbitrary keyframes and animated dimensions fail', (() => {
+// 2026-11-08: the phone logo handover (tile-in, logo-out) runs on the scroll,
+// not the clock. visibility is allowed there and only there: it is not
+// motion, it keeps the hidden tile out of reach of taps and Tab.
+check('round 2 animations use only opacity and transform (the phone tile also visibility); arbitrary keyframes and animated dimensions fail', (() => {
   const valid = (source) => {
     const animations = [...source.matchAll(/@keyframes ([\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)];
-    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back'].includes(name)
-      && !/(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/.test(body));
+    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back','tile-in','logo-out'].includes(name)
+      && !(name === 'tile-in' ? /(?:^|[;{])\s*(?!opacity\b|transform\b|visibility\b)[a-z-]+\s*:/ : /(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/).test(body));
   };
-  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}');
+  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}') && !valid(cssRules.replace('@keyframes logo-out{', '@keyframes logo-out{from{visibility:hidden}'));
 })());
 check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron box turns whole, with no shift between states',
   /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
@@ -7194,10 +7197,38 @@ appCheck('B3C2 home from Compare: the view closes and the list shows; open panel
 });
 check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
 check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
+// 2026-11-08: the phone tile keeps its slot in both states (it was display:none
+// until stuck, so the count jumped 50 px right); it is hidden, not removed.
 check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
   /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
-  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
+  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.home-tile\{display:inline-flex;[^}]*width:44px;height:44px;[^}]*opacity:0;visibility:hidden\}\s*\.status\.is-stuck \.home-tile\{opacity:1;visibility:visible\}/.test(cssText));
+
+// Leon, iPhone, 2026-11-08: the stuck row's tile came in late and pushed the
+// count right; on the way up both logos showed. The header logo and the tile
+// now fade on one scroll timeline (the 1 px mark), in ranges that do not
+// overlap, so a late frame still never shows both; the row is one height in
+// both states. Smoke runBatch3C measures it frame by frame in Chrome.
+{
+  const phone = '(max-width:599.98px)', sup = '@supports (timeline-scope:--a)';
+  const inSup = (sel, extra = []) => cssTree(cssText).filter((r) => r.selector.trim() === sel && r.media.join('|') === [...extra, sup].join('|')).map((r) => r.body).join(';');
+  const tile = inSup('.status .home-tile', [`@media ${phone}`]), logo = inSup('.hd .mark', [`@media ${phone}`]);
+  const rTile = inSup('.status .home-tile', ['@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)']);
+  const rLogo = inSup('.hd .mark', ['@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)']);
+  const range = (body) => (body.match(/animation-range:cover calc\(100% ([+-]) (\d+)px\) cover calc\(100% ([+-]) (\d+)px\)/) || []).slice(1).reduce((a, v, i, all) => i % 2 ? [...a, (all[i - 1] === '-' ? -1 : 1) * Number(v)] : a, []);
+  const [ts, te] = range(tile), [ls, le] = range(logo);
+  check('B3C2b phones: header logo and stuck tile hand over on one scroll timeline, the logo gone before the tile starts; reduced motion is the same cut; the row is one height',
+    /timeline-scope:--stuck/.test(inSup('.page', [`@media ${phone}`])) && /view-timeline:--stuck block/.test(inSup('.stuck-mark', [`@media ${phone}`]))
+      && /animation:tile-in linear both;animation-timeline:--stuck/.test(tile) && /animation:logo-out linear both;animation-timeline:--stuck/.test(logo)
+      && ls < le && le <= ts && ts < te
+      && /animation:tile-in step-start both !important;animation-timeline:--stuck !important/.test(rTile) && /animation:logo-out step-end both !important;animation-timeline:--stuck !important/.test(rLogo)
+      && range(rTile).join() === range(tile).join() && range(rLogo).join() === range(logo).join()
+      && /@keyframes tile-in\{from\{opacity:0;visibility:hidden;transform:scale\(\.85\)\}to\{opacity:1;visibility:visible;transform:none\}\}/.test(cssText)
+      && /@keyframes logo-out\{to\{opacity:0\}\}/.test(cssText)
+      && /padding-block:6px/.test(ruleAt(cssText, '.status', phone)) && /padding:6px var\(--gut\)/.test(ruleAt(cssText, '.status.is-stuck'))
+      && /min-height:var\(--ctl\);line-height:20px/.test(ruleAt(cssText, '.status.is-stuck .cshort', phone)),
+    JSON.stringify({ tile: [ts, te], logo: [ls, le] }));
+}
 
 section('Alignment · list, detail, Compare');
 // The 2026-11-05 alignment audit (list-detail and compare findings). Layout is
@@ -7445,7 +7476,8 @@ check('LR2 phones: the header and count row are one block, and the list starts 1
 // a leftover nudge would push the tile 4 px into the margin.
 check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
   /width:44px;height:44px/.test(ruleAt(cssText, '.mono', '(max-width:599.98px),(pointer:coarse)'))
-  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
+  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.home-tile', '(max-width:599.98px)'))
+  && /width:44px;height:44px/.test(ruleAt(cssText, '.home-tile', '(max-width:599.98px)')));
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)

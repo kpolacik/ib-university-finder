@@ -1867,11 +1867,51 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .filters-btn{left:50px;width:44px}
 }
 /* Phones: the header scrolls away, so the stuck count row gets the same tile
-   first: [IB][count][Filters]. Hidden everywhere else. */
+   first: [IB][count][Filters]. Hidden everywhere else.
+   Leon, iPhone, 2026-11-08: the tile appeared late and pushed the count right
+   on the way down, and on the way up both logos showed for a moment. The tile
+   was display:none until app.js's observer added .is-stuck, so it took its
+   50 px at once (the count jumped), and an observer reports a frame or more
+   after the scroll (later on iOS, which scrolls off the page's thread), so it
+   came in late and stayed beside the returning header logo. Now the slot is
+   always kept, so the count never moves (it lines up under Search), and where
+   scroll timelines exist the header logo and the tile fade on one timeline,
+   the 1 px mark above the row: the logo fades as its last 18 px leave the
+   top, and only then does the tile fade and grow in, over the next 21 px.
+   Both read the same scroll position, so even a late frame never shows both.
+   Reduced motion: the same handover as a cut at one point. Without scroll
+   timelines (Safari before 26) .is-stuck still shows the tile, in its slot.
+   visibility keeps the hidden tile out of reach of taps, Tab and screen
+   readers. */
 .home-tile{display:none}
 @media (max-width:599.98px){
- .status.is-stuck .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none}
+ .home-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border-radius:10px;text-decoration:none;opacity:0;visibility:hidden}
+ .status.is-stuck .home-tile{opacity:1;visibility:visible}
+ /* One height in both states, so the list under the row does not hop by 4 to
+   10 px when it sticks: the stuck bar's 6 px padding at the top too (the
+   stuck tile then sits exactly where the header logo was), and the short
+   twin in the full sentence's 44 px box and 20 px lines. */
+ .status{padding-block:6px}
+ .status.is-stuck .cshort{display:flex;align-items:center;min-height:var(--ctl);line-height:20px}
+ @supports (timeline-scope:--a){
+  .page{timeline-scope:--stuck}
+  .stuck-mark{view-timeline:--stuck block}
+  .status .home-tile{animation:tile-in linear both;animation-timeline:--stuck;animation-range:cover calc(100% - 9px) cover calc(100% + 12px)}
+  .hd .mark{animation:logo-out linear both;animation-timeline:--stuck;animation-range:cover calc(100% - 27px) cover calc(100% - 9px)}
+ }
 }
+/* Reduced motion turns every animation off (end of this file), which would
+   bring back the late tile and the two logos. This is a cut on the same
+   timeline, not motion, so it is put back as steps: the logo goes and the
+   tile comes at the same scroll position, with no fade and no scale. */
+@media screen and (max-width:599.98px) and (prefers-reduced-motion:reduce){
+ @supports (timeline-scope:--a){
+  .status .home-tile{animation:tile-in step-start both !important;animation-timeline:--stuck !important;animation-range:cover calc(100% - 9px) cover calc(100% + 12px) !important}
+  .hd .mark{animation:logo-out step-end both !important;animation-timeline:--stuck !important;animation-range:cover calc(100% - 27px) cover calc(100% - 9px) !important}
+ }
+}
+@keyframes tile-in{from{opacity:0;visibility:hidden;transform:scale(.85)}to{opacity:1;visibility:visible;transform:none}}
+@keyframes logo-out{to{opacity:0}}
 
 /* ------------------------------------------------- Phone My list and Compare, 2026-11-06 */
 

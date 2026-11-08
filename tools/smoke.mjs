@@ -53,6 +53,11 @@ const KEEP = args.has('--keep');
 const REQUIRE_CHROME = args.has('--require-chrome');
 const WIDTHS = [[390, 844], [1024, 768], [1280, 900], [1920, 1080]];
 const WATCHDOG_MS = 120_000;
+// "Wait for the motion to end" means motion on the clock. The phone logo
+// handover (2026-11-08) is a CSS animation on the scroll: at the top of a
+// phone page it is "running" and never finishes, so waiting on every
+// animation would hang.
+const clockAnimations = 'document.getAnimations().filter((a)=>a.timeline===document.timeline)';
 
 let step = 'starting';
 let server = null;
@@ -983,7 +988,7 @@ async function runRound2(base) {
         assert(await page.ev(content),'Budget row closes without its height motion');
         await page.waitFor(`({ok:getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height==='0px',why:'Budget row height '+getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height})`,3000,'the Budget row closed');
         await page.ev(`document.querySelector('#dd-budget summary').click()`);
-        await page.waitFor(`({ok:document.getAnimations().length===0,why:'still moving'})`,3000,'re-toggled Budget');
+        await page.waitFor(`({ok:${clockAnimations}.length===0,why:'still moving'})`,3000,'re-toggled Budget');
         assert(await page.ev(`document.querySelector('#dd-budget').open && document.querySelector('#dd-budget summary').getAttribute('aria-expanded')==='true'`),'re-toggled Budget left stale state');
         await page.ev(`document.querySelector('#dd-budget').open=false`);
         await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
@@ -1524,7 +1529,7 @@ async function runBatch2B(base) {
     const el = (id) => `document.querySelector('#${id}')`;
     const shot = async (name) => {
       if (width !== 390 && width !== 1400) return;
-      await page.waitFor(`({ok:document.getAnimations().every(a=>a.playState==='finished'),why:'motion still running'})`,5000,'settled screenshot');
+      await page.waitFor(`({ok:${clockAnimations}.every(a=>a.playState==='finished'),why:'motion still running'})`,5000,'settled screenshot');
       const {data} = await page.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
       await writeFile(`${shots}/${width}-${ui}-${name}.png`, Buffer.from(data, 'base64'));
     };
@@ -1671,7 +1676,7 @@ async function runBatch2C(base) {
   const screenshot = async (page, path, selector) => {
     // A slot can still be growing after its buttons exist; capture its settled position.
     await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    await page.ev(`Promise.all(${clockAnimations}.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
     await page.ev(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
     await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     assert(await page.ev(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()`), 'capture target outside viewport');
@@ -1784,7 +1789,7 @@ async function runBatch2Followup(base) {
     await page.waitFor(ready, 15000, 'follow-up reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
 
   // Two filters set, so the count badge shows: the widest the button gets.
@@ -1920,7 +1925,7 @@ async function runBatch3A(base) {
   const frames = (page) => page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   const shot = async (page, name) => {
     await frames(page);
-    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    await page.ev(`Promise.all(${clockAnimations}.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
   };
@@ -2237,7 +2242,7 @@ async function runBatch3B(base) {
     await page.ev(`(()=>{const ids=[...document.querySelectorAll('#results>li.item')].slice(0,${n}).map(li=>li.dataset.id);localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(ids));window.__oldPage=true;location.reload()})()`);
     await page.waitFor(ready, 15000, 'B3B seeded reload');
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
 
   // B1 (Leon, Q2): the phone main view had a half-empty My list box above the
   // cards. Below the status row the list comes first now.
@@ -2415,7 +2420,7 @@ async function runBatch3C(base) {
   const shots = '/tmp/ib-batch3-c';
   await mkdir(shots, { recursive: true });
   const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const shoot = async (page, name) => {
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
@@ -2615,6 +2620,59 @@ async function runBatch3C(base) {
       assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
     } finally { await page.close(); }
   }
+
+  // Leon, iPhone, 2026-11-08: scrolling down, the stuck row's tile came in a
+  // moment late and pushed the count 50 px right; scrolling back up, the tile
+  // and the header logo showed together. A real touch swipe down past the
+  // stick point and back up, slow and fast, with and without reduced motion;
+  // a recorder in the page samples every frame. The count's text never moves
+  // sideways by more than 1 px and the row keeps one height; no frame shows
+  // both logos (opacity over 0.01 and on screen); once the row has been stuck
+  // for 30 px the tile is fully there, whatever the observer has done yet.
+  for (const [width, height] of [[390, 844], [320, 640]]) for (const lang of ['en', 'sk']) {
+    watchdog.refresh();
+    const page = await openHome(`?ui=${lang}&country=Ireland&points=36`, width, height);
+    try {
+      await check(width, 'R4B logo handover', `phone (${lang}): swiping down and up, the count never jumps and only one logo ever shows`, async () => {
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        for (const reduced of [false, true]) for (const speed of [400, 2400]) {
+          await page.send('Emulation.setEmulatedMedia', { features: reduced ? [{ name: 'prefers-reduced-motion', value: 'reduce' }] : [] });
+          await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
+          await settle(page);
+          await page.ev(`(()=>{window.__frames=[];window.__stopFrames=false;
+            const shown=(el)=>{const r=el.getBoundingClientRect();if(r.width<1||r.height<1||r.bottom<=0||r.top>=innerHeight)return 0;let o=1;
+              for(let n=el;n;n=n.parentElement){const cs=getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden')return 0;o*=parseFloat(cs.opacity);}return o;};
+            const text=()=>{for(const sel of ['.status .cshort','.status .cfull']){const n=document.querySelector(sel);if(n.getBoundingClientRect().width>1){const g=document.createRange();g.selectNodeContents(n);const r=g.getClientRects()[0];if(r)return r.left;}}return NaN;};
+            const logo=document.querySelector('.hd .mark'),tile=document.querySelector('.home-tile'),row=document.querySelector('.status'),mark=document.querySelector('.stuck-mark');
+            const tick=()=>{__frames.push({y:scrollY,past:-mark.getBoundingClientRect().bottom,logo:shown(logo),tile:shown(tile),x:text(),h:row.getBoundingClientRect().height});if(!__stopFrames)requestAnimationFrame(tick);};
+            requestAnimationFrame(tick);})()`);
+          const swipe = (yDistance) => page.send('Input.synthesizeScrollGesture', { x: Math.round(width / 2), y: Math.round(height / 2), yDistance, speed, gestureSourceType: 'touch', repeatCount: 0, preventFling: true }, 20000);
+          await swipe(-300);
+          await settle(page);
+          await swipe(400);
+          await settle(page);
+          const frames = await page.ev(`window.__stopFrames=true;__frames`);
+          const tag = `${reduced ? 'reduced motion, ' : ''}${speed} px/s`;
+          assert(frames.some((f) => f.past > 60) && frames.at(-1).y === 0, `${tag}: the swipe did not go past the stick point and back (${JSON.stringify(frames.map((f) => Math.round(f.y)))})`);
+          let worst = { x: 0 }, heights = new Set();
+          for (let i = 1; i < frames.length; i++) {
+            const dx = Math.abs(frames[i].x - frames[i - 1].x);
+            if (!(dx <= worst.x)) worst = { x: dx, at: [frames[i - 1], frames[i]] };
+            heights.add(Math.round(frames[i].h));
+          }
+          assert(worst.x <= 1, `${tag}: the count jumped ${worst.x} px sideways between frames ${JSON.stringify(worst.at)}`);
+          assert(heights.size === 1, `${tag}: the row changed height (${[...heights]} px), so the list under it hopped`);
+          const both = frames.filter((f) => f.logo > 0.01 && f.tile > 0.01);
+          assert(both.length === 0, `${tag}: both logos showed in ${both.length} frames, e.g. ${JSON.stringify(both[0])}`);
+          const late = frames.filter((f) => f.past > 30 && f.tile < 0.99);
+          assert(late.length === 0, `${tag}: the tile was missing while stuck, e.g. ${JSON.stringify(late[0])}`);
+          if (reduced) assert(frames.every((f) => [0, 1].includes(f.tile) && [0, 1].includes(f.logo)), `${tag}: reduced motion faded instead of cutting`);
+        }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 // --- Alignment fixes: list, detail, Compare ---------------------------------------
@@ -2638,7 +2696,7 @@ async function runAlignListCompare(base) {
     await page.waitFor(ready, 15000, 'alignment reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -2994,7 +3052,7 @@ async function runPhoneMyListCompare(base) {
     await page.waitFor(ready, 15000, 'phone reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await page.ev(`scrollTo({top:0,behavior:'instant'})`);
     await settle(page);
@@ -3232,7 +3290,7 @@ async function runCompareHeaderR2(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -3353,7 +3411,7 @@ async function runSetupCompareReview(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const { readSheets } = await import('../js/data.js');
   const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
     await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
@@ -3536,7 +3594,7 @@ async function runAlignChromeSetup(base) {
   await mkdir(shots, { recursive: true });
   const { UI } = await import('../js/i18n.js');
   const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const shoot = async (page, name) => {
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
@@ -3837,7 +3895,7 @@ async function runCssA11yFixes(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });

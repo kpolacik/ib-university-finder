@@ -763,8 +763,14 @@ students, and where each rule lives:
   always goes home: it leaves My list, a shared list or Compare, drops
   `list=`, keeps filters, search, sort, saves and the Compare set, and scrolls
   to the top. The IB tile stays visible when scrolled (beside Filters from
-  600 px, in the stuck count row on phones). Rules: CSS sections "Batch 3 ·
-  A/B/C"; checks in check.mjs and smoke `runBatch3A/B/C`.
+  600 px, in the stuck count row on phones). On phones the count row always
+  keeps the tile's slot, so the count sits under Search and never moves;
+  as the header leaves, its logo fades out and only then the row's tile
+  fades in, both driven by the scroll itself, so the two logos are never
+  seen together (Leon, iPhone, 2026-11-08: the tile came in late, pushed the
+  count right, and showed beside the returning header logo). Reduced motion
+  makes it a cut. Rules: CSS sections "Batch 3 · A/B/C"; checks in check.mjs
+  and smoke `runBatch3A/B/C`.
 - *Alignment audit (2026-11-05).* Five read-only Chrome audits (header, list
   and detail, Compare, My list, setup and footer; EN and SK, 320 to 1440 px
   and 844 x 390) found 2 high, 21 medium and about 38 low problems; all high
