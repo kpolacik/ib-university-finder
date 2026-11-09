@@ -630,6 +630,12 @@ export const UI = {
     "r6_faq": "FAQ",
     "r6_faq_h": "Frequently asked questions",
     "r6_faq_close": "Close the FAQ",
+    // Leon, 2026-11-09: the header's "?" also says "FAQ" from 1024 px, and the
+    // footer's button (the footer copy of the FAQ is gone) uses the same word.
+    "r6_faq_l": "FAQ",
+    // Setup's done screen says where the FAQ is later, with the "?" icon itself.
+    "r6_ob_faq_later": "Reopen the FAQ any time with {help} at the top.",
+    "r6_icon_help": "the question mark",
     "r7_faq_what": "What is this site, and can I apply through it?",
     "r7_faq_what_a": "A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.",
     "r7_faq_rely": "Can I rely on what it says?",
@@ -1277,7 +1283,7 @@ export const UI = {
       "other": "Zobrazených je {count} programov"
     },
     "r3_ob_done_p": "Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.",
-    "r3_ob_done_h_none": "V nastavení nie sú žiadne odpovede.",
+    "r3_ob_done_h_none": "Nastavenie zostalo prázdne.",
     "r3_ob_done_p_none": "Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.",
     // Review of PR 1, 2026-11-07: from 600 px the filters sit above the list
     // (no Filters button), and with no filter on there is nothing that "still applies".
@@ -1294,6 +1300,9 @@ export const UI = {
     "r6_faq": "Časté otázky",
     "r6_faq_h": "Časté otázky",
     "r6_faq_close": "Zavrieť časté otázky",
+    "r6_faq_l": "Časté otázky",
+    "r6_ob_faq_later": "Časté otázky otvoríš kedykoľvek cez {help} hore.",
+    "r6_icon_help": "otáznik",
     "r7_faq_what": "Čo je táto stránka a môžem sa cez ňu prihlásiť?",
     "r7_faq_what_a": "Bezplatný nástroj, ktorý pomáha študentom IB nájsť bakalárske a iné prvé vysokoškolské štúdium (napríklad medicínu) v 11 európskych krajinách podľa IB bodov, predmetov, termínov a nákladov. Prihlásiť sa tu nedá: každý program odkazuje na svoju oficiálnu stránku a uvádza, kde sa podáva prihláška.",
     "r7_faq_rely": "Môžem sa spoľahnúť na to, čo tu je?",

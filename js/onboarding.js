@@ -148,22 +148,26 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   // It replaces the toast setup used to end with, and step 1's FAQ link.
   // The one moment every new student reads: say what the two row icons do,
   // with the icons themselves in the sentence (Leon, 2026-11-06).
-  const toolsHint = () => {
-    const p = el('p', 'ob-tools');
-    for (const part of t('r4_ob_done_tools').split(/(\{bookmark\}|\{scales\})/)) {
-      if (part === '{bookmark}' || part === '{scales}') {
+  // The same for the header's "?" (Leon, 2026-11-09), which reopens the FAQ.
+  const iconHint = (key, className, icons) => {
+    const p = el('p', className);
+    for (const part of t(key).split(/(\{\w+\})/)) {
+      const icon = icons[part];
+      if (icon) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('class', 'ic');
         svg.setAttribute('aria-hidden', 'true');
         const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        use.setAttribute('href', part === '{bookmark}' ? '#i-bookmark' : '#i-compare');
+        use.setAttribute('href', icon[0]);
         svg.append(use);
-        const label = el('span', 'visually-hidden', t(part === '{bookmark}' ? 'r4_icon_bookmark' : 'r4_icon_scales'));
+        const label = el('span', 'visually-hidden', t(icon[1]));
         p.append(svg, label);
       } else if (part) p.append(part);
     }
     return p;
   };
+  const toolsHint = () => iconHint('r4_ob_done_tools', 'ob-tools', { '{bookmark}': ['#i-bookmark', 'r4_icon_bookmark'], '{scales}': ['#i-compare', 'r4_icon_scales'] });
+  const faqHint = () => iconHint('r6_ob_faq_later', 'ob-tools ob-help-hint', { '{help}': ['#i-help', 'r6_icon_help'] });
   // Where the filters are: the Filters button on phones, the bar above the
   // list from 600 px, which has no Filters button (review of PR 1, 2026-11-07).
   // "Your existing filters still apply" only when a filter is on.
@@ -192,7 +196,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     // city…) leave, so it must not claim those rows match anything.
     doneNote = { node: el('p', ''), any, filtered, sheetFiltered };
     doneNote.node.textContent = t(noteKey(doneNote));
-    section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint());
+    section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint(), faqHint());
     body.replaceChildren(section); body.scrollTop = 0;
     // The primary comes first, so it is first in tab order and on top on phones;
     // from 600 px the row is reversed to put it on the right, as Next was.

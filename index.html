@@ -163,7 +163,7 @@
         <input class="inp" type="search" id="f-search" name="search" form="filter-form" placeholder="Programme, university or city" data-i18n-attr="placeholder:r2_searchph"><kbd aria-hidden="true">/</kbd>
       </span>
     </div>
-    <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg></button>
+    <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span class="faq-l" data-i18n="r6_faq_l">FAQ</span></button>
       <div class="lang" role="group" aria-label="Site language" data-i18n-attr="aria-label:site_language">
         <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
         <button type="button" aria-pressed="false" data-language="sk" lang="sk"><span data-i18n="sk">SK</span><span class="visually-hidden" data-i18n="slovak"> (slovenčina)</span></button>
@@ -445,21 +445,17 @@
   </div>
 </dialog>
 
-<!-- The FAQ panel behind the header's "?" (js/faq.js): a sheet on phones,
-     a side panel from 600 px. Its body stays empty here; faq.js copies the
-     footer's questions in at startup, so the text lives in one place. -->
+<!-- The FAQ panel behind the header's "?" and the footer's "FAQ" (js/faq.js):
+     a sheet on phones, a side panel from 600 px. Its questions live only here
+     (Leon, 2026-11-09: the footer copy is gone); each text has its data-i18n
+     key, so switching language translates them with the rest of the page. -->
 <div class="faq-scrim" id="faq-scrim" aria-hidden="true"></div>
 <dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">
   <div class="faqp-h">
     <h2 id="faq-h" tabindex="-1" data-i18n="r6_faq_h">Frequently asked questions</h2>
     <button type="button" class="btn btn-q faqp-x" aria-label="Close the FAQ" data-i18n-attr="aria-label:r6_faq_close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
-  <div class="faqp-b faq"></div>
-</dialog>
-
-<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>
-
-<footer class="foot"><div><h2><span data-i18n="r2_footer_h">Check before you apply</span></h2><p><span data-i18n="r2_footer_p">Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.</span></p><p class="src" id="source-line" hidden></p></div><div class="faq" id="faq"><details><summary><span data-i18n="r7_faq_what">What is this site, and can I apply through it?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_what_a">A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.</span></div></details>
+  <div class="faqp-b faq"><details><summary><span data-i18n="r7_faq_what">What is this site, and can I apply through it?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_what_a">A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.</span></div></details>
 <details><summary><span data-i18n="r7_faq_rely">Can I rely on what it says?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_rely_a">Use it to build a shortlist, then check everything on the official page before you apply. The data was collected automatically from official pages, and we’re checking it over time; a programme someone has checked says “Checked by …”.</span></div></details>
 <details><summary><span data-i18n="r7_faq_check">What should I check before I apply?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_check_a">The deadline and any earlier dates in “Deadline notes”, the IB subjects and grades, your maths course (AA or AI), the English requirement and any entrance exam. Some of these are on university-wide pages or the national application site, not the programme page.</span></div></details>
 <details><summary><span data-i18n="r7_faq_points">How do my IB points work here?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_points_a">With My IB points set, programmes whose points you can’t reach are hidden (for Irish courses, even counting the HL Maths bonus). The rest say whether they’re within your points, only with HL Maths 4+, or can’t be compared. Being within the points doesn’t guarantee a place: subjects, language and selection count too.</span></div></details>
@@ -470,7 +466,12 @@
 <details><summary><span data-i18n="r7_faq_cost">What does the yearly cost include?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_cost_a">The fee plus 12 months of estimated living costs. Where a row says “national minimum”, that’s the least a visa needs and real costs are usually higher. It doesn’t add one-off costs like deposits or travel. Set “My living costs” to use your own figure.</span></div></details>
 <details><summary><span data-i18n="r7_faq_setup">How do I change my Setup answers?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_setup_a">Press “Edit my answers” next to the programme count (in Filters on a phone). Your answers are just filters, so you can also change them directly.</span></div></details>
 <details><summary><span data-i18n="r7_faq_list">What’s the difference between My list and Compare, and what’s stored?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_list_a">My list keeps what you save: group it, export it or share it by link. Compare puts 2 to 4 programmes side by side and is separate. Both, your filters and your language stay only in this browser; no account, no tracking.</span></div></details>
-<details><summary><span data-i18n="r7_faq_who">Who makes this, and how do I report a mistake?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_who_a">Jakub and Leon, IB students. The countries are the ones students at our school asked about most, and more are coming; the data is updated every few weeks. Found a mistake? Tell us at</span> <a href="mailto:ibuniversityfinder@gmail.com" data-i18n="r7_faq_email">ibuniversityfinder@gmail.com</a>.</div></details></div></footer>
+<details><summary><span data-i18n="r7_faq_who">Who makes this, and how do I report a mistake?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_who_a">Jakub and Leon, IB students. The countries are the ones students at our school asked about most, and more are coming; the data is updated every few weeks. Found a mistake? Tell us at</span> <a href="mailto:ibuniversityfinder@gmail.com" data-i18n="r7_faq_email">ibuniversityfinder@gmail.com</a>.</div></details></div>
+</dialog>
+
+<p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>
+
+<footer class="foot"><div><h2><span data-i18n="r2_footer_h">Check before you apply</span></h2><p><span data-i18n="r2_footer_p">Always check the university's official page before you apply. Requirements, fees and deadlines can change. Students maintain this site.</span></p><p class="src" id="source-line" hidden></p><p class="foot-faq"><button type="button" class="btn btn-a" id="faq-foot" aria-haspopup="dialog" aria-controls="faq-panel" data-i18n="r6_faq_l">FAQ</button></p></div></footer>
 
 <div class="ob-scrim" id="onboarding-scrim" aria-hidden="true"></div>
 <dialog class="ob" id="onboarding" aria-modal="true" aria-labelledby="ob-title"></dialog>

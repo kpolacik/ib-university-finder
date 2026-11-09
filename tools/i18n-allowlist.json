@@ -336,7 +336,8 @@
       "best",
       "ArrowLeft",
       "ArrowRight",
-      "tabindex"
+      "tabindex",
+      "./faq.js"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -1052,7 +1053,8 @@
       "subject",
       "subjectAreas",
       "url",
-      "desc"
+      "desc",
+      "best"
     ],
     "js/onboarding.js": [
       "(max-width: 599.98px)",
@@ -1156,7 +1158,10 @@
       "is-open",
       "onboarding-open",
       "onboarding-scrim",
-      "./faq.js"
+      "./faq.js",
+      "#i-help",
+      "ob-tools ob-help-hint",
+      "{help}"
     ],
     "js/compare-set.js": [
       "./compare.js",
@@ -1190,7 +1195,15 @@
       "pointerdown",
       "true",
       "undefined",
-      "wheel"
+      "wheel",
+      "(prefers-reduced-motion: reduce)",
+      "complete",
+      "faq-foot",
+      "is-sliding",
+      "is-warm",
+      "load",
+      "transform",
+      "transitionend"
     ]
   },
   "hardExceptions": [

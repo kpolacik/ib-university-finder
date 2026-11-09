@@ -1,5 +1,6 @@
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
+import { onFaqSlide } from './faq.js';
 import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
@@ -152,7 +153,7 @@ let preferencesDirty = false;
 const editedFacets = new Set();
 const persistPreferences = debounce(() => {
   if (!loaded || !preferencesDirty) return;
-  writeSaved(storedFilters(state, facets)); preferencesDirty = false;
+  writeSaved(storedFilters(state, facets, explicitSort)); preferencesDirty = false;
 }, 300);
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
@@ -231,6 +232,8 @@ let scrollingHome = false;
 const rowObserver = new ResizeObserver(() => scheduleWindow());
 let sheetWarmScheduled = false;
 let sheetSlideTimer;
+// True while the FAQ panel slides (js/faq.js): rows wait, as for the sheet.
+let faqSliding = false;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
@@ -280,6 +283,7 @@ async function start() {
   crossBar();
   barQuery.addEventListener('change', crossBar);
   wireSheet();
+  onFaqSlide((on) => { faqSliding = on; if (on) cancelRows(); else scheduleWindow(); });
   wireStuck();
   wireDropdowns();
   applyUrlFields();
@@ -400,7 +404,10 @@ function applyUrlFields() {
   for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
   fillFields(fromUrl);
   const params = new URLSearchParams(location.search);
-  explicitSort = fromUrl.sort !== 'best' && (params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
+  // A saved sort was hand-picked (storedFilters keeps only those), so setting
+  // points later leaves it alone, as it would have before the reload.
+  explicitSort = fromUrl.sort !== 'best' && (restored.sortPicked
+    || params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
 }
@@ -629,7 +636,7 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
-      explicitSort = true;
+      explicitSort = true; preferencesDirty = true;
       if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
         state.sort = 'deadline'; state.dir = 'asc';
       } else {
@@ -1344,7 +1351,7 @@ function rowAt(offset) {
 }
 
 function scheduleWindow() {
-  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined) {
+  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined && !faqSliding) {
     windowFrame = requestAnimationFrame(() => { windowFrame = 0; renderWindow(); });
   }
 }

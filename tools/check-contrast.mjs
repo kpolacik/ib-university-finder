@@ -235,7 +235,12 @@ const CANONICAL = {
   "--t-med": "160ms",
   "--t-slow": "200ms",
   "--ease-out": "cubic-bezier(.22,1,.36,1)",
-  "--ease-in-out": "cubic-bezier(.45,0,.25,1)"
+  "--ease-in-out": "cubic-bezier(.45,0,.25,1)",
+  // Sheets and side panels (Filters, FAQ) and a FAQ answer opening, 2026-11-09.
+  "--ease-sheet": "cubic-bezier(.32,.72,0,1)",
+  "--t-sheet-in": "280ms",
+  "--t-sheet-out": "220ms",
+  "--t-answer": "260ms"
 };
 const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 

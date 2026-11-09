@@ -10,7 +10,8 @@ export function hasFilterParams(query) {
   return PARAMS.some((key) => params.has(key));
 }
 
-// Only these fourteen fields cross the storage boundary. The existing URL
+// Only these fourteen fields, plus a hand-picked sort and direction
+// (storedFilters), cross the storage boundary. The existing URL
 // parser validates enum values; numbers must also have the correct JSON type.
 export function validateFilters(raw, facets = null) {
   const out = createFilterState();
@@ -27,7 +28,8 @@ export function validateFilters(raw, facets = null) {
     const values = raw[key] instanceof Set ? [...raw[key]] : Array.isArray(raw[key]) ? raw[key] : [];
     out[key] = new Set(values.filter((v) => typeof v === 'string' && v && (!facets || (facets[key] || []).includes(v))));
   }
-  // Sort is never written to preferences, but validate older/incoming snapshots.
+  // A hand-picked sort is stored (Leon, 2026-11-09); Best match still needs
+  // the points stored with it, or it falls back to deadline order.
   const order = paramsToState(new URLSearchParams({ sort: typeof raw.sort === 'string' ? raw.sort : '', dir: raw.dir === 'desc' ? 'desc' : '', points: out.myIbPoints ?? '' }));
   out.sort = order.sort; out.dir = order.dir;
   return out;
@@ -42,17 +44,26 @@ export function hasSetupAnswers(answers) {
     || ['subjectAreas', 'countries', 'languages'].some((key) => answers[key].size > 0);
 }
 
-export function storedFilters(state, facets) {
+// keepSort: the student picked this sort themselves (app.js explicitSort).
+// Only then is it stored, so a reload keeps it and setting points later does
+// not swap it for Best match. A sort the page chose (deadline order, or Best
+// match after entering points) is left out and is chosen again on reload.
+export function storedFilters(state, facets, keepSort = false) {
   const clean = validateFilters(state, facets);
   const { shortlistOnly, sort, dir, ...filters } = clean;
   for (const key of FACET_FIELDS) filters[key] = [...filters[key]];
+  if (keepSort && sort !== 'best') Object.assign(filters, { sort, dir });
   return { version: 1, filters };
 }
 
 export function restoration(query, stored, dismissed = false) {
   if (hasFilterParams(query)) return { source: 'url', state: paramsToState(query), onboarding: false };
   const valid = stored?.version === 1 && stored.filters && typeof stored.filters === 'object' && !Array.isArray(stored.filters);
-  return { source: valid ? 'saved' : 'defaults', state: validateFilters(valid ? stored.filters : null), onboarding: !valid && !dismissed };
+  const state = validateFilters(valid ? stored.filters : null);
+  // sortPicked: a stored sort other than Best match was the student's choice.
+  // One that fails validation (unknown, or Best match without points) is not.
+  const sortPicked = valid && stored.filters.sort === state.sort && state.sort !== 'best';
+  return { source: valid ? 'saved' : 'defaults', state, onboarding: !valid && !dismissed, sortPicked };
 }
 
 // Validate the current sets, rather than reapplying the snapshot: any changes

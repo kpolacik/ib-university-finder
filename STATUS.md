@@ -50,9 +50,11 @@ follow-up from the translation plan.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
-**FAQ one tap away** (Leon, 2026-11-09: "someone looking for faq has to scroll through all rows"). The header has a "?" button (named "FAQ" / "Časté otázky" for screen readers) between Compare and SK/EN. It opens the same questions in a panel: a sheet from the bottom on phones, like Filters, and a side panel from the right from 600 px. The footer FAQ stays. There is one copy of the text: `js/faq.js` copies the footer's questions into the panel when the page starts, and the language switch translates both. The panel works like the Filters sheet (`show()`, its own scrim, focus trap, Escape, no page-wide inert, same 280/220 ms curve), can be reopened mid-close, fades in 120 ms with reduced motion, and only locks page scrolling on phones (from 600 px a wheel over the scrim is stopped instead). Setup's "Read the FAQ" now opens this panel and closing it returns to the list; the old scroll-to-the-footer jump and its re-aiming are gone. On a 600-700 px touch screen the header buttons sit 4 px apart so Search keeps 160 px. Checks: `check.mjs` section "FAQ panel"; smoke `--faq-only`. Known gap: on phones the header scrolls away, so "?" is only at the top of the page; and opening it during the first 2-3 s while rows are still being added took ~1 s in Chrome on a phone width (about 0.3 s once they are in).
+**FAQ one tap away** (Leon, 2026-11-09: "someone looking for faq has to scroll through all rows"). The header has a "?" button (named "FAQ" / "Časté otázky" for screen readers) between Compare and SK/EN. It opens the questions in a panel: a sheet from the bottom on phones, like Filters, and a side panel from the right from 600 px. (Since the same day the panel is the FAQ's only home; see the next-but-one entry.) The panel works like the Filters sheet (`show()`, its own scrim, focus trap, Escape, no page-wide inert, same 280/220 ms curve), can be reopened mid-close, fades in 120 ms with reduced motion, and only locks page scrolling on phones (from 600 px a wheel over the scrim is stopped instead). Setup's "Read the FAQ" now opens this panel and closing it returns to the list; the old scroll-to-the-footer jump and its re-aiming are gone. On a 600-700 px touch screen the header buttons sit 4 px apart so Search keeps 160 px. Checks: `check.mjs` section "FAQ panel"; smoke `--faq-only`. Known gap: on phones the header scrolls away, so "?" is only at the top of the page; and opening it during the first 2-3 s while rows are still being added took ~1 s in Chrome on a phone width (about 0.3 s once they are in).
 
 **FAQ text rewritten** (Leon, 2026-11-09): 12 questions in EN and SK, ending with a contact link to ibuniversityfinder@gmail.com; quoted button and badge names are checked against the real labels (`check.mjs` "FAQ text, twelve questions").
+
+**FAQ moved from the footer to the "?" panel** (Leon, 2026-11-09). The twelve questions now live only in the panel's markup in `index.html`; the footer keeps "Check before you apply", the source line and a "FAQ" button that opens the panel (focus returns to it). The FAQ no longer prints. From 1024 px the header's "?" also says "FAQ" / "Časté otázky". The panel shares the Filters sheet's motion tokens (`--ease-sheet`, `--t-sheet-in` 280 ms, `--t-sheet-out` 220 ms), is laid out once before its first open, and rows pause while it slides. Answers grow open over 260 ms with the "+" turning in step (Chrome; Safari opens them at once). Questions are 16 px in 44 px rows, answers 14 px in the secondary grey, no line under the last one, and neither sheet has a shadow (the scrim separates them). Setup's done screen adds "Reopen the FAQ any time with ? at the top." Setup's two hints ("Discards these answers", the HL Maths bonus) sit closer under their labels, so the dialog is a little shorter. Checks: `check.mjs` "FAQ panel"; smoke `--faq-only` and `--setup-only` (LP-S5).
 
 **My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
 
@@ -775,8 +777,8 @@ filter. Preferences use `ibuf.filters.v1`, separate from `ibuf.onboarding.v1`
 and the existing saved list. Any recognised URL filter/sort parameter or
 `?list=` uses URL state plus defaults, never merged with saved filters. A URL
 with only `?ui=` still restores saved filters. URL hydration leaves stored
-preferences alone; later explicit edits save validated filters, not sort,
-selection or list/compare/panel state. Clear all removes saved filters but
+preferences alone; later explicit edits save validated filters and a
+hand-picked sort (since 2026-11-09), not selection or list/compare/panel state. Clear all removes saved filters but
 keeps the separate onboarding flag, so setup does not replay. Full programme
 requirements remain in opened details; summary rows are compact. The phone
 Sort select and all My list tools remain available. Local source checks,
@@ -1793,8 +1795,11 @@ uses deadline order, then the closest points figure and name. Clearing points
 returns Best match to deadline order. Best match has one direction.
 Total yearly cost orders the low yearly estimate and uses My living costs when
 set; unknown costs stay last in either direction. Other sorts break ties by
-deadline, then name. Sort is still excluded from saved filter preferences;
-URL sorts remain shareable and URL state never merges with saved filters.
+deadline, then name. A sort the student picks is saved with their filters
+(Leon, 2026-11-09), so a reload keeps it and setting points later does not
+replace it with Best match; a sort the page chose for them is not saved. Clear
+all removes the saved sort with the saved filters. URL sorts remain shareable
+and URL state never merges with saved filters.
 
 ## Running it
 

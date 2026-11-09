@@ -132,6 +132,12 @@
   --t-slow:200ms;   /* row expand, filter sheet */
   --ease-out:cubic-bezier(.22,1,.36,1);      /* anything entering */
   --ease-in-out:cubic-bezier(.45,0,.25,1);  /* anything moving between two states */
+  /* Sheets and side panels (Filters, FAQ): a fast start and a long, soft
+     settle, open 280 ms, close 220 ms. One place, so the two never drift. */
+  --ease-sheet:cubic-bezier(.32,.72,0,1);
+  --t-sheet-in:280ms;
+  --t-sheet-out:220ms;
+  --t-answer:260ms;  /* a FAQ answer and a sheet pick-list growing open */
 
 }
 
@@ -450,10 +456,10 @@ svg:not(.sprite) {
    close; reduced motion is instant, and from 600 px neither transitions.
    Open 280 ms / close 220 ms: give the slide a visible settling tail.
    Containment bounds the initial paint; promote only while moving. */
-.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms}
-.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
-.sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
-.sheet-scrim.is-open{display:block;opacity:1;transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+.sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete}
+.sheet-scrim.is-open{display:block;opacity:1;transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
 .sheet.is-sliding{will-change:transform}
 .sheet-scrim.is-sliding{will-change:opacity}
 @starting-style{.sheet[open]{transform:translateY(100%)}.sheet-scrim.is-open{opacity:0}}
@@ -464,7 +470,6 @@ svg:not(.sprite) {
   .sheet.is-warm[open]{visibility:visible;pointer-events:auto}
 }
 html.sheet-open{overflow:hidden}
-.sheet-h{flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
 .sheet-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
 .sheet-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 16px;display:grid;gap:16px;align-content:start}
 .sheet-b .more-filters{display:grid;gap:16px}
@@ -475,25 +480,60 @@ html.sheet-open{overflow:hidden}
 .sheet-f .btn-p{flex:1}
 
 /* The FAQ panel behind the header's "?" (js/faq.js, Leon 2026-11-09). Built
-   like the Filters sheet above: show(), not the top layer, its own scrim, and
-   the same curve and timing (open 280 ms, close 220 ms). A sheet from the
-   bottom on phones, a side panel from the right from 600 px. Transform and
-   opacity only. Plain transitions reverse from wherever they are, so "?"
-   tapped mid-close glides back; the closing scrim lets that tap through.
-   Reduced motion gets a quick fade (below, and it out-ranks the global
-   "no transitions" rule at the end of this file). The page behind is locked
-   only on phones, as with Filters: from 600 px hiding a classic scrollbar
-   would re-lay out every row, so faq.js stops the wheel instead. */
-.faqp{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;box-shadow:var(--pop-shadow);contain:layout paint;transform:translateY(100%);transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
-.faqp[open]{display:flex;flex-direction:column;transform:none;transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
-.faq-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;pointer-events:none;transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
-.faq-scrim.is-open{display:block;opacity:1;pointer-events:auto;transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+   like the Filters sheet above: show(), not the top layer, its own scrim, the
+   same tokens (open 280 ms, close 220 ms), the same header, drag handle and
+   first-open warm-up, and rows pause while it slides (.is-sliding). A sheet
+   from the bottom on phones, a side panel from the right from 600 px.
+   Transform and opacity only. Plain transitions reverse from wherever they
+   are, so "?" tapped mid-close glides back; the closing scrim lets that tap
+   through. No shadow, as on the Filters sheet: the scrim already sets it
+   apart (one decision for both, 2026-11-09). Reduced motion gets a quick
+   fade (below, and it out-ranks the global "no transitions" rule at the end
+   of this file). The page behind is locked only on phones, as with Filters:
+   from 600 px hiding a classic scrollbar would re-lay out every row, so
+   faq.js stops the wheel instead. */
+.faqp{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
+.faqp[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+.faq-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;pointer-events:none;transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete}
+.faq-scrim.is-open{display:block;opacity:1;pointer-events:auto;transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+.faqp.is-sliding{will-change:transform}
+.faq-scrim.is-sliding{will-change:opacity}
 @starting-style{.faqp[open]{transform:translateY(100%)}.faq-scrim.is-open{opacity:0}}
-.faqp-h{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline);touch-action:none}
+/* Laid out once the page has painted, hidden and untouchable until opened.
+   Visibility waits for the closing slide; pointer events stop at once. */
+.faqp.is-warm{display:flex;flex-direction:column;visibility:hidden;pointer-events:none}
+.faqp.is-warm[open]{visibility:visible;pointer-events:auto}
+.sheet-h,.faqp-h{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
 .faqp-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
-.faqp-h .btn{width:44px;height:44px;padding:0;justify-content:center}
+.faqp-h .btn{width:44px;height:44px;padding:0;justify-content:center;text-decoration:none}
 .faqp-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px calc(16px + env(safe-area-inset-bottom))}
+/* The questions: 16 px, one 44 px tap row each; the answers a step smaller
+   and quieter, so a list of questions reads at a glance. No line under the
+   last one: the panel's edge ends the list. */
+.faq details{border-bottom:1px solid var(--hairline)}
+.faq details:last-child{border-bottom:0}
+.faq summary{list-style:none;cursor:pointer;min-height:44px;padding:10px 0;font-size:var(--fs-16);line-height:24px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.faq summary::-webkit-details-marker{display:none}
+/* The "+" turns into "×" in step with the answer opening. */
+.faq summary>.ic{width:16px;height:16px;flex:none;margin-top:calc(.5lh - 8px);color:var(--ink-2);transition:transform var(--t-answer) var(--ease-out)}
+.faq details[open] summary>.ic{transform:rotate(45deg)}
+.faq .a{padding:0 28px 16px 0;font-size:var(--fs-14);line-height:1.5;color:var(--ink-2)}
+.faq .a a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;overflow-wrap:anywhere}
+.faq .a a:hover{color:var(--accent-press)}
+/* An answer grows open and shuts, and fades with it, where height:auto can
+   animate (Chrome); elsewhere it opens at once, as before. Closing keeps the
+   content shown until it has shrunk (content-visibility allow-discrete). */
+@supports (interpolate-size:allow-keywords){
+ .faqp-b{interpolate-size:allow-keywords}
+ .faq details::details-content{height:0;overflow:clip;transition:height var(--t-answer) var(--ease-out),content-visibility var(--t-answer) allow-discrete}
+ .faq details[open]::details-content{height:auto}
+ .faq .a{opacity:0;transition:opacity 200ms var(--ease-out)}
+ .faq details[open] .a{opacity:1}
+}
 #faq-open{width:36px;padding:0;justify-content:center}
+/* From 1024 px the header has room to say "FAQ" beside the "?" (Leon,
+   2026-11-09), as My list and Compare show their labels; below, "?" alone. */
+.faq-l{display:none}
 @media (max-width:599.98px){
  .faqp::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
  html.faq-open{overflow:hidden}
@@ -503,13 +543,18 @@ html.sheet-open{overflow:hidden}
  @starting-style{.faqp[open]{transform:translateX(100%)}}
 }
 @media (pointer:coarse),(max-width:599px){#faq-open{width:44px}}
+/* After the touch rule, so a touch screen from 1024 px fits the word too. */
+@media (min-width:1024px){
+ #faq-open{width:auto;min-width:36px;padding:0 12px 0 10px;gap:6px;font-size:15px;font-weight:400}
+ #faq-open .faq-l{display:inline}
+}
 /* A touch screen at 600-700 px makes every header button 44 px, and "?" left
    Search 148 px wide (smoke F1 wants 160). The phone's 4 px between the
    header buttons, and 12 px around Search, give it 168. */
 @media (pointer:coarse) and (min-width:600px) and (max-width:700px){.hd .hd-right{gap:4px}.hd .hd-in{gap:12px}}
 @media (prefers-reduced-motion:reduce){
  .faqp,.faqp[open]{transform:none}
- .faqp{opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete !important}
+ .faqp{opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important}
  .faqp[open]{opacity:1}
  @starting-style{.faqp[open]{opacity:0;transform:none}}
  .faq-scrim{transition:opacity 120ms linear,display 120ms allow-discrete !important}
@@ -1032,17 +1077,13 @@ html{overflow-anchor:none}
 .shell,.foot{max-width:1440px}
 .shell{padding-top:12px}
 @media(max-width:599px){.shell{padding-top:0}}
-.foot{margin:0 auto;padding:8px var(--gut) 60px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;font-size:15px}
+/* One column since the FAQ moved to its panel (2026-11-09): the warning, the
+   source line and a "FAQ" button that opens the panel. */
+.foot{margin:0 auto;padding:8px var(--gut) 60px;display:grid;grid-template-columns:minmax(0,1fr);gap:32px;font-size:15px}
+.foot .foot-faq{margin:4px 0 0}
+.foot .foot-faq .btn{margin-left:-8px;padding:0 8px;font-size:inherit}
 .foot h2{font-size:15px;color:var(--ink);margin:0 0 8px}
 .foot p{margin:0 0 8px;max-width:62ch}
-.faq details{border-bottom:1px solid var(--hairline)}
-.faq summary{list-style:none;cursor:pointer;padding:12px 0;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;gap:12px}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary>span[aria-hidden]{display:inline-block;transition:transform 220ms var(--ease-out)}
-.faq details[open] summary>span[aria-hidden]{transform:rotate(45deg)}
-.faq .a{padding:0 0 14px;max-width:62ch}
-.faq .a a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;overflow-wrap:anywhere}
-.faq .a a:hover{color:var(--accent-press)}
 @media (min-width: 600px) and (min-height: 501px){.hd{position:sticky;top:0}}
 @media (max-width: 599.98px){
  .hd{height:auto;min-height:56px}.hd-in{flex-wrap:wrap;padding:10px var(--gut);gap:10px}.slot{width:auto;flex:1}.mark{position:static}.mark h1{font-size:16px}.hd-right{gap:4px}#header-list>span:not(.badge){display:none}.search{order:3;flex-basis:100%;max-width:none}.search .inp{height:44px}.foot{grid-template-columns:1fr;gap:20px}
@@ -1297,7 +1338,11 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
    and the step text above all start on one line. Change all three together. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
 .skipwrap .btn.btn-q{padding-inline:11px}
-.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:4px}
+.skipwrap small{font-size:12px;line-height:16px;color:var(--ink-3);padding-left:12px;margin-top:0}
+/* Leon, 2026-11-09: the hint hung too far below Skip. It now starts at the
+   button's edge, and Skip's ring is drawn inside the button (as on SK/EN), so
+   the ring still never touches it. */
+.skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
@@ -1309,7 +1354,12 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .ob .switch{padding-left:0}
 .ob .big-pts input{width:90px;height:60px;font-size:44px;font-weight:700;text-align:center;border:0;background:transparent;appearance:textfield}
 .ob .big-pts input::-webkit-inner-spin-button{appearance:none}
-.ob .ob-hint{font-size:13px;padding-left:44px;margin-top:-8px}
+/* The maths hint hangs under the switch's label text, closer than the step's
+   14 px gap (Leon, 2026-11-09): 4 px of air below the label's last line.
+   On touch the switch's 44 px comes from padding here, not min-height, so
+   the gap stays 4 px when the label wraps (320 px, Slovak at 390 px). */
+.ob .ob-hint{font-size:13px;line-height:18px;padding-left:44px;margin-top:-12px}
+@media (pointer:coarse),(max-width:599px){.ob .switch{min-height:0;padding-block:11px}.ob .ob-hint{margin-top:-21px}}
 .ob .rng{display:grid;gap:8px;margin-top:12px}
 .ob .rng-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ob .rng-top .inp{max-width:164px;text-align:right;height:24px;border:0;background:transparent;padding:0;font-size:15px;font-weight:600;color:var(--ink)}
@@ -1337,8 +1387,6 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .pane:has(.pane-close:not([hidden])) .d-head{padding-right:28px}
 .btn{transition:transform 120ms ease-out,background-color 120ms ease-out}
 .btn:active{transform:scale(.97)}
-.faq summary>.ic{width:16px;height:16px;flex:none;transition:transform 220ms var(--ease-out)}
-.faq details[open] summary>.ic{transform:rotate(45deg)}
 .foot{margin-top:48px}
 .switch input::after{box-shadow:var(--thumb-shadow)}
 input[type=range]::-webkit-slider-thumb{box-shadow:var(--thumb-shadow)}
@@ -1741,9 +1789,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
  .ob-foot:not(.ob-done-foot){row-gap:12px}
 }
 /* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
-   from 600 px the footer heading starts on the first question's line. */
-.faq summary>.ic{margin-top:calc(.5lh - 8px)}
-@media (min-width:600px){.foot h2{margin-top:12px}}
+   now set with the panel's other question rules (.faq summary>.ic). */
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer

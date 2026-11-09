@@ -1,13 +1,10 @@
 // The FAQ one tap away (Leon, 2026-11-09). It used to live only in the
 // footer, below ~2,900 rows, so "someone looking for faq has to scroll
-// through all rows". The header's "?" now opens the same questions in a
-// panel: a sheet from the bottom on phones, a side panel from the right from
-// 600 px. The footer keeps its copy.
-//
-// One source for the text: the footer's <details> are cloned into the panel
-// once, at startup. Their data-i18n spans are translated with the rest of the
-// page (applyLanguage walks the whole document), so a wording change is made
-// once, in i18n.js, and switching language updates both copies.
+// through all rows". The header's "?" opens it in a panel: a sheet from the
+// bottom on phones, a side panel from the right from 600 px. Since the same
+// day the panel is its only home: the questions are in its markup in
+// index.html, and the footer has just a "FAQ" button that opens it. Their
+// data-i18n spans are translated with the rest of the page.
 //
 // Like the Filters sheet and Setup, the panel opens with show(), never
 // showModal(), and nothing else on the page is made inert: WebKit restyles
@@ -16,6 +13,10 @@
 
 let wired = false, keyboardInput = false, returnTo = null;
 let panel = null, scrim = null, heading = null, opener = null, body = null;
+// While the panel slides, app.js stops mounting rows (onFaqSlide), as for the
+// Filters sheet: WebKit's long list layouts stall the slide otherwise.
+let onSlide = null, slideTimer, sliding = false;
+const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 // Whether the last input was a key: a tap must not leave a focus ring on the
 // heading or on "?" afterwards (iOS, Leon 2026-11-08, as in app.js).
@@ -29,18 +30,21 @@ const visible = (node) => !!node?.isConnected && node.getClientRects().length > 
 export function wireFaq() {
   if (wired) return;
   panel = document.getElementById('faq-panel');
-  const source = document.getElementById('faq');
-  if (!panel || !source) return;
+  if (!panel) return;
   wired = true;
   scrim = document.getElementById('faq-scrim');
   heading = document.getElementById('faq-h');
   opener = document.getElementById('faq-open');
   body = panel.querySelector('.faqp-b');
-  body.replaceChildren(...[...source.querySelectorAll('details')].map(copy));
 
   document.addEventListener('keydown', () => { keyboardInput = true; }, true);
   document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+  // Pause rows at finger-down, before the browser synthesises the click.
+  opener.addEventListener('pointerdown', () => { if (!panel.open) slide(); });
   opener.addEventListener('click', () => openFaq());
+  // The footer's "FAQ" gets focus back itself when the panel closes.
+  const footer = document.getElementById('faq-foot');
+  footer?.addEventListener('click', () => openFaq(footer));
   panel.querySelector('.faqp-x').addEventListener('click', () => closeFaq());
   scrim.addEventListener('click', () => closeFaq());
   // From 600 px the page keeps its scrollbar (hiding a classic one would
@@ -77,23 +81,55 @@ export function wireFaq() {
   });
   // close is queued: after a quick reopen it must change nothing.
   panel.addEventListener('close', finish);
+  // A question's own height transition ends on its <details>, not here.
+  panel.addEventListener('transitionend', (event) => {
+    if (event.target === panel && event.propertyName === 'transform') settle();
+  });
+  warmLater();
 }
 
-// A closed copy of one footer question. The footer's own open state is the
-// reader's, not the panel's.
-function copy(details) {
-  const node = details.cloneNode(true);
-  node.removeAttribute('open');
-  node.open = false;
-  return node;
+// app.js passes (true) when a slide starts and (false) when it has ended.
+export function onFaqSlide(fn) { onSlide = fn; }
+
+function slide() {
+  if (reducedMotion()) return;
+  clearTimeout(slideTimer);
+  panel.classList.add('is-sliding');
+  scrim.classList.add('is-sliding');
+  if (!sliding) { sliding = true; onSlide?.(true); }
+  // The 280 ms slide plus its first frame's work; covers a missing transitionend.
+  slideTimer = setTimeout(settle, 500);
+}
+
+function settle() {
+  if (!sliding) return;
+  clearTimeout(slideTimer);
+  sliding = false;
+  panel.classList.remove('is-sliding');
+  scrim.classList.remove('is-sliding');
+  onSlide?.(false);
+}
+
+// The first open used to lay the panel out cold, during its slide. Like the
+// Filters sheet, it is laid out once the page has painted, hidden and
+// untouchable (.is-warm in styles.css), so the first slide is as smooth as the
+// rest. Nothing in it can take focus until it is open.
+function warmLater() {
+  const warm = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!panel.open) panel.classList.add('is-warm');
+  }));
+  if (document.readyState === 'complete') warm();
+  else globalThis.addEventListener?.('load', warm, { once: true });
 }
 
 // back: where focus goes on close; "?" unless the caller names a visible
-// element (Setup's done screen hands over the results list).
+// element (Setup's done screen hands over the results list, the footer's
+// "FAQ" itself).
 export function openFaq(back = null) {
   wireFaq();
   if (!panel || panel.open) return;
   returnTo = back;
+  slide();
   panel.show();
   document.documentElement.classList.add('faq-open');
   scrim.classList.add('is-open');
@@ -109,6 +145,7 @@ export function closeFaq() {
 
 function finish() {
   if (panel.open || !document.documentElement.classList.contains('faq-open')) return;
+  slide();
   document.documentElement.classList.remove('faq-open');
   scrim.classList.remove('is-open');
   opener.setAttribute('aria-expanded', 'false');

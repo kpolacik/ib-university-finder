@@ -2510,7 +2510,7 @@ async function runBatch3C(base) {
                   foot:(()=>{const f=box(d.querySelector('.ob-foot')),s=getComputedStyle(d.querySelector('.ob-foot'));return {left:f.left+parseFloat(s.paddingLeft),right:f.right-parseFloat(s.paddingRight)}})(),
                   bodyOver:body.scrollWidth>body.clientWidth,sw:document.documentElement.scrollWidth,w:innerWidth,h:innerHeight}})()`);
               await shoot(page, `done-${width}-${lang}${reduced ? '-reduced' : ''}`);
-              assert(m.heading === (lang === 'sk' ? 'V nastavení nie sú žiadne odpovede.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
+              assert(m.heading === (lang === 'sk' ? 'Nastavenie zostalo prázdne.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
               assert(m.btns.length === 2 && m.btns[0].primary, `buttons ${JSON.stringify(m.btns)}`);
               for (const b of m.btns) {
                 assert(b.h >= 44 && b.w >= 44 && !b.clipped, `button ${JSON.stringify(b)}`);
@@ -3987,26 +3987,56 @@ async function runAlignChromeSetup(base) {
     } finally { await page.close(); }
   }
 
+  // Leon, 2026-11-09: the two Setup hints sat too far below what they explain.
+  // Each starts at its label's text edge and close under it (Skip: below the
+  // button's 44 px box; maths: 3-8 px under the label's last line, also when
+  // it wraps), the dialog stays centred, and the done screen's "?" line is
+  // one line at 390 px.
+  for (const [width, lang] of [[390, 'en'], [390, 'sk'], [320, 'en'], [320, 'sk'], [1280, 'en'], [1280, 'sk']]) {
+    const page = await open(width, width < 600 ? 844 : 800, lang, { onboarding: null });
+    try {
+      await check(width, 'LP-S5 setup hints', `(${lang}): Skip's and the maths hint sit close under their label text, aligned with it; the dialog stays centred`, async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await settle(page);
+        const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
+          const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
+          const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
+          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:tb(sm).top-sk.getBoundingClientRect().bottom,skipTextGap:tb(sm).top-tb(sk).bottom,
+            labelLeft:lb.left,hintLeft:tb(hint).left,mathGap:tb(hint).top-lb.bottom,centre:Math.abs(r.top-(innerHeight-r.bottom))}})()`);
+        await shoot(page, `lp-setup-hints-${width}-${lang}`);
+        assert(Math.abs(m.skipLeft - m.skipHint) <= 1 && Math.abs(m.labelLeft - m.hintLeft) <= 1, `hints not aligned: ${JSON.stringify(m)}`);
+        assert(m.skipGap >= -0.5 && m.skipGap <= 2 && m.skipTextGap <= 16, `Skip hint gap: ${JSON.stringify(m)}`);
+        assert(m.mathGap >= 2 && m.mathGap <= 8, `maths hint gap: ${JSON.stringify(m)}`);
+        assert(m.centre <= 1, `dialog off centre by ${m.centre}`);
+        for (let step = 2; step <= 5; step++) await next(page, `step ${step + 1}`);
+        await page.waitFor(`({ok:!!document.querySelector('.ob-done .ob-help-hint'),why:'done screen'})`, 5000, 'done screen');
+        await settle(page);
+        const h = await page.ev(`(()=>{const p=document.querySelector('.ob-help-hint');return {lines:Math.round(p.getBoundingClientRect().height/parseFloat(getComputedStyle(p).lineHeight)),icon:!!p.querySelector('svg use[href="#i-help"]'),name:p.querySelector('.visually-hidden').textContent}})()`);
+        assert(h.icon && h.name === (lang === 'sk' ? 'otáznik' : 'the question mark'), `"?" hint: ${JSON.stringify(h)}`);
+        if (width >= 390) assert(h.lines === 1, `"?" hint takes ${h.lines} lines`);
+      });
+    } finally { await page.close(); }
+  }
+
   if (args.has('--setup-only')) return;
 
-  // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
-  // the first question's line.
+  // FAQ: the "+" on the first line's centre. Since 2026-11-09 the questions
+  // are only in the "?" panel (the footer's copy and its heading alignment
+  // are gone), so it is measured there, every question 44 px or taller.
   for (const [width, lang] of [[1280, 'en'], [600, 'sk'], [390, 'en']]) {
     const page = await open(width, width < 600 ? 844 : 900, lang);
     try {
-      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line${width >= 600 ? '; heading on the first question\'s line' : ''}`, async () => {
-        // Use the empty list so rows still filling in cannot move the footer
-        // out of the screenshot after scrolling to it.
-        await openList(page);
-        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'start',behavior:'instant'})`);
-        await settle(page);
+      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line in the panel; 44 px question rows`, async () => {
+        await page.ev(`document.querySelector('#faq-open').click()`);
+        await page.waitFor(`({ok:document.querySelector('#faq-panel').open&&!document.querySelector('#faq-panel').getAnimations().length,why:'panel opening'})`, 5000, 'FAQ panel');
         const m = await page.ev(`(()=>{const first=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getClientRects()[0]};
-          const qs=[...document.querySelectorAll('#faq summary')].map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
-          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('#faq summary span'));return {qs,head:h.top-q.top,visible:q.top>=0&&q.bottom<=innerHeight}})()`);
-        assert(m.visible, 'the FAQ is outside the screenshot');
+          const sums=[...document.querySelectorAll('#faq-panel summary')];
+          const qs=sums.map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
+          return {qs,heights:sums.map(s=>Math.round(s.getBoundingClientRect().height))}})()`);
         await shoot(page, `faq-${width}-${lang}`);
-        assert(m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
-        if (width >= 600) assert(Math.abs(m.head) <= 1, `heading and first question differ by ${m.head}`);
+        assert(m.qs.length === 12 && m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
+        assert(m.heights.every((h) => h >= 44), `question rows under 44 px: ${m.heights}`);
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').click()`);
       });
     } finally { await page.close(); }
   }
@@ -4905,6 +4935,20 @@ async function runSmarterSort(base) {
         await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='best:asc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
         await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc' && ![...document.querySelector('#f-sort').options].some(o=>o.value==='best:asc'),why:'clear did not restore deadline'})`,5000,'points clear fallback');
       });
+      // Leon, 2026-11-09: a sort the student picks survives a reload, and
+      // points set afterwards leave it alone; Clear all forgets it.
+      await check(width,'SORT saved','a hand-picked sort survives a reload (plain address), points set after it keep it, and Clear all forgets it',async()=>{
+        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='name:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));}`);
+        await page.waitFor(`({ok:JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='name',why:'sort not saved'})`,5000,'saved sort');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden,why:'reload'})`,15000,'reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='name:desc'`),`sort after reload: ${await page.ev(`document.querySelector('#f-sort').value`)}`);
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='36';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:new URLSearchParams(location.search).get('points')==='36',why:'points not applied'})`,5000,'points');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='name:desc'`),'points replaced the saved sort with Best match');
+        await page.ev(`document.querySelector('#f-clear').click()`);
+        await page.waitFor(`({ok:localStorage.getItem('ibuf.filters.v1')===null,why:'saved sort kept after Clear all'})`,5000,'clear all');
+      });
       assert(!page.errors.length,JSON.stringify(page.errors));
     } finally { await page.close(); }
   }
@@ -4926,7 +4970,7 @@ async function runFaqPanel(base, want) {
   // Header: "?" fits beside My list, Compare, SK/EN, the logo and Search,
   // in both languages, with no overlap, no sideways scroll and one row.
   // A touch screen at 600 px gets 44 px header buttons: the tightest case.
-  for (const [width, height, touch = width < 600] of [[320, 640], [390, 844], [600, 900], [600, 900, true], [1024, 768], [1440, 900]]) {
+  for (const [width, height, touch = width < 600] of [[320, 640], [360, 740], [390, 844], [600, 900], [600, 900, true], [1023, 768], [1024, 768], [1280, 800], [1440, 900]]) {
     for (const ui of ['en', 'sk']) {
       watchdog.refresh();
       const page = await openPage(`${base}?ui=${ui}`, width, height);
@@ -4949,9 +4993,13 @@ async function runFaqPanel(base, want) {
             const hit=document.elementFromPoint(q.left+q.width/2,q.top+q.height/2);
             return {q:[q.left,q.top,q.width,q.height].map(Math.round),hits,inside:q.left>=0&&q.right<=innerWidth&&q.top>=hd.top-0.5&&q.bottom<=hd.bottom+0.5,
               row:Math.abs(mid(q)-mid(lang)),beforeLang:q.right<=lang.left,search:Math.round(box(others.search).width),hd:Math.round(hd.height),
-              sw:document.documentElement.scrollWidth,w:innerWidth,hit:document.querySelector('#faq-open').contains(hit)};
+              sw:document.documentElement.scrollWidth,w:innerWidth,hit:document.querySelector('#faq-open').contains(hit),
+              label:box(document.querySelector('#faq-open .faq-l'))?document.querySelector('#faq-open .faq-l').textContent:null};
           })()`);
           const tap = touch ? 44 : 36;
+          // Leon, 2026-11-09: the word beside "?" from 1024 px; "?" alone below.
+          assert(m.label === (width >= 1024 ? (ui === 'sk' ? 'Časté otázky' : 'FAQ') : null), `label ${JSON.stringify(m.label)} at ${width}`);
+          if (width < 1024) assert(m.q[2] === tap, `"?" alone should be ${tap} wide, is ${m.q[2]}`);
           assert(m.q[2] >= tap && m.q[3] >= tap, `"?" is ${m.q[2]}x${m.q[3]}, want ${tap}`);
           assert(!m.hits.length && m.inside && m.hit && m.row <= 1 && m.beforeLang, `layout: ${JSON.stringify(m)}`);
           assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
@@ -5014,13 +5062,14 @@ async function runFaqPanel(base, want) {
         const m = await page.ev(`(()=>{const p=document.querySelector('#faq-panel'),r=p.getBoundingClientRect(),c=getComputedStyle(p);
           return {r:[r.left,r.top,r.right,r.bottom].map(Math.round),w:innerWidth,h:innerHeight,dur:c.transitionDuration,ease:c.transitionTimingFunction,modal:p.matches(':modal'),
             focus:document.activeElement?.id,ring:document.activeElement?.matches(':focus-visible'),expanded:document.querySelector('#faq-open').getAttribute('aria-expanded'),
-            qs:[...p.querySelectorAll('summary')].map(s=>s.textContent.trim()),foot:[...document.querySelectorAll('#faq summary')].map(s=>s.textContent.trim()),
+            qs:[...p.querySelectorAll('summary')].map(s=>s.textContent.trim()),foot:document.querySelectorAll('.foot details').length,warm:p.classList.contains('is-warm'),
             overflow:getComputedStyle(document.documentElement).overflow,t:window.__faqT&&Math.round(window.__faqT.end-window.__faqT.start)}})()`);
         if (phone) assert(m.r[0] === 0 && m.r[2] === m.w && m.r[3] === m.h && m.r[1] > m.h * 0.1, `sheet at ${m.r}`);
         else assert(m.r[2] === m.w && m.r[1] === 0 && m.r[3] === m.h && m.r[2] - m.r[0] === 440, `side panel at ${m.r}`);
         assert(m.dur.startsWith('0.28s') && m.ease.startsWith('cubic-bezier(0.32, 0.72, 0, 1)') && !m.modal, `motion ${m.dur} ${m.ease} modal ${m.modal}`);
         assert(m.focus === 'faq-h' && !m.ring && m.expanded === 'true', `focus ${m.focus} ring ${m.ring} expanded ${m.expanded}`);
-        assert(m.qs.length === 12 && JSON.stringify(m.qs) === JSON.stringify(m.foot), `questions ${JSON.stringify(m.qs)}`);
+        assert(m.qs.length === 12 && m.qs.every(Boolean) && m.foot === 0, `questions ${JSON.stringify(m.qs)}, footer details ${m.foot}`);
+        assert(m.warm, 'the panel was not laid out (is-warm) before its first open');
         assert(m.overflow === (phone ? 'hidden' : 'visible'), `page overflow ${m.overflow}`);
         assert(m.t !== null && m.t < 600, `tap to settled ${m.t} ms`);
         console.log(`MEASURE ${width} FAQ tap-to-settled ms ${m.t}`);
@@ -5060,7 +5109,7 @@ async function runFaqPanel(base, want) {
         assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab left the panel');
         await page.key('Tab', 'Tab', 9);
         await page.key(' ', 'Space', 32, [], ' ');
-        assert(await page.ev(`document.querySelector('#faq-panel details').open&&!document.querySelector('#faq details').open`), 'Space did not open the panel\'s question alone');
+        assert(await page.ev(`document.querySelector('#faq-panel details').open`), 'Space did not open the question');
         await page.ev(`document.querySelector('#f-search').focus()`);
         assert(await page.ev(`document.activeElement.id==='faq-h'`), 'focus escaped to the page');
         await page.key('Escape', 'Escape', 27);
@@ -5076,16 +5125,48 @@ async function runFaqPanel(base, want) {
         await page.ev(`document.querySelector('#faq-open').focus()`);
         await page.key('Enter', 'Enter', 13, [], '\r');
         await page.waitFor(settled(true), 5000, 'open by Enter');
-        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=true;document.querySelector('#faq-panel .faqp-x').focus()`);
+        // An answer grows open (2026-11-09); its content is shown from the
+        // first frame of that, not in the same task as the click.
+        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=true`);
+        await page.ev('new Promise(r=>setTimeout(r,350))');
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').focus()`);
         await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
         await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-        const m = await page.ev(`(()=>{const a=document.activeElement,c=getComputedStyle(a);return {tag:a.tagName,href:a.getAttribute('href'),text:a.textContent,ring:a.matches(':focus-visible'),line:c.textDecorationLine,inPanel:!!a.closest('#faq-panel'),foot:document.querySelector('#faq a[href^="mailto:"]')?.getAttribute('href')}})()`);
+        const m = await page.ev(`(()=>{const a=document.activeElement,c=getComputedStyle(a);return {tag:a.tagName,href:a.getAttribute('href'),text:a.textContent,ring:a.matches(':focus-visible'),line:c.textDecorationLine,inPanel:!!a.closest('#faq-panel'),links:document.querySelectorAll('a[href^="mailto:"]').length}})()`);
         assert(m.tag === 'A' && m.href === 'mailto:ibuniversityfinder@gmail.com' && m.text === 'ibuniversityfinder@gmail.com' && m.ring && m.line === 'underline' && m.inPanel
-          && m.foot === m.href, JSON.stringify(m));
+          && m.links === 1, JSON.stringify(m));
         await page.key('Tab', 'Tab', 9);
         assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab from the link left the panel');
         await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=false`);
       });
+      await reset();
+      // Leon, 2026-11-09: an answer grows open (and shuts) instead of
+      // snapping, with the "+" turning in step; the focus trap still skips a
+      // closed answer's link once it has shut.
+      await check(width, 'FAQ answer', 'an answer grows open over about 260 ms with the "+" turning; once the last one has shut again, Shift+Tab from Close lands on its question, not its link', async () => {
+        await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
+        const d = '[...document.querySelectorAll("#faq-panel details")]';
+        const shut = await page.ev(`${d}[1].getBoundingClientRect().height`);
+        await tap('#faq-panel details:nth-of-type(2) summary');
+        await page.ev('new Promise(r=>setTimeout(r,90))');
+        const mid = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,open:x.open,turn:getComputedStyle(x.querySelector('summary .ic')).transform}})()`);
+        await page.ev('new Promise(r=>setTimeout(r,400))');
+        const full = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,a:getComputedStyle(x.querySelector('.a')).opacity}})()`);
+        assert(mid.open && mid.h > shut + 4 && mid.h < full.h - 4 && mid.turn !== 'none', `not growing: shut ${shut}, mid ${JSON.stringify(mid)}, full ${JSON.stringify(full)}`);
+        assert(full.a === '1', `answer opacity ${full.a}`);
+        await tap('#faq-panel details:nth-of-type(2) summary');
+        await page.ev('new Promise(r=>setTimeout(r,500))');
+        assert(Math.abs(await page.ev(`${d}[1].getBoundingClientRect().height`) - shut) <= 0.5, 'the answer did not shut');
+        await page.ev(`{const x=${d}.at(-1);x.open=true;}`);
+        await page.ev('new Promise(r=>setTimeout(r,400))');
+        await page.ev(`${d}.at(-1).open=false`);
+        await page.ev('new Promise(r=>setTimeout(r,500))');
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), `Shift+Tab went to ${await page.ev('document.activeElement.outerHTML.slice(0,80)')}`);
+      });
+      await reset();
       await reset();
       await check(width, 'FAQ interrupt', '"?" tapped mid-close reaches the button through the fading scrim and glides back open', async () => {
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
@@ -5104,6 +5185,10 @@ async function runFaqPanel(base, want) {
       await check(width, 'FAQ reduced motion', 'reduced motion fades the panel in about 120 ms with no slide', async () => {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         try {
+          // The warm panel is laid out while closed, so its fade starts from
+          // its current style: let that style catch up with the new setting
+          // first, as it has long before a real tap.
+          await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).opacity`);
           await tap('#faq-open');
           const first = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})()`);
           await page.waitFor(settled(true), 3000, 'faded in');
@@ -5145,6 +5230,20 @@ async function runFaqPanel(base, want) {
         await page.key('Escape', 'Escape', 27);
         await page.waitFor(settled(false), 5000, 'closed');
         assert(await page.ev(`document.activeElement===document.querySelector('section[aria-labelledby="results-h"]')`), 'focus did not land on the list');
+      });
+      // Last: scrolling to the footer mounts rows there, which would crowd the timing checks above.
+      await check(width, 'FAQ footer', 'the footer has no questions, only a "FAQ" button that opens the panel without scrolling and gets focus back on close', async () => {
+        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'end',behavior:'instant'})`);
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        const y = await page.ev('scrollY');
+        assert(await page.ev(`!document.querySelector('.foot details')&&!document.querySelector('#faq')&&document.querySelector('#faq-foot').textContent==='FAQ'`), 'footer still holds questions or lacks its button');
+        await tap('#faq-foot');
+        await page.waitFor(settled(true), 5000, 'open from the footer');
+        assert(await page.ev(`document.activeElement.id==='faq-h'&&scrollY===${y}`), 'focus or scroll wrong after opening from the footer');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(settled(false), 5000, 'closed');
+        assert(await page.ev(`document.activeElement.id==='faq-foot'&&scrollY===${y}`), `focus went to ${await page.ev('document.activeElement.id')}, scroll ${await page.ev('scrollY')} (was ${y})`);
+        await page.ev('window.scrollTo(0,0)');
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
