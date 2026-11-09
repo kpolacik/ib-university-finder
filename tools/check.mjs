@@ -43,11 +43,13 @@ const equal = (name, actual, expected) =>
 // renderers can run here with no browser or DOM package. Text nodes are plain
 // strings (not counted by childElementCount), and appending a node that already
 // has a parent moves it, as the real DOM does.
+// The style methods sit on a prototype, so a style still holds only its values.
+const stubStyle = { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } };
 class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
     this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
-    this.listeners = {}; this.value = ''; this.validity = { badInput: false }; this.style = {};
+    this.listeners = {}; this.value = ''; this.validity = { badInput: false }; this.style = Object.create(stubStyle);
   }
   get lastChild() { return this.children.at(-1) ?? null; }
   before(node) { this.parent.insertBefore(node, this); }
@@ -2758,10 +2760,11 @@ check('render.js calls pointsNote once, in renderDetail, and the cell builder do
 // The save star came back on 2026-11-03 (Leon): the rows now take the saved
 // ids and the list view's group headings. Batch 3 · A: and the compare set,
 // for the compare toggle beside the star.
-check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
+// app.js draws rows with appendRows since the windowing; renderRows is left
+// for the test harness, so only its signature is pinned.
+check('renderRows (test helper) keeps its signature: saved ids for the star, compare ids for its toggle, group headings',
   /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
-    && appSrc.includes('windowRows = rows;'));
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
@@ -2781,9 +2784,6 @@ check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.t
   && !/\.card(?![\w-])/.test(cssRules) && /\.sk-row/.test(cssRules));
 check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
   /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
-check('off-screen rows are skipped on screen and printed in full',
-  /contain:\s*layout style paint/.test(ruleBody('.item'))
-    && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
 // Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
 // display:list-item that content-visibility has never drawn make every
 // inherited style change rebuild the whole list. showModal() makes the page
@@ -4549,7 +4549,8 @@ appCheck('window: interrupted Home restores anchoring on user input even without
   l09(run);
   get('results').rect = { top: -6000, width: 0, height: 500000 };
   context.window.scrollY = 6000;
-  for (const type of ['touchstart', 'wheel', 'keydown']) {
+  // pointerdown: dragging the scrollbar, where no scrollend comes (Safari < 17.4).
+  for (const type of ['touchstart', 'wheel', 'pointerdown', 'keydown']) {
     run('goHome();');
     let corrections = 0;
     context.window.scrollTo = () => { corrections++; };
@@ -4589,6 +4590,72 @@ appCheck('window: height changes below the anchor never interrupt scrolling', ({
   context.window.scrollTo = () => { corrections++; };
   run('renderWindow();');
   return corrections === 0;
+});
+// Review of the windowing PR (2026-11-09). An update while Compare was open
+// emptied the hidden list, and Close never drew it again: a blank list, or the
+// old position clamped near the top. smoke "window fixes" checks it in Chrome.
+appCheck('window: an update while Compare is open leaves the list drawn after Close, at the old scroll, focus on the trigger', ({ run, get, context }) => {
+  const ids = l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  run(`compareIds = ${JSON.stringify(ids.slice(0, 2))};`);
+  get('header-compare').focus();
+  run('openCompare(dom.headerCompare);');
+  context.window.scrollY = 0;
+  run("state.search = live[0].programme.slice(0, 3); update();");
+  if (listIds(get).length !== 0) return false;
+  run('closeCompare(true);');
+  return listIds(get).length > 0 && listIds(get).length < 40 && context.window.scrollY === 6000
+    && stubDocument.activeElement === get('header-compare');
+});
+// A language switch scrolled back to the old pixel offset after the rows had
+// changed height (Slovak rows are taller): another programme ended up on top.
+// smoke "window fixes" measures the real rows in Chrome.
+appCheck('window: a language switch keeps the programme at the top of the list where it was on screen', ({ run, get, item, context }) => {
+  const ids = l09(run), id = ids[4];
+  context.window.scrollY = 6000;
+  context.window.scrollBy = function (x, y) { this.scrollX += x; this.scrollY += y; };
+  item(id).rect = { top: 120, bottom: 300, height: 180 };
+  run("switchLanguage('sk');");
+  // The rebuilt row sits at 0 here, so the page moves up by its 120 px shift.
+  return context.window.scrollY === 5880 && !!item(id);
+});
+// Print near the end: the full list is shorter than the estimates, so the
+// position read after print was clamped; and the tray's room went with it.
+appCheck('window: afterprint goes back to the position read before print, with the tray\'s room kept', ({ run, get, context, fireWindow, html }) => {
+  l09(run);
+  context.window.scrollY = 6000;
+  html.style.setProperty('--tray-h', '62px');
+  fireWindow('beforeprint');
+  context.window.scrollY = 4000;
+  fireWindow('afterprint');
+  // The tray observer keeps --tray-h while printing; a tray still hidden
+  // after print (none here: Compare is empty) gives the room back.
+  return context.window.scrollY === 6000 && html.style['--tray-h'] === undefined
+    && appSrc.includes("else if (!printing) document.documentElement.style.removeProperty('--tray-h');");
+});
+// Escape in the wide pane focused nothing when the picked row was not drawn.
+appCheck('window: Escape in the wide pane returns focus to a picked row that was scrolled out of the window', ({ run, get, item, flip, fire, context }) => {
+  flip(true); const ids = l09(run), id = ids[300];
+  run(`selectRow(${JSON.stringify(id)});`);
+  get('results').rect = { top: -30000, width: 0, height: 500000 };
+  context.window.scrollY = 30000;
+  get('pane').focus();
+  run('renderWindow();');
+  if (item(id)) return false;
+  fire(get('pane'), 'keydown', { key: 'Escape' });
+  return run('selectedId') === null && stubDocument.activeElement === item(id)?.querySelector('button.open') && listIds(get).length < 40;
+});
+// The list was measured while still hidden after "No programmes match".
+appCheck('window: rows come back from "No programmes match" measured at the shown width', ({ run, get, tree }) => {
+  l09(run);
+  const list = get('results'), listp = tree.querySelector('.listp');
+  list.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, height: 0, width: listp.hidden ? 0 : 800 });
+  run("state.search = 'zzzz'; update();");
+  if (!listp.hidden || listIds(get).length) return false;
+  run('clearAll();');
+  return !listp.hidden && run('windowWidth') === 800 && listIds(get).length > 0;
 });
 appCheck('window: a second filter update replaces the dataset and removes stale focus rows', ({ run, get, drain }) => {
   l09(run); run("state.search = live[500].programme; update();"); drain();
@@ -4639,9 +4706,17 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
 // A08 print, as CSS: the list on screen, ink on white, open slots whole.
 const printRules = allCss.filter((r) => r.media.join() === '@media print');
 const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
-check('window estimates retain the measured phone/tablet/wide heights and print removes containment',
-  ['--row-estimate:180px', '--row-estimate:240px', '--row-estimate:152px', '--row-estimate:90px'].every(v => css.includes(v))
-    && /contain: none/.test(printBody('.item')) && /overflow-anchor:none/.test(css));
+// Each estimate belongs to the layout it was measured in: the base phone row,
+// a 320 px phone, the 600 px tablet list and the 800 px list container.
+check('window estimates are the measured heights, each on .results under its own media or container query; native anchoring is off',
+  JSON.stringify(allCss.filter((r) => /--row-estimate/.test(r.body)).map((r) => [r.selector, r.media.join(' '), r.body.trim()]))
+    === JSON.stringify([['.results', '', '--row-estimate:180px'], ['.results', '@media (max-width: 359.98px)', '--row-estimate:240px'],
+      ['.results', '@media (min-width: 600px)', '--row-estimate:152px'], ['.results', '@container (min-width: 800px)', '--row-estimate:90px']])
+    && /overflow-anchor:none/.test(ruleAt(cssText, 'html')));
+// Windowing replaced the old content skipping. Print mounts every row
+// (flushRows); the gaps that stand in for unmounted rows must not print.
+check('print shows every row: containment off, gaps hidden',
+  /contain: none/.test(printBody('.item')) && /display: none/.test(printBody('.row-space')));
 appCheck('window: scroll bursts schedule one frame and do not run under the Filters slide', ({ run, fireWindow, frames, flushFrame, fire, get }) => {
   l09(run); flushFrame(); flushFrame();
   fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
@@ -4693,7 +4768,9 @@ check('A08 print is ink on white: no row, cell, selected, open or banner fill or
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
     && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
-  /content-visibility: visible; contain: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
+  /contain: none/.test(printBody('.item'))
+    && !allCss.some((r) => /(?:^|[\s,>])(?:li)?\.item(?![\w-])/.test(r.selector) && /content-visibility/.test(r.body))
+    && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
     && /break-inside: avoid/.test(printBody('.row')) && !/break-inside: avoid/.test(printBody('.item'))
     && /transition: none !important; animation: none !important/.test(printBody('*')));

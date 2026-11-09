@@ -4,6 +4,8 @@
 //   node tools/smoke.mjs --integration-fixes-only # sort, logo, row layout, resize, sheet/print
 //   node tools/smoke.mjs --row-keyboard-only # Tab stops, arrows, toggle/rebuild focus
 //   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
+//   node tools/smoke.mjs --round2-only # round 2 header, language and country-count checks
+//   node tools/smoke.mjs --window-fixes-only # Compare close, language switch and print anchoring
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
 //   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
@@ -1113,12 +1115,12 @@ async function runRound2(base) {
       });
       if(width>=600)await check(width,'R2E','country changes keep the full count with bounded rows',async()=>{
         await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
-        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
+        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
         await page.waitFor(settled(2915),10000,'all rows before country change');
         const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
         for(let i=0;i<2;i++){
           await page.ev(`${ireland}.click()`);
-          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && Number(document.querySelector('#results>li.item').getAttribute('aria-setsize'))===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
+          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && Number(document.querySelector('#results>li.item').getAttribute('aria-setsize'))===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
           await page.ev(`${ireland}.click()`);
           await page.waitFor(settled(2915),10000,'settled full catalogue');
         }
@@ -4634,6 +4636,78 @@ async function runWindow(base, want) {
   }
 }
 
+// Review of the windowing PR (2026-11-09). Compare hides the list, and an
+// update while it is open (here a language switch) emptied the rows: closing
+// it showed a blank list or jumped near the top. A language switch scrolled
+// back to the old pixel offset after the rows had changed height, so another
+// programme ended up on top. Print near the bottom read a clamped position.
+async function runWindowFixes(base, want) {
+  const frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))';
+  const probe = `(()=>{const r=document.elementFromPoint(innerWidth/3,500)?.closest('#results>.item');return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY}:null})()`;
+  const topOf = (id) => `document.querySelector('#results>[data-id="'+${JSON.stringify(id)}+'"]')?.getBoundingClientRect().top`;
+  for (const width of [390, 1300]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'loading'})`, 15000, 'window fixes ready');
+      await check(width, 'window fixes', 'a language switch keeps the programme on top in place, both ways', async () => {
+        // About row 150, under the sticky header.
+        await page.ev(`scrollTo(0,document.querySelector('#results').getBoundingClientRect().top+scrollY+150*parseFloat(getComputedStyle(document.querySelector('#results')).getPropertyValue('--row-estimate')))`);
+        await page.ev(frames); await page.ev(frames);
+        // The first row below the sticky header (its scroll margin).
+        const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>parseFloat(getComputedStyle(r).scrollMarginTop));return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,posinset:r.getAttribute('aria-posinset')}:null})()`);
+        assert(anchor && anchor.posinset > 100, 'no row near 150: ' + JSON.stringify(anchor));
+        for (const language of ['sk', 'en']) {
+          await page.ev(`document.querySelector('[data-language=${language}]').click()`);
+          await page.ev(frames); await page.ev(frames);
+          const top = await page.ev(topOf(anchor.id));
+          assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 2, `${language}: row moved ${JSON.stringify({ anchor, top })}`);
+        }
+      });
+      await check(width, 'window fixes', 'an update while Compare is open leaves the list drawn, in place and focus on the trigger after Close', async () => {
+        await page.ev(`scrollTo(0,30000)`);
+        await page.ev(frames); await page.ev(frames);
+        const anchor = await page.ev(probe);
+        assert(anchor, 'no row at the probe point');
+        await page.ev(`(()=>{const r=document.querySelector('#results>[data-id="'+${JSON.stringify(anchor.id)}+'"]');r.querySelector('button.cmpi').click();r.nextElementSibling.querySelector('button.cmpi').click()})()`);
+        await page.ev(frames);
+        const trigger = width < 600 ? 'cmp-tray-open' : 'header-compare';
+        await page.ev(`document.getElementById('${trigger}').focus();document.getElementById('${trigger}').click()`);
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare open');
+        await page.ev(`document.querySelector('[data-language=sk]').click()`);
+        await page.ev(frames);
+        await page.ev(`document.querySelector('#cmp-close').click()`);
+        await page.ev(frames); await page.ev(frames);
+        const after = await page.ev(`({n:document.querySelectorAll('#results>.item').length,at:${probe},y:scrollY,focus:document.activeElement.id})`);
+        assert(after.n > 0 && after.n < 100 && after.at, 'list blank after Close: ' + JSON.stringify(after));
+        assert(Math.abs(after.y - anchor.y) < 844, 'scroll not restored: ' + JSON.stringify({ anchor, after }));
+        assert(after.focus === trigger, 'focus not on the trigger: ' + JSON.stringify(after));
+        await page.ev(`document.querySelector('[data-language=en]').click()`);
+      });
+      await check(width, 'window fixes', 'print at the very bottom keeps the visible programme', async () => {
+        await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
+        await page.ev(frames); await page.ev(frames);
+        await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
+        await page.ev(frames); await page.ev(frames);
+        // The last rows: the footer may cover the usual probe point.
+        const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>150);return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY,last:r.getAttribute('aria-posinset')}:null})()`);
+        assert(anchor, 'no row at the probe point');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        await page.ev('document.body.offsetHeight');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev('document.body.offsetHeight');
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        const top = await page.ev(topOf(anchor.id));
+        assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 1, 'print moved the visible programme: ' + JSON.stringify({ anchor, top, y: await page.ev('scrollY') }));
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
 // Flex must retain row/slot geometry, keyboard scroll margins, wide details,
 // list semantics and print flow. The Safari-model flick check below guards
 // the mounted rows and reserved gaps as well.
@@ -5343,6 +5417,10 @@ async function main() {
     await runFaqPanel(base, want);
   } else if (args.has('--row-keyboard-only')) {
     await runRowKeyboard(base);
+  } else if (args.has('--round2-only')) {
+    await runRound2(base);
+  } else if (args.has('--window-fixes-only')) {
+    await runWindowFixes(base, want);
   } else if (args.has('--window-only')) {
     await runWindow(base, want);
     await runSheetListLayout(base, want);
@@ -5365,7 +5443,7 @@ async function main() {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
-    if (anyBooted) { await runSmarterSort(base); await runRowKeyboard(base); await runWindow(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    if (anyBooted) { await runSmarterSort(base); await runRowKeyboard(base); await runWindow(base, want); await runWindowFixes(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
       await runBatch2A(base);
       await runBatch2B(base);
       await runBatch2C(base);
