@@ -3033,13 +3033,13 @@ check('count builds marks with identical text, preserves nodes on no change and 
   return first && !same && kept && text && marks && renderCount(n, '11 programmes', []) && n.textContent === '11 programmes';
 }));
 const headerButtons = [...indexHtml.matchAll(/<button[^>]*data-sort="([^"]+)"[^>]*>[\s\S]*?<\/button>/g)];
-check('sort header has all four SORTS keys, hidden direction text and one default pressed button',
-  headerButtons.length === 4 && headerButtons.map((m) => m[1]).sort().join() === Object.keys(filtersMod.SORTS).sort().join()
+check('sort header keeps its four column sorts, hidden direction text and one default pressed button',
+  headerButtons.length === 4 && headerButtons.map((m) => m[1]).sort().join() === ['deadline', 'name', 'points', 'tuition'].join()
     && headerButtons.filter((m) => /aria-pressed="true"/.test(m[0])).length === 1
     && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
-    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
+    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*explicitSort = state.sort !== 'best';\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
 check('row toggle retains slots while arrows select only wide without roving tabindex',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
@@ -4747,9 +4747,9 @@ check('unknown degree and all three city states have visible summary/detail labe
   const r = { ...revisionBase, degreeType, city: '' };
   return rowOf(r).textContent.includes('Degree type unknown') && rowOf(r).textContent.includes('City unknown') && detailOf(r).textContent.includes('Degree type unknown') && detailOf(r).textContent.includes('City unknown') && detailOf({ ...r, cityUnknown: true }).textContent.includes('City not published');
 })));
-check('sort select renders eight explicit synchronized choices', withStubDocument(() => {
+check('sort select renders ten choices without points, including yearly cost', withStubDocument(() => {
   const select = new ChromeNode('select'); renderSortOptions(select, filtersMod.SORTS, 'tuition', 'desc');
-  return select.children.length === 8 && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 8;
+  return select.children.length === 10 && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 10;
 }));
 check('option search starts above 12, folds accents, clears/no-matches and preserves hidden selection nodes', withStubDocument(() => {
   const panel = new ChromeNode('div'); panel.setAttribute('aria-label','Fixture');
@@ -4917,7 +4917,7 @@ appCheck('country and local option-search changes retain full new facet vocabula
     && run("state.degreeTypes.has('BSc') && state.cities.has('Odense')")
     && countNodes.every((n,i) => get('result-count').children[i] === n);
 });
-check('both the list and the my-list export pass direction', /sortRows\(state.shortlistOnly && listAll \? inScope : filtered, state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
+check('both the list and the my-list export pass direction', /sortRows\(state.shortlistOnly && listAll \? inScope : filtered, state.sort, state.dir, state\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir, state\)/.test(appSrc));
 
 // X02: the dev server used to listen on every interface and serve .git/, so
 // anyone on the same Wi-Fi could download the repository. Start the real
@@ -5826,9 +5826,9 @@ appCheck('removing an applied filter persists the explicit edit, without storing
   advance(500);
   return context.prefWrites?.at(-1)?.filters.countries.length === 0 && !('sort' in context.prefWrites.at(-1).filters);
 });
-await asyncAppCheck('onboarding apply callback preserves sort and persists exactly once through the shared debounce', async ({run,get,context,settle,advance}) => {
+await asyncAppCheck('onboarding apply callback preserves sort and persists exactly once through the shared debounce', async ({run,get,fire,context,settle,advance}) => {
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
-  run("state.sort = 'tuition'; state.dir = 'desc';");
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'), 'change');
   context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:38}));
   advance(500);
   return get('f-points').value === '38' && run('state.sort') === 'tuition' && run('state.dir') === 'desc'
@@ -6449,9 +6449,9 @@ await asyncAppCheck('B1 each of the nine actual copy results describes its URL, 
   const list = run('fixture[0].id + "," + fixture[1].id');
   for (const [kind, shared, points, filters, sort, query] of [
     ['none',false,false,false,false,''],['sort',false,false,false,true,'?sort=name'],
-    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36'],['filters_points',false,true,true,false,'?q=biology&points=36'],
+    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36&sort=best'],['filters_points',false,true,true,false,'?q=biology&points=36&sort=best'],
     ['shared',true,false,false,false,`?list=${list}`],['shared_filters',true,false,true,false,`?list=${list}&q=biology`],
-    ['shared_points',true,true,false,false,`?list=${list}&points=36`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36`]
+    ['shared_points',true,true,false,false,`?list=${list}&points=36&sort=best`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36&sort=best`]
   ]) {
     context.copyCase = {shared,points,filters,sort};
     run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {raw:fixture[0].id+','+fixture[1].id,ids:[fixture[0].id,fixture[1].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
@@ -7878,7 +7878,7 @@ check('LR3 phones: the IB tile sits on the page margin, in the header and the st
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
-  && /function syncSort\(\) \{\s*dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
+  && /function syncSort\(\) \{[\s\S]*?dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
   && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
 check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
   /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
@@ -7996,6 +7996,59 @@ check('Compare\'s sideways scroll box never scrolls vertically: overflow-y:hidde
   /overflow-x:auto;overflow-y:hidden/.test(ruleAt(cssText, '.cmp-scroll'))
     && cssTree(cssText).filter((r) => /\.cmp-scroll(?![\w-])/.test(r.selector) && !r.media.some((m) => /print/.test(m)))
       .every((r) => !/(?:^|;)\s*(?:overflow(?:-y)?\s*:\s*(?:auto|scroll|visible)|overflow\s*:\s*\S+\s+(?:auto|scroll)|touch-action)/.test(r.body)));
+
+
+section('Smarter sort');
+{
+  const st = { ...noFilters(), myIbPoints: 36 };
+  const base = { ...revisionBase, ibPointsMin: 30, pointsKind: 'minimum', cao: null, livingCostMin: 500, livingCostMax: 600 };
+  const make = (id, changes = {}) => ({ ...base, id, university: id, programme: id, deadline: new Date('2027-02-01'), deadlinePassed: false, ...changes });
+  const maths = make('maths', { pointsKind: 'cutoff', cao: { rounds: [{round:1, points: 520}], test: false } });
+  // Pick a cutoff just above the student's CAO total, requiring the bonus.
+  const { caoPointsFor } = await import('../js/points.js');
+  maths.cao.rounds[0].points = caoPointsFor(36) + 10;
+  const rows = [make('unknown', {ibPointsMin:null}), maths, make('far'), make('near', {ibPointsMin:35}), make('early', {deadline:new Date('2027-01-01')}), make('passed', {deadline:new Date('2026-01-01'),deadlinePassed:true}), make('no-date', {deadline:null})];
+  equal('Best match: buckets, deadline before closeness, then smaller gap', sortRows(rows, 'best', 'asc', st).map(r=>r.id), ['early','near','far','passed','no-date','maths','unknown']);
+  equal('Best match has the same useful order for a reverse request', sortRows(rows, 'best', 'desc', st).map(r=>r.id), sortRows(rows, 'best', 'asc', st).map(r=>r.id));
+  const ties = [make('z'),make('a'),make('early',{deadline:new Date('2027-01-01')}),make('unknown',{deadline:null})];
+  for (const key of ['tuition','points','cost']) for (const dir of ['asc','desc']) equal(`${key} ${dir}: ties use deadline then university/name`, sortRows(ties,key,dir,st).map(r=>r.id), ['early','a','z','unknown']);
+  const costs = [make('low',{tuitionEu:0}),make('high',{tuitionEu:2000}),make('missing-fee',{tuitionEu:null}),make('missing-living',{tuitionEu:100,livingCostMin:null})];
+  equal('cost lowest: unknown fee/living last', sortRows(costs,'cost','asc',st).map(r=>r.id), ['low','high','missing-fee','missing-living']);
+  equal('cost highest: unknown fee/living still last', sortRows(costs,'cost','desc',st).map(r=>r.id), ['high','low','missing-fee','missing-living']);
+  equal('cost uses personal living costs, including zero', sortRows(costs,'cost','asc',{...st,myLiving:0}).map(r=>r.id), ['low','missing-living','high','missing-fee']);
+  for (const key of ['best','cost']) {
+    const parsed = paramsToState(stateToParams({...st,sort:key}));
+    equal(`${key} URL round trip`, [parsed.sort,parsed.myIbPoints], [key,36]);
+  }
+  equal('Best match URL without usable points falls back to deadline', ['sort=best','sort=best&points=bad','sort=best&points=46'].map(q=>paramsToState(q).sort), ['deadline','deadline','deadline']);
+  equal('saved Best match without points falls back to deadline', savedState.validateFilters({sort:'best'}).sort, 'deadline');
+  equal('saved Best match with points is valid', savedState.validateFilters({sort:'best',myIbPoints:36}).sort, 'best');
+  const state = noFilters(); filtersMod.setMyPoints(state,36);
+  equal('setting points activates Best match', state.sort, 'best');
+  state.sort='cost'; filtersMod.setMyPoints(state,38,true);
+  equal('explicit pick sticks through points edits', state.sort, 'cost');
+  state.sort='best'; filtersMod.setMyPoints(state,null,true);
+  equal('clearing points on Best match restores deadline', [state.sort,state.dir], ['deadline','asc']);
+  check('Best match menu is conditional and has only one direction', withStubDocument(()=>{
+    const select = new ChromeNode('select'); renderSortOptions(select,filtersMod.SORTS,'best','asc',st);
+    return select.children.length===11 && select.children.filter(o=>o.value.startsWith('best:')).map(o=>o.value).join()==='best:asc';
+  }));
+}
+appCheck('points field auto-switches, explicit menu choice sticks, and clear removes Best match', ({run,get,fire,advance}) => {
+  run('wireInputs();'); get('f-points').value='36'; fire(get('f-points'),'input'); advance(200);
+  if(run('state.sort')!=='best') return false;
+  get('f-sort').value='cost:desc'; fire(get('f-sort'),'change');
+  get('f-points').value='38'; fire(get('f-points'),'input'); advance(200);
+  if(run('state.sort')!=='cost' || run('state.dir')!=='desc') return false;
+  get('f-sort').value='best:asc'; fire(get('f-sort'),'change');
+  run('clearAll();');
+  return run('state.sort')==='deadline' && !get('f-sort').children.some(o=>o.value==='best:asc');
+});
+await asyncAppCheck('Setup done activates Best match before showing results', async ({run,context,settle})=>{
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:36}));
+  return run('state.sort')==='best' && run('state.myIbPoints')===36;
+},{boot:true});
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

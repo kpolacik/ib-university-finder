@@ -6,7 +6,7 @@ import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, 
 
 import { loadData, applyToday } from './data.js';
 import {
-  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
+  createFilterState, setMyPoints, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
   parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket, linkContents,
 } from './filters.js';
 import {
@@ -140,6 +140,7 @@ const dom = {
 };
 
 const state = createFilterState();
+let explicitSort = false;
 const shortlist = loadShortlist();
 // The list view (state.shortlistOnly) shows the saved programmes, or a shared
 // link's. shared is readSharedList's { raw, ids, unknown } while a ?list= link
@@ -366,7 +367,7 @@ async function start() {
 
     renderSourceBanner(dom.banner, meta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, meta.issues);
-    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
     syncSort();
 
     facets = buildFacets(allRows);
@@ -394,6 +395,7 @@ async function start() {
         // the done screen counted) saves the answers rule out, like a 42-point
         // programme for 24 points. The answers are filters: they apply here.
         listAll = false;
+        setMyPoints(state, answers.myIbPoints, explicitSort);
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
         // Setup's done screen says how many programmes this leaves, how they
@@ -423,6 +425,8 @@ function applyUrlFields() {
   const fromUrl = restored.state;
   for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
   fillFields(fromUrl);
+  const params = new URLSearchParams(location.search);
+  explicitSort = fromUrl.sort !== 'best' && (params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
 }
@@ -469,7 +473,7 @@ function switchLanguage(language) {
     renderSourceBanner(dom.banner, sourceMeta);
     renderSourceLine(dom.sourceLine, allRows, sourceMeta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, sourceMeta.issues);
-    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
     syncSort();
     drawChips();
     paneId = null;
@@ -559,8 +563,8 @@ function readFields() {
   state.deadlineWindow = dom.deadline.value;
   state.myMaths = dom.myMaths.value || null;
   state.exam = dom.exam.value || null;
-  state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-    t('enter_a_whole_number_from_24_to_45'));
+  setMyPoints(state, readNumber(dom.points, dom.pointsError, parsePoints,
+    t('enter_a_whole_number_from_24_to_45')), explicitSort);
   state.hlMaths = dom.maths.checked;
   state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
     t('enter_a_whole_number_of_euros_0_or_more'));
@@ -598,8 +602,8 @@ function wireInputs() {
   // Debounced like the search box: typing "3000" otherwise renders four times,
   // and the intermediate "under €3" and "under €30" states flash an empty list.
   dom.points.addEventListener('input', debounce(() => {
-    state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-      t('enter_a_whole_number_from_24_to_45'));
+    setMyPoints(state, readNumber(dom.points, dom.pointsError, parsePoints,
+      t('enter_a_whole_number_from_24_to_45')), explicitSort);
     update();
   }, 150));
 
@@ -643,6 +647,7 @@ function wireInputs() {
 
   dom.sort.addEventListener('change', () => {
     [state.sort, state.dir] = dom.sort.value.split(':');
+    explicitSort = state.sort !== 'best';
     syncSort();
     update();
   });
@@ -650,6 +655,7 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
+      explicitSort = true;
       if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
         state.sort = 'deadline'; state.dir = 'asc';
       } else {
@@ -674,7 +680,7 @@ function wireInputs() {
   wireList();
 
   dom.exportCsv.addEventListener('click', () => {
-    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir);
+    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir, state);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadCsv(`my-shortlist-${stamp}.csv`, toCsv(rows, { myLiving: state.myLiving }));
   });
@@ -1268,6 +1274,7 @@ function clearAllFrom(button) {
 
 function update() {
   if (!loaded) return;
+  syncSort();
   if (preferencesDirty) persistPreferences();
   // Rebuilt rows while printing would take the paper's layout. Run it after.
   if (printing) { updateAfterPrint = true; return; }
@@ -1298,7 +1305,7 @@ function update() {
   const scope = shared ? new Set(shared.ids) : shortlist;
   const inScope = state.shortlistOnly ? allRows.filter((row) => scope.has(row.id)) : [];
   const filtered = applyFilters(allRows, state, scope);
-  let rows = sortRows(state.shortlistOnly && listAll ? inScope : filtered, state.sort, state.dir);
+  let rows = sortRows(state.shortlistOnly && listAll ? inScope : filtered, state.sort, state.dir, state);
   listIds = sortRows(inScope, 'name').map((row) => row.id);
   listShown = state.shortlistOnly ? filtered.length : 0;
   listHeadings = new Map();
@@ -2117,6 +2124,8 @@ function sortPick() {
 }
 
 function syncSort() {
+  setMyPoints(state, state.myIbPoints, explicitSort);
+  renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
   dom.sort.value = `${state.sort}:${state.dir}`;
   sortPick();
   for (const button of dom.sortButtons) {

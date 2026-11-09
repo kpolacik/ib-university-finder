@@ -1743,6 +1743,18 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   the importer. cvut.cz serves an incomplete certificate chain, so that importer
   runs with `node --use-system-ca`; prihlaska.cvut.cz did not answer at all.
 
+## Smarter sorting (2026-11-09)
+
+Setting My IB points in Setup or Filters selects Best match unless the student
+has already chosen a sort. Best match puts programmes within their points first,
+then those needing HL Maths 4+, then those that cannot be compared. Each group
+uses deadline order, then the closest points figure and name. Clearing points
+returns Best match to deadline order. Best match has one direction.
+Total yearly cost orders the low yearly estimate and uses My living costs when
+set; unknown costs stay last in either direction. Other sorts break ties by
+deadline, then name. Sort is still excluded from saved filter preferences;
+URL sorts remain shareable and URL state never merges with saved filters.
+
 ## Running it
 
 ```bash

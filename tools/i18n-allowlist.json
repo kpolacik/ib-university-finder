@@ -318,7 +318,9 @@
       "Arrow",
       "Enter",
       "keyup",
-      "pointerdown"
+      "pointerdown",
+      "dir",
+      "best"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -507,7 +509,8 @@
       "_filters",
       "_points",
       "filters_points",
-      "shared"
+      "shared",
+      "best"
     ],
     "js/points.js": [
       "./i18n.js",
@@ -796,7 +799,8 @@
       "i-chevron-left",
       "i-chevron-right",
       "cmp-lr",
-      "colspan"
+      "colspan",
+      "best"
     ],
     "js/shortlist.js": [
       "./cost.js",
@@ -1031,7 +1035,8 @@
       "string",
       "subject",
       "subjectAreas",
-      "url"
+      "url",
+      "desc"
     ],
     "js/onboarding.js": [
       "(max-width: 599.98px)",
