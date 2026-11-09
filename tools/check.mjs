@@ -7839,7 +7839,7 @@ check('LR6 the language buttons: tapping the one already shown switches to the o
   && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
   /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\)\)/.test(read('js/onboarding.js'))
-  && ['r4_faq_tools', 'r4_faq_stored'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
+  && ['r7_faq_list'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
   && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
@@ -7898,30 +7898,22 @@ section('Facts and copy, review of PR 1, 2026-11-07');
 {
   const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };
   // The source FAQ said unchecked rows "are marked"; none are (every row is
-  // AI-DRAFT and only signed rows carry a badge). It now quotes the badge a
-  // signed row really shows, so the two cannot drift apart.
-  equal('FAQ source answer quotes the real "Checked" badge, names the CAO and no longer claims unchecked rows are marked',
+  // AI-DRAFT and only signed rows carry a badge). The FAQ quotes the badge a
+  // signed row really shows, so the two cannot drift apart (since 2026-11-09
+  // in "Can I rely on what it says?").
+  equal('FAQ quotes the real "Checked" badge and never claims unchecked rows are marked',
     ['en', 'sk'].map((lang) => inLang(lang, () => {
-      const a = t('r2_faq_source_a');
-      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), a.includes('CAO'), /are marked|sú označené/.test(a)];
-    })), [[true, true, false], [true, true, false]]);
-  check('FAQ CAO answer names the UCD exception in EN and SK',
-    /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
-  // Verification of PR 1: with the UCD sentence in between, "We convert it" /
-  // "Prepočítavame ju" pointed at UCD's minimum (or UCD itself); the footer
-  // still said all data comes from the universities' pages; and the source
-  // answer left out living costs borrowed from another university in the city.
-  check('CAO answer names the cutoff it converts, EN and SK',
-    UI.en.r2_faq_cao_a.includes('We convert the cutoff') && !UI.en.r2_faq_cao_a.includes('convert it')
-      && UI.sk.r2_faq_cao_a.includes('Hranicu prepočítavame') && !UI.sk.r2_faq_cao_a.includes('Prepočítavame ju')
-      && read('index.html').includes('We convert the cutoff with the CAO’s IB table'));
+      const a = t('r7_faq_rely_a');
+      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), /are marked|sú označené/.test(a)];
+    })), [[true, false], [true, false]]);
+  check('FAQ CAO answer names the UCD exception and the HL Maths bonus in EN and SK',
+    /UCD shows its own IB minimum/.test(UI.en.r7_faq_cao_a) && /UCD uvádza vlastné minimum/.test(UI.sk.r7_faq_cao_a)
+      && /601 to 625/.test(UI.en.r7_faq_cao_a) && /601 do 625/.test(UI.sk.r7_faq_cao_a));
+  // Verification of PR 1: the footer still said all data comes from the
+  // universities' pages.
   check('footer source line names the CAO and calls living costs estimates, EN and SK',
     /CAO/.test(UI.en.r2_footer_data) && /estimates/.test(UI.en.r2_footer_data)
       && /CAO/.test(UI.sk.r2_footer_data) && /odhady/.test(UI.sk.r2_footer_data));
-  check('source answer covers living costs from another university and says "podrobnosti" in SK',
-    /another university’s in the same city/.test(UI.en.r2_faq_source_a)
-      && /inej univerzity v tom istom meste/.test(UI.sk.r2_faq_source_a) && /v podrobnostiach programu/.test(UI.sk.r2_faq_source_a)
-      && !/v detailoch/.test(UI.sk.r2_faq_source_a));
   // On phones the points field is in the Filters sheet, not "above".
   check('share help points to the filters, not "above", in EN and SK',
     /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
@@ -8008,6 +8000,8 @@ section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');
 // the same questions in a panel (js/faq.js), built like the Filters sheet:
 // show(), its own scrim, focus trap and Escape, never a page-wide inert.
 // Runs the real module against the real index.html as stand-in nodes.
+// The twelve questions approved by Leon on 2026-11-09, in order.
+const FAQ_KEYS = ['what', 'rely', 'check', 'points', 'no_points', 'unknown', 'cao', 'fee', 'cost', 'setup', 'list', 'who'].map((k) => `r7_faq_${k}`);
 function faqHarness(test) {
   const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners', 'canFocus', 'queueTask', 'scrolls', 'focusLog', 'focusOptions'];
   const saved = Object.fromEntries(keys.map((k) => [k, stubDocument[k]]));
@@ -8021,7 +8015,14 @@ function faqHarness(test) {
       getElementById: get, querySelector: (sel) => tree.querySelector(sel), querySelectorAll: (sel) => tree.querySelectorAll(sel),
       body: tree.querySelector('body'), documentElement: tree.querySelector('html'), activeElement: tree.querySelector('body'),
       listeners: {}, scrolls: [], focusLog: [], focusOptions: undefined, queueTask: (fn) => tasks.push(fn),
-      canFocus: (node) => { for (let n = node; n; n = n.parent) if (n.hidden || hidden.has(n) || (n.tagName === 'dialog' && !n.open)) return false; return true; },
+      // A closed <details> shows only its summary, so the mailto link in the
+      // last answer is out of the Tab order until that question is open.
+      canFocus: (node) => {
+        for (let n = node, c = null; n; c = n, n = n.parent) {
+          if (n.hidden || hidden.has(n) || (n.tagName === 'dialog' && !n.open) || (n.tagName === 'details' && !n.open && c && c.tagName !== 'summary')) return false;
+        }
+        return true;
+      },
     });
     // The module wires itself when there is a document, as in the browser.
     const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq });', { document: stubDocument });
@@ -8041,7 +8042,7 @@ function faqHarness(test) {
     /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><\/button>\s*<div class="lang"/.test(html)
       && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html) && /<div class="faqp-b faq"><\/div>/.test(html)
       && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
-      && ['r4_faq_tools', 'r4_faq_stored', 'r2_faq_cao', 'r2_faq_unknown', 'r2_faq_source'].every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2));
+      && FAQ_KEYS.every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2));
   equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close'].flatMap((k) => [UI.en[k], UI.sk[k]]),
     ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky']);
   check('FAQ panel opens with show(): no showModal, inert or background aria-hidden (WebKit restyles every row for those)',
@@ -8050,8 +8051,8 @@ function faqHarness(test) {
     faqHarness(({ get, panel }) => {
       const foot = get('faq').querySelectorAll('details'), copies = panel.querySelectorAll('details');
       const keys = (list) => list.map((d) => d.querySelectorAll('[data-i18n]').map((n) => n.getAttribute('data-i18n')).join());
-      return foot.length === 5 && copies.length === 5 && JSON.stringify(keys(copies)) === JSON.stringify(keys(foot))
-        && copies.every((d) => !d.open && d.getAttribute('open') === null && !foot.includes(d)) && get('faq').querySelectorAll('details').length === 5;
+      return foot.length === 12 && copies.length === 12 && JSON.stringify(keys(copies)) === JSON.stringify(keys(foot))
+        && copies.every((d) => !d.open && d.getAttribute('open') === null && !foot.includes(d)) && get('faq').querySelectorAll('details').length === 12;
     }) === true);
   check('FAQ panel: switching language translates the copies, the heading and both buttons\' names',
     faqHarness(({ tree, panel, heading, opener }) => {
@@ -8059,7 +8060,8 @@ function faqHarness(test) {
       i18n.setLanguage('sk', { setItem() {} });
       try {
         i18n.applyLanguage(root);
-        return panel.querySelector('summary span').textContent === UI.sk.r4_faq_tools && panel.querySelectorAll('.a span').at(-1).textContent === UI.sk.r2_faq_source_a
+        return panel.querySelector('summary span').textContent === UI.sk.r7_faq_what && panel.querySelectorAll('.a span').at(-1).textContent === UI.sk.r7_faq_who_a
+          && panel.querySelector('a[href^="mailto:"]').textContent === UI.sk.r7_faq_email
           && heading.textContent === UI.sk.r6_faq_h && opener.getAttribute('aria-label') === UI.sk.r6_faq
           && panel.querySelector('.faqp-x').getAttribute('aria-label') === UI.sk.r6_faq_close;
       } finally { i18n.setLanguage('en', { setItem() {} }); i18n.applyLanguage(root); }
@@ -8140,6 +8142,57 @@ check('FAQ "?" on a 600-700 px touch screen: the header tightens its gaps so Sea
       && /@media \(prefers-reduced-motion:reduce\)\{[^@]*@starting-style\{\.faqp\[open\]\{opacity:0;transform:none\}\}/.test(cssText)
       && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
       && /display:none/.test(ruleAt(cssText, 'dialog.faqp[open]', 'print')) && /display:none/.test(ruleAt(cssText, '.faq-scrim.is-open', 'print')));
+}
+
+section('FAQ text, twelve questions (Leon, 2026-11-09)');
+// Rewritten from /tmp/ib-lp/faq/draft-v2.md after three reviews. Quoted UI
+// labels must be the labels the page really shows in that language, so a
+// renamed button or badge fails here instead of leaving the FAQ wrong.
+{
+  const html = read('index.html'), footFaq = elementSource(html, /<div class="faq" id="faq">/);
+  const email = 'ibuniversityfinder@gmail.com';
+  equal('FAQ footer has the twelve approved questions, in order, each with its answer',
+    [...footFaq.matchAll(/<summary><span data-i18n="([^"]+)">/g)].map((m) => m[1]), FAQ_KEYS);
+  check('FAQ: every question and answer has nonempty EN and SK text, used once in index.html',
+    FAQ_KEYS.flatMap((k) => [k, `${k}_a`]).every((k) => UI.en[k]?.trim() && UI.sk[k]?.trim() && UI.en[k] !== UI.sk[k]
+      && html.split(`data-i18n="${k}"`).length === 2));
+  check('FAQ: the old five questions\' keys are gone from i18n.js and index.html',
+    !Object.keys(UI.en).some((k) => /^r[24]_faq_/.test(k)) && !Object.keys(UI.sk).some((k) => /^r[24]_faq_/.test(k)) && !/data-i18n="r[24]_faq_/.test(html));
+  check('FAQ: the last answer ends with a working mailto link to the contact address, the same in EN and SK',
+    UI.en.r7_faq_email === email && UI.sk.r7_faq_email === email
+      && footFaq.includes(`<span data-i18n="r7_faq_who_a">${UI.en.r7_faq_who_a}</span> <a href="mailto:${email}" data-i18n="r7_faq_email">${email}</a>.</div></details>`)
+      && html.split('href="mailto:').length === 2 && /Tell us at$/.test(UI.en.r7_faq_who_a) && /Napíš nám na$/.test(UI.sk.r7_faq_who_a)
+      && /Jakub and Leon/.test(UI.en.r7_faq_who_a) && /Jakub a Leon/.test(UI.sk.r7_faq_who_a));
+  check('FAQ link is the accent colour and underlined like the site\'s other text links',
+    /color:var\(--accent\);text-decoration:underline/.test(ruleAt(cssText, '.faq .a a')) && /color:var\(--accent-press\)/.test(ruleAt(cssText, '.faq .a a:hover')));
+  // "Checked by …" is built from two keys, as on a signed row; "national
+  // minimum" is the start of the row's "national minimum, not a full budget".
+  const labels = (lang) => {
+    const ui = UI[lang];
+    return [`${ui.checked.replace('{value1}', ui.by.replace('{value1}', '…'))}`, ui.deadline_notes, ui.entrance_exam, ui.r2_pts_test_in_cutoff, ui.not_published,
+      ui.not_checked_yet, ui.national_minimum_not_a_full_budget.split(',')[0], ui.my_living_costs, ui.r2_edit].sort();
+  };
+  const quoted = (lang) => [...new Set(FAQ_KEYS.flatMap((k) => [UI[lang][k], UI[lang][`${k}_a`]])
+    .flatMap((text) => [...text.matchAll(lang === 'en' ? /“([^”]+)”/g : /„([^“]+)“/g)].map((m) => m[1])))].sort();
+  equal('FAQ quotes exactly the real EN labels', quoted('en'), labels('en'));
+  equal('FAQ quotes exactly the real SK labels', quoted('sk'), labels('sk'));
+  check('FAQ EN text uses curly quotes and apostrophes only; SK uses „…“',
+    FAQ_KEYS.flatMap((k) => [UI.en[k], UI.en[`${k}_a`]]).every((text) => !/["']/.test(text))
+      && FAQ_KEYS.flatMap((k) => [UI.sk[k], UI.sk[`${k}_a`]]).every((text) => !/["'“”]/.test(text.replace(/„[^“]*“/g, ''))));
+  check('FAQ focus trap skips controls in closed answers with checkVisibility (Chrome gives a hidden mailto link client rects; smoke "FAQ keys")',
+    /node\.getClientRects\(\)\.length && \(node\.checkVisibility\?\.\(\) \?\? true\)/.test(read('js/faq.js')));
+  check('FAQ panel: with the last question open, Shift+Tab from the close button reaches the mailto link and Tab wraps back; closed, the link is skipped',
+    faqHarness(({ fire, opener, panel }) => {
+      fire(opener, 'click');
+      const close = panel.querySelector('.faqp-x'), last = panel.querySelectorAll('details').at(-1), link = last.querySelector('a');
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const skipped = stubDocument.activeElement === last.querySelector('summary');
+      last.open = true; close.focus();
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const reached = stubDocument.activeElement === link && link.getAttribute('href') === 'mailto:ibuniversityfinder@gmail.com';
+      fire(link, 'keydown', { key: 'Tab' });
+      return skipped && reached && stubDocument.activeElement === close;
+    }) === true);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');

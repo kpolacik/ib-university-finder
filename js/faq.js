@@ -58,8 +58,12 @@ export function wireFaq() {
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation(); closeFaq();
     } else if (event.key === 'Tab') {
+      // A link in a closed answer still has client rects in Chrome (the
+      // closed content is content-visibility:hidden, not display:none), so
+      // without checkVisibility the hidden mailto link became the last stop
+      // and Shift+Tab from Close went nowhere (2026-11-09).
       const controls = [...panel.querySelectorAll('button,summary,a[href],[tabindex]')]
-        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && (node.checkVisibility?.() ?? true));
       const first = controls[0] ?? heading, last = controls.at(-1) ?? heading;
       const active = document.activeElement;
       if (!controls.includes(active) || (event.shiftKey ? active === first : active === last)) {
