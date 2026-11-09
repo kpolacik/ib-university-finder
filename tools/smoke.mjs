@@ -12,6 +12,7 @@
 //   node tools/smoke.mjs --phone-fixes-only # phone form, tray keyboard and sorting regressions
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
+//   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
@@ -5456,7 +5457,20 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--integration-fixes-only')) {
+  // --only=runRowScroll,runFaqPanel runs just those sections, by function
+  // name, for sections without a flag of their own.
+  const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean);
+  if (only) {
+    if (!only.length) throw new Error('--only: name at least one section, e.g. --only=runRowScroll');
+    const sections = { runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
+      runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
+      runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
+      runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout };
+    const unknown = only.filter((name) => !Object.hasOwn(sections, name));
+    if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
+    for (const name of only) await sections[name](base, want);
+  } else if (args.has('--integration-fixes-only')) {
     await runSmarterSort(base);
     await runBatch2C(base);
     await runBatch3C(base);
