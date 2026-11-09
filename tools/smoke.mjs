@@ -5195,6 +5195,10 @@ async function runFaqPanel(base, want) {
         await page.ev(`window.__faqT=null;const p=document.querySelector('#faq-panel');document.querySelector('#faq-open').addEventListener('pointerdown',()=>{window.__faqT={start:performance.now()}});p.addEventListener('transitionend',(e)=>{if(e.target===p&&e.propertyName==='transform'&&window.__faqT)window.__faqT.end=performance.now()})`);
         await tap('#faq-open');
         await page.waitFor(settled(true), 5000, 'the open panel');
+        // transitionend is dispatched a frame after the transition stops
+        // running, so "settled" can be seen before it: at 30 fps (macOS Low
+        // Power Mode) that read "tap to settled null ms" (2026-11-09).
+        await page.waitFor(`({ok:!!window.__faqT?.end,why:window.__faqT?'no transform transitionend yet':'no pointerdown on "?"'})`, 2000, 'the slide\'s transitionend');
         const m = await page.ev(`(()=>{const p=document.querySelector('#faq-panel'),r=p.getBoundingClientRect(),c=getComputedStyle(p);
           return {r:[r.left,r.top,r.right,r.bottom].map(Math.round),w:innerWidth,h:innerHeight,dur:c.transitionDuration,ease:c.transitionTimingFunction,modal:p.matches(':modal'),
             focus:document.activeElement?.id,ring:document.activeElement?.matches(':focus-visible'),expanded:document.querySelector('#faq-open').getAttribute('aria-expanded'),
@@ -5320,12 +5324,19 @@ async function runFaqPanel(base, want) {
       await check(width, 'FAQ reduced motion', 'reduced motion fades the panel in about 120 ms with no slide', async () => {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         try {
-          // The warm panel is laid out while closed, so its fade starts from
-          // its current style: let that style catch up with the new setting
-          // first, as it has long before a real tap.
-          await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).opacity`);
+          // The warm panel is laid out while closed, so switching the setting
+          // on starts its own 120 ms fade from 1 to 0, hidden. A tap during
+          // that fade only reverses it from about 1, which is what failed on
+          // GitHub (2026-11-09, "o":1). A real tap comes long after the
+          // setting changed: wait for the closed panel to rest at 0.
+          await page.waitFor(`(()=>{const p=document.querySelector('#faq-panel'),o=getComputedStyle(p).opacity;return {ok:!p.open&&o==='0'&&!p.getAnimations().some(a=>a.playState==='running'),why:'closed panel at opacity '+o}})()`, 3000, 'the closed panel at rest');
+          // Read the start inside the page, when the opacity transition
+          // begins: a separate read after the tap could come 120 ms late on
+          // a slow runner and find the fade already over.
+          await page.ev(`(()=>{const p=document.querySelector('#faq-panel');window.__fadeStart=null;p.addEventListener('transitionrun',(e)=>{if(e.target!==p||e.propertyName!=='opacity'||__fadeStart)return;const c=getComputedStyle(p);__fadeStart={t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})})()`);
           await tap('#faq-open');
-          const first = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})()`);
+          await page.waitFor(`({ok:!!window.__fadeStart,why:'no opacity transition began'})`, 3000, 'the fade to start');
+          const first = await page.ev(`__fadeStart`);
           await page.waitFor(settled(true), 3000, 'faded in');
           const end = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:c.opacity}})()`);
           assert(first.t === 'none' && first.o < 1 && first.d.startsWith('0.12s') && first.p.startsWith('opacity'), `fade start ${JSON.stringify(first)}`);
