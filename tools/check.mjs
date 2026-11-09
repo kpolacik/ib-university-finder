@@ -7472,6 +7472,22 @@ appCheck('B3C1 the done screen says "shown" and splits it as the count line does
   next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
   return doneScreen()?.count === '36 programmes shown · 10 within your IB points · 2 only with HL Maths 4+ · 24 can’t be compared';
 });
+// Review of list-perf (2026-11-09): the done screen ran one digit-regex over
+// the lead AND the summary parts, which pointsSummaryParts had already grouped,
+// so "1,033" became "1,33" and Slovak "1 033" lost its group. Only the lead is
+// formatted there now.
+for (const [lang, sep] of [['en', ','], ['sk', ' ']]) appCheck(`B3C1 the done screen keeps a grouped count in the points parts intact: ${lang}`, (h) => {
+  const {get,fire}=h, many=Array.from({length:1033},()=>({ibPointsMin:null}));
+  i18n.setLanguage(lang,{setItem(){}});
+  try {
+    const summary=filtersMod.pointsSummaryParts(many,fstate(36)).map((p)=>p.text);
+    const {next,doneScreen}=realSetup(h,{shown:1033,summary});
+    next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
+    const count=doneScreen()?.count.replace(/[  ]/g,' ');
+    return count === [i18n.t('r3_ob_done_count',{count:1033}).replace('1033',`1${sep}033`), ...summary].join(' · ').replace(/[  ]/g,' ')
+      && count.includes(`1${sep}033 `) && !/(^|\D)33(\D|$)/.test(count);
+  } finally { i18n.setLanguage('en',{setItem(){}}); }
+});
 // Review of PR 1 (2026-11-07): setup's last line named Filters, which only
 // phones have, and "Your existing filters still apply" showed with none on.
 for (const [name, opts, answers, key] of [
