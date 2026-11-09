@@ -193,8 +193,12 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     // Maths and rows without a figure stay in too, so the line splits them as
     // the count line does. t() picks the plural from the number; only the
     // numbers on screen are formatted ("2,915"), as the count line does.
-    const count = (any ? [t('r3_ob_done_count', { count: shown }), ...summary].join(' · ') : t('r3_ob_shown_count', { count: shown }))
+    // Only the lead is formatted here: the summary parts come from
+    // pointsSummaryParts already grouped, and a second pass over their digits
+    // turned "1,033" into "1,33".
+    const lead = t(any ? 'r3_ob_done_count' : 'r3_ob_shown_count', { count: shown })
       .replace(/\d+/g, (value) => formatCount(Number(value)));
+    const count = any ? [lead, ...summary].join(' · ') : lead;
     // Without answers the count is whatever the page's own filters (search,
     // city…) leave, so it must not claim those rows match anything.
     doneNote = { node: el('p', ''), any, filtered, sheetFiltered };
