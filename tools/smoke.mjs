@@ -409,8 +409,10 @@ async function openPage(base, width, height, { block = [] } = {}) {
 // was (2026-11-09; B3A, R4B, CMP and ROW), while dispatchTouchEvent taps
 // worked. synthesizeScrollGesture goes through the platform's own input
 // layer (Aura on Linux); dispatchTouchEvent goes through Chrome's touch
-// emulation on every platform. On macOS it scrolls with
-// Emulation.setTouchEmulationEnabled on or off (B3A runs with it off).
+// emulation on every platform, and turns that emulation on by itself
+// (InjectTouchEvents in Chromium's content/browser/devtools/protocol/
+// input_handler.cc), so it scrolls with Emulation.setTouchEmulationEnabled
+// on or off. B3A runs with it off.
 async function touchSwipe(page, { x, y, xDistance = 0, yDistance = 0, speed = 800, fling = true }) {
   const steps = Math.max(2, Math.ceil((Math.hypot(xDistance, yDistance) / speed) * 60));
   const at = (k) => [{ x: Math.round(x + (xDistance * k) / steps), y: Math.round(y + (yDistance * k) / steps) }];
