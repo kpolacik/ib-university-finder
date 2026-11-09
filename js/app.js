@@ -204,6 +204,9 @@ const printQuery = matchMedia('print');
 const trayQuery = matchMedia('(max-width: 599.98px), (max-height: 500px)');
 let printing = false;
 let printFlushed = false;
+// Where the page was before print: the full list is shorter than the
+// estimates near its end, so the browser clamps the position while it shows.
+let printScrollY = 0;
 let updateAfterPrint = false;
 // Slot motion owned by each slot: its pending frame, transitionend listener and
 // 250 ms fallback. Kept per node so a late callback only ever touches its own
@@ -324,13 +327,14 @@ async function start() {
     printing = true;
     settleSlots();
     printFlushed = !compareOpen;
+    printScrollY = window.scrollY;
     if (printFlushed) flushRows();
     syncTray();
   });
   window.addEventListener('afterprint', afterPrint);
   // Input also releases Home on engines that do not send scrollend.
   window.addEventListener('scrollend', (event) => { if (event.target === document) scrollingHome = false; });
-  for (const type of ['wheel', 'touchstart', 'keydown']) {
+  for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
     window.addEventListener(type, () => { scrollingHome = false; }, { capture: true, passive: true });
   }
   wireTray();
@@ -443,6 +447,9 @@ function applyUrlLists() {
 function switchLanguage(language) {
   const x = window.scrollX;
   const y = window.scrollY;
+  // Slovak rows are taller, so the old pixel offset lands on another
+  // programme. Keep the one at the top of the list where it was instead.
+  const anchor = loaded && !compareOpen && !dom.listp.hidden ? topRow() : null;
   const paneScroll = dom.pane.scrollTop;
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
@@ -463,7 +470,19 @@ function switchLanguage(language) {
     dom.pane.scrollTop = paneScroll;
   }
   keepAddress();
-  window.scrollTo(x, y);
+  const item = anchor && mountRow(anchor.id);
+  if (item) window.scrollBy(0, item.getBoundingClientRect().top - anchor.top);
+  else window.scrollTo(x, y);
+}
+
+// The first drawn row not hidden under the sticky header (its scroll margin
+// is the header's height), with its place on screen.
+function topRow() {
+  for (const item of dom.results.querySelectorAll('li.item')) {
+    const rect = item.getBoundingClientRect();
+    if (rect.bottom > parseFloat(getComputedStyle(item).scrollMarginTop)) return { id: item.dataset.id, top: rect.top };
+  }
+  return null;
 }
 
 function keepAddress() {
@@ -870,8 +889,10 @@ function wireTray() {
   if (typeof ResizeObserver !== 'function') return;
   new ResizeObserver((entries) => {
     const height = Math.ceil(entries.at(-1).borderBoxSize?.[0]?.blockSize ?? dom.tray.offsetHeight);
+    // Print hides the tray only for the paper: keeping its room means the
+    // page is as long after print, so the position restored there holds.
     if (height) document.documentElement.style.setProperty('--tray-h', `${height}px`);
-    else document.documentElement.style.removeProperty('--tray-h');
+    else if (!printing) document.documentElement.style.removeProperty('--tray-h');
   }).observe(dom.tray);
 }
 
@@ -1185,8 +1206,17 @@ function closeCompare(returnFocus) {
   dom.compareBody.replaceChildren();
   renderListBar();
   syncCompareControls();
+  // An update while Compare was open (a filter, the language, another tab)
+  // left the list empty: renderWindow draws nothing under Compare. Hold the
+  // full length so the old position is reachable, then draw the rows there.
+  // Estimates read while the list was hidden used its zero width and no
+  // container query (180 px rows on a 90 px desktop): read them again first.
+  if (dom.results.getBoundingClientRect().width !== windowWidth) resetRowHeights();
+  dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
+  if (returnFocus) window.scrollTo(window.scrollX, from.scrollY);
+  renderWindow();
+  dom.results.style.minHeight = '';
   if (!returnFocus) return;
-  window.scrollTo(window.scrollX, from.scrollY);
   const target = [from.trigger, document.getElementById('header-compare'), document.getElementById('cmp-tray-open')].find(canShow) ?? dom.resultsSection;
   target.focus({ preventScroll: true });
 }
@@ -1304,6 +1334,9 @@ function update() {
   currentSummary = pointsSummaryParts(rows, state);
 
   rowObserver.disconnect();
+  // Shown before measuring: coming back from "No programmes match", a hidden
+  // list read zero width and the 180 px estimate (no container query).
+  dom.listp.hidden = rows.length === 0;
   // Keep the old scroll range during the layout read for the new estimates.
   dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
   dom.results.replaceChildren();
@@ -1910,6 +1943,11 @@ function isPrinting() {
 
 function afterPrint() {
   printing = false;
+  // The tray's room at the foot of the page first, or the restored position
+  // is clamped by its height on phones. A tray that stays hidden gives the
+  // room back (wireTray keeps it during print).
+  syncTray();
+  if (dom.tray.hidden) document.documentElement.style.removeProperty('--tray-h');
   // Drop the printed catalogue before reading screen geometry, retaining the
   // measured offsets so the same programme stays in view.
   if (printFlushed) {
@@ -1917,11 +1955,11 @@ function afterPrint() {
     const focus = snapshotFocus();
     dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
     dom.results.replaceChildren();
+    window.scrollTo(window.scrollX, printScrollY);
     renderWindow(focus?.id);
     dom.results.style.minHeight = '';
     restoreFocus(focus);
   }
-  syncTray();
   crossBar();
   crossWide();
   if (updateAfterPrint) {
@@ -2442,7 +2480,8 @@ function wireDropdowns() {
     const open = dom.dropdowns.find((d) => d.open);
     if (!open) {
       if (!selectedId || document.querySelector('dialog[open]')) return;
-      const item = selectedItem();
+      // The pick may be far off screen and not drawn (the pane keeps it).
+      const item = mountRow(selectedId);
       if (wideQuery.matches) { selectedId = null; decorateSelection(); drawPane(); }
       else if (item) closeRow(item);
       item?.querySelector('button.open')?.focus({ preventScroll: true });

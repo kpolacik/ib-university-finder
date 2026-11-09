@@ -632,8 +632,21 @@ are sized. Corrections use the starting scroll position and run only when
 heights above the visible anchor change; changing rows below it does not call
 scrollTo. During the logo's scroll home, rows keep being measured but height
 corrections pause until scrolling ends or the student interrupts it with a
-touch, wheel or key: an instant correction used to cancel
+touch, wheel, pointer or key: an instant correction used to cancel
 the smooth scroll partway up. Filters and the chosen sort stay unchanged.
+
+Review fixes (2026-11-09, `lp-fix-window`): a change made while Compare was
+open (a filter, the language, the list in another tab) left the list blank or
+back near the top when Compare closed; Close now draws the rows at the old
+place. Switching language keeps the programme at the top of the list where it
+was on screen (Slovak rows are taller, so the old pixel offset showed a
+different one). Printing at the very end of the list no longer jumps the page
+back up (by thousands of pixels on desktop): the position is read before print
+and the phone tray's room is kept while it prints. Escape in the details pane
+returns focus to the picked row even when it had scrolled out of the window.
+Coming back from "No programmes match" measures the rows at their shown width.
+Above the list only the points summary line changes height, and only together
+with a filter change that replaces the list, so nothing there needs anchoring.
 The old full-list slices, parked lists and near-row marking are gone.
 Focused WebKit 26 and Chrome 157 probes cover large jumps, expansion above the
 viewport, eviction, rebuild focus and print. Physical iPhone momentum and
