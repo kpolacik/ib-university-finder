@@ -737,7 +737,15 @@ check('language buttons expose both available choices, with their own language n
 check('each language button names its language in that language, in both UIs',
   /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
     && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
-    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
+    && UI.en.slovak === ' (slovenčina)' && UI.sk.slovak === ' (slovenčina)' && UI.en.english === ' (English)' && UI.sk.english === ' (English)');
+// applyLanguage rewrites that hidden text; without the leading space a screen
+// reader said "SK(slovenčina)". Run it for real and read the button's text.
+check('applyLanguage keeps the space before the hidden language name ("SK (slovenčina)", "EN (English)"), in both UIs', (() => {
+  const spans = ['slovak', 'english'].map((key) => ({ getAttribute: (name) => (name === 'data-i18n' ? key : null), textContent: 'x' }));
+  const root = { documentElement: {}, querySelectorAll: (selector) => (selector === '[data-i18n]' ? spans : []) };
+  const read = (lang) => { i18n.setLanguage(lang, { setItem() {} }); i18n.applyLanguage(root); return `SK${spans[0].textContent} EN${spans[1].textContent}`; };
+  try { return read('sk') === 'SK (slovenčina) EN (English)' && read('en') === 'SK (slovenčina) EN (English)'; } finally { i18n.setLanguage('en', { setItem() {} }); }
+})());
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -2342,6 +2350,14 @@ equal('applyFilters drops only the hidden bucket', visible(36, false),
   bk.map((p) => p.id).filter((id) => !['c-625', 'nl-37'].includes(id)));
 equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, fstate(36)), filtersMod.pointsSummary(bk, fstate(36, true))],
   ['5 within your IB points · 2 only with HL Maths 4+ · 2 can’t be compared', '7 within your IB points · 2 can’t be compared']);
+// The count line printed "1512 can't be compared" while the Setup done screen
+// said "1,512" / "1 512" (PR 1 leftovers). Same formatting, both languages.
+{
+  const many = Array.from({ length: 1512 }, () => ({ ibPointsMin: null }));
+  const summaryIn = (lang) => { i18n.setLanguage(lang, { setItem() {} }); try { return filtersMod.pointsSummary(many, fstate(36)); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('pointsSummary groups thousands like the count line: 1,512 in English, 1 512 in Slovak',
+    [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
+}
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
   [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
@@ -3407,7 +3423,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -4644,6 +4660,24 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+check('the print block has no .src-more rule: nothing renders that element, so the rule was dead', printBody('.src-more') === ''
+  && !printRules.some((r) => r.selector.includes('src-more')));
+// GitHub can't be run here, so this only pins the shape of the workflow: smoke
+// on pull requests only (the checks job keeps running on pushes), the real-Chrome
+// flag that turns "no Chrome" into a failure, the pinned action majors, and the
+// least-privilege token.
+{
+  const workflow = read('.github/workflows/checks.yml');
+  const jobs = workflow.split(/^jobs:\n/m)[1] ?? '';
+  const smokeJob = jobs.split(/^  smoke:\n/m)[1] ?? '', checksJob = (jobs.split(/^  smoke:\n/m)[0] ?? '');
+  check('GitHub checks: "checks" runs on every push and PR; "smoke" runs on pull requests only, in real Chrome (--require-chrome), Node 26, 40 minutes, with a failure-only artifact',
+    /^on: \[push, pull_request\]$/m.test(workflow) && /^permissions:\n  contents: read$/m.test(workflow)
+    && !/^    if:/m.test(checksJob) && /node tools\/check\.mjs/.test(checksJob) && /node tools\/check-contrast\.mjs/.test(checksJob)
+    && /^    if: github\.event_name == 'pull_request'$/m.test(smokeJob) && /^    runs-on: ubuntu-latest$/m.test(smokeJob) && /^    timeout-minutes: 40$/m.test(smokeJob)
+    && /node-version: 26/.test(smokeJob) && /run: node tools\/smoke\.mjs --require-chrome\b/.test(smokeJob)
+    && /if: failure\(\)\n        uses: actions\/upload-artifact@v7/.test(smokeJob)
+    && [...workflow.matchAll(/uses: (\S+)/g)].every((m) => /@v\d+$/.test(m[1])));
+}
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
 // smoke "PR print head" measures both on emulated print media.
@@ -6763,6 +6797,13 @@ appCheck('A3 three columns: "x" on the middle one leaves two with focus on the n
   toast.action();
   return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
 });
+appCheck('A3 a column "x" pressed from the keyboard (click detail 0) asks the toast to move focus to Undo; a pointer click does not', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  fire(cmpX(get, b), 'click', { detail: 0 });
+  if (context.toasts.at(-1).options?.focusAction !== true) return false;
+  fire(cmpX(get, a), 'click', { detail: 1 });
+  return context.toasts.at(-1).options?.focusAction === false;
+});
 appCheck('A3 Undo after two removals puts the programme back before the ones that came after it', ({ run, get, fire, context, ids: [a, b, c] }) => {
   context.fixture.push(...context.live.slice(1, 2));
   const d = context.fixture[3].id;
@@ -6957,7 +6998,7 @@ appCheck('A5 desktop: opening Compare from the header retires the "Open compare"
   const ids = context.fixture.map((r) => r.id);
   run('allRows = fixture; update();');
   const toasts = [];
-  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  context.showToast = (message, label, action, options) => { const toast = { message, label, action, options, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
   fire(cmpOf(get('results').children[0]), 'click');
   const added = toasts.at(-1);
   if (added?.label !== 'Open compare' || added.gone) return false;
@@ -7048,6 +7089,19 @@ appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 l
     dispatchStub(buttonOf(third), { type: 'click' });
     advance(200);
     return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 toasts: asked to (a keyboard removal), the toast moves focus to its Undo, and Escape there closes it without anything else handling the key; otherwise focus stays put', toastPage(({ region, advance, show, buttonOf }) => {
+    stubDocument.activeElement = null;
+    show('Removed A', 'Undo', () => {});
+    if (stubDocument.activeElement !== null) return false;
+    show('Removed B', 'Undo', () => {}, { focusAction: true });
+    const toast = region.children[0];
+    if (region.children.length !== 1 || stubDocument.activeElement !== buttonOf(toast)) return false;
+    dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Enter' });
+    if (region.children.length !== 1) return false;
+    const stopped = !dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Escape' });
+    advance(200);
+    return stopped && region.children.length === 0;
   }));
   check('A5 hovering during toast exit cancels removal until the pointer leaves', toastPage(({ region, advance, show }) => {
     show('Removed'); const toast = region.children[0];

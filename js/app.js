@@ -965,7 +965,8 @@ function wireList() {
     const save = event.target.closest('button[data-save-id]');
     if (save) { onToggleStar(save.getAttribute('data-save-id')); return; }
     const remove = event.target.closest('button[data-compare-remove]');
-    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'));
+    // detail 0 is a click from the keyboard (Enter or Space), not a pointer.
+    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'), event.detail === 0);
   });
   dom.compareBrowse.addEventListener('click', () => closeCompare(true));
   // The header button (from 600 px) opens Compare, and closes it when open;
@@ -1168,7 +1169,7 @@ function restoreCompareFocus(focus, ids) {
 // The column's "x": out of Compare, with Undo putting it back in its place,
 // before the programmes that came after it (another may have gone meanwhile),
 // or the limit toast if four have been added since.
-function removeFromCompare(id) {
+function removeFromCompare(id, fromKeyboard = false) {
   const later = compareIds.slice(compareIds.indexOf(id) + 1);
   changeCompare((ids) => ({ ids: ids.filter((x) => x !== id), result: 'removed' }));
   syncCompareControls();
@@ -1187,7 +1188,7 @@ function removeFromCompare(id) {
     const back = compareOpen ? dom.compareBody.querySelector(`[data-compare-remove="${id}"]`)
       : document.querySelector(`.row [data-compare-id="${id}"]`);
     back?.focus({ preventScroll: true });
-  });
+  }, { focusAction: fromKeyboard });
 }
 
 // returnFocus true (Close, Browse, the header button): back where Compare was

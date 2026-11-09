@@ -1,4 +1,4 @@
-import { t, translatedSearchText } from './i18n.js';
+import { t, formatCount, translatedSearchText } from './i18n.js';
 // Pure functions: given rows and a filter state, give back the rows that match,
 // in the requested order. No DOM in here, so this stays easy to reason about.
 
@@ -197,9 +197,10 @@ export function pointsSummaryParts(rows, state) {
     const bucket = pointsBucket(row, state);
     if (bucket in n) n[bucket]++;
   }
-  const parts = [{ kind: 'fit', text: t('within_your_ib_points_2', { value1: n.within }) }];
-  if (n.maths) parts.push({ kind: 'cond', text: t('only_with_hl_maths_4_2', { value1: n.maths }) });
-  if (n.unknown) parts.push({ kind: 'unk', text: t('can_t_be_compared_2', { value1: n.unknown }) });
+  // Counted like the lead and the Setup done screen: "1,512" / "1 512".
+  const parts = [{ kind: 'fit', text: t('within_your_ib_points_2', { value1: formatCount(n.within) }) }];
+  if (n.maths) parts.push({ kind: 'cond', text: t('only_with_hl_maths_4_2', { value1: formatCount(n.maths) }) });
+  if (n.unknown) parts.push({ kind: 'unk', text: t('can_t_be_compared_2', { value1: formatCount(n.unknown) }) });
   return parts;
 }
 

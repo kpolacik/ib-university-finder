@@ -2141,17 +2141,30 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===4,why:'not four columns'})`, 5000, 'four columns');
         await shot(page, 'compare-4-1280-en');
       });
-      await check(1280, 'B3A keyboard undo', 'Enter on an "x" moves focus to the next column\'s "x"; a second toast leaves the focused Undo in place, and that Undo restores its own programme', async () => {
+      await check(1280, 'B3A keyboard undo', 'Enter on an "x" moves focus to the toast\'s Undo (the toast waits while it holds focus); Enter on Undo restores the column; Escape closes the toast and returns focus to the next "x"; a second toast leaves the focused Undo in place, and that Undo restores its own programme', async () => {
         const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
-        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]').focus()`);
+        const undo = `document.querySelector('#toasts .toast button')`;
+        const columns = `[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()`;
+        const xOf = (id) => `document.querySelector('#cmp-body [data-compare-remove="${id}"]')`;
+        await page.ev(`${xOf(ids[1])}.focus()`);
         await page.key('Enter', 'Enter', 13, [], '\r');
-        await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[2]}"]'),why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'focus on the next x');
-        await page.ev(`document.querySelector('#toasts .toast button').focus()`);
-        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').click()`);
+        await page.waitFor(`({ok:document.activeElement===${undo} && document.querySelector('#toasts .toast').textContent.startsWith(${JSON.stringify(say('en', 'r3_cmp_removed'))}),why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'focus on Undo');
+        // Longer than the 6 s timer: a toast that holds focus stays.
+        await new Promise((r) => setTimeout(r, 6600));
+        assert(await page.ev(`document.activeElement===${undo}`), 'the toast went while Undo held focus');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:${columns}===${JSON.stringify(ids.join())} && document.activeElement===${xOf(ids[1])},why:'not restored: '+${columns}})`, 5000, 'column back, focused');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.activeElement===${undo},why:'no focus on Undo'})`, 5000, 'Undo again');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#toasts .toast') && document.activeElement===${xOf(ids[2])},why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'Escape: toast gone, focus on the next x');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.activeElement===${undo},why:'no focus on Undo'})`, 5000, 'Undo for the third column');
+        await page.ev(`${xOf(ids[0])}.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}))`);
         await page.waitFor(`({ok:document.querySelectorAll('#toasts .toast').length===2,why:document.querySelectorAll('#toasts .toast').length+' toasts'})`, 5000, 'two toasts');
-        assert(await page.ev(`document.activeElement===document.querySelector('#toasts .toast button')`), 'the focused Undo lost focus');
+        assert(await page.ev(`document.activeElement===${undo}`), 'the focused Undo lost focus');
         await page.key('Enter', 'Enter', 13, [], '\r');
-        await page.waitFor(`({ok:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()===${JSON.stringify([ids[1], ids[2], ids[3]].join())} && document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()+' / '+document.activeElement.outerHTML.slice(0,60)})`, 5000, 'its own programme back, focused');
+        await page.waitFor(`({ok:${columns}===${JSON.stringify([ids[2], ids[3]].join())} && document.activeElement===${xOf(ids[2])},why:${columns}+' / '+document.activeElement.outerHTML.slice(0,60)})`, 5000, 'its own programme back, focused');
       });
       await check(1280, 'B3A redraw focus', 'saving in a column keeps its focus; another tab dropping the focused column moves focus to the next "x"; a language switch keeps both and the sideways scroll', async () => {
         const save = `document.querySelector('#cmp-body th [data-save-id]')`;
