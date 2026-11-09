@@ -769,8 +769,8 @@ filter. Preferences use `ibuf.filters.v1`, separate from `ibuf.onboarding.v1`
 and the existing saved list. Any recognised URL filter/sort parameter or
 `?list=` uses URL state plus defaults, never merged with saved filters. A URL
 with only `?ui=` still restores saved filters. URL hydration leaves stored
-preferences alone; later explicit edits save validated filters, not sort,
-selection or list/compare/panel state. Clear all removes saved filters but
+preferences alone; later explicit edits save validated filters and a
+hand-picked sort (since 2026-11-09), not selection or list/compare/panel state. Clear all removes saved filters but
 keeps the separate onboarding flag, so setup does not replay. Full programme
 requirements remain in opened details; summary rows are compact. The phone
 Sort select and all My list tools remain available. Local source checks,
@@ -1787,8 +1787,11 @@ uses deadline order, then the closest points figure and name. Clearing points
 returns Best match to deadline order. Best match has one direction.
 Total yearly cost orders the low yearly estimate and uses My living costs when
 set; unknown costs stay last in either direction. Other sorts break ties by
-deadline, then name. Sort is still excluded from saved filter preferences;
-URL sorts remain shareable and URL state never merges with saved filters.
+deadline, then name. A sort the student picks is saved with their filters
+(Leon, 2026-11-09), so a reload keeps it and setting points later does not
+replace it with Best match; a sort the page chose for them is not saved. Clear
+all removes the saved sort with the saved filters. URL sorts remain shareable
+and URL state never merges with saved filters.
 
 ## Running it
 

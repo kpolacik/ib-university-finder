@@ -7995,6 +7995,48 @@ await asyncAppCheck('Setup done activates Best match before showing results', as
   context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:36}));
   return run('state.sort')==='best' && run('state.myIbPoints')===36;
 },{boot:true});
+// Leon, 2026-11-09: a hand-picked sort was lost on reload, because
+// storedFilters dropped sort and dir ("Sort is never written to preferences").
+{
+  const { storedFilters, restoration } = savedState;
+  const base = { ...savedState.validateFilters({ myIbPoints: 36 }), sort: 'name', dir: 'desc' };
+  equal('a hand-picked sort is stored with its direction', [storedFilters(base, null, true).filters.sort, storedFilters(base, null, true).filters.dir], ['name', 'desc']);
+  check('a sort the page chose is not stored', !('sort' in storedFilters(base, null, false).filters) && !('dir' in storedFilters(base).filters));
+  check('Best match is never stored, even when picked', !('sort' in storedFilters({ ...base, sort: 'best', dir: 'asc' }, null, true).filters));
+  const back = restoration('', storedFilters(base, null, true));
+  check('a stored sort comes back and counts as picked', back.source === 'saved' && back.state.sort === 'name' && back.state.dir === 'desc' && back.sortPicked === true);
+  check('a stored sort that fails validation is not picked', [{ sort: 'best' }, { sort: 'bogus' }].every((f) => restoration('', { version: 1, filters: f }).sortPicked === false && restoration('', { version: 1, filters: f }).state.sort === 'deadline'));
+  check('stored Best match with stored points still restores', restoration('', { version: 1, filters: { sort: 'best', myIbPoints: 36 } }).state.sort === 'best');
+  check('a filter or sort URL ignores the stored sort (never merged)', ['?country=Ireland', '?points=36', '?sort=tuition'].every((q) => { const r = restoration(q, storedFilters(base, null, true)); return r.source === 'url' && r.state.sort !== 'name' && !r.sortPicked; }));
+  check('older snapshots without a sort restore deadline order, not picked', restoration('', { version: 1, filters: { myIbPoints: 36 } }).sortPicked === false);
+}
+await asyncAppCheck('a sort picked in the menu is saved; Clear all removes it with the filters', async ({run,get,fire,context,settle,advance}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'), 'change'); advance(500);
+  const last = context.prefWrites?.at(-1)?.filters;
+  if (last?.sort !== 'tuition' || last?.dir !== 'desc') return false;
+  run('clearAll();'); advance(500);
+  return context.prefWrites.at(-1) === null;
+}, {boot:true});
+await asyncAppCheck('a sort picked from a column header is saved too', async ({fire,context,settle,advance}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  fire(context.document.querySelector('.cols [data-sort="points"]'),'click'); advance(500);
+  return context.prefWrites?.at(-1)?.filters.sort === 'points';
+}, {boot:true});
+await asyncAppCheck('a restored hand-picked sort survives setting points (no switch to Best match)', async ({run,get,fire,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{sort:'name',dir:'asc'}};
+  run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  if (run('state.sort') !== 'name' || run('explicitSort') !== true) return false;
+  get('f-points').value = '36'; fire(get('f-points'),'input'); advance(500);
+  if (run('state.sort') !== 'name') return false;
+  context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:38}));
+  return run('state.sort') === 'name' && run('state.myIbPoints') === 38;
+}, {boot:true});
+await asyncAppCheck('saved points without a saved sort still select Best match on reload', async ({run,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{myIbPoints:36}};
+  run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  return run('state.sort') === 'best' && run('explicitSort') === false;
+}, {boot:true});
 section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');
 // The FAQ lived only in the footer, below every row. The header's "?" opens
 // the same questions in a panel (js/faq.js), built like the Filters sheet:

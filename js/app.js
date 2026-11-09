@@ -152,7 +152,7 @@ let preferencesDirty = false;
 const editedFacets = new Set();
 const persistPreferences = debounce(() => {
   if (!loaded || !preferencesDirty) return;
-  writeSaved(storedFilters(state, facets)); preferencesDirty = false;
+  writeSaved(storedFilters(state, facets, explicitSort)); preferencesDirty = false;
 }, 300);
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
@@ -387,7 +387,10 @@ function applyUrlFields() {
   for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
   fillFields(fromUrl);
   const params = new URLSearchParams(location.search);
-  explicitSort = fromUrl.sort !== 'best' && (params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
+  // A saved sort was hand-picked (storedFilters keeps only those), so setting
+  // points later leaves it alone, as it would have before the reload.
+  explicitSort = fromUrl.sort !== 'best' && (restored.sortPicked
+    || params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
 }
@@ -616,7 +619,7 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
-      explicitSort = true;
+      explicitSort = true; preferencesDirty = true;
       if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
         state.sort = 'deadline'; state.dir = 'asc';
       } else {

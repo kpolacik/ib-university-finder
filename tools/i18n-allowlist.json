@@ -1050,7 +1050,8 @@
       "subject",
       "subjectAreas",
       "url",
-      "desc"
+      "desc",
+      "best"
     ],
     "js/onboarding.js": [
       "(max-width: 599.98px)",
