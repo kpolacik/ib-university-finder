@@ -4918,14 +4918,23 @@ async function runNonModalSetup(base, want) {
 }
 
 async function runSmarterSort(base) {
-  for (const width of [1280, 390]) {
+  const ready = `({ok:!window.__oldPage && document.querySelector('#loading')?.hidden,why:'reload'})`;
+
+  for (const width of [1280, 768, 390]) {
     const page = await openPage(`${base}?ui=en`, width, 900);
     try {
       await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'sort boot');
+      const pickSort = async (value) => {
+        // Wide lists show column headings; reveal the menu at its own breakpoint.
+        if (width===1280) await page.send('Emulation.setDeviceMetricsOverride',{width:768,height:900,deviceScaleFactor:1,mobile:false});
+        await page.click(`document.querySelector('#dd-sort>summary')`, 'open Sort');
+        await page.click(`document.querySelector('#sort-options input[value="${value}"]')`, 'pick sort');
+        if (width===1280) await page.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+      };
       await check(width,'SORT','Setup points activate Best match and order the results',async()=>{
         await page.ev(`localStorage.clear(); window.__oldPage=true; location.href=${JSON.stringify(base)}+'?ui=en'`);
         await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden && document.querySelector('#onboarding').open,why:'fresh Setup'})`,15000,'fresh Setup');
-        assert(await page.ev(`![...document.querySelector('#f-sort').options].some(o=>o.value==='best:asc')`),'Best match offered without points');
+        assert(await page.ev(`[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true`),'Best match offered without points');
         await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Start Setup');
         await page.click(`document.querySelector('#ob-points')`,'My points'); await page.type('36');
         for(let i=0;i<4;i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`,'next Setup step');
@@ -4939,12 +4948,12 @@ async function runSmarterSort(base) {
         await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='cost:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
         await page.waitFor(`({ok:document.querySelector('#f-sort').value==='cost:desc' && new URLSearchParams(location.search).get('points')==='38',why:'explicit sort or points lost'})`,5000,'explicit sort retention');
         await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='best:asc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
-        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc' && ![...document.querySelector('#f-sort').options].some(o=>o.value==='best:asc'),why:'clear did not restore deadline'})`,5000,'points clear fallback');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc' && [...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true,why:'clear did not restore deadline'})`,5000,'points clear fallback');
       });
       // Leon, 2026-11-09: a sort the student picks survives a reload, and
       // points set afterwards leave it alone; Clear all forgets it.
       await check(width,'SORT saved','a hand-picked sort survives a reload (plain address), points set after it keep it, and Clear all forgets it',async()=>{
-        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='name:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));}`);
+        await pickSort('name:desc');
         await page.waitFor(`({ok:JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='name',why:'sort not saved'})`,5000,'saved sort');
         await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en'`);
         await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden,why:'reload'})`,15000,'reload');
@@ -4954,10 +4963,57 @@ async function runSmarterSort(base) {
         assert(await page.ev(`document.querySelector('#f-sort').value==='name:desc'`),'points replaced the saved sort with Best match');
         await page.ev(`document.querySelector('#f-clear').click()`);
         await page.waitFor(`({ok:localStorage.getItem('ibuf.filters.v1')===null,why:'saved sort kept after Clear all'})`,5000,'clear all');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&!new URLSearchParams(location.search).has('sort')`),'Clear all kept the sort');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Clear all kept explicit sort'})`,5000,'auto sort after Clear all');
+
+      });
+      await check(width,'SORT deadline','Deadline with points survives URL and saved-preference reloads',async()=>{
+        await pickSort('deadline:asc');
+        await page.waitFor(`({ok:new URLSearchParams(location.search).get('sort')==='deadline'&&JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='deadline',why:'Deadline not serialized'})`,5000,'Deadline saved');
+        await page.ev(`window.__oldPage=true;location.reload()`);
+        await page.waitFor(ready,15000,'URL reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value==='38'`),'URL lost Deadline');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(ready,15000,'saved reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value==='38'`),'saved preferences lost Deadline');
+      });
+      await check(width,'SORT invalid best','Best match URL without points still switches automatically once points are entered',async()=>{
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en&sort=best'`);
+        await page.waitFor(ready,15000,'Best match URL');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value===''`),'URL merged saved preferences or offered Best match without points');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Best match suppressed'})`,5000,'Best match after points');
       });
       assert(!page.errors.length,JSON.stringify(page.errors));
     } finally { await page.close(); }
   }
+  for (const width of [390, 1280]) for (const language of ['en','sk']) {
+    const page = await openPage(`${base}?ui=${language}&q=`,width,900);
+    try {
+      await page.waitFor(ready,15000,'disabled Best match boot');
+      await check(`${width}/${language}`,'SORT disabled','Best match stays visible but unavailable until points are set',async()=>{
+        const hint = language === 'en' ? 'Best match (enter your IB points first)' : 'Najlepšia zhoda (najprv zadaj svoje IB body)';
+        const enabled = language === 'en' ? 'Best match' : 'Najlepšia zhoda';
+        const off = await page.ev(`(()=>{const option=[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc');const radio=document.querySelector('#sort-options input[value="best:asc"]');radio.click();return {option:option?.disabled,radio:radio?.disabled,label:radio?.parentElement.textContent,optionLabel:option?.textContent,checked:radio?.checked,sort:document.querySelector('#f-sort').value}})()`);
+        assert(off.option&&off.radio&&!off.checked&&off.sort==='deadline:asc'&&off.label===hint&&off.optionLabel===hint,JSON.stringify(off));
+        if (width===390) {
+          await page.click(`document.querySelector('#dd-sort>summary')`,'open disabled Sort');
+          assert(await page.ev(`document.querySelector('#sort-options input[value="best:asc"]').parentElement.getBoundingClientRect().height>0`),'disabled hint hidden');
+          await page.key('Tab','Tab',9);
+          assert(await page.ev(`document.activeElement!==document.querySelector('#sort-options input[value="best:asc"]')`),'keyboard reached disabled Best match');
+          await page.key('Escape','Escape',27);
+        }
+        await page.ev(`const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'points not applied'})`,5000,'enable Best match');
+        assert(await page.ev(`(()=>{const option=[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc'),radio=document.querySelector('#sort-options input[value="best:asc"]');return !option.disabled&&!radio.disabled&&option.textContent===${JSON.stringify(enabled)}&&radio.parentElement.textContent===${JSON.stringify(enabled)}})()`),'Best match not enabled or hint retained');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#sort-options input[value="best:asc"]').disabled,why:'clear did not disable Best match'})`,5000,'disable Best match');
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+
 }
 
 // The FAQ panel behind the header's "?" (Leon, 2026-11-09): the FAQ was only

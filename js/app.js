@@ -407,9 +407,10 @@ function applyUrlFields() {
   // A saved sort was hand-picked (storedFilters keeps only those), so setting
   // points later leaves it alone, as it would have before the reload.
   explicitSort = fromUrl.sort !== 'best' && (restored.sortPicked
-    || params.has('sort') || params.has('dir') || fromUrl.sort !== 'deadline');
+    || (params.has('sort') && params.get('sort') !== 'best') || params.has('dir') || fromUrl.sort !== 'deadline');
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
+  setMyPoints(state, fromUrl.myIbPoints, explicitSort);
 }
 
 function fillFields(fromUrl) {
@@ -629,6 +630,7 @@ function wireInputs() {
   dom.sort.addEventListener('change', () => {
     [state.sort, state.dir] = dom.sort.value.split(':');
     explicitSort = state.sort !== 'best';
+    preferencesDirty = true;
     syncSort();
     update();
   });
@@ -1220,6 +1222,7 @@ function clearAll() {
   state.maxBudget = null;
   state.myLiving = null;
   state.myIbPoints = null;
+  state.sort = 'deadline'; state.dir = 'asc'; explicitSort = false;
   state.subjectAreas.clear();
   state.countries.clear();
   state.languages.clear();
@@ -2129,7 +2132,9 @@ function sortPick() {
     input.name = 'sort-pick';
     input.value = option.value;
     input.checked = option.selected;
+    input.disabled = option.disabled;
     input.addEventListener('change', () => {
+      if (input.disabled) return;
       const arrow = sortByArrow;
       sortByArrow = false;
       dom.sort.value = input.value;
