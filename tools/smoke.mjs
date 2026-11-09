@@ -1,6 +1,7 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
 //   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
@@ -497,12 +498,12 @@ async function interactions(page, at, want) {
   const T = want.total;
   const phone = at < 600;
 
-  await check(at, 'A5', 'every row is drawn', async () => {
+  await check(at, 'A5', 'the visible window represents the full list', async () => {
     const first = await page.ev(`document.querySelectorAll('#results > li.item').length`);
     assert(first > 0, 'no rows when the loading skeleton went away');
     // The list fills in slices after the first paint (L09). Drawn = all of
     // them, and still all of them 300 ms later.
-    const full = `(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === ${T}, why: n + ' rows drawn' }; })()`;
+    const full = `(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n > 0 && n < 100 && document.querySelector('#results>.item').getAttribute('aria-setsize') === '${T}', why: n + ' rows drawn' }; })()`;
     await page.waitFor(full, 10_000, `${T} rows`);
     const start = Date.now();
     while (Date.now() - start < 300) await page.waitFor(full, 1000, `${T} rows (staying)`);
@@ -761,7 +762,7 @@ async function runFallback(base, want) {
     const banner = await page.ev(`document.querySelector('#source-banner .bn-saved')?.textContent ?? ''`);
     assert(/saved copy from/.test(banner), `no "saved copy from" banner (banner: "${banner.trim().slice(0, 100)}")`);
     await page.waitFor(countIs(`${want.fallbackTotal} programmes`), 5000, `"${want.fallbackTotal} programmes"`);
-    await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === ${want.fallbackTotal}, why: n + ' rows drawn' }; })()`, 10_000, 'every row');
+    await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n > 0 && n < 100 && document.querySelector('#results>.item').getAttribute('aria-setsize') === '${want.fallbackTotal}', why: n + ' rows drawn' }; })()`, 10_000, 'every row');
     // The blocked request itself is logged as an error; anything else is not expected.
     const other = page.errors.filter((e) => !/\/data\/programmes\.csv/.test(e.url));
     assert(other.length === 0, other.map((e) => e.text).join(' | '));
@@ -1076,14 +1077,14 @@ async function runRound2(base) {
         assert(await page.ev(`getComputedStyle(document.querySelector('.hd')).position!=='sticky'`),'short viewport header sticks');
         await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
       });
-      if(width>=600)await check(width,'R2E','full-dataset country widening and narrowing settle before another change',async()=>{
+      if(width>=600)await check(width,'R2E','country changes keep the full count with bounded rows',async()=>{
         await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
-        const settled = (count) => `({ok:document.querySelectorAll('#results>li.item').length===${count} && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
+        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
         await page.waitFor(settled(2915),10000,'all rows before country change');
         const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
         for(let i=0;i<2;i++){
           await page.ev(`${ireland}.click()`);
-          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && document.querySelectorAll('#results>li.item').length===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
+          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && Number(document.querySelector('#results>li.item').getAttribute('aria-setsize'))===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
           await page.ev(`${ireland}.click()`);
           await page.waitFor(settled(2915),10000,'settled full catalogue');
         }
@@ -2087,12 +2088,15 @@ async function runBatch3A(base) {
         await page.ev(`document.querySelector('#cmp-tray-open').click()`);
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 3000, 'compare open');
         await page.ev(`document.querySelector('#cmp-close').click()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           const m = await page.ev(`({tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom,scroll:getComputedStyle(document.documentElement).scrollPaddingBottom})`);
           assert(m.tray === 'none' && m.pad === '0px' && (m.scroll === '0px' || m.scroll === 'auto'), JSON.stringify(m));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         await page.ev(`document.querySelector('#cmp-tray-open').click()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           const m = await page.ev(`(()=>{const link=document.querySelector('#cmp-body a.lnk');
@@ -2100,7 +2104,8 @@ async function runBatch3A(base) {
               link:getComputedStyle(link).display,after:getComputedStyle(link,'::after').content,facts:document.querySelectorAll('#cmp-body tr[data-fact]').length,
               tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom}})()`);
           assert(m.compare !== 'none' && m.list === 'none' && m.link !== 'none' && m.after.includes('http') && m.facts >= 9 && m.tray === 'none' && m.pad === '0px', JSON.stringify(m));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         await page.ev(`document.querySelector('#cmp-close').click()`);
       });
     } finally { await page.close(); }
@@ -2367,10 +2372,12 @@ async function runBatch3B(base) {
         assert(m.back && !m.tools && !m.tips && !m.clear && m.pressed === 'true', `empty view: ${JSON.stringify(m)}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
         // A navigation button has no action on paper; keep the empty-list copy.
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           assert(await page.ev(`getComputedStyle(document.querySelector('#empty-back')).display==='none' && getComputedStyle(document.querySelector('#empty-state')).display!=='none'`), 'empty-list back button prints');
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         // Keep the real mouse hit test, then re-enter for keyboard activation.
         await page.click(`document.querySelector('#empty-back')`, 'Back to all programmes');
         assert(await page.ev(`!document.querySelector('#shortlist-bar').classList.contains('is-list') && document.activeElement===document.querySelector('#header-list')`), 'mouse exit lost focus');
@@ -3064,6 +3071,7 @@ async function runAlignListCompare(base) {
       await check(`print/${ui}`, 'AL print compare link', 'printed Compare: "Official admissions page" never splits inside a word and no space is kept for Save', async () => {
         await page.click(`document.querySelector('#header-compare')`, 'Compare');
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'closed'})`, 5000, 'compare');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           await settle(page);
@@ -3073,7 +3081,8 @@ async function runAlignListCompare(base) {
           const { cssContentSize } = await page.send('Page.getLayoutMetrics');
           const { data: png } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: 794, height: Math.min(4000, cssContentSize.height), scale: 1 } });
           await writeFile(`${shots}/print-compare-${ui}.png`, Buffer.from(png, 'base64'));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
       });
     } finally { await page.close(); }
   }
@@ -3259,7 +3268,8 @@ async function runPrintFixes(base) {
     return page;
   };
   const printed = async (page, name, measure) => {
-    await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+    await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
     try {
       await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
       const m = await page.ev(measure);
@@ -3268,7 +3278,8 @@ async function runPrintFixes(base) {
         clip: { x: 0, y: 0, width: cssContentSize.width, height: Math.min(3000, cssContentSize.height), scale: 1 } });
       await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
       return m;
-    } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+    } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
   };
   // Shown on paper: laid out, not clipped away, and the text is what it says.
   const head = `(()=>{const h=document.querySelector('.print-head'),r=h.getBoundingClientRect(),cs=getComputedStyle(h);
@@ -4100,47 +4111,33 @@ async function runCssA11yFixes(base) {
   }
 }
 
-// Phone scroll (2026-11-08): on an iPhone "the rows pop in weirdly". Safari
-// draws a content-visibility:auto row only once it is already on screen
-// (WebKit's observer has no margin; Chrome's reaches half a screen further)
-// and has no scroll anchoring, so each row scrolled in blank at its
-// placeholder height, then drew and the rows under it jumped. Chrome hides
-// all of this, so the page here runs under a model of Safari: anchoring off
-// and a row drawn only once it is on screen, unless the site drew it early
-// (.near). Before the fix a blank row was on screen in 51 of 254 frames at
-// 390 px (64 of 252 at 320); after, none. Unslowed, the shift stays small
-// either way (it reached about 1.0 at 4x CPU, measured by hand), so the old
-// placeholder sizes are caught by the placeholder comparison instead.
+// Phone scroll: sample actual row/gap visibility during touch flings. Windowing
+// replaces the old content-visibility/.near model; every mounted row is drawn.
 async function runRowScroll(base) {
   watchdog.refresh();
   const safari = `document.addEventListener('DOMContentLoaded',()=>{
-    const st=document.createElement('style');st.textContent='html,body{overflow-anchor:none}.item:not(.wk-on):not(.near){content-visibility:hidden}';document.head.append(st);
-    const io=new IntersectionObserver((es)=>{for(const e of es)e.target.classList.toggle('wk-on',e.isIntersecting)});
-    new MutationObserver((ms)=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1&&n.classList.contains('item'))io.observe(n)}).observe(document.documentElement,{childList:true,subtree:true});
     window.__shift=0;new PerformanceObserver((l)=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__shift+=e.value}).observe({type:'layout-shift'});
   });`;
   for (const [width, height] of [[390, 844], [320, 640]]) {
     const page = await openPage(`${base}?ui=en`, width, height);
     try {
-      await check(`${width}/en`, 'ROW scroll', 'flicking down the list under a Safari model shows no blank row and no layout shift; row placeholders are within 15% of the real rows', async () => {
+      await check(`${width}/en`, 'ROW scroll', 'flicking down the list shows no blank row or spacer in the viewport and keeps bounded DOM', async () => {
         await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
         await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed')`);
         await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
         await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
         await page.send('Page.addScriptToEvaluateOnNewDocument', { source: safari });
         await page.send('Page.reload');
-        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n===t,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
-        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if(it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
+        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n>0&&n<100,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
+        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if((it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))||document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.row-space'))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
         for (let i = 0; i < 8; i++) {
           await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
         }
         const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
-        // Every row drawn once, to compare its real height with the placeholder.
-        const h = await page.ev(`(()=>{const it=[...document.querySelectorAll('#results .item')];const cis=parseFloat(getComputedStyle(it[0]).containIntrinsicSize.replace('auto',''));it.forEach(e=>e.style.contentVisibility='visible');const hs=it.map(e=>e.getBoundingClientRect().height);it.forEach(e=>e.style.contentVisibility='');return {cis,mean:Math.round(hs.reduce((a,b)=>a+b,0)/hs.length)}})()`);
         assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
         assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
         assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
-        assert(Math.abs(h.mean - h.cis) <= h.mean * 0.15, `placeholder ${h.cis} px, real rows average ${h.mean} px`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'unbounded DOM after scroll');
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
@@ -4217,11 +4214,13 @@ async function runBadgeFlush(base) {
         const m = await page.ev(measure);
         verdict(m);
         assert(m.wrapped.length, 'no wrapped badge in My list ' + JSON.stringify(m));
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
           verdict(await page.ev(measure));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
@@ -4430,7 +4429,7 @@ async function runColdSheet(base, want) {
           ` });
           await page.send('Page.navigate', { url: base });
           if (trial === 0) {
-            await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'cold catalogue');
+            await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'cold catalogue');
             await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
           } else {
             await page.waitFor(`({ok:window.__cold.paint>0,why:'first rows not painted'})`, 15000, 'first rows');
@@ -4457,9 +4456,40 @@ async function runColdSheet(base, want) {
   }
 }
 
+async function runWindow(base, want) {
+  for (const width of [390, 1300]) {
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'window ready');
+      await check(width, 'window', 'full length from first draw; deep scroll evicts rows, focus survives, print restores the window', async () => {
+        const first = await page.ev(`(()=>{const l=document.querySelector('#results');return {height:l.offsetHeight,n:l.querySelectorAll('.item').length,id:l.querySelector('.item').dataset.id}})()`);
+        assert(first.height > want.total * 60 && first.n < 100, JSON.stringify(first));
+        for (const y of [30000, 100000, 3000, 50000]) {
+          await page.ev(`scrollTo(0,${y})`);
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          const actualY = await page.ev('scrollY');
+          assert(Math.abs(actualY - y) < 844, `jump ${y} collapsed to ${actualY}`);
+          await page.waitFor(`({ok:!!document.elementFromPoint(innerWidth/3,600)?.closest('.item')&&document.querySelectorAll('#results>.item').length<100,why:'window not drawn'})`,5000,'deep window');
+        }
+        assert(await page.ev(`!document.querySelector('#results [data-id="${first.id}"]')`), 'first row never evicted');
+        await page.ev(`document.elementFromPoint(innerWidth/3,600).closest('.item').querySelector('button.open').focus({preventScroll:true});window.__focusId=document.activeElement.closest('.item').dataset.id;scrollTo(0,0)`);
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`document.activeElement.closest('.item')?.dataset.id===__focusId&&document.querySelectorAll('#results>.item').length<100`), 'focus lost or distant focus filled the gap');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length===${want.total}&&!document.querySelector('#results>.row-space')`), 'print lost rows');
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'print left full DOM');
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
 // Flex must retain row/slot geometry, keyboard scroll margins, wide details,
 // list semantics and print flow. The Safari-model flick check below guards
-// .near and the measured placeholder heights as well.
+// the mounted rows and reserved gaps as well.
 async function runSheetListLayout(base, want) {
   for (const width of [320, 390, 700, 1300]) {
     watchdog.refresh();
@@ -4467,7 +4497,7 @@ async function runSheetListLayout(base, want) {
     try {
       await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
       await page.send('Page.navigate', { url: base + '?ui=en' });
-      await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'mounting'})`, 20000, 'list mount');
+      await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'mounting'})`, 20000, 'list mount');
       await check(width, 'sheet flex list', 'expanded rows, pane, keyboard targets, list semantics and print keep their geometry', async () => {
         assert(await page.ev(`getComputedStyle(document.querySelector('#results')).display==='flex'&&getComputedStyle(document.querySelector('#results>.item')).display==='block'`), 'list/row display');
         const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>.item')` });
@@ -4490,11 +4520,13 @@ async function runSheetListLayout(base, want) {
           await page.ev(`document.querySelectorAll('#results>.item')[20].querySelector('button.open').focus({preventScroll:true})`);
           await page.key('ArrowDown', 'ArrowDown', 40);
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
-          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row===document.querySelectorAll('#results>.item')[21]&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
+          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row.querySelector('button.open').getAttribute('aria-current')==='true'&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
         }
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         assert(await page.ev(`(()=>{const list=document.querySelector('#results'),rows=[...list.children];return getComputedStyle(list).display==='block'&&rows.length===${want.total}&&rows.every(r=>getComputedStyle(r).contentVisibility==='visible')&&getComputedStyle(document.querySelector('#pane')).display==='none'})()`), 'print lost rows or kept containment/pane');
         await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
       });
     } finally { await page.close(); }
   }
@@ -4522,7 +4554,7 @@ async function runSheetPacing(base, want) {
         ` });
         await page.send('Page.navigate', { url: base + '?ui=en' });
         if (when === 'settled') {
-          await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total}&&document.querySelector('#filter-sheet').classList.contains('is-warm'),why:'mounting'})`, 20000, 'warm sheet');
+          await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}'&&document.querySelector('#filter-sheet').classList.contains('is-warm'),why:'mounting'})`, 20000, 'warm sheet');
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         } else {
           await page.waitFor(`({ok:window.__pacing?.paint>0,why:'first paint'})`, 15000, 'first rows');
@@ -4557,7 +4589,7 @@ async function runNonModalSheet(base, want) {
       await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
       await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
-      await page.waitFor(`({ok:!window.__oldPage&&document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'all rows');
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'all rows');
       await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
       const tap = async (selector) => {
         const { x, y } = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
@@ -4635,6 +4667,7 @@ async function runNonModalSheet(base, want) {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reduced-motion sheet');
         assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`), 'reduced motion still transitions');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print scrim/scroll lock');
         await page.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
@@ -4662,7 +4695,7 @@ async function runNonModalSetup(base, want) {
     };
     const reload = async () => {
       await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
-      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelectorAll('#results>.item').length===${want.total},why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
       await page.waitFor(settled,5000,'Setup settled');
     };
     try {
@@ -4750,7 +4783,10 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sheet-pacing-only')) {
+  if (args.has('--window-only')) {
+    await runWindow(base, want);
+    await runSheetListLayout(base, want);
+  } else if (args.has('--sheet-pacing-only')) {
     await runSheetPacing(base, want);
   } else if (args.has('--sheet-list-only')) {
     await runSheetListLayout(base, want);
@@ -4767,7 +4803,7 @@ async function main() {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
-    if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    if (anyBooted) { await runWindow(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
       await runBatch2A(base);
       await runBatch2B(base);
       await runBatch2C(base);
