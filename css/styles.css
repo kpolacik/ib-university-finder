@@ -1790,10 +1790,6 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 }
 /* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
    now set with the panel's other question rules (.faq summary>.ic). */
-/* From 600 px the footer heading keeps the 12 px it had beside the old footer
-   FAQ: the gaps Leon approved under Compare (44 px) and the list are measured
-   to it (smoke CH2). */
-@media (min-width:600px){.foot h2{margin-top:12px}}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer
@@ -2173,9 +2169,11 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
 /* Desktop Compare (Leon: "a lil too much space under it"). Compare is short
    next to the list, so the footer's 48 px gap, made for the end of a long
-   list, left an empty band under it. While Compare is open the gap is 24 px. */
+   list, left an empty band under it. While Compare is open the gap is 36 px:
+   24 px plus the 12 px the heading lost with the footer FAQ (2026-11-09), so
+   the heading stays 44 px under Compare (smoke CH2). */
 @media (min-width:600px){
- body:has(#compare:not([hidden])) .foot{margin-top:24px}
+ body:has(#compare:not([hidden])) .foot{margin-top:36px}
 }
 /* Phones (2026-11-07: the heading sat 56 px under the card, desktop 44). On
    phones 24 px measured 32 px under the card (the card's 12 px margin merges
