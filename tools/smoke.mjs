@@ -4924,8 +4924,10 @@ async function runFaqPanel(base, want) {
       }
       await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
       await page.waitFor(ready, 15000, 'reload');
-      // Timing is measured once every row is in, as for the Filters sheet.
-      await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'rows still mounting'})`, 20000, 'all rows');
+      // Timing is measured once the whole catalogue is in, as for the Filters
+      // sheet. With windowing only nearby rows are mounted, so the count is
+      // each row's aria-setsize, not how many rows the page holds.
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'all rows');
       const tap = async (selector) => {
         const spot = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered by '+(hit?.id||hit?.className));return {x,y}})()`);
         if (phone) {
@@ -4961,7 +4963,7 @@ async function runFaqPanel(base, want) {
         else assert(m.r[2] === m.w && m.r[1] === 0 && m.r[3] === m.h && m.r[2] - m.r[0] === 440, `side panel at ${m.r}`);
         assert(m.dur.startsWith('0.28s') && m.ease.startsWith('cubic-bezier(0.32, 0.72, 0, 1)') && !m.modal, `motion ${m.dur} ${m.ease} modal ${m.modal}`);
         assert(m.focus === 'faq-h' && !m.ring && m.expanded === 'true', `focus ${m.focus} ring ${m.ring} expanded ${m.expanded}`);
-        assert(m.qs.length === 5 && JSON.stringify(m.qs) === JSON.stringify(m.foot), `questions ${JSON.stringify(m.qs)}`);
+        assert(m.qs.length === 12 && JSON.stringify(m.qs) === JSON.stringify(m.foot), `questions ${JSON.stringify(m.qs)}`);
         assert(m.overflow === (phone ? 'hidden' : 'visible'), `page overflow ${m.overflow}`);
         assert(m.t !== null && m.t < 600, `tap to settled ${m.t} ms`);
         console.log(`MEASURE ${width} FAQ tap-to-settled ms ${m.t}`);
@@ -4996,7 +4998,7 @@ async function runFaqPanel(base, want) {
         assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab missed the close button');
         await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
         await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-        assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), 'Shift+Tab left the panel');
+        assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), 'Shift+Tab left the panel or stuck on a hidden control');
         await page.key('Tab', 'Tab', 9);
         assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab left the panel');
         await page.key('Tab', 'Tab', 9);
@@ -5008,6 +5010,24 @@ async function runFaqPanel(base, want) {
         await page.waitFor(settled(false), 5000, 'closed by Escape');
         assert(await page.ev(`document.activeElement.id==='faq-open'&&document.activeElement.matches(':focus-visible')&&document.querySelector('#faq-open').getAttribute('aria-expanded')==='false'`), 'Escape did not return to "?" with a ring');
         await page.ev(`document.querySelector('#faq-panel details').open=false`);
+      });
+      await reset();
+      // The last answer ends with the contact address as a mailto link
+      // (2026-11-09): reachable by keyboard once that question is open, and
+      // still inside the panel's focus trap.
+      await check(width, 'FAQ mailto', 'with the last question open, Shift+Tab from the close button reaches the underlined mailto link with a ring, and Tab wraps back', async () => {
+        await page.ev(`document.querySelector('#faq-open').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(settled(true), 5000, 'open by Enter');
+        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=true;document.querySelector('#faq-panel .faqp-x').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        const m = await page.ev(`(()=>{const a=document.activeElement,c=getComputedStyle(a);return {tag:a.tagName,href:a.getAttribute('href'),text:a.textContent,ring:a.matches(':focus-visible'),line:c.textDecorationLine,inPanel:!!a.closest('#faq-panel'),foot:document.querySelector('#faq a[href^="mailto:"]')?.getAttribute('href')}})()`);
+        assert(m.tag === 'A' && m.href === 'mailto:ibuniversityfinder@gmail.com' && m.text === 'ibuniversityfinder@gmail.com' && m.ring && m.line === 'underline' && m.inPanel
+          && m.foot === m.href, JSON.stringify(m));
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab from the link left the panel');
+        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=false`);
       });
       await reset();
       await check(width, 'FAQ interrupt', '"?" tapped mid-close reaches the button through the fading scrim and glides back open', async () => {
@@ -5043,7 +5063,7 @@ async function runFaqPanel(base, want) {
         await page.waitFor(`({ok:document.documentElement.lang==='sk',why:'still '+document.documentElement.lang})`, 5000, 'Slovak');
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
         const m = await page.ev(`({h:document.querySelector('#faq-h').textContent,q:document.querySelector('#faq-panel summary').textContent.trim(),x:document.querySelector('#faq-panel .faqp-x').getAttribute('aria-label')})`);
-        assert(m.h === 'Časté otázky' && m.q === 'Aký je rozdiel medzi Mojím zoznamom a Porovnaním?' && m.x === 'Zavrieť časté otázky', JSON.stringify(m));
+        assert(m.h === 'Časté otázky' && m.q === 'Čo je táto stránka a môžem sa cez ňu prihlásiť?' && m.x === 'Zavrieť časté otázky', JSON.stringify(m));
         if (phone) await viewShot(`panel-${width}-sk.png`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {

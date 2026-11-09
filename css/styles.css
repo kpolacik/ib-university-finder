@@ -1041,6 +1041,8 @@ html{overflow-anchor:none}
 .faq summary>span[aria-hidden]{display:inline-block;transition:transform 220ms var(--ease-out)}
 .faq details[open] summary>span[aria-hidden]{transform:rotate(45deg)}
 .faq .a{padding:0 0 14px;max-width:62ch}
+.faq .a a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;overflow-wrap:anywhere}
+.faq .a a:hover{color:var(--accent-press)}
 @media (min-width: 600px) and (min-height: 501px){.hd{position:sticky;top:0}}
 @media (max-width: 599.98px){
  .hd{height:auto;min-height:56px}.hd-in{flex-wrap:wrap;padding:10px var(--gut);gap:10px}.slot{width:auto;flex:1}.mark{position:static}.mark h1{font-size:16px}.hd-right{gap:4px}#header-list>span:not(.badge){display:none}.search{order:3;flex-basis:100%;max-width:none}.search .inp{height:44px}.foot{grid-template-columns:1fr;gap:20px}
