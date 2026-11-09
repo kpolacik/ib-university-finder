@@ -12,6 +12,7 @@
 //   node tools/smoke.mjs --phone-fixes-only # phone form, tray keyboard and sorting regressions
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
+//   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
@@ -186,6 +187,13 @@ async function startChrome(path) {
     '--hide-scrollbars', '--mute-audio',
     '--disable-field-trial-config',
     '--disable-features=AnnotatedPageContentExtraction,AnnotatedPageContent,AnnotatedPageContentRequest,PageContentAnnotations,AIPageContentAgent,Glic,OptimizationGuideModelExecution',
+    // A computer with a mouse, on every system. Headless Chrome on Linux
+    // finds no mouse, so pages there match (pointer:none), not
+    // (pointer:fine): the facet lists never focused their search (smoke
+    // R3A on GitHub, 2026-11-09). macOS already says fine and hover, so this
+    // changes nothing there. Touch emulation still switches a page to
+    // coarse. Values: pointer fine = 4, hover = 2 (blink's enums).
+    '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2',
     'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   chrome = child;
@@ -391,6 +399,32 @@ async function openPage(base, width, height, { block = [] } = {}) {
     await writeFile(path, Buffer.from(data, 'base64'));
   };
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
+}
+
+// A finger dragged from (x, y) by (xDistance, yDistance) at `speed` px/s:
+// one touchStart, a touchMove every 1/60 s, a touchEnd. With fling false the
+// finger rests 150 ms before it lifts, so the page does not glide on.
+// Same arguments as Input.synthesizeScrollGesture, which it replaces: on
+// GitHub's Linux Chrome every synthesizeScrollGesture left the page where it
+// was (2026-11-09; B3A, R4B, CMP and ROW), while dispatchTouchEvent taps
+// worked. synthesizeScrollGesture goes through the platform's own input
+// layer (Aura on Linux); dispatchTouchEvent goes through Chrome's touch
+// emulation on every platform, and turns that emulation on by itself
+// (InjectTouchEvents in Chromium's content/browser/devtools/protocol/
+// input_handler.cc), so it scrolls with Emulation.setTouchEmulationEnabled
+// on or off. B3A runs with it off.
+async function touchSwipe(page, { x, y, xDistance = 0, yDistance = 0, speed = 800, fling = true }) {
+  const steps = Math.max(2, Math.ceil((Math.hypot(xDistance, yDistance) / speed) * 60));
+  const at = (k) => [{ x: Math.round(x + (xDistance * k) / steps), y: Math.round(y + (yDistance * k) / steps) }];
+  const pause = (ms) => new Promise((ok) => setTimeout(ok, Math.max(0, ms)));
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+  const start = Date.now();
+  for (let k = 1; k <= steps; k++) {
+    await pause(start + (k * 1000) / 60 - Date.now());
+    await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) });
+  }
+  if (!fling) await pause(150);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
 // Prepare a named programme through the row keyboard's own mount path. Search
@@ -2254,7 +2288,7 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:${state}.range===${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'back at the start');
         // A finger dragged right to left across the table, inside the window.
         const box = await page.ev(`(()=>{const r=document.querySelector('.cmp-scroll').getBoundingClientRect();return {x:Math.round(Math.min(r.right,innerWidth)-30),y:Math.round(Math.min(Math.max(r.top+80,10),innerHeight-10))}})()`);
-        await page.send('Input.synthesizeScrollGesture', { x: box.x, y: box.y, xDistance: -150, yDistance: 0, gestureSourceType: 'touch', speed: 800 });
+        await touchSwipe(page, { x: box.x, y: box.y, xDistance: -150, speed: 800 });
         await page.waitFor(`({ok:${state}.range!==${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'a swipe moves the range');
         await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
         await frames(page);
@@ -2736,7 +2770,10 @@ async function runBatch3C(base) {
               for(const s of [...Array(91).keys(),...[...Array(90).keys()].reverse()]){scrollTo(0,s);await raf();out.push(take());}return out;})()`);
           } else {
             await page.ev(`(()=>{${sample}window.__frames=[];window.__stopFrames=false;const tick=()=>{__frames.push(take());if(!__stopFrames)requestAnimationFrame(tick);};requestAnimationFrame(tick);})()`);
-            const swipe = (yDistance) => page.send('Input.synthesizeScrollGesture', { x: Math.round(width / 2), y: Math.round(height / 2), yDistance, speed, gestureSourceType: 'touch', repeatCount: 0, preventFling: true }, 20000);
+            // Start low for a swipe up and high for a swipe down, so the
+            // finger stays on the screen (from the middle, 400 px down would
+            // end at y 720 on a 640 px phone).
+            const swipe = (yDistance) => touchSwipe(page, { x: Math.round(width / 2), y: Math.round(yDistance < 0 ? height * 0.8 : height * 0.2), yDistance, speed, fling: false });
             await swipe(-300);
             await settle(page);
             await swipe(400);
@@ -4230,10 +4267,15 @@ async function runRowScroll(base) {
         await page.send('Page.reload');
         await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n>0&&n<100,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
         await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if((it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))||document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.row-space'))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
-        for (let i = 0; i < 8; i++) {
-          await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
+        // Flicks inside the screen, from 90% to 10% of its height, each with
+        // the glide after it, until the list is well past 6000 px. The finger
+        // never leaves the screen.
+        for (let i = 0; i < 20 && await page.ev('scrollY') < 6500; i++) {
+          await touchSwipe(page, { x: Math.round(width / 2), y: Math.round(height * 0.9), yDistance: -Math.round(height * 0.8), speed: 4000 });
+          await page.ev('new Promise((r) => setTimeout(r, 250))');
         }
         const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
+        console.log(`MEASURE ${width} ROW scroll ${m.y} px in ${m.frames} frames`);
         assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
         assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
         assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
@@ -4376,14 +4418,14 @@ async function runCompareTouchScroll(base) {
     for (const [where, spot] of Object.entries(spots)) {
       assert(spot, `${label}: no table cell in the middle of the screen`);
       await page.ev(`scrollTo({ top: 0, behavior: 'instant' }); document.querySelector('#compare .cmp-scroll').scrollTop = 0`);
-      await page.send('Input.synthesizeScrollGesture', { x: spot[0], y: spot[1], xDistance: 0, yDistance: -300, gestureSourceType: 'touch', speed: 1200 }, 30000);
+      await touchSwipe(page, { x: spot[0], y: spot[1], yDistance: -300, speed: 1200 });
       const m = await page.ev(`new Promise((r) => setTimeout(() => r({ y: Math.round(scrollY), box: document.querySelector('#compare .cmp-scroll').scrollTop,
         html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }), 300))`);
       assert(m.y >= 100, `${label}, swipe over the ${where}: the page moved ${m.y} px (scroll box ${m.box} px, html ${m.html}, body ${m.body})`);
     }
     // The columns still swipe sideways.
     await page.ev(`scrollTo({ top: 0, behavior: 'instant' })`);
-    await page.send('Input.synthesizeScrollGesture', { x: spots.table[0], y: spots.table[1], xDistance: -200, yDistance: 0, gestureSourceType: 'touch', speed: 1200 }, 30000);
+    await touchSwipe(page, { x: spots.table[0], y: spots.table[1], xDistance: -200, speed: 1200 });
     const left = await page.ev(`new Promise((r) => setTimeout(() => r(document.querySelector('#compare .cmp-scroll').scrollLeft), 600))`);
     assert(left > 0, `${label}: a sideways swipe over the table did not move the columns`);
     await page.ev(`document.querySelector('#compare .cmp-scroll').scrollLeft = 0`);
@@ -4869,15 +4911,19 @@ async function runNonModalSheet(base, want) {
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
         const before = await page.ev('scrollY');
         await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: 40, deltaX: 0, deltaY: 450 });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: width / 2, y: 100 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: width / 2, y: 20 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        // A finger dragged up over the scrim, resting before it lifts. The
+        // old drag was one 80 px jump and a lift: a fling, and a fling
+        // swallows the next tap, which may be why the scrim tap below never
+        // closed the sheet at 390 on GitHub (2026-11-09).
+        await touchSwipe(page, { x: width / 2, y: 100, yDistance: -80, speed: 800, fling: false });
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         assert(await page.ev(`scrollY===${before}&&getComputedStyle(document.documentElement).overflow==='hidden'&&document.elementFromPoint(10,10).id==='sheet-scrim'`), 'background scrolled or scrim missed');
+        // What reached the scrim, for the failure message.
+        await page.ev(`window.__scrimLog=[];for(const t of ['pointerdown','pointerup','click'])document.querySelector('#sheet-scrim').addEventListener(t,()=>__scrimLog.push(t))`);
         assert(await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),z=e=>+getComputedStyle(e).zIndex;return z(s)>z(document.querySelector('#sheet-scrim'))&&z(document.querySelector('#sheet-scrim'))>Math.max(z(document.querySelector('.hd')),z(document.querySelector('#toasts')),z(document.querySelector('.cmp-tray'))||0)})()`), 'stack below tray/header/toasts');
         await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 10, y: 10 }] });
         await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await page.waitFor(settled(false), 5000, 'scrim close');
+        await page.waitFor(`(()=>{const r=${settled(false)};return {ok:r.ok,why:'sheet '+(document.querySelector('#filter-sheet').open?'open':'closed')+', scrim saw '+(__scrimLog.join(' ')||'nothing')}})()`, 5000, 'scrim close');
         assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'&&scrollY===${before}&&!document.documentElement.classList.contains('sheet-open')`), 'tap return/scroll cleanup');
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reopen');
         await page.send('Emulation.setDeviceMetricsOverride', { width: 800, height, deviceScaleFactor: 1, mobile: true });
@@ -5195,6 +5241,10 @@ async function runFaqPanel(base, want) {
         await page.ev(`window.__faqT=null;const p=document.querySelector('#faq-panel');document.querySelector('#faq-open').addEventListener('pointerdown',()=>{window.__faqT={start:performance.now()}});p.addEventListener('transitionend',(e)=>{if(e.target===p&&e.propertyName==='transform'&&window.__faqT)window.__faqT.end=performance.now()})`);
         await tap('#faq-open');
         await page.waitFor(settled(true), 5000, 'the open panel');
+        // transitionend is dispatched a frame after the transition stops
+        // running, so "settled" can be seen before it: at 30 fps (macOS Low
+        // Power Mode) that read "tap to settled null ms" (2026-11-09).
+        await page.waitFor(`({ok:!!window.__faqT?.end,why:window.__faqT?'no transform transitionend yet':'no pointerdown on "?"'})`, 2000, 'the slide\'s transitionend');
         const m = await page.ev(`(()=>{const p=document.querySelector('#faq-panel'),r=p.getBoundingClientRect(),c=getComputedStyle(p);
           return {r:[r.left,r.top,r.right,r.bottom].map(Math.round),w:innerWidth,h:innerHeight,dur:c.transitionDuration,ease:c.transitionTimingFunction,modal:p.matches(':modal'),
             focus:document.activeElement?.id,ring:document.activeElement?.matches(':focus-visible'),expanded:document.querySelector('#faq-open').getAttribute('aria-expanded'),
@@ -5320,12 +5370,19 @@ async function runFaqPanel(base, want) {
       await check(width, 'FAQ reduced motion', 'reduced motion fades the panel in about 120 ms with no slide', async () => {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         try {
-          // The warm panel is laid out while closed, so its fade starts from
-          // its current style: let that style catch up with the new setting
-          // first, as it has long before a real tap.
-          await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).opacity`);
+          // The warm panel is laid out while closed, so switching the setting
+          // on starts its own 120 ms fade from 1 to 0, hidden. A tap during
+          // that fade only reverses it from about 1, which is what failed on
+          // GitHub (2026-11-09, "o":1). A real tap comes long after the
+          // setting changed: wait for the closed panel to rest at 0.
+          await page.waitFor(`(()=>{const p=document.querySelector('#faq-panel'),o=getComputedStyle(p).opacity;return {ok:!p.open&&o==='0'&&!p.getAnimations().some(a=>a.playState==='running'),why:'closed panel at opacity '+o}})()`, 3000, 'the closed panel at rest');
+          // Read the start inside the page, when the opacity transition
+          // begins: a separate read after the tap could come 120 ms late on
+          // a slow runner and find the fade already over.
+          await page.ev(`(()=>{const p=document.querySelector('#faq-panel');window.__fadeStart=null;p.addEventListener('transitionrun',(e)=>{if(e.target!==p||e.propertyName!=='opacity'||__fadeStart)return;const c=getComputedStyle(p);__fadeStart={t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})})()`);
           await tap('#faq-open');
-          const first = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})()`);
+          await page.waitFor(`({ok:!!window.__fadeStart,why:'no opacity transition began'})`, 3000, 'the fade to start');
+          const first = await page.ev(`__fadeStart`);
           await page.waitFor(settled(true), 3000, 'faded in');
           const end = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:c.opacity}})()`);
           assert(first.t === 'none' && first.o < 1 && first.d.startsWith('0.12s') && first.p.startsWith('opacity'), `fade start ${JSON.stringify(first)}`);
@@ -5402,7 +5459,20 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--integration-fixes-only')) {
+  // --only=runRowScroll,runFaqPanel runs just those sections, by function
+  // name, for sections without a flag of their own.
+  const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean);
+  if (only) {
+    if (!only.length) throw new Error('--only: name at least one section, e.g. --only=runRowScroll');
+    const sections = { runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
+      runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
+      runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
+      runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout };
+    const unknown = only.filter((name) => !Object.hasOwn(sections, name));
+    if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
+    for (const name of only) await sections[name](base, want);
+  } else if (args.has('--integration-fixes-only')) {
     await runSmarterSort(base);
     await runBatch2C(base);
     await runBatch3C(base);

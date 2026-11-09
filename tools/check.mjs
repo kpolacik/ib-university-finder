@@ -4749,6 +4749,25 @@ check('the print block has no .src-more rule: nothing renders that element, so t
     && /if: failure\(\)\n        uses: actions\/upload-artifact@v7/.test(smokeJob)
     && [...workflow.matchAll(/uses: (\S+)/g)].every((m) => /@v\d+$/.test(m[1])));
 }
+// The first GitHub smoke run (2026-11-09) failed 22 checks that pass on a Mac.
+// These pin the fixes in tools/smoke.mjs so they can't quietly come back.
+{
+  const smoke = read('tools/smoke.mjs');
+  const code = smoke.replace(/^\s*\/\/.*$/gm, '');
+  check('smoke drags with Input.dispatchTouchEvent (touchSwipe), never Input.synthesizeScrollGesture: on GitHub\'s Linux Chrome that left every page unscrolled (B3A, R4B, CMP, ROW)',
+    !/synthesizeScrollGesture/.test(code) && /async function touchSwipe\(/.test(code)
+    && (code.match(/touchSwipe\(page, /g) ?? []).length >= 6
+    && /y: Math\.round\(yDistance < 0 \? height \* 0\.8 : height \* 0\.2\)/.test(code));
+  check('smoke Chrome says it has a mouse (pointer fine, hover) on every system: Linux headless says pointer:none, so the facet search never focused (R3A)',
+    /'--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'/.test(code));
+  check('smoke "FAQ reduced motion" waits for the closed panel to rest at opacity 0 first (switching the media setting starts a hidden 120 ms fade; GitHub read opacity 1), then reads the fade start in the page',
+    /'the closed panel at rest'/.test(code) && /!p\.open&&o==='0'&&!p\.getAnimations\(\)\.some\(a=>a\.playState==='running'\)/.test(code)
+    && /addEventListener\('transitionrun'/.test(code) && /'the fade to start'/.test(code));
+  check('smoke "FAQ open" waits for the slide\'s transitionend before it reads tap-to-settled (it read null once)',
+    /'the slide\\'s transitionend'/.test(code));
+  check('smoke --only=<section,…> runs just the named sections and rejects unknown names and an empty list (it passed with 0 checks)',
+    /startsWith\('--only='\)/.test(code) && /if \(!only\.length\) throw/.test(code) && /--only: no section/.test(code) && /Object.hasOwn\(sections, name\)/.test(code));
+}
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
 // smoke "PR print head" measures both on emulated print media.

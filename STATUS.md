@@ -1856,10 +1856,25 @@ second job, `smoke`, runs `smoke.mjs --require-chrome --keep` on **pull requests
 only** (Ubuntu with its preinstalled Chrome, Node 26, 40-minute limit, public
 repository so the minutes are free). On a failure it uploads the screenshots
 (`/tmp/ib-*/`) and Chrome's log as the artifact `smoke-screenshots-and-chrome-log`
-(7 days). **It has never run on GitHub yet** (written without access to GitHub):
-if its first run fails with Chrome's "No usable sandbox", the step before it
+(7 days). If it fails with Chrome's "No usable sandbox", the step before it
 (`sysctl ... apparmor_restrict_unprivileged_userns=0`) did not take, and the fix
-is there, not a retry. A failure that is just slowness shows up as
+is there, not a retry.
+
+Its first run (PR #6, 2026-11-09) failed 22 of 684 checks. No site bug was
+found behind them; the test itself is fixed on branch `lp-ci-smoke` (not yet run on GitHub
+again). Two things differ on GitHub's Linux Chrome: it says the computer has no
+mouse (`pointer:none`), so `smoke.mjs` now starts Chrome with a setting that
+says it has one; and its scripted "scroll gesture" moved nothing, so the tests
+now drag a finger with touch events (`touchSwipe` in `smoke.mjs`), the kind of
+event whose taps already worked there. Why one "NMS scroll" tap missed the
+scrim is not known; that check now drags more slowly and says what the scrim
+saw if it fails again. The FAQ reduced-motion check also read the panel mid-fade; it now
+waits. `node tools/smoke.mjs --only=runRowScroll,runFaqPanel` runs just the
+named sections. On a Mac in Low Power Mode Chrome is held to 30 frames a
+second, so the "sheet pacing" frame-timing checks fail there; that is the Mac,
+not the site.
+
+A failure that is just slowness shows up as
 "timed out in <step>": `smoke.mjs` has one 120 s watchdog, refreshed at the
 start of each section (`WATCHDOG_MS`), so a runner much slower than a Mac could
 trip it inside one long section; raise it only after seeing the real timings in
