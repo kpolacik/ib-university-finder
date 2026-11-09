@@ -4662,6 +4662,22 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
 check('the print block has no .src-more rule: nothing renders that element, so the rule was dead', printBody('.src-more') === ''
   && !printRules.some((r) => r.selector.includes('src-more')));
+// GitHub can't be run here, so this only pins the shape of the workflow: smoke
+// on pull requests only (the checks job keeps running on pushes), the real-Chrome
+// flag that turns "no Chrome" into a failure, the pinned action majors, and the
+// least-privilege token.
+{
+  const workflow = read('.github/workflows/checks.yml');
+  const jobs = workflow.split(/^jobs:\n/m)[1] ?? '';
+  const smokeJob = jobs.split(/^  smoke:\n/m)[1] ?? '', checksJob = (jobs.split(/^  smoke:\n/m)[0] ?? '');
+  check('GitHub checks: "checks" runs on every push and PR; "smoke" runs on pull requests only, in real Chrome (--require-chrome), Node 26, 40 minutes, with a failure-only artifact',
+    /^on: \[push, pull_request\]$/m.test(workflow) && /^permissions:\n  contents: read$/m.test(workflow)
+    && !/^    if:/m.test(checksJob) && /node tools\/check\.mjs/.test(checksJob) && /node tools\/check-contrast\.mjs/.test(checksJob)
+    && /^    if: github\.event_name == 'pull_request'$/m.test(smokeJob) && /^    runs-on: ubuntu-latest$/m.test(smokeJob) && /^    timeout-minutes: 40$/m.test(smokeJob)
+    && /node-version: 26/.test(smokeJob) && /run: node tools\/smoke\.mjs --require-chrome\b/.test(smokeJob)
+    && /if: failure\(\)\n        uses: actions\/upload-artifact@v7/.test(smokeJob)
+    && [...workflow.matchAll(/uses: (\S+)/g)].every((m) => /@v\d+$/.test(m[1])));
+}
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
 // smoke "PR print head" measures both on emulated print media.

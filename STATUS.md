@@ -875,16 +875,16 @@ students, and where each rule lives:
   says the CAO adds the 25 points for grade 4 or above, on Irish courses only.
   At under 360 px the column labels count toward their tile's width, so a fee
   whose Slovak label is wider than the fee moves to its own line instead of
-  overlapping "Termín". Held for the Supabase PR (`plans/backlog/supabase-pr-ui.md`):
-  one tab stop per row and the smoke test on GitHub's checks. Done in the
-  list-performance round (2026-11-09): removing a Compare column with the
-  keyboard moves focus to the toast's Undo, which waits while it holds focus;
-  Escape closes the toast and focus goes back to the next column's "x".
-  The points line under the count now groups thousands like the count and the
-  Setup done screen ("1,512" / "1 512").
-  The language buttons read "SK (slovenčina)" to screen readers again; the
-  hidden text lost its leading space whenever the page re-applied the language.
-  The dead `.src-more` rule in the print block is gone.
+  overlapping "Termín". Still held (`plans/backlog/supabase-pr-ui.md`): one tab
+  stop per row. Done in the list-performance round (2026-11-09): removing a
+  Compare column with the keyboard moves focus to the toast's Undo, which waits
+  while it holds focus (Escape closes it and focus goes back to the next
+  column's "x"); the points line under the count groups thousands like the
+  count and the Setup done screen ("1,512" / "1 512"); the language buttons read
+  "SK (slovenčina)" to screen readers again (the hidden text lost its leading
+  space whenever the page re-applied the language); the dead `.src-more` print
+  rule is gone; and the smoke test runs on GitHub's pull requests (see
+  "Running it").
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
@@ -1780,10 +1780,20 @@ opens the real page in an invisible Chrome with a temporary profile
 profile; without Chrome it prints SKIP and changes nothing (L08).
 
 `.github/workflows/checks.yml` runs `check.mjs` and `check-contrast.mjs` on
-GitHub for every push and pull request, with no secrets. `smoke.mjs` stays
-local: nobody has run it on GitHub's Linux machines, where Chrome's sandbox may
-need a flag it doesn't pass, and a test that fails for no real reason teaches
-people to ignore the red mark.
+GitHub for every push and pull request, with no secrets. Since 2026-11-09 a
+second job, `smoke`, runs `smoke.mjs --require-chrome --keep` on **pull requests
+only** (Ubuntu with its preinstalled Chrome, Node 26, 40-minute limit, public
+repository so the minutes are free). On a failure it uploads the screenshots
+(`/tmp/ib-*/`) and Chrome's log as the artifact `smoke-screenshots-and-chrome-log`
+(7 days). **It has never run on GitHub yet** (written without access to GitHub):
+if its first run fails with Chrome's "No usable sandbox", the step before it
+(`sysctl ... apparmor_restrict_unprivileged_userns=0`) did not take, and the fix
+is there, not a retry. A failure that is just slowness shows up as
+"timed out in <step>": `smoke.mjs` has one 120 s watchdog, refreshed at the
+start of each section (`WATCHDOG_MS`), so a runner much slower than a Mac could
+trip it inside one long section; raise it only after seeing the real timings in
+the job log, and a test that fails for no real reason teaches people to ignore
+the red mark.
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette
