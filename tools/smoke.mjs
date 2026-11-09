@@ -5173,7 +5173,6 @@ async function runFaqPanel(base, want) {
         assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), `Shift+Tab went to ${await page.ev('document.activeElement.outerHTML.slice(0,80)')}`);
       });
       await reset();
-      await reset();
       await check(width, 'FAQ interrupt', '"?" tapped mid-close reaches the button through the fading scrim and glides back open', async () => {
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
         await page.click(`document.querySelector('#faq-panel .faqp-x')`, 'close');

@@ -8009,6 +8009,12 @@ section('Facts and copy, review of PR 1, 2026-11-07');
   check('FAQ CAO answer names the UCD exception and the HL Maths bonus in EN and SK',
     /UCD shows its own IB minimum/.test(UI.en.r7_faq_cao_a) && /UCD uvádza vlastné minimum/.test(UI.sk.r7_faq_cao_a)
       && /601 to 625/.test(UI.en.r7_faq_cao_a) && /601 do 625/.test(UI.sk.r7_faq_cao_a));
+  // Review of list-perf (2026-11-09): "the CAO minimum (35)" read as 35 CAO points;
+  // the HPAT minimum is 480 CAO points = 35 IB. The Slovak answer also said "sa dá
+  // dosiahnuť len s ňou" for the 601-625 band; it is "možno dosiahnuť".
+  check('FAQ CAO answer gives the HPAT minimum as 480 points (35 IB) in EN and SK, and the Slovak band wording is natural',
+    /CAO minimum \(480 points, 35 IB\)/.test(UI.en.r7_faq_cao_a) && /minimum CAO \(480 bodov, 35 IB\)/.test(UI.sk.r7_faq_cao_a)
+      && !/sa dá dosiahnuť/.test(UI.sk.r7_faq_cao_a) && /601 do 625 možno dosiahnuť len s ňou/.test(UI.sk.r7_faq_cao_a));
   // Verification of PR 1: the footer still said all data comes from the
   // universities' pages.
   check('footer source line names the CAO and calls living costs estimates, EN and SK',

@@ -911,12 +911,12 @@ students, and where each rule lives:
   says the CAO adds the 25 points for grade 4 or above, on Irish courses only.
   At under 360 px the column labels count toward their tile's width, so a fee
   whose Slovak label is wider than the fee moves to its own line instead of
-  overlapping "Termín". Still held (`plans/backlog/supabase-pr-ui.md`): one tab
-  stop per row. Done in the list-performance round (2026-11-09): removing a
+  overlapping "Termín". Done in the list-performance round (2026-11-09): removing a
   Compare column with the keyboard moves focus to the toast's Undo, which waits
   while it holds focus (Escape closes it and focus goes back to the next
   column's "x"); the points line under the count groups thousands like the
-  count and the Setup done screen ("1,512" / "1 512"); the language buttons read
+  count and the Setup done screen ("1,512" / "1 512"; the done screen used to
+  re-format those numbers and print "1,33" for 1,033); the language buttons read
   "SK (slovenčina)" to screen readers again (the hidden text lost its leading
   space whenever the page re-applied the language); the dead `.src-more` print
   rule is gone; and the smoke test runs on GitHub's pull requests (see
