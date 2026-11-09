@@ -52,11 +52,14 @@ class ChromeNode {
   get lastChild() { return this.children.at(-1) ?? null; }
   before(node) { this.parent.insertBefore(node, this); }
   after(node) { const next = this.parent.children[this.parent.children.indexOf(this) + 1] ?? null; this.parent.insertBefore(node, next); }
-  // A shallow copy, as cloneNode(false): tag, id, class and attributes, no
-  // children and no listeners.
-  cloneNode() {
+  // A copy without listeners: tag, id, class and attributes, and with
+  // cloneNode(true) the children too (js/faq.js copies the footer FAQ).
+  cloneNode(deep = false) {
     const node = new ChromeNode(this.tagName);
     node.id = this.id; node.className = this.className; node.attributes = { ...this.attributes };
+    // parseHtml keeps <details open> as a property; the real attribute is cloned.
+    if (deep && this.open) node.open = true;
+    if (deep) for (const child of this.children) node.append(typeof child === 'string' ? child : child.cloneNode(true));
     return node;
   }
   set textContent(text) { this.replaceChildren(String(text)); }
@@ -1167,7 +1170,7 @@ check('round 2 sheet, help, popover origin, FAQ and toast exits match the approv
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
     && text.includes('transition:transform 220ms') && text.includes('animation:toast-out 160ms')
     && text.includes('@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}');
-  return valid(css) && !valid(css.replace('max-height:85dvh', 'max-height:90dvh'))
+  return valid(css) && !valid(css.replaceAll('max-height:85dvh', 'max-height:90dvh'))
     && !valid(css.replace('animation:toast-out 160ms', 'animation:none'))
     && !valid(css.replaceAll('.tip{display:none;', '.tip{display:block;'));
 })());
@@ -4155,18 +4158,33 @@ const motionAllowed = {
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
   '.sheet-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
   '.sheet-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  // The FAQ panel behind the header's "?" (Leon, 2026-11-09) moves exactly as the sheet does.
+  '.faqp': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
+  '.faqp[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  '.faq-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
+  '.faq-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+};
+// The one exception to "reduced motion stops everything": the FAQ panel and
+// its scrim fade in 120 ms instead of sliding (Leon, 2026-11-09), so the panel
+// does not blink into place. No transform; only here.
+const reducedFade = {
+  '.faqp': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
+  '.faq-scrim': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
   const sel = r.selector.split(',').map((x) => x.trim()).join(',');
   if (legacyMotion.includes(r.selector.trim())) return false;
+  if (r.media.length === 1 && /^@media \(prefers-reduced-motion: ?reduce\)$/.test(r.media[0]) && reducedFade[sel]) return !r.body.includes(reducedFade[sel]) || /transform\s+\d/.test(r.body);
   const want = motionAllowed[sel];
   return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px|^@supports \(interpolate-size:allow-keywords\)$/.test(m));
 }).map((r) => r.selector);
 check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
   transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
-    && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
+    && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1
+    && motionProblems(cssTree(cssRules + '@media (prefers-reduced-motion:reduce){.sheet{transition:opacity 120ms linear}}')).length === 1
+    && motionProblems(cssTree(cssRules + '@media (prefers-reduced-motion:reduce){.faqp{transition:transform 120ms linear}}')).length === 1,
   motionProblems(allCss).join(', '));
 // 2026-11-08: the phone logo handover (option C: logo-travel, logo-shrink,
 // logo-off, tile-on, count-glide) runs on the scroll, not the clock.
@@ -5908,7 +5926,7 @@ appCheck('heading sort cycles include the default order, announced next state an
 function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,openFaq(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -7423,48 +7441,23 @@ appCheck('B3C1 a second Finish click applies nothing more; the done screen forma
   h.fire(primary(), 'click', { detail: 2 });
   return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes shown';
 });
-appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
-  const {get}=h, {dialog,next,writes}=realSetup(h);
-  for (let i = 0; i < 5; i++) next();
-  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed'
-    && (stubDocument.scrolls ?? []).some((s) => s.node === get('faq')) && stubDocument.activeElement === get('faq').querySelector('summary');
-});
-// Found by smoke R2M: Finish re-renders the list, which fills in after the FAQ
-// scroll starts, so a quick tap landed mid-list. The FAQ aims once more when the
-// list stops growing; never every frame (a restarted smooth scroll crawls), and
-// not at all once the reader scrolls.
-for (const [name, grow, input] of [['aims once more after the list grows', true, false], ['does not aim again when nothing grew', false, false], ['stops when the reader scrolls', true, true]]) appCheck(`B3C1 the done screen FAQ ${name}`, (h) => {
-  const {get}=h, frames=new Map(); let id=0;
-  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+// The done screen's FAQ button used to scroll to the footer FAQ below every
+// row, re-aiming while rows near the bottom settled. Since the header's "?"
+// panel (Leon, 2026-11-09) it opens that panel instead, and closing the panel
+// returns to the list. Nothing scrolls any more.
+appCheck('B3C1 the done screen FAQ button closes setup as completed, then opens the FAQ panel over the list', (h) => {
+  const {resultsSection}=h, faqOpens=[];
+  const {dialog,next,writes}=realSetup(h,{env:{openFaq:(back)=>faqOpens.push({back,setupOpen:dialog.open})}});
   for (let i = 0; i < 5; i++) next();
   stubDocument.scrolls = [];
   h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  const aims = () => stubDocument.scrolls.filter((s) => s.node === get('faq')).length;
-  if (aims() !== 1) return false;
-  if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
-  for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
-  return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed' && faqOpens.length === 1
+    && faqOpens[0].back === resultsSection && faqOpens[0].setupOpen === false && stubDocument.scrolls.length === 0;
 });
-// Full smoke after the row pop-in fix (b14ff68): the FAQ sits below all
-// 2,900 rows, a smooth scroll that far took seconds, and rows drawn near the
-// bottom grew the list after it, so the page stopped ~12,000 px short. Far
-// away it now jumps, then re-aims each frame the FAQ drifts, without smooth.
-appCheck('the done screen FAQ jumps when far away and re-aims while the rows below settle', (h) => {
-  const {get}=h, frames=new Map(); let id=0, top=20000;
-  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
-  for (let i = 0; i < 5; i++) next();
-  const faq = get('faq'); faq.getBoundingClientRect = () => ({ top, bottom: top + 100, left: 0, right: 0, width: 0, height: 100 });
-  stubDocument.scrolls = [];
-  const origScroll = faq.scrollIntoView;
-  faq.scrollIntoView = function (opts) { top = 56; return origScroll.call(this, opts); };
-  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  const aims = () => stubDocument.scrolls.filter((s) => s.node === faq);
-  const first = aims()[0];
-  top = 900; // rows near the bottom were drawn and pushed the FAQ down
-  for (let i = 0; i < 3 && frames.size; i++) { const [[n, fn]] = frames; frames.delete(n); fn(); }
-  return aims().length >= 2 && aims().every((s) => (s.options?.behavior ?? s.behavior) === 'auto') && first !== undefined;
-});
+check('the done screen no longer scrolls to the footer FAQ: the jump and its re-aiming and scroll margin are gone',
+  !/showFaq|scrollIntoView|getElementById\('faq'\)/.test(read('js/onboarding.js'))
+  && /import \{ openFaq \} from '\.\/faq\.js';/.test(read('js/onboarding.js')) && /openFaq\(results\)/.test(read('js/onboarding.js'))
+  && !/#faq\{scroll-margin/.test(cssRules));
 appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
   const {dialog,next,doneScreen,api,writes}=realSetup(h);
   for (let i = 0; i < 6; i++) next();
@@ -8103,6 +8096,144 @@ await asyncAppCheck('Setup done activates Best match before showing results', as
   context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:36}));
   return run('state.sort')==='best' && run('state.myIbPoints')===36;
 },{boot:true});
+section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');
+// The FAQ lived only in the footer, below every row. The header's "?" opens
+// the same questions in a panel (js/faq.js), built like the Filters sheet:
+// show(), its own scrim, focus trap and Escape, never a page-wide inert.
+// Runs the real module against the real index.html as stand-in nodes.
+function faqHarness(test) {
+  const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners', 'canFocus', 'queueTask', 'scrolls', 'focusLog', 'focusOptions'];
+  const saved = Object.fromEntries(keys.map((k) => [k, stubDocument[k]]));
+  const original = globalThis.document;
+  globalThis.document = stubDocument;
+  try {
+    const tree = parseHtml(read('index.html')), all = () => [...nodesOf(tree)];
+    const get = (id) => all().find((n) => n.id === id) ?? null;
+    const tasks = [], hidden = new Set();
+    Object.assign(stubDocument, {
+      getElementById: get, querySelector: (sel) => tree.querySelector(sel), querySelectorAll: (sel) => tree.querySelectorAll(sel),
+      body: tree.querySelector('body'), documentElement: tree.querySelector('html'), activeElement: tree.querySelector('body'),
+      listeners: {}, scrolls: [], focusLog: [], focusOptions: undefined, queueTask: (fn) => tasks.push(fn),
+      canFocus: (node) => { for (let n = node; n; n = n.parent) if (n.hidden || hidden.has(n) || (n.tagName === 'dialog' && !n.open)) return false; return true; },
+    });
+    // The module wires itself when there is a document, as in the browser.
+    const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq });', { document: stubDocument });
+    api.wireFaq(); // a second call changes nothing
+    const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
+    return test({ tree, get, api, fire, tasks, hide: (node) => hidden.add(node), panel: get('faq-panel'), opener: get('faq-open'), heading: get('faq-h'),
+      scrim: get('faq-scrim'), html: stubDocument.documentElement, results: tree.querySelector('section[aria-labelledby="results-h"]') });
+  } catch (err) { console.log(`        ${err.message}`); return false; } finally {
+    Object.assign(stubDocument, saved);
+    globalThis.document = original;
+  }
+}
+{
+  const html = read('index.html'), faqSrc = read('js/faq.js').replace(/\/\/.*$/gm, '');
+  const shut = ({ panel, html: root, scrim, opener }) => !panel.open && !root.classList.contains('faq-open') && !scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'false';
+  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and the panel body is empty in index.html (one copy of the text)',
+    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><\/button>\s*<div class="lang"/.test(html)
+      && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html) && /<div class="faqp-b faq"><\/div>/.test(html)
+      && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
+      && ['r4_faq_tools', 'r4_faq_stored', 'r2_faq_cao', 'r2_faq_unknown', 'r2_faq_source'].every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2));
+  equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close'].flatMap((k) => [UI.en[k], UI.sk[k]]),
+    ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky']);
+  check('FAQ panel opens with show(): no showModal, inert or background aria-hidden (WebKit restyles every row for those)',
+    faqSrc.includes('panel.show();') && !/showModal\(|\binert\b|aria-hidden/.test(faqSrc));
+  check('FAQ panel copies every footer question once, closed, with its translation keys; the footer keeps its own',
+    faqHarness(({ get, panel }) => {
+      const foot = get('faq').querySelectorAll('details'), copies = panel.querySelectorAll('details');
+      const keys = (list) => list.map((d) => d.querySelectorAll('[data-i18n]').map((n) => n.getAttribute('data-i18n')).join());
+      return foot.length === 5 && copies.length === 5 && JSON.stringify(keys(copies)) === JSON.stringify(keys(foot))
+        && copies.every((d) => !d.open && d.getAttribute('open') === null && !foot.includes(d)) && get('faq').querySelectorAll('details').length === 5;
+    }) === true);
+  check('FAQ panel: switching language translates the copies, the heading and both buttons\' names',
+    faqHarness(({ tree, panel, heading, opener }) => {
+      const root = { documentElement: {}, querySelectorAll: (sel) => tree.querySelectorAll(sel) };
+      i18n.setLanguage('sk', { setItem() {} });
+      try {
+        i18n.applyLanguage(root);
+        return panel.querySelector('summary span').textContent === UI.sk.r4_faq_tools && panel.querySelectorAll('.a span').at(-1).textContent === UI.sk.r2_faq_source_a
+          && heading.textContent === UI.sk.r6_faq_h && opener.getAttribute('aria-label') === UI.sk.r6_faq
+          && panel.querySelector('.faqp-x').getAttribute('aria-label') === UI.sk.r6_faq_close;
+      } finally { i18n.setLanguage('en', { setItem() {} }); i18n.applyLanguage(root); }
+    }) === true);
+  check('FAQ "?" opens the panel with its scrim and lock class, says so, and focuses the heading; Escape closes and returns to "?"',
+    faqHarness((h) => {
+      const { fire, opener, panel, heading, scrim, html: root } = h;
+      fire(opener, 'click');
+      const opened = panel.open && root.classList.contains('faq-open') && scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'true'
+        && stubDocument.activeElement === heading;
+      fire(heading, 'keydown', { key: 'Escape', defaultPrevented: true });
+      const keptForOthers = panel.open;
+      fire(heading, 'keydown', { key: 'Escape' });
+      return opened && keptForOthers && shut(h) && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel: the scrim and the close button each close it and return to "?"',
+    faqHarness((h) => {
+      const { fire, opener, panel, scrim } = h;
+      fire(opener, 'click'); fire(scrim, 'click');
+      const byScrim = shut(h) && stubDocument.activeElement === opener;
+      fire(opener, 'click'); fire(panel.querySelector('.faqp-x'), 'click');
+      return byScrim && shut(h) && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel traps Tab both ways and pulls stray focus back to its heading',
+    faqHarness(({ fire, get, opener, panel, heading }) => {
+      fire(opener, 'click');
+      const close = panel.querySelector('.faqp-x'), summaries = panel.querySelectorAll('summary'), last = summaries.at(-1);
+      fire(heading, 'keydown', { key: 'Tab' });
+      const first = stubDocument.activeElement === close;
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const back = stubDocument.activeElement === last;
+      fire(last, 'keydown', { key: 'Tab' });
+      const wrap = stubDocument.activeElement === close;
+      const mid = summaries[1]; mid.focus(); const event = { key: 'Tab' };
+      const inside = fire(mid, 'keydown', event) && stubDocument.activeElement === mid; // the browser moves it
+      fire(get('f-search'), 'focusin');
+      return first && back && wrap && inside && stubDocument.activeElement === heading;
+    }) === true);
+  check('FAQ panel: Setup\'s done screen hands over the results list, which gets focus back; a hidden target falls back to "?"; a second open does nothing',
+    faqHarness(({ api, opener, results, hide, panel }) => {
+      api.openFaq(results); api.openFaq(); api.closeFaq();
+      const toList = stubDocument.activeElement === results;
+      api.openFaq(results); hide(results); api.closeFaq();
+      return toList && !panel.open && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel: a quick reopen survives the queued close event of the close before it',
+    faqHarness(({ fire, opener, panel, scrim, tasks, html: root }) => {
+      fire(opener, 'click'); fire(scrim, 'click'); fire(opener, 'click');
+      while (tasks.length) tasks.shift()();
+      return panel.open && root.classList.contains('faq-open') && scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'true';
+    }) === true);
+  check('FAQ panel: a wheel over the scrim, or over a panel with nothing to scroll, never scrolls the list behind',
+    faqHarness(({ fire, opener, panel, scrim }) => {
+      fire(opener, 'click');
+      const body = panel.querySelector('.faqp-b'), summary = panel.querySelector('summary');
+      const scrimBlocked = !fire(scrim, 'wheel'), headBlocked = !fire(panel.querySelector('.faqp-x'), 'wheel'), bodyScrolls = fire(summary, 'wheel');
+      body.scrollHeight = body.clientHeight;
+      return scrimBlocked && headBlocked && bodyScrolls && !fire(summary, 'wheel');
+    }) === true);
+  // CSS: the Filters sheet's stacking, curve and timing; a bottom sheet on
+  // phones, from the right from 600 px; "?" mid-close reaches the button
+  // through the fading scrim; reduced motion fades; print hides it all.
+  const z = (sel) => Number(ruleAt(cssText, sel).match(/z-index:(\d+)/)?.[1]);
+  check('FAQ panel CSS: above header, tray and toasts, below Setup; sheet on phones, side panel from 600 px; the closing scrim lets "?" through',
+    z('.faqp') === 70 && z('.faq-scrim') === 69 && z('.faq-scrim') > Math.max(z('.hd'), z('.toasts'), z('.cmp-tray')) && z('dialog.ob') > z('.faqp')
+      && /transform:translateY\(100%\)/.test(ruleAt(cssText, '.faqp')) && /max-height:85dvh/.test(ruleAt(cssText, '.faqp'))
+      && /inset:0 0 0 auto;width:min\(440px,100%\);max-height:none;[^}]*transform:translateX\(100%\)/.test(ruleAt(cssText, '.faqp', '(min-width:600px)'))
+      && /@media \(min-width:600px\)\{[^@]*@starting-style\{\.faqp\[open\]\{transform:translateX\(100%\)\}\}/.test(cssText)
+      && /pointer-events:none/.test(ruleAt(cssText, '.faq-scrim')) && /pointer-events:auto/.test(ruleAt(cssText, '.faq-scrim.is-open'))
+      && /overflow:hidden/.test(ruleAt(cssText, 'html.faq-open', '(max-width:599.98px)')) && !ruleAt(cssText, 'html.faq-open'));
+// Smoke F1 found it: with touch at 600 px the 44 px "?" left Search 148 px
+// wide (it wants 160). Only there the header buttons sit 4 px apart.
+check('FAQ "?" on a 600-700 px touch screen: the header tightens its gaps so Search keeps 160 px',
+  /gap:4px/.test(ruleAt(cssText, '.hd .hd-right', '(pointer:coarse) and (min-width:600px) and (max-width:700px)'))
+    && /gap:12px/.test(ruleAt(cssText, '.hd .hd-in', '(pointer:coarse) and (min-width:600px) and (max-width:700px)')));
+  check('FAQ panel CSS: reduced motion fades it in 120 ms with no slide; print hides the panel and scrim',
+    /transform:none/.test(ruleAt(cssText, '.faqp[open]', '(prefers-reduced-motion:reduce)'))
+      && /@media \(prefers-reduced-motion:reduce\)\{[^@]*@starting-style\{\.faqp\[open\]\{opacity:0;transform:none\}\}/.test(cssText)
+      && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
+      && /display:none/.test(ruleAt(cssText, 'dialog.faqp[open]', 'print')) && /display:none/.test(ruleAt(cssText, '.faq-scrim.is-open', 'print')));
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

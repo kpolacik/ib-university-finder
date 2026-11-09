@@ -23,6 +23,7 @@
 <link rel="modulepreload" href="js/cost.js">
 <link rel="modulepreload" href="js/csv.js">
 <link rel="modulepreload" href="js/data.js">
+<link rel="modulepreload" href="js/faq.js">
 <link rel="modulepreload" href="js/filters.js">
 <link rel="modulepreload" href="js/i18n.js">
 <!-- points.js was missing: found only after render.js and filters.js loaded, it
@@ -111,6 +112,9 @@
        what the site is for. Same shapes as icons/icon.svg; colours come from the brand tokens. -->
   <symbol id="i-logo" viewBox="0 0 36 36"><path d="M7.6 9.6a1.6 1.6 0 0 1 1.6-1.6h2.8a1.6 1.6 0 0 1 1.6 1.6V28l-3-3.1-3 3.1Z" style="fill:var(--brand-accent)"/><path d="M18.6 17V9.7h4a3.65 3.65 0 0 1 0 7.3ZM18.6 17h4.9a4.3 4.3 0 0 1 0 8.6h-4.9Z" fill="none" stroke-width="3.3" stroke-linejoin="round" style="stroke:var(--brand-ink)"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12m0-12L6 18" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+<!-- Phosphor Regular question, @phosphor-icons/core 2.1.1, MIT. Filled here:
+     the header's .ic does not set a fill for 256-unit icons. -->
+<symbol id="i-help" viewBox="0 0 256 256"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" fill="currentColor"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
 <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 14 4-4m-5-2 2-2a4 4 0 0 1 6 6l-2 2m-6-4-2 2a4 4 0 0 0 6 6l2-2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
 <symbol id="i-sort" viewBox="0 0 256 256"><path d="M117.66,170.34a8,8,0,0,1,0,11.32l-32,32a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,11.32-11.32L72,188.69V48a8,8,0,0,1,16,0V188.69l18.34-18.35A8,8,0,0,1,117.66,170.34Zm96-96-32-32a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L168,67.31V208a8,8,0,0,0,16,0V67.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
@@ -159,7 +163,7 @@
         <input class="inp" type="search" id="f-search" name="search" form="filter-form" placeholder="Programme, university or city" data-i18n-attr="placeholder:r2_searchph"><kbd aria-hidden="true">/</kbd>
       </span>
     </div>
-    <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button>
+    <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg></button>
       <div class="lang" role="group" aria-label="Site language" data-i18n-attr="aria-label:site_language">
         <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
         <button type="button" aria-pressed="false" data-language="sk" lang="sk"><span data-i18n="sk">SK</span><span class="visually-hidden" data-i18n="slovak"> (slovenčina)</span></button>
@@ -439,6 +443,18 @@
     <!-- Disabled until the first count: "Show N programmes" needs the N. -->
     <button type="button" id="sheet-show" class="btn btn-p" disabled data-i18n="loading_programmes">Loading programmes…</button>
   </div>
+</dialog>
+
+<!-- The FAQ panel behind the header's "?" (js/faq.js): a sheet on phones,
+     a side panel from 600 px. Its body stays empty here; faq.js copies the
+     footer's questions in at startup, so the text lives in one place. -->
+<div class="faq-scrim" id="faq-scrim" aria-hidden="true"></div>
+<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">
+  <div class="faqp-h">
+    <h2 id="faq-h" tabindex="-1" data-i18n="r6_faq_h">Frequently asked questions</h2>
+    <button type="button" class="btn btn-q faqp-x" aria-label="Close the FAQ" data-i18n-attr="aria-label:r6_faq_close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="faqp-b faq"></div>
 </dialog>
 
 <p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>
