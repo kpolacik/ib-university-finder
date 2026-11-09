@@ -2128,6 +2128,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .listp>.f-sort .sort-dd .dd-chev .ic{width:16px;height:16px;fill:none}
 .sort-dd .dropdown-panel{width:300px}
 .sort-dd .dropdown-panel>.options{max-height:none}
+.sort-dd .option:has(input:disabled){color:var(--ink-3);cursor:default}
 @media (max-width:599.98px){
  .listp>.f-sort>.sort-l{flex:0 0 6rem;white-space:normal}
  .ml-group>.inp{max-width:none}

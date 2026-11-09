@@ -308,7 +308,8 @@ export function stateToParams(state) {
   for (const v of state.cities) params.append('city', v);
   if (state.deadlineWindow !== 'any') params.set('deadline', state.deadlineWindow);
   if (state.dir === 'desc') params.set('dir', 'desc');
-  if (state.sort !== DEFAULT_SORT) params.set('sort', state.sort);
+  // With points, a plain address selects Best match; Deadline must be explicit.
+  if (state.sort !== DEFAULT_SORT || state.myIbPoints !== null) params.set('sort', state.sort);
   return params.toString();
 }
 

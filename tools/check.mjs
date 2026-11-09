@@ -2395,7 +2395,7 @@ console.log(`        ${r2Rows.length} cutoff rows convert differently between ro
 equal('maths=1 survives the address round trip; maths=yes and no maths are unticked',
   [paramsToState(stateToParams(fstate(36, true))).hlMaths, stateToParams(fstate(36, true)),
     paramsToState('points=36&maths=yes').hlMaths, paramsToState('points=36').hlMaths],
-  [true, 'points=36&maths=1', false, false]);
+  [true, 'points=36&maths=1&sort=deadline', false, false]);
 check('the tick counts as a filter, so Clear all clears it',
   filtersMod.activeFilterCount(fstate(null, true)) === 1);
 check('app.js restores, reads, clears and names the tick, and the count carries the split',
@@ -3061,7 +3061,7 @@ check('sort header keeps its four column sorts, hidden direction text and one de
     && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
-    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*explicitSort = state.sort !== 'best';\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
+    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*explicitSort = state.sort !== 'best';\s*preferencesDirty = true;\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
 check('row toggle retains slots and native button/list semantics with roving controls',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
@@ -3954,7 +3954,7 @@ appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on 
     radio.checked = true; fire(radio, 'change');
   };
   details.open = true;
-  const [first, second, third] = radios().map((node) => node.value);
+  const [first, second, third] = radios().filter((node) => !node.disabled).map((node) => node.value);
   pick(second, 'arrow');
   if (!details.open || run('`${state.sort}:${state.dir}`') !== second || stubDocument.activeElement?.value !== second
     || stubDocument.activeElement === radios().find((node) => node.value === first)) return false;
@@ -4777,9 +4777,9 @@ check('unknown degree and all three city states have visible summary/detail labe
   const r = { ...revisionBase, degreeType, city: '' };
   return rowOf(r).textContent.includes('Degree type unknown') && rowOf(r).textContent.includes('City unknown') && detailOf(r).textContent.includes('Degree type unknown') && detailOf(r).textContent.includes('City unknown') && detailOf({ ...r, cityUnknown: true }).textContent.includes('City not published');
 })));
-check('sort select renders ten choices without points, including yearly cost', withStubDocument(() => {
+check('sort select keeps Best match disabled without points alongside yearly cost', withStubDocument(() => {
   const select = new ChromeNode('select'); renderSortOptions(select, filtersMod.SORTS, 'tuition', 'desc');
-  return select.children.length === 10 && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 10;
+  return select.children.length === 11 && select.children.find((o) => o.value === 'best:asc')?.disabled === true && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 11;
 }));
 check('option search starts above 12, folds accents, clears/no-matches and preserves hidden selection nodes', withStubDocument(() => {
   const panel = new ChromeNode('div'); panel.setAttribute('aria-label','Fixture');
@@ -4809,7 +4809,7 @@ appCheck('sort headings toggle both ways, a new key starts naturally, select/fil
   get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
   if (context.document.querySelector('.sort-label').textContent !== 'Programme — A to Z') return false;
   get('f-deadline').value = 'open'; fire(get('f-deadline'),'change'); fire(get('f-clear'),'click');
-  return run('state.sort + state.dir') === 'tuitiondesc' && get('f-sort').value === 'tuition:desc' && get('f-deadline').value === 'any';
+  return run('state.sort + state.dir') === 'deadlineasc' && get('f-sort').value === 'deadline:asc' && get('f-deadline').value === 'any';
 });
 // Phase 3 diagnosis: the active mark was a CSS triangle that pointed down in
 // both directions and a different box from the inactive one. Now every heading
@@ -8068,10 +8068,11 @@ section('Smarter sort');
   equal('cost lowest: unknown fee/living last', sortRows(costs,'cost','asc',st).map(r=>r.id), ['low','high','missing-fee','missing-living']);
   equal('cost highest: unknown fee/living still last', sortRows(costs,'cost','desc',st).map(r=>r.id), ['high','low','missing-fee','missing-living']);
   equal('cost uses personal living costs, including zero', sortRows(costs,'cost','asc',{...st,myLiving:0}).map(r=>r.id), ['low','missing-living','high','missing-fee']);
-  for (const key of ['best','cost']) {
+  for (const key of ['best','cost','deadline']) {
     const parsed = paramsToState(stateToParams({...st,sort:key}));
     equal(`${key} URL round trip`, [parsed.sort,parsed.myIbPoints], [key,36]);
   }
+  equal('Deadline with points is explicit in shared and reloaded URLs', new URLSearchParams(stateToParams({...st,sort:'deadline'})).get('sort'), 'deadline');
   equal('Best match URL without usable points falls back to deadline', ['sort=best','sort=best&points=bad','sort=best&points=46'].map(q=>paramsToState(q).sort), ['deadline','deadline','deadline']);
   equal('saved Best match without points falls back to deadline', savedState.validateFilters({sort:'best'}).sort, 'deadline');
   equal('saved Best match with points is valid', savedState.validateFilters({sort:'best',myIbPoints:36}).sort, 'best');
@@ -8094,7 +8095,7 @@ appCheck('points field auto-switches, explicit menu choice sticks, and clear rem
   if(run('state.sort')!=='cost' || run('state.dir')!=='desc') return false;
   get('f-sort').value='best:asc'; fire(get('f-sort'),'change');
   run('clearAll();');
-  return run('state.sort')==='deadline' && !get('f-sort').children.some(o=>o.value==='best:asc');
+  return run('state.sort')==='deadline' && get('f-sort').children.find(o=>o.value==='best:asc')?.disabled === true;
 });
 await asyncAppCheck('Setup done activates Best match before showing results', async ({run,context,settle})=>{
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
@@ -8117,12 +8118,16 @@ await asyncAppCheck('Setup done activates Best match before showing results', as
   check('older snapshots without a sort restore deadline order, not picked', restoration('', { version: 1, filters: { myIbPoints: 36 } }).sortPicked === false);
 }
 await asyncAppCheck('a sort picked in the menu is saved; Clear all removes it with the filters', async ({run,get,fire,context,settle,advance}) => {
+  Object.defineProperty(get('f-sort'), 'options', {get() { return this.children; }});
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
-  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'), 'change'); advance(500);
+  context.Event = class { constructor(type) { this.type = type; this.bubbles = false; } };
+  fire(get('sort-options').querySelectorAll('input').find((n) => n.value === 'tuition:desc'), 'change'); advance(500);
   const last = context.prefWrites?.at(-1)?.filters;
   if (last?.sort !== 'tuition' || last?.dir !== 'desc') return false;
   run('clearAll();'); advance(500);
-  return context.prefWrites.at(-1) === null;
+  if (context.prefWrites.at(-1) !== null || run('state.sort') !== 'deadline' || run('state.dir') !== 'asc' || run('explicitSort')) return false;
+  get('f-points').value = '38'; fire(get('f-points'), 'input'); advance(500);
+  return run('state.sort') === 'best';
 }, {boot:true});
 await asyncAppCheck('a sort picked from a column header is saved too', async ({fire,context,settle,advance}) => {
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
@@ -8141,6 +8146,64 @@ await asyncAppCheck('a restored hand-picked sort survives setting points (no swi
 await asyncAppCheck('saved points without a saved sort still select Best match on reload', async ({run,context,settle,advance}) => {
   context.savedPrefs = {version:1,filters:{myIbPoints:36}};
   run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  return run('state.sort') === 'best' && run('explicitSort') === false;
+}, {boot:true});
+appCheck('Clear all forgets a hand-picked Tuition sort and points can choose Best match again', ({run,get,fire,advance}) => {
+  run('wireInputs();');
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
+  run('clearAll();');
+  if (run('state.sort') !== 'deadline' || run('state.dir') !== 'asc' || run('explicitSort') || new URLSearchParams(run('stateToParams(state)')).has('sort')) return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  return run('state.sort') === 'best';
+});
+appCheck('URL points are applied before syncSort builds the initial Best match menu', ({run,context}) => {
+  context.location.search = '?points=36&sort=best';
+  run('state.myIbPoints = null; applyUrlFields(); syncSort();');
+  return run('state.sort') === 'best' && run('state.myIbPoints') === 36;
+});
+appCheck('Best match radios mirror disabled options, reject disabled changes, and enable/disable with points', ({run,get,fire,context,advance}) => {
+  Object.defineProperty(get('f-sort'), 'options', {get() { return this.children; }});
+  context.Event = class { constructor(type) { this.type = type; this.bubbles = false; } };
+  run('syncSort(); wireInputs();');
+  const best = () => get('sort-options').querySelectorAll('input').find((n) => n.value === 'best:asc');
+  if (!best()?.disabled || !get('f-sort').children.find((n) => n.value === 'best:asc')?.disabled) return false;
+  fire(best(), 'change');
+  if (run('state.sort') !== 'deadline') return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  if (best().disabled || run('state.sort') !== 'best') return false;
+  get('f-points').value = ''; fire(get('f-points'),'input'); advance(500);
+  return best().disabled === true && run('state.sort') === 'deadline';
+});
+for (const language of ['en','sk']) check(`${language}: Best match disabled hint is readable and disappears with points`, withStubDocument(() => {
+  i18n.setLanguage(language);
+  try {
+    const select = new ChromeNode('select');
+    renderSortOptions(select,filtersMod.SORTS,'deadline');
+    const off = select.children.find(o=>o.value==='best:asc');
+    if (!off?.disabled || off.textContent !== (language === 'en' ? 'Best match (enter your IB points first)' : 'Najlepšia zhoda (najprv zadaj svoje IB body)')) return false;
+    renderSortOptions(select,filtersMod.SORTS,'best','asc',{myIbPoints:38});
+    const on = select.children.find(o=>o.value==='best:asc');
+    return on.disabled === false && on.textContent === (language === 'en' ? 'Best match' : 'Najlepšia zhoda');
+  } finally { i18n.setLanguage('en'); }
+}));
+// Reload through the same boot ordering: URL fields, syncSort, then data/readFields.
+for (const source of ['url', 'saved']) {
+  await asyncAppCheck(`${source}: explicit Deadline with points survives boot and later points edits`, async ({run,get,fire,context,settle,advance}) => {
+    if (source === 'url') context.location.search = '?points=36&sort=deadline';
+    else context.savedPrefs = {version:1,filters:{myIbPoints:36,sort:'deadline',dir:'asc'}};
+    run('applyUrlFields(); syncSort();');
+    context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+    if (run('state.sort') !== 'deadline' || run('state.myIbPoints') !== 36) return false;
+    get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+    return run('state.sort') === 'deadline';
+  }, {boot:true});
+}
+await asyncAppCheck('a URL Best match without points does not suppress automatic Best match later', async ({run,get,fire,context,settle,advance}) => {
+  context.location.search = '?sort=best';
+  run('applyUrlFields(); syncSort();');
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  if (run('state.sort') !== 'deadline') return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
   return run('state.sort') === 'best' && run('explicitSort') === false;
 }, {boot:true});
 section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');

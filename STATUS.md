@@ -609,6 +609,12 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Sort survives reload (2026-11-09):** Picks from the Sort menu are saved,
+including Deadline when points are set. Reloading a link or saved preferences
+keeps that choice. Clear all forgets the sort too; entering points afterwards
+selects Best match again. A Best match link without points still starts in
+Deadline order and switches to Best match once points are entered.
+
 **One Tab stop per programme (2026-11-09, backlog a):** Each programme
 summary has one Tab stop. Left/Right moves between its title, Compare and Save;
 Up/Down moves to the same control in the neighbouring programme, mounting it
@@ -1793,6 +1799,7 @@ has already chosen a sort. Best match puts programmes within their points first,
 then those needing HL Maths 4+, then those that cannot be compared. Each group
 uses deadline order, then the closest points figure and name. Clearing points
 returns Best match to deadline order. Best match has one direction.
+Without points, Best match stays visible but disabled with a hint to enter IB points first.
 Total yearly cost orders the low yearly estimate and uses My living costs when
 set; unknown costs stay last in either direction. Other sorts break ties by
 deadline, then name. A sort the student picks is saved with their filters

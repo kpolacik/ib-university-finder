@@ -1005,13 +1005,14 @@ export function renderAppliedChips(container, chips, onRemove) {
 }
 
 export function renderSortOptions(select, sorts, current, direction = 'asc', state = {}) {
-  select.replaceChildren(...Object.entries(sorts).filter(([key]) => key !== 'best' || state.myIbPoints != null).flatMap(([key, natural]) => (key === 'best' ? ['asc'] : ['asc', 'desc']).map((dir) => {
+  select.replaceChildren(...Object.entries(sorts).flatMap(([key, natural]) => (key === 'best' ? ['asc'] : ['asc', 'desc']).map((dir) => {
     const value = `${key}:${dir}`;
     const label = dir === 'desc' ? REVERSE_SORTS[key] : natural;
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = label;
-    option.selected = key === current && dir === direction;
+    option.disabled = key === 'best' && state.myIbPoints == null;
+    option.textContent = option.disabled ? t('best_match_needs_points') : label;
+    option.selected = !option.disabled && key === current && dir === direction;
     return option;
   })));
 }
