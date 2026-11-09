@@ -1,11 +1,13 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --integration-fixes-only # sort, logo, row layout, resize, sheet/print
 //   node tools/smoke.mjs --row-keyboard-only # Tab stops, arrows, toggle/rebuild focus
 //   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
 //   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
+//   node tools/smoke.mjs --phone-fixes-only # phone form, tray keyboard and sorting regressions
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
@@ -387,6 +389,28 @@ async function openPage(base, width, height, { block = [] } = {}) {
     await writeFile(path, Buffer.from(data, 'base64'));
   };
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
+}
+
+// Prepare a named programme through the row keyboard's own mount path. Search
+// can match many rows; a match need not be in the viewport's DOM window.
+async function mountProgramme(page, id) {
+  await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!!document.querySelector('#results>.item'),why:'rows not ready'})`,5000,'programme list');
+  await page.ev(`(async()=>{
+    const {loadData}=await import('./js/data.js');
+    const {paramsToState,buildFacets,applyFilters,sortRows}=await import('./js/filters.js');
+    const data=(await loadData()).programmes,st=paramsToState(location.search,buildFacets(data));
+    const rows=sortRows(applyFilters(data,st,new Set()),st.sort,st.dir,st);
+    const at=rows.findIndex(r=>r.id===${JSON.stringify(id)});
+    if(at<0)throw Error('Programme is outside the filtered list: '+${JSON.stringify(id)});
+    const mounted=[...document.querySelectorAll('#results>.item')];
+    const nearest=mounted.sort((a,b)=>Math.abs(Number(a.getAttribute('aria-posinset'))-1-at)-Math.abs(Number(b.getAttribute('aria-posinset'))-1-at))[0];
+    let i=Number(nearest.getAttribute('aria-posinset'))-1;
+    nearest.querySelector('button.open').focus({preventScroll:true});
+    while(i!==at){const key=i<at?'ArrowDown':'ArrowUp';document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));i+=i<at?1:-1;}
+    const row=document.activeElement.closest('.item');
+    if(row?.dataset.id!==${JSON.stringify(id)})throw Error('Row keyboard did not mount the requested programme');
+    row.scrollIntoView({block:'center',behavior:'instant'});
+  })()`);
 }
 
 // --- Reporting ----------------------------------------------------------------
@@ -1780,7 +1804,7 @@ async function runBatch2C(base) {
     const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
     try {
       await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
-        await page.waitFor(`({ok:!!document.querySelector('li[data-id="${row.id}"] button.open'),why:'programme not rendered'})`, 5000, 'programme');
+        await mountProgramme(page, row.id);
         await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
         assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
         await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
@@ -2815,8 +2839,13 @@ async function runAlignListCompare(base) {
     const page = await open(`?ui=${ui}&q=Masaryk`, 320, 640);
     try {
       await check(`320/${ui}`, 'AL degree row', 'every long-cycle degree stays left of the row toggles and inside the card', async () => {
-        const m = await page.ev(`[...document.querySelectorAll('#results li.item')].filter(li=>${JSON.stringify(longCycle.map((r) => r.id))}.includes(li.dataset.id)).map(li=>{li.style.contentVisibility='visible';const d=li.querySelector('.deg').getBoundingClientRect(),c=li.querySelector('button.cmpi').getBoundingClientRect(),row=li.querySelector('.row').getBoundingClientRect();return {id:li.dataset.id,ok:d.right<=c.left+0.5&&d.right<=row.right}})`);
-        assert(m.length >= 2 && m.every((x) => x.ok), JSON.stringify(m));
+        const targets = longCycle.filter(r => r.university.includes('Masaryk'));
+        assert(targets.length >= 2, 'no long-cycle Masaryk sample');
+        for (const row of targets) {
+          await mountProgramme(page, row.id);
+          const m = await page.ev(`(()=>{const li=document.querySelector('#results li[data-id="${row.id}"]'),d=li.querySelector('.deg').getBoundingClientRect(),c=li.querySelector('button.cmpi').getBoundingClientRect(),r=li.querySelector('.row').getBoundingClientRect();return {id:li.dataset.id,ok:d.right<=c.left+0.5&&d.right<=r.right}})()`);
+          assert(m.ok, JSON.stringify(m));
+        }
       });
     } finally { await page.close(); }
   }
@@ -2868,6 +2897,7 @@ async function runAlignListCompare(base) {
           await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
           await page.waitFor(`({ok:innerWidth===${width}&&!document.querySelector('#results .expand:not([inert])')&&!document.querySelector('#pane .pane-body .d-actions'),why:'viewport or an open detail'})`, 5000, 'closed at this width');
           const detail = width >= 1200 ? '#pane .pane-body' : `#results li[data-id="${target.id}"] .expand:not([inert])`;
+          await mountProgramme(page, target.id);
           await page.click(`document.querySelector('#results li[data-id="${target.id}"] button.open')`, 'the programme');
           await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions button.cmpb'),why:'detail not open'})`, 5000, 'detail');
           await settle(page);
@@ -2901,14 +2931,24 @@ async function runAlignListCompare(base) {
     const page = await open(`?ui=${ui}&country=Ireland`, width, height);
     try {
       await check(`${width}/${ui}`, 'AL row labels and toggles', 'labels line up with their values (left, fee right); Compare and Save centre on the title\'s first line', async () => {
-        const m = await page.ev(`(()=>{const tr=(e)=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect()};const out={labels:[],toggles:[]};
-          for(const li of [...document.querySelectorAll('#results li.item')].slice(0,40)){li.style.contentVisibility='visible';
+        await page.ev('window.__labelSeen=new Set()');
+        const m = { labels: [], toggles: [] };
+        for (let batch = 0; batch < 10; batch++) {
+          const sample = await page.ev(`(()=>{const tr=(e)=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect()};const out={labels:[],toggles:[]};
+          for(const li of [...document.querySelectorAll('#results li.item')].filter(li=>!__labelSeen.has(li.dataset.id)).slice(0,40-__labelSeen.size)){__labelSeen.add(li.dataset.id);li.style.contentVisibility='visible';
             for(const c of li.querySelectorAll('.row .cell')){const l=c.querySelector(':scope>.lab'),v=c.querySelector(':scope>.fig')||c.querySelector(':scope>.verd');if(!l||!v||getComputedStyle(l).display==='none'||l.getClientRects().length===0)continue;const a=tr(l),b=tr(v);if(!a.width)continue;out.labels.push(c.classList.contains('c-fee')?Math.round((a.right-b.right)*10)/10:Math.round((a.left-b.left)*10)/10)}
             const t=li.querySelector('.r-t .open'),r=document.createRange();r.selectNodeContents(t);const first=r.getClientRects()[0];const mid=first.top+first.height/2;
             for(const b of li.querySelectorAll('.r-main>:is(.cmpi,.star)')){const x=b.getBoundingClientRect();out.toggles.push(Math.round((x.top+x.height/2-mid)*10)/10)}}
           return out})()`);
+          m.labels.push(...sample.labels); m.toggles.push(...sample.toggles);
+          if (await page.ev('__labelSeen.size>=40')) break;
+          await page.ev(`(()=>{const last=[...document.querySelectorAll('#results>.item')].at(-1);last.querySelector('button.open').focus({preventScroll:true});document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));document.activeElement.scrollIntoView({block:'center',behavior:'instant'})})()`);
+          await settle(page);
+        }
+        assert(await page.ev('__labelSeen.size>=40'), 'fewer than 40 row samples');
         assert(m.toggles.length >= 20 && m.toggles.every((d) => Math.abs(d) <= 1.5), 'toggles ' + JSON.stringify(m.toggles));
         if (width < 800) assert(m.labels.length >= 30 && m.labels.every((d) => Math.abs(d) <= 1), 'labels ' + JSON.stringify(m.labels));
+        console.log(`MEASURE row labels ${width}/${ui}: ${m.toggles.length / 2} rows, toggle max ${Math.max(...m.toggles.map(Math.abs))} px, label max ${Math.max(0,...m.labels.map(Math.abs))} px`);
         if (width === 390 || width === 700) await shot(page, `rows-${width}-${ui}`);
       });
       if (width === 1280) await check(`${width}/${ui}`, 'AL sort heading', 'a sort heading\'s hover area is its label and mark, not the whole column', async () => {
@@ -3624,6 +3664,7 @@ async function runPhoneFixes(base) {
           await tab(page); stops++;
           if (await page.ev(`!!document.activeElement?.closest('#results')`)) row = true;
         }
+        await page.waitFor(`({ok:!document.querySelector('#cmp-tray').getAnimations().some(a=>a.playState==='running'),why:'tray entering'})`,5000,'tray settled');
         const m = await page.ev(`(()=>{const r=document.querySelector('#cmp-tray').getBoundingClientRect();return {open:document.activeElement?.id,bottom:Math.round(r.bottom),top:Math.round(r.top),pos:getComputedStyle(document.querySelector('#cmp-tray')).position,h:innerHeight}})()`);
         assert(m.open === 'cmp-tray-open' && !row, `after ${stops} stops focus is on ${m.open}${row ? ', having passed a row' : ''}`);
         assert(m.pos === 'fixed' && m.bottom <= m.h && m.bottom >= m.h - 24 && m.top > m.h / 2, `tray at ${JSON.stringify(m)}`);
@@ -4536,6 +4577,14 @@ async function runWindow(base, want) {
           await page.waitFor(`({ok:!!document.elementFromPoint(innerWidth/3,600)?.closest('.item')&&document.querySelectorAll('#results>.item').length<100,why:'window not drawn'})`,5000,'deep window');
         }
         assert(await page.ev(`!document.querySelector('#results [data-id="${first.id}"]')`), 'first row never evicted');
+        const anchor = await page.ev(`(()=>{const r=document.elementFromPoint(innerWidth/3,600).closest('.item');return {id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY}})()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length===${want.total}`), 'deep print lost rows');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        const returned = await page.ev(`(()=>{const r=document.querySelector('#results>[data-id="${anchor.id}"]');return {top:r?.getBoundingClientRect().top,y:scrollY}})()`);
+        assert(Math.abs(returned.top-anchor.top)<=1 && Math.abs(returned.y-anchor.y)<=1, 'print moved the visible programme: '+JSON.stringify({anchor,returned}));
         await page.ev(`document.elementFromPoint(innerWidth/3,600).closest('.item').querySelector('button.open').focus({preventScroll:true});window.__focusId=document.activeElement.closest('.item').dataset.id;scrollTo(0,0)`);
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         assert(await page.ev(`document.activeElement.closest('.item')?.dataset.id===__focusId&&document.querySelectorAll('#results>.item').length<100`), 'focus lost or distant focus filled the gap');
@@ -4646,6 +4695,7 @@ async function runSheetPacing(base, want) {
 // suite. Native touch events and in-page clocks include the work before paint.
 async function runNonModalSheet(base, want) {
   for (const [width, height] of [[390, 844], [320, 640]]) {
+    watchdog.refresh();
     const page = await openPage(base, width, height);
     try {
       await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -4733,6 +4783,9 @@ async function runNonModalSheet(base, want) {
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print scrim/scroll lock');
         await page.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        // Media emulation does not deliver the browser's afterprint event.
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'print left the full catalogue mounted');
         await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
         await page.waitFor(`({ok:document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.querySelector('#sheet-scrim').classList.contains('is-open'),why:'setup handover'})`, 5000, 'Setup taking over');
         await page.key('Escape', 'Escape', 27);
@@ -4842,7 +4895,11 @@ async function runSmarterSort(base) {
         for(let i=0;i<4;i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`,'next Setup step');
         assert(await page.ev(`Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-sort').value==='best:asc' && document.querySelector('#sort-current').textContent==='Best match'`),'Setup did not activate Best match on done');
         await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Show my programmes');
-        await page.waitFor(`(async()=>{const {loadData}=await import('./js/data.js');const {createFilterState,applyFilters,sortRows}=await import('./js/filters.js');const rows=(await loadData()).programmes;const st={...createFilterState(),myIbPoints:36,sort:'best'};const expected=sortRows(applyFilters(rows,st,new Set()),'best','asc',st).slice(0,20).map(r=>r.id);const actual=[...document.querySelectorAll('#results li.item')].slice(0,20).map(n=>n.dataset.id);return {ok:JSON.stringify(actual)===JSON.stringify(expected),why:'Best match row order differs'}})()`,15000,'Best match rows');
+        await page.ev('scrollTo({top:0,behavior:"instant"})');
+        await page.waitFor(`({ok:document.querySelector('#results>.item[aria-posinset="1"]'),why:'first row not mounted'})`,5000,'first Best match row');
+        const order = await page.ev(`(async()=>{const {loadData}=await import('./js/data.js');const {createFilterState,applyFilters,sortRows}=await import('./js/filters.js');const rows=(await loadData()).programmes;const st={...createFilterState(),myIbPoints:36,sort:'best'};const expected=sortRows(applyFilters(rows,st,new Set()),'best','asc',st).slice(0,20).map(r=>r.id);const dom=[...document.querySelectorAll('#results>.item')].slice(0,20).map(r=>r.dataset.id);const actual=[];document.querySelector('#results>.item[aria-posinset="1"] button.open').focus({preventScroll:true});for(let i=0;i<expected.length;i++){actual.push(document.activeElement.closest('.item').dataset.id);if(i+1<expected.length)document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));}return {actual,expected,dom}})()`);
+        assert(order.dom.length>0&&JSON.stringify(order.dom)===JSON.stringify(order.expected.slice(0,order.dom.length)), 'Best match DOM order differs: '+JSON.stringify(order));
+        assert(JSON.stringify(order.actual)===JSON.stringify(order.expected), 'Best match row order differs: '+JSON.stringify(order));
         await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='cost:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
         await page.waitFor(`({ok:document.querySelector('#f-sort').value==='cost:desc' && new URLSearchParams(location.search).get('points')==='38',why:'explicit sort or points lost'})`,5000,'explicit sort retention');
         await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='best:asc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
@@ -5091,7 +5148,16 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sort-only')) {
+  if (args.has('--integration-fixes-only')) {
+    await runSmarterSort(base);
+    await runBatch2C(base);
+    await runBatch3C(base);
+    await runAlignListCompare(base);
+    await runCompareHeaderR2(base);
+    await runPhoneFixes(base);
+    await runNonModalSheet(base, want);
+    await runColdSheet(base, want);
+  } else if (args.has('--sort-only')) {
     await runSmarterSort(base);
   } else if (args.has('--faq-only')) {
     await runFaqPanel(base, want);
@@ -5109,6 +5175,8 @@ async function main() {
   } else if (args.has('--setup-only') || args.has('--onboarding-only')) {
     await runNonModalSetup(base, want);
     if (args.has('--setup-only')) { await runRound2(base); await runBatch3C(base); await runAlignChromeSetup(base); await runSetupCompareReview(base); }
+  } else if (args.has('--phone-fixes-only')) {
+    await runPhoneFixes(base);
   } else if (args.has('--sheet-only')) {
     await runNonModalSheet(base, want);
     await runColdSheet(base, want);
