@@ -2342,6 +2342,14 @@ equal('applyFilters drops only the hidden bucket', visible(36, false),
   bk.map((p) => p.id).filter((id) => !['c-625', 'nl-37'].includes(id)));
 equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, fstate(36)), filtersMod.pointsSummary(bk, fstate(36, true))],
   ['5 within your IB points · 2 only with HL Maths 4+ · 2 can’t be compared', '7 within your IB points · 2 can’t be compared']);
+// The count line printed "1512 can't be compared" while the Setup done screen
+// said "1,512" / "1 512" (PR 1 leftovers). Same formatting, both languages.
+{
+  const many = Array.from({ length: 1512 }, () => ({ ibPointsMin: null }));
+  const summaryIn = (lang) => { i18n.setLanguage(lang, { setItem() {} }); try { return filtersMod.pointsSummary(many, fstate(36)); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('pointsSummary groups thousands like the count line: 1,512 in English, 1 512 in Slovak',
+    [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
+}
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
   [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
