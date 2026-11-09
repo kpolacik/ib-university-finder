@@ -50,6 +50,12 @@ follow-up from the translation plan.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
+**FAQ one tap away** (Leon, 2026-11-09: "someone looking for faq has to scroll through all rows"). The header has a "?" button (named "FAQ" / "Časté otázky" for screen readers) between Compare and SK/EN. It opens the questions in a panel: a sheet from the bottom on phones, like Filters, and a side panel from the right from 600 px. (Since the same day the panel is the FAQ's only home; see the next-but-one entry.) The panel works like the Filters sheet (`show()`, its own scrim, focus trap, Escape, no page-wide inert, same 280/220 ms curve), can be reopened mid-close, fades in 120 ms with reduced motion, and only locks page scrolling on phones (from 600 px a wheel over the scrim is stopped instead). Setup's "Read the FAQ" now opens this panel and closing it returns to the list; the old scroll-to-the-footer jump and its re-aiming are gone. On a 600-700 px touch screen the header buttons sit 4 px apart so Search keeps 160 px. Checks: `check.mjs` section "FAQ panel"; smoke `--faq-only`. Known gap: on phones the header scrolls away, so "?" is only at the top of the page; and opening it during the first 2-3 s while rows are still being added took ~1 s in Chrome on a phone width (about 0.3 s once they are in).
+
+**FAQ text rewritten** (Leon, 2026-11-09): 12 questions in EN and SK, ending with a contact link to ibuniversityfinder@gmail.com; quoted button and badge names are checked against the real labels (`check.mjs` "FAQ text, twelve questions").
+
+**FAQ moved from the footer to the "?" panel** (Leon, 2026-11-09). The twelve questions now live only in the panel's markup in `index.html`; the footer keeps "Check before you apply", the source line and a "FAQ" button that opens the panel (focus returns to it). The FAQ no longer prints. From 1024 px the header's "?" also says "FAQ" / "Časté otázky". The panel shares the Filters sheet's motion tokens (`--ease-sheet`, `--t-sheet-in` 280 ms, `--t-sheet-out` 220 ms), is laid out once before its first open, and rows pause while it slides. Answers grow open over 260 ms with the "+" turning in step (Chrome; Safari opens them at once). Questions are 16 px in 44 px rows, answers 14 px in the secondary grey, no line under the last one, and neither sheet has a shadow (the scrim separates them). Setup's done screen adds "Reopen the FAQ any time with ? at the top." Setup's two hints ("Discards these answers", the HL Maths bonus) sit closer under their labels, so the dialog is a little shorter. Checks: `check.mjs` "FAQ panel"; smoke `--faq-only` and `--setup-only` (LP-S5).
+
 **My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
 
 **Compare** (batch 3, Leon 2026-11-05: "comparing something and saving something is not really the same intent") is its own set of up to four programmes, kept in this browser (`js/compare-set.js`, key `ib-university-finder:compare:v1`), independent of the saves, the filters and the address. Every row, phone card and detail has a scales toggle beside the save star; a fifth add changes nothing and says why, with "Open compare". On phones (and short windows) a bottom tray says "Compare n of 4 · Open"; from 600 px a header button beside My list does. The view works at any count (an empty state at 0, a prompt at 1); each column has a Save toggle and an "x" with Undo. "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns show at a time, with a "Programmes 1–2 of 3" line, arrows and an edge fade (`js/compare.js`).
@@ -603,6 +609,55 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Sort survives reload (2026-11-09):** Picks from the Sort menu are saved,
+including Deadline when points are set. Reloading a link or saved preferences
+keeps that choice. Clear all forgets the sort too; entering points afterwards
+selects Best match again. A Best match link without points still starts in
+Deadline order and switches to Best match once points are entered.
+
+**One Tab stop per programme (2026-11-09, backlog a):** Each programme
+summary has one Tab stop. Left/Right moves between its title, Compare and Save;
+Up/Down moves to the same control in the neighbouring programme, mounting it
+when needed. On wide screens it also selects that programme in the details
+pane; on narrow screens it leaves open details unchanged. Save, Compare,
+rebuilds and breakpoint changes keep focus. Detail links retain normal Tab.
+
+**Windowed results (2026-11-09, local `lp-window3`):** Only the viewport
+and two screens on either side stay mounted. Spacers reserve the full list
+length, using measured heights for visited rows and breakpoint estimates for
+unseen ones. Expanded state and the wide selection survive eviction; a focused
+row stays mounted. Print temporarily mounts all results and then restores the
+window. Returning from print rebuilds only nearby rows before measuring
+the screen again and keeps the measured heights, so your place stays put. Browser Find
+searches only mounted rows; the site's Search still
+searches every programme (Leon's accepted tradeoff).
+
+WebKit clamps scrolling when a layout read sees the list with its spacers
+removed. Window updates now hold the list's height until the replacement gaps
+are sized. Corrections use the starting scroll position and run only when
+heights above the visible anchor change; changing rows below it does not call
+scrollTo. During the logo's scroll home, rows keep being measured but height
+corrections pause until scrolling ends or the student interrupts it with a
+touch, wheel, pointer or key: an instant correction used to cancel
+the smooth scroll partway up. Filters and the chosen sort stay unchanged.
+
+Review fixes (2026-11-09, `lp-fix-window`): a change made while Compare was
+open (a filter, the language, the list in another tab) left the list blank or
+back near the top when Compare closed; Close now draws the rows at the old
+place. Switching language keeps the programme at the top of the list where it
+was on screen (Slovak rows are taller, so the old pixel offset showed a
+different one). Printing at the very end of the list no longer jumps the page
+back up (by thousands of pixels on desktop): the position is read before print
+and the phone tray's room is kept while it prints. Escape in the details pane
+returns focus to the picked row even when it had scrolled out of the window.
+Coming back from "No programmes match" measures the rows at their shown width.
+Above the list only the points summary line changes height, and only together
+with a filter change that replaces the list, so nothing there needs anchoring.
+The old full-list slices, parked lists and near-row marking are gone.
+Focused WebKit 26 and Chrome 157 probes cover large jumps, expansion above the
+viewport, eviction, rebuild focus and print. Physical iPhone momentum and
+VoiceOver remain untested; these are local browser checks.
+
 **Phone Filters slide (2026-11-09, local `fu-sheet-anim`):** Keep both
 slides, now 280 ms up / 220 ms down with `cubic-bezier(.32,.72,0,1)`.
 The old 150/140 ms curve left too little visible travel after the first
@@ -741,8 +796,8 @@ filter. Preferences use `ibuf.filters.v1`, separate from `ibuf.onboarding.v1`
 and the existing saved list. Any recognised URL filter/sort parameter or
 `?list=` uses URL state plus defaults, never merged with saved filters. A URL
 with only `?ui=` still restores saved filters. URL hydration leaves stored
-preferences alone; later explicit edits save validated filters, not sort,
-selection or list/compare/panel state. Clear all removes saved filters but
+preferences alone; later explicit edits save validated filters and a
+hand-picked sort (since 2026-11-09), not selection or list/compare/panel state. Clear all removes saved filters but
 keeps the separate onboarding flag, so setup does not replay. Full programme
 requirements remain in opened details; summary rows are compact. The phone
 Sort select and all My list tools remain available. Local source checks,
@@ -875,9 +930,16 @@ students, and where each rule lives:
   says the CAO adds the 25 points for grade 4 or above, on Irish courses only.
   At under 360 px the column labels count toward their tile's width, so a fee
   whose Slovak label is wider than the fee moves to its own line instead of
-  overlapping "Termín". Held for the Supabase PR (`plans/backlog/supabase-pr-ui.md`):
-  one tab stop per row, a keyboard way to reach the toast's Undo, and the smoke
-  test on GitHub's checks.
+  overlapping "Termín". Done in the list-performance round (2026-11-09): removing a
+  Compare column with the keyboard moves focus to the toast's Undo, which waits
+  while it holds focus (Escape closes it and focus goes back to the next
+  column's "x"); the points line under the count groups thousands like the
+  count and the Setup done screen ("1,512" / "1 512"; the done screen used to
+  re-format those numbers and print "1,33" for 1,033); the language buttons read
+  "SK (slovenčina)" to screen readers again (the hidden text lost its leading
+  space whenever the page re-applied the language); the dead `.src-more` print
+  rule is gone; and the smoke test runs on GitHub's pull requests (see
+  "Running it").
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
@@ -1743,6 +1805,22 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   the importer. cvut.cz serves an incomplete certificate chain, so that importer
   runs with `node --use-system-ca`; prihlaska.cvut.cz did not answer at all.
 
+## Smarter sorting (2026-11-09)
+
+Setting My IB points in Setup or Filters selects Best match unless the student
+has already chosen a sort. Best match puts programmes within their points first,
+then those needing HL Maths 4+, then those that cannot be compared. Each group
+uses deadline order, then the closest points figure and name. Clearing points
+returns Best match to deadline order. Best match has one direction.
+Without points, Best match stays visible but disabled with a hint to enter IB points first.
+Total yearly cost orders the low yearly estimate and uses My living costs when
+set; unknown costs stay last in either direction. Other sorts break ties by
+deadline, then name. A sort the student picks is saved with their filters
+(Leon, 2026-11-09), so a reload keeps it and setting points later does not
+replace it with Best match; a sort the page chose for them is not saved. Clear
+all removes the saved sort with the saved filters. URL sorts remain shareable
+and URL state never merges with saved filters.
+
 ## Running it
 
 ```bash
@@ -1773,10 +1851,46 @@ opens the real page in an invisible Chrome with a temporary profile
 profile; without Chrome it prints SKIP and changes nothing (L08).
 
 `.github/workflows/checks.yml` runs `check.mjs` and `check-contrast.mjs` on
-GitHub for every push and pull request, with no secrets. `smoke.mjs` stays
-local: nobody has run it on GitHub's Linux machines, where Chrome's sandbox may
-need a flag it doesn't pass, and a test that fails for no real reason teaches
-people to ignore the red mark.
+GitHub for every push and pull request, with no secrets. Since 2026-11-09 a
+second job, `smoke`, runs `smoke.mjs --require-chrome --keep` on **pull requests
+only** (Ubuntu with its preinstalled Chrome, Node 26, 40-minute limit, public
+repository so the minutes are free). On a failure it uploads the screenshots
+(`/tmp/ib-*/`) and Chrome's log as the artifact `smoke-screenshots-and-chrome-log`
+(7 days). If it fails with Chrome's "No usable sandbox", the step before it
+(`sysctl ... apparmor_restrict_unprivileged_userns=0`) did not take, and the fix
+is there, not a retry.
+
+Its first run (PR #6, 2026-11-09) failed 22 of 684 checks. No site bug was
+found behind them; the test itself is fixed on branch `lp-ci-smoke` (not yet run on GitHub
+again). Two things differ on GitHub's Linux Chrome: it says the computer has no
+mouse (`pointer:none`), so `smoke.mjs` now starts Chrome with a setting that
+says it has one; and its scripted "scroll gesture" moved nothing, so the tests
+now drag a finger with touch events (`touchSwipe` in `smoke.mjs`), the kind of
+event whose taps already worked there. Why one "NMS scroll" tap missed the
+scrim is not known; that check now drags more slowly and says what the scrim
+saw if it fails again. The FAQ reduced-motion check also read the panel mid-fade; it now
+waits. `node tools/smoke.mjs --only=runRowScroll,runFaqPanel` runs just the
+named sections. On a Mac in Low Power Mode Chrome is held to 30 frames a
+second, so the "sheet pacing" frame-timing checks fail there; that is the Mac,
+not the site.
+
+The second run (PR #6) failed one check, "NMO timing": the Filters tap right
+after Setup's "Show my programmes" opened nothing at 390 px. Not a site bug
+either. Show sits exactly where Finish was, and the test tapped it soon enough
+after Finish for Chrome to count a double-tap; Show ignores the second tap of
+a double-tap on purpose (so a double-tap on Finish can't close the done screen
+unread), so Setup stayed open and the Filters tap landed on its scrim. The test
+now waits 0.8 s after Finish and says so if a close tap is ever counted as a
+double-tap. The closing Setup does not block taps: Chrome stops hitting its
+fading scrim the moment it closes, and the check still fails if a tap after
+close is swallowed.
+
+A failure that is just slowness shows up as
+"timed out in <step>": `smoke.mjs` has one 120 s watchdog, refreshed at the
+start of each section (`WATCHDOG_MS`), so a runner much slower than a Mac could
+trip it inside one long section; raise it only after seeing the real timings in
+the job log, and a test that fails for no real reason teaches people to ignore
+the red mark.
 
 Run `check-contrast.mjs` after **any** change to a colour token. It reads the
 token blocks out of `css/styles.css` — so it cannot drift from the real palette

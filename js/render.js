@@ -224,7 +224,7 @@ function renderRow(row, state, wide, shortlist, headings, compare) {
   item.setAttribute('data-id', row.id);
   // The list view's group heading ("March 2027 · 2") sits inside the group's
   // first row, so every child of the list stays one programme and the arrow
-  // keys, the selection and the late slices need no special case.
+  // keys, the selection and window arrivals need no special case.
   const group = headings.get(row.id);
   if (group) {
     item.classList.add('has-grp');
@@ -737,6 +737,7 @@ function icon(id, className) {
 function starButton(row, saved) {
   const button = el('button', 'star');
   button.type = 'button';
+  button.setAttribute('tabindex', '-1');
   button.setAttribute('data-save-id', row.id);
   button.append(icon(saved ? 'i-bookmark-fill' : 'i-bookmark', 'ic'),
     el('span', 'visually-hidden', t('save_to_my_list', { value1: row.programme, value2: row.university })));
@@ -776,6 +777,7 @@ export function setSaved(button, saved) {
 function compareToggle(row, on) {
   const button = el('button', 'cmpi');
   button.type = 'button';
+  button.setAttribute('tabindex', '-1');
   button.setAttribute('data-compare-id', row.id);
   button.append(icon(on ? 'i-compare-on' : 'i-compare', 'ic'),
     el('span', 'visually-hidden', t('r3_cmp_add_label', { programme: row.programme, university: row.university })));
@@ -1002,14 +1004,15 @@ export function renderAppliedChips(container, chips, onRemove) {
   container.hidden = chips.length === 0;
 }
 
-export function renderSortOptions(select, sorts, current, direction = 'asc') {
-  select.replaceChildren(...Object.entries(sorts).flatMap(([key, natural]) => ['asc', 'desc'].map((dir) => {
+export function renderSortOptions(select, sorts, current, direction = 'asc', state = {}) {
+  select.replaceChildren(...Object.entries(sorts).flatMap(([key, natural]) => (key === 'best' ? ['asc'] : ['asc', 'desc']).map((dir) => {
     const value = `${key}:${dir}`;
     const label = dir === 'desc' ? REVERSE_SORTS[key] : natural;
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = label;
-    option.selected = key === current && dir === direction;
+    option.disabled = key === 'best' && state.myIbPoints == null;
+    option.textContent = option.disabled ? t('best_match_needs_points') : label;
+    option.selected = !option.disabled && key === current && dir === direction;
     return option;
   })));
 }

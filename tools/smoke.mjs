@@ -1,11 +1,20 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --integration-fixes-only # sort, logo, row layout, resize, sheet/print
+//   node tools/smoke.mjs --row-keyboard-only # Tab stops, arrows, toggle/rebuild focus
+//   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
+//   node tools/smoke.mjs --round2-only # round 2 header, language and country-count checks
+//   node tools/smoke.mjs --window-fixes-only # Compare close, language switch and print anchoring
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
 //   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
+//   node tools/smoke.mjs --phone-fixes-only # phone form, tray keyboard and sorting regressions
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
+//   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
+//   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
+//   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
 //   node tools/smoke.mjs --onboarding-only # just the non-modal Setup regressions
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
@@ -178,6 +187,13 @@ async function startChrome(path) {
     '--hide-scrollbars', '--mute-audio',
     '--disable-field-trial-config',
     '--disable-features=AnnotatedPageContentExtraction,AnnotatedPageContent,AnnotatedPageContentRequest,PageContentAnnotations,AIPageContentAgent,Glic,OptimizationGuideModelExecution',
+    // A computer with a mouse, on every system. Headless Chrome on Linux
+    // finds no mouse, so pages there match (pointer:none), not
+    // (pointer:fine): the facet lists never focused their search (smoke
+    // R3A on GitHub, 2026-11-09). macOS already says fine and hover, so this
+    // changes nothing there. Touch emulation still switches a page to
+    // coarse. Values: pointer fine = 4, hover = 2 (blink's enums).
+    '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2',
     'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   chrome = child;
@@ -385,6 +401,54 @@ async function openPage(base, width, height, { block = [] } = {}) {
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
 }
 
+// A finger dragged from (x, y) by (xDistance, yDistance) at `speed` px/s:
+// one touchStart, a touchMove every 1/60 s, a touchEnd. With fling false the
+// finger rests 150 ms before it lifts, so the page does not glide on.
+// Same arguments as Input.synthesizeScrollGesture, which it replaces: on
+// GitHub's Linux Chrome every synthesizeScrollGesture left the page where it
+// was (2026-11-09; B3A, R4B, CMP and ROW), while dispatchTouchEvent taps
+// worked. synthesizeScrollGesture goes through the platform's own input
+// layer (Aura on Linux); dispatchTouchEvent goes through Chrome's touch
+// emulation on every platform, and turns that emulation on by itself
+// (InjectTouchEvents in Chromium's content/browser/devtools/protocol/
+// input_handler.cc), so it scrolls with Emulation.setTouchEmulationEnabled
+// on or off. B3A runs with it off.
+async function touchSwipe(page, { x, y, xDistance = 0, yDistance = 0, speed = 800, fling = true }) {
+  const steps = Math.max(2, Math.ceil((Math.hypot(xDistance, yDistance) / speed) * 60));
+  const at = (k) => [{ x: Math.round(x + (xDistance * k) / steps), y: Math.round(y + (yDistance * k) / steps) }];
+  const pause = (ms) => new Promise((ok) => setTimeout(ok, Math.max(0, ms)));
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+  const start = Date.now();
+  for (let k = 1; k <= steps; k++) {
+    await pause(start + (k * 1000) / 60 - Date.now());
+    await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) });
+  }
+  if (!fling) await pause(150);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+// Prepare a named programme through the row keyboard's own mount path. Search
+// can match many rows; a match need not be in the viewport's DOM window.
+async function mountProgramme(page, id) {
+  await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!!document.querySelector('#results>.item'),why:'rows not ready'})`,5000,'programme list');
+  await page.ev(`(async()=>{
+    const {loadData}=await import('./js/data.js');
+    const {paramsToState,buildFacets,applyFilters,sortRows}=await import('./js/filters.js');
+    const data=(await loadData()).programmes,st=paramsToState(location.search,buildFacets(data));
+    const rows=sortRows(applyFilters(data,st,new Set()),st.sort,st.dir,st);
+    const at=rows.findIndex(r=>r.id===${JSON.stringify(id)});
+    if(at<0)throw Error('Programme is outside the filtered list: '+${JSON.stringify(id)});
+    const mounted=[...document.querySelectorAll('#results>.item')];
+    const nearest=mounted.sort((a,b)=>Math.abs(Number(a.getAttribute('aria-posinset'))-1-at)-Math.abs(Number(b.getAttribute('aria-posinset'))-1-at))[0];
+    let i=Number(nearest.getAttribute('aria-posinset'))-1;
+    nearest.querySelector('button.open').focus({preventScroll:true});
+    while(i!==at){const key=i<at?'ArrowDown':'ArrowUp';document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));i+=i<at?1:-1;}
+    const row=document.activeElement.closest('.item');
+    if(row?.dataset.id!==${JSON.stringify(id)})throw Error('Row keyboard did not mount the requested programme');
+    row.scrollIntoView({block:'center',behavior:'instant'});
+  })()`);
+}
+
 // --- Reporting ----------------------------------------------------------------
 
 const results = [];
@@ -497,12 +561,12 @@ async function interactions(page, at, want) {
   const T = want.total;
   const phone = at < 600;
 
-  await check(at, 'A5', 'every row is drawn', async () => {
+  await check(at, 'A5', 'the visible window represents the full list', async () => {
     const first = await page.ev(`document.querySelectorAll('#results > li.item').length`);
     assert(first > 0, 'no rows when the loading skeleton went away');
     // The list fills in slices after the first paint (L09). Drawn = all of
     // them, and still all of them 300 ms later.
-    const full = `(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === ${T}, why: n + ' rows drawn' }; })()`;
+    const full = `(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n > 0 && n < 100 && document.querySelector('#results>.item').getAttribute('aria-setsize') === '${T}', why: n + ' rows drawn' }; })()`;
     await page.waitFor(full, 10_000, `${T} rows`);
     const start = Date.now();
     while (Date.now() - start < 300) await page.waitFor(full, 1000, `${T} rows (staying)`);
@@ -761,7 +825,7 @@ async function runFallback(base, want) {
     const banner = await page.ev(`document.querySelector('#source-banner .bn-saved')?.textContent ?? ''`);
     assert(/saved copy from/.test(banner), `no "saved copy from" banner (banner: "${banner.trim().slice(0, 100)}")`);
     await page.waitFor(countIs(`${want.fallbackTotal} programmes`), 5000, `"${want.fallbackTotal} programmes"`);
-    await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n === ${want.fallbackTotal}, why: n + ' rows drawn' }; })()`, 10_000, 'every row');
+    await page.waitFor(`(() => { const n = document.querySelectorAll('#results > li.item').length; return { ok: n > 0 && n < 100 && document.querySelector('#results>.item').getAttribute('aria-setsize') === '${want.fallbackTotal}', why: n + ' rows drawn' }; })()`, 10_000, 'every row');
     // The blocked request itself is logged as an error; anything else is not expected.
     const other = page.errors.filter((e) => !/\/data\/programmes\.csv/.test(e.url));
     assert(other.length === 0, other.map((e) => e.text).join(' | '));
@@ -889,17 +953,21 @@ async function runRound2(base) {
       // sat above Back/Next and right of its "Discards" hint (button padding).
       // On phones Next has its own full-width row (alignment audit), so Skip
       // shares Back's centre line there.
-      await check(width,'R2J','setup stepper is centred; Skip text shares the Back/Next centre line and the hint edge',async()=>{
+      // Since 2026-11-09 (Leon, option B) the hint is a second line inside Skip,
+      // so Skip's label sits above Back's centre line by design; the two lines share an edge.
+      await check(width,'R2J','setup stepper is centred; Skip\'s label and its hint share an edge inside the button',async()=>{
         await edit(); await next();
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
-          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector(${JSON.stringify(width < 600 ? '.ob-foot>.btn:not(.btn-p)' : '.ob-foot>.btn-p')}));
-          return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,lift:(next.top+next.height/2)-(skip.top+skip.height/2),indent:skip.left-hint.left};})()`);
-        assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),sb=document.querySelector('.skipwrap button'),lr=document.createRange();lr.selectNode([...sb.childNodes].find(n=>n.nodeType===3));const skip=lr.getBoundingClientRect(),hint=text(sb.querySelector('small')),btn=box(sb);
+          return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,inside:hint.bottom<=btn.bottom+0.5&&skip.top>=btn.top-0.5,indent:skip.left-hint.left};})()`);
+        assert(Math.abs(m.offCentre)<=1 && m.inside && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
       });
       // Batch 3 C1: the FAQ link moved from step 1 to the done screen, and the
-      // answers are applied before it opens the FAQ.
-      await check(width,'R2M','the done screen\'s FAQ button applies the answers and lands on the FAQ below the sticky bar',async()=>{
+      // answers are applied before it opens the FAQ. Since 2026-11-09 it opens
+      // the header's FAQ panel over the list instead of scrolling past every
+      // row to the footer; closing the panel lands on the list.
+      await check(width,'R2M','the done screen\'s FAQ button applies the answers and opens the FAQ panel; closing it returns to the list',async()=>{
         await page.ev(`window.scrollTo(0,0)`);
         await edit();
         assert(await page.ev(`!document.querySelector('#onboarding .ob-faq') && !document.querySelector('#onboarding .ob-step a')`),'step 1 still has a FAQ link');
@@ -910,8 +978,11 @@ async function runRound2(base) {
         assert(await page.ev(`document.querySelector('#onboarding').open && Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-points').value==='39' && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Finish did not apply and show the done screen');
         await page.click(`[...document.querySelectorAll('#onboarding .ob-foot .btn')].find(b=>b.textContent==='Read the FAQ')`,'Read the FAQ');
         assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='39'`),'FAQ button left setup open or lost the answers');
-        assert(await page.ev(`document.activeElement===document.querySelector('#faq summary')`),'focus is not on the first FAQ question');
-        await page.waitFor(`(()=>{const top=document.querySelector('#faq').getBoundingClientRect().top,bar=${width<600?"document.querySelector('.status').getBoundingClientRect().bottom":"document.querySelector('.hd').getBoundingClientRect().bottom"};return {ok:top>=bar-1 && top<innerHeight-40,why:JSON.stringify({top,bar})}})()`,5000,'the FAQ in view');
+        await page.waitFor(`(()=>{const p=document.querySelector('#faq-panel');return {ok:p.open&&document.activeElement?.id==='faq-h'&&!p.getAnimations().some(a=>a.playState==='running'),why:document.activeElement?.id}})()`,5000,'the FAQ panel');
+        const y=await page.ev('scrollY');
+        await page.key('Escape','Escape',27);
+        await page.waitFor(`({ok:!document.querySelector('#faq-panel').open&&document.activeElement===document.querySelector('section[aria-labelledby="results-h"]'),why:document.activeElement?.id||document.activeElement?.tagName})`,5000,'focus back on the list');
+        assert(await page.ev(`scrollY===${y}`),'closing the FAQ panel scrolled the page');
         // Leave no answers behind for R2B, which starts from blank fields.
         await page.ev(`document.querySelector('#f-clear').click();window.scrollTo(0,0)`);
         assert(await page.ev(`document.querySelector('#f-points').value===''`),'Clear all left the points');
@@ -1076,14 +1147,14 @@ async function runRound2(base) {
         assert(await page.ev(`getComputedStyle(document.querySelector('.hd')).position!=='sticky'`),'short viewport header sticks');
         await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
       });
-      if(width>=600)await check(width,'R2E','full-dataset country widening and narrowing settle before another change',async()=>{
+      if(width>=600)await check(width,'R2E','country changes keep the full count with bounded rows',async()=>{
         await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
-        const settled = (count) => `({ok:document.querySelectorAll('#results>li.item').length===${count} && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
+        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
         await page.waitFor(settled(2915),10000,'all rows before country change');
         const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
         for(let i=0;i<2;i++){
           await page.ev(`${ireland}.click()`);
-          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && document.querySelectorAll('#results>li.item').length===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
+          await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && Number(document.querySelector('#results>li.item').getAttribute('aria-setsize'))===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
           await page.ev(`${ireland}.click()`);
           await page.waitFor(settled(2915),10000,'settled full catalogue');
         }
@@ -1771,7 +1842,7 @@ async function runBatch2C(base) {
     const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
     try {
       await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
-        await page.waitFor(`({ok:!!document.querySelector('li[data-id="${row.id}"] button.open'),why:'programme not rendered'})`, 5000, 'programme');
+        await mountProgramme(page, row.id);
         await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
         assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
         await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
@@ -2061,6 +2132,9 @@ async function runBatch3A(base) {
           const f = await page.ev(`(()=>{const a=document.activeElement,r=a.getBoundingClientRect(),t=document.querySelector('#cmp-tray');
             return {what:a.tagName+'.'+a.className+'#'+a.id,inTray:t.contains(a),bottom:r.bottom,height:r.height,top:t.hidden?Infinity:t.getBoundingClientRect().top}})()`);
           seen.push(f.what);
+          // Past the footer's last control Tab leaves the page (body), then wraps
+          // to Search at the top, which hides the tray: stop at the page's end.
+          if (f.what.startsWith('BODY.')) break;
           if (f.inTray || !f.height) continue;
           assert(f.bottom <= f.top + 0.5, `focus on ${f.what} is under the tray: ${JSON.stringify(f)}`);
         }
@@ -2087,12 +2161,15 @@ async function runBatch3A(base) {
         await page.ev(`document.querySelector('#cmp-tray-open').click()`);
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 3000, 'compare open');
         await page.ev(`document.querySelector('#cmp-close').click()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           const m = await page.ev(`({tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom,scroll:getComputedStyle(document.documentElement).scrollPaddingBottom})`);
           assert(m.tray === 'none' && m.pad === '0px' && (m.scroll === '0px' || m.scroll === 'auto'), JSON.stringify(m));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         await page.ev(`document.querySelector('#cmp-tray-open').click()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           const m = await page.ev(`(()=>{const link=document.querySelector('#cmp-body a.lnk');
@@ -2100,7 +2177,8 @@ async function runBatch3A(base) {
               link:getComputedStyle(link).display,after:getComputedStyle(link,'::after').content,facts:document.querySelectorAll('#cmp-body tr[data-fact]').length,
               tray:getComputedStyle(document.querySelector('#cmp-tray')).display,pad:getComputedStyle(document.body).paddingBottom}})()`);
           assert(m.compare !== 'none' && m.list === 'none' && m.link !== 'none' && m.after.includes('http') && m.facts >= 9 && m.tray === 'none' && m.pad === '0px', JSON.stringify(m));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         await page.ev(`document.querySelector('#cmp-close').click()`);
       });
     } finally { await page.close(); }
@@ -2140,17 +2218,30 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden && document.querySelectorAll('#cmp-body th[scope=col]').length===4,why:'not four columns'})`, 5000, 'four columns');
         await shot(page, 'compare-4-1280-en');
       });
-      await check(1280, 'B3A keyboard undo', 'Enter on an "x" moves focus to the next column\'s "x"; a second toast leaves the focused Undo in place, and that Undo restores its own programme', async () => {
+      await check(1280, 'B3A keyboard undo', 'Enter on an "x" moves focus to the toast\'s Undo (the toast waits while it holds focus); Enter on Undo restores the column; Escape closes the toast and returns focus to the next "x"; a second toast leaves the focused Undo in place, and that Undo restores its own programme', async () => {
         const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
-        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]').focus()`);
+        const undo = `document.querySelector('#toasts .toast button')`;
+        const columns = `[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()`;
+        const xOf = (id) => `document.querySelector('#cmp-body [data-compare-remove="${id}"]')`;
+        await page.ev(`${xOf(ids[1])}.focus()`);
         await page.key('Enter', 'Enter', 13, [], '\r');
-        await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[2]}"]'),why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'focus on the next x');
-        await page.ev(`document.querySelector('#toasts .toast button').focus()`);
-        await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').click()`);
+        await page.waitFor(`({ok:document.activeElement===${undo} && document.querySelector('#toasts .toast').textContent.startsWith(${JSON.stringify(say('en', 'r3_cmp_removed'))}),why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'focus on Undo');
+        // Longer than the 6 s timer: a toast that holds focus stays.
+        await new Promise((r) => setTimeout(r, 6600));
+        assert(await page.ev(`document.activeElement===${undo}`), 'the toast went while Undo held focus');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:${columns}===${JSON.stringify(ids.join())} && document.activeElement===${xOf(ids[1])},why:'not restored: '+${columns}})`, 5000, 'column back, focused');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.activeElement===${undo},why:'no focus on Undo'})`, 5000, 'Undo again');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#toasts .toast') && document.activeElement===${xOf(ids[2])},why:document.activeElement.outerHTML.slice(0,80)})`, 5000, 'Escape: toast gone, focus on the next x');
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.activeElement===${undo},why:'no focus on Undo'})`, 5000, 'Undo for the third column');
+        await page.ev(`${xOf(ids[0])}.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}))`);
         await page.waitFor(`({ok:document.querySelectorAll('#toasts .toast').length===2,why:document.querySelectorAll('#toasts .toast').length+' toasts'})`, 5000, 'two toasts');
-        assert(await page.ev(`document.activeElement===document.querySelector('#toasts .toast button')`), 'the focused Undo lost focus');
+        assert(await page.ev(`document.activeElement===${undo}`), 'the focused Undo lost focus');
         await page.key('Enter', 'Enter', 13, [], '\r');
-        await page.waitFor(`({ok:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()===${JSON.stringify([ids[1], ids[2], ids[3]].join())} && document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id).join()+' / '+document.activeElement.outerHTML.slice(0,60)})`, 5000, 'its own programme back, focused');
+        await page.waitFor(`({ok:${columns}===${JSON.stringify([ids[2], ids[3]].join())} && document.activeElement===${xOf(ids[2])},why:${columns}+' / '+document.activeElement.outerHTML.slice(0,60)})`, 5000, 'its own programme back, focused');
       });
       await check(1280, 'B3A redraw focus', 'saving in a column keeps its focus; another tab dropping the focused column moves focus to the next "x"; a language switch keeps both and the sideways scroll', async () => {
         const save = `document.querySelector('#cmp-body th [data-save-id]')`;
@@ -2197,7 +2288,7 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:${state}.range===${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'back at the start');
         // A finger dragged right to left across the table, inside the window.
         const box = await page.ev(`(()=>{const r=document.querySelector('.cmp-scroll').getBoundingClientRect();return {x:Math.round(Math.min(r.right,innerWidth)-30),y:Math.round(Math.min(Math.max(r.top+80,10),innerHeight-10))}})()`);
-        await page.send('Input.synthesizeScrollGesture', { x: box.x, y: box.y, xDistance: -150, yDistance: 0, gestureSourceType: 'touch', speed: 800 });
+        await touchSwipe(page, { x: box.x, y: box.y, xDistance: -150, speed: 800 });
         await page.waitFor(`({ok:${state}.range!==${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'a swipe moves the range');
         await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
         await frames(page);
@@ -2367,10 +2458,12 @@ async function runBatch3B(base) {
         assert(m.back && !m.tools && !m.tips && !m.clear && m.pressed === 'true', `empty view: ${JSON.stringify(m)}`);
         assert(m.sw === 0, `page overflows by ${m.sw}`);
         // A navigation button has no action on paper; keep the empty-list copy.
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           assert(await page.ev(`getComputedStyle(document.querySelector('#empty-back')).display==='none' && getComputedStyle(document.querySelector('#empty-state')).display!=='none'`), 'empty-list back button prints');
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
         // Keep the real mouse hit test, then re-enter for keyboard activation.
         await page.click(`document.querySelector('#empty-back')`, 'Back to all programmes');
         assert(await page.ev(`!document.querySelector('#shortlist-bar').classList.contains('is-list') && document.activeElement===document.querySelector('#header-list')`), 'mouse exit lost focus');
@@ -2458,7 +2551,7 @@ async function runBatch3C(base) {
                   foot:(()=>{const f=box(d.querySelector('.ob-foot')),s=getComputedStyle(d.querySelector('.ob-foot'));return {left:f.left+parseFloat(s.paddingLeft),right:f.right-parseFloat(s.paddingRight)}})(),
                   bodyOver:body.scrollWidth>body.clientWidth,sw:document.documentElement.scrollWidth,w:innerWidth,h:innerHeight}})()`);
               await shoot(page, `done-${width}-${lang}${reduced ? '-reduced' : ''}`);
-              assert(m.heading === (lang === 'sk' ? 'V nastavení nie sú žiadne odpovede.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
+              assert(m.heading === (lang === 'sk' ? 'Nastavenie zostalo prázdne.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
               assert(m.btns.length === 2 && m.btns[0].primary, `buttons ${JSON.stringify(m.btns)}`);
               for (const b of m.btns) {
                 assert(b.h >= 44 && b.w >= 44 && !b.clipped, `button ${JSON.stringify(b)}`);
@@ -2677,7 +2770,10 @@ async function runBatch3C(base) {
               for(const s of [...Array(91).keys(),...[...Array(90).keys()].reverse()]){scrollTo(0,s);await raf();out.push(take());}return out;})()`);
           } else {
             await page.ev(`(()=>{${sample}window.__frames=[];window.__stopFrames=false;const tick=()=>{__frames.push(take());if(!__stopFrames)requestAnimationFrame(tick);};requestAnimationFrame(tick);})()`);
-            const swipe = (yDistance) => page.send('Input.synthesizeScrollGesture', { x: Math.round(width / 2), y: Math.round(height / 2), yDistance, speed, gestureSourceType: 'touch', repeatCount: 0, preventFling: true }, 20000);
+            // Start low for a swipe up and high for a swipe down, so the
+            // finger stays on the screen (from the middle, 400 px down would
+            // end at y 720 on a 640 px phone).
+            const swipe = (yDistance) => touchSwipe(page, { x: Math.round(width / 2), y: Math.round(yDistance < 0 ? height * 0.8 : height * 0.2), yDistance, speed, fling: false });
             await swipe(-300);
             await settle(page);
             await swipe(400);
@@ -2787,8 +2883,13 @@ async function runAlignListCompare(base) {
     const page = await open(`?ui=${ui}&q=Masaryk`, 320, 640);
     try {
       await check(`320/${ui}`, 'AL degree row', 'every long-cycle degree stays left of the row toggles and inside the card', async () => {
-        const m = await page.ev(`[...document.querySelectorAll('#results li.item')].filter(li=>${JSON.stringify(longCycle.map((r) => r.id))}.includes(li.dataset.id)).map(li=>{li.style.contentVisibility='visible';const d=li.querySelector('.deg').getBoundingClientRect(),c=li.querySelector('button.cmpi').getBoundingClientRect(),row=li.querySelector('.row').getBoundingClientRect();return {id:li.dataset.id,ok:d.right<=c.left+0.5&&d.right<=row.right}})`);
-        assert(m.length >= 2 && m.every((x) => x.ok), JSON.stringify(m));
+        const targets = longCycle.filter(r => r.university.includes('Masaryk'));
+        assert(targets.length >= 2, 'no long-cycle Masaryk sample');
+        for (const row of targets) {
+          await mountProgramme(page, row.id);
+          const m = await page.ev(`(()=>{const li=document.querySelector('#results li[data-id="${row.id}"]'),d=li.querySelector('.deg').getBoundingClientRect(),c=li.querySelector('button.cmpi').getBoundingClientRect(),r=li.querySelector('.row').getBoundingClientRect();return {id:li.dataset.id,ok:d.right<=c.left+0.5&&d.right<=r.right}})()`);
+          assert(m.ok, JSON.stringify(m));
+        }
       });
     } finally { await page.close(); }
   }
@@ -2840,6 +2941,7 @@ async function runAlignListCompare(base) {
           await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
           await page.waitFor(`({ok:innerWidth===${width}&&!document.querySelector('#results .expand:not([inert])')&&!document.querySelector('#pane .pane-body .d-actions'),why:'viewport or an open detail'})`, 5000, 'closed at this width');
           const detail = width >= 1200 ? '#pane .pane-body' : `#results li[data-id="${target.id}"] .expand:not([inert])`;
+          await mountProgramme(page, target.id);
           await page.click(`document.querySelector('#results li[data-id="${target.id}"] button.open')`, 'the programme');
           await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions button.cmpb'),why:'detail not open'})`, 5000, 'detail');
           await settle(page);
@@ -2873,14 +2975,24 @@ async function runAlignListCompare(base) {
     const page = await open(`?ui=${ui}&country=Ireland`, width, height);
     try {
       await check(`${width}/${ui}`, 'AL row labels and toggles', 'labels line up with their values (left, fee right); Compare and Save centre on the title\'s first line', async () => {
-        const m = await page.ev(`(()=>{const tr=(e)=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect()};const out={labels:[],toggles:[]};
-          for(const li of [...document.querySelectorAll('#results li.item')].slice(0,40)){li.style.contentVisibility='visible';
+        await page.ev('window.__labelSeen=new Set()');
+        const m = { labels: [], toggles: [] };
+        for (let batch = 0; batch < 10; batch++) {
+          const sample = await page.ev(`(()=>{const tr=(e)=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect()};const out={labels:[],toggles:[]};
+          for(const li of [...document.querySelectorAll('#results li.item')].filter(li=>!__labelSeen.has(li.dataset.id)).slice(0,40-__labelSeen.size)){__labelSeen.add(li.dataset.id);li.style.contentVisibility='visible';
             for(const c of li.querySelectorAll('.row .cell')){const l=c.querySelector(':scope>.lab'),v=c.querySelector(':scope>.fig')||c.querySelector(':scope>.verd');if(!l||!v||getComputedStyle(l).display==='none'||l.getClientRects().length===0)continue;const a=tr(l),b=tr(v);if(!a.width)continue;out.labels.push(c.classList.contains('c-fee')?Math.round((a.right-b.right)*10)/10:Math.round((a.left-b.left)*10)/10)}
             const t=li.querySelector('.r-t .open'),r=document.createRange();r.selectNodeContents(t);const first=r.getClientRects()[0];const mid=first.top+first.height/2;
             for(const b of li.querySelectorAll('.r-main>:is(.cmpi,.star)')){const x=b.getBoundingClientRect();out.toggles.push(Math.round((x.top+x.height/2-mid)*10)/10)}}
           return out})()`);
+          m.labels.push(...sample.labels); m.toggles.push(...sample.toggles);
+          if (await page.ev('__labelSeen.size>=40')) break;
+          await page.ev(`(()=>{const last=[...document.querySelectorAll('#results>.item')].at(-1);last.querySelector('button.open').focus({preventScroll:true});document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));document.activeElement.scrollIntoView({block:'center',behavior:'instant'})})()`);
+          await settle(page);
+        }
+        assert(await page.ev('__labelSeen.size>=40'), 'fewer than 40 row samples');
         assert(m.toggles.length >= 20 && m.toggles.every((d) => Math.abs(d) <= 1.5), 'toggles ' + JSON.stringify(m.toggles));
         if (width < 800) assert(m.labels.length >= 30 && m.labels.every((d) => Math.abs(d) <= 1), 'labels ' + JSON.stringify(m.labels));
+        console.log(`MEASURE row labels ${width}/${ui}: ${m.toggles.length / 2} rows, toggle max ${Math.max(...m.toggles.map(Math.abs))} px, label max ${Math.max(0,...m.labels.map(Math.abs))} px`);
         if (width === 390 || width === 700) await shot(page, `rows-${width}-${ui}`);
       });
       if (width === 1280) await check(`${width}/${ui}`, 'AL sort heading', 'a sort heading\'s hover area is its label and mark, not the whole column', async () => {
@@ -3064,6 +3176,7 @@ async function runAlignListCompare(base) {
       await check(`print/${ui}`, 'AL print compare link', 'printed Compare: "Official admissions page" never splits inside a word and no space is kept for Save', async () => {
         await page.click(`document.querySelector('#header-compare')`, 'Compare');
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'closed'})`, 5000, 'compare');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           await settle(page);
@@ -3073,7 +3186,8 @@ async function runAlignListCompare(base) {
           const { cssContentSize } = await page.send('Page.getLayoutMetrics');
           const { data: png } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: 794, height: Math.min(4000, cssContentSize.height), scale: 1 } });
           await writeFile(`${shots}/print-compare-${ui}.png`, Buffer.from(png, 'base64'));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
       });
     } finally { await page.close(); }
   }
@@ -3259,7 +3373,8 @@ async function runPrintFixes(base) {
     return page;
   };
   const printed = async (page, name, measure) => {
-    await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+    await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
     try {
       await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
       const m = await page.ev(measure);
@@ -3268,7 +3383,8 @@ async function runPrintFixes(base) {
         clip: { x: 0, y: 0, width: cssContentSize.width, height: Math.min(3000, cssContentSize.height), scale: 1 } });
       await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
       return m;
-    } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+    } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
   };
   // Shown on paper: laid out, not clipped away, and the text is what it says.
   const head = `(()=>{const h=document.querySelector('.print-head'),r=h.getBoundingClientRect(),cs=getComputedStyle(h);
@@ -3592,6 +3708,7 @@ async function runPhoneFixes(base) {
           await tab(page); stops++;
           if (await page.ev(`!!document.activeElement?.closest('#results')`)) row = true;
         }
+        await page.waitFor(`({ok:!document.querySelector('#cmp-tray').getAnimations().some(a=>a.playState==='running'),why:'tray entering'})`,5000,'tray settled');
         const m = await page.ev(`(()=>{const r=document.querySelector('#cmp-tray').getBoundingClientRect();return {open:document.activeElement?.id,bottom:Math.round(r.bottom),top:Math.round(r.top),pos:getComputedStyle(document.querySelector('#cmp-tray')).position,h:innerHeight}})()`);
         assert(m.open === 'cmp-tray-open' && !row, `after ${stops} stops focus is on ${m.open}${row ? ', having passed a row' : ''}`);
         assert(m.pos === 'fixed' && m.bottom <= m.h && m.bottom >= m.h - 24 && m.top > m.h / 2, `tray at ${JSON.stringify(m)}`);
@@ -3895,13 +4012,13 @@ async function runAlignChromeSetup(base) {
   for (const width of [1280, 600, 390]) {
     const page = await open(width, width < 600 ? 844 : 900, 'en', { onboarding: null });
     try {
-      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring clears its hint', async () => {
+      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring is visible and holds its hint', async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
         await settle(page);
         await page.key('Shift', 'ShiftLeft', 16);
         await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
-        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),s=getComputedStyle(b),r=document.createRange();r.selectNodeContents(document.querySelector('.skipwrap small'));return {vis:b.matches(':focus-visible'),clear:r.getBoundingClientRect().top-(b.getBoundingClientRect().bottom+parseFloat(s.outlineOffset)+parseFloat(s.outlineWidth))}})()`);
-        assert(ring.vis && ring.clear >= 0, `Skip's ring touches the hint: ${JSON.stringify(ring)}`);
+        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
+        assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
         const heights = [];
         for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
         await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
@@ -3914,26 +4031,57 @@ async function runAlignChromeSetup(base) {
     } finally { await page.close(); }
   }
 
+  // Leon, 2026-11-09: the two Setup hints sat too far below what they explain.
+  // Each starts at its label's text edge and close under it (Skip: below the
+  // button's 44 px box; maths: 3-8 px under the label's last line, also when
+  // it wraps), the dialog stays centred, and the done screen's "?" line is
+  // one line at 390 px.
+  for (const [width, lang] of [[390, 'en'], [390, 'sk'], [320, 'en'], [320, 'sk'], [1280, 'en'], [1280, 'sk']]) {
+    const page = await open(width, width < 600 ? 844 : 800, lang, { onboarding: null });
+    try {
+      await check(width, 'LP-S5 setup hints', `(${lang}): Skip's and the maths hint sit close under their label text, aligned with it; the dialog stays centred`, async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await settle(page);
+        const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
+          const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
+          const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
+          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:sk.getBoundingClientRect().bottom-tb(sm).bottom,skipTextGap:(()=>{const r=document.createRange();r.selectNode([...sk.childNodes].find(n=>n.nodeType===3));return tb(sm).top-r.getBoundingClientRect().bottom})(),
+            labelLeft:lb.left,hintLeft:tb(hint).left,mathGap:tb(hint).top-lb.bottom,centre:Math.abs(r.top-(innerHeight-r.bottom))}})()`);
+        await shoot(page, `lp-setup-hints-${width}-${lang}`);
+        assert(Math.abs(m.skipLeft - m.skipHint) <= 1 && Math.abs(m.labelLeft - m.hintLeft) <= 1, `hints not aligned: ${JSON.stringify(m)}`);
+        // The hint is inside Skip (option B): within the button, at most 4 px under the label.
+        assert(m.skipGap >= -0.5 && m.skipTextGap >= -0.5 && m.skipTextGap <= 4, `Skip hint gap: ${JSON.stringify(m)}`);
+        assert(m.mathGap >= 2 && m.mathGap <= 8, `maths hint gap: ${JSON.stringify(m)}`);
+        assert(m.centre <= 1, `dialog off centre by ${m.centre}`);
+        for (let step = 2; step <= 5; step++) await next(page, `step ${step + 1}`);
+        await page.waitFor(`({ok:!!document.querySelector('.ob-done .ob-help-hint'),why:'done screen'})`, 5000, 'done screen');
+        await settle(page);
+        const h = await page.ev(`(()=>{const p=document.querySelector('.ob-help-hint');return {lines:Math.round(p.getBoundingClientRect().height/parseFloat(getComputedStyle(p).lineHeight)),icon:!!p.querySelector('svg use[href="#i-help"]'),name:p.querySelector('.visually-hidden').textContent}})()`);
+        assert(h.icon && h.name === (lang === 'sk' ? 'otáznik' : 'the question mark'), `"?" hint: ${JSON.stringify(h)}`);
+        if (width >= 390) assert(h.lines === 1, `"?" hint takes ${h.lines} lines`);
+      });
+    } finally { await page.close(); }
+  }
+
   if (args.has('--setup-only')) return;
 
-  // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
-  // the first question's line.
+  // FAQ: the "+" on the first line's centre. Since 2026-11-09 the questions
+  // are only in the "?" panel (the footer's copy and its heading alignment
+  // are gone), so it is measured there, every question 44 px or taller.
   for (const [width, lang] of [[1280, 'en'], [600, 'sk'], [390, 'en']]) {
     const page = await open(width, width < 600 ? 844 : 900, lang);
     try {
-      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line${width >= 600 ? '; heading on the first question\'s line' : ''}`, async () => {
-        // Use the empty list so rows still filling in cannot move the footer
-        // out of the screenshot after scrolling to it.
-        await openList(page);
-        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'start',behavior:'instant'})`);
-        await settle(page);
+      await check(width, 'AL-F1 FAQ', `(${lang}): "+" centred on the question's first line in the panel; 44 px question rows`, async () => {
+        await page.ev(`document.querySelector('#faq-open').click()`);
+        await page.waitFor(`({ok:document.querySelector('#faq-panel').open&&!document.querySelector('#faq-panel').getAnimations().length,why:'panel opening'})`, 5000, 'FAQ panel');
         const m = await page.ev(`(()=>{const first=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getClientRects()[0]};
-          const qs=[...document.querySelectorAll('.faq summary')].map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
-          const h=first(document.querySelector('.foot h2 span')),q=first(document.querySelector('.faq summary span'));return {qs,head:h.top-q.top,visible:q.top>=0&&q.bottom<=innerHeight}})()`);
-        assert(m.visible, 'the FAQ is outside the screenshot');
+          const sums=[...document.querySelectorAll('#faq-panel summary')];
+          const qs=sums.map(s=>{const t=first(s.querySelector('span')),i=s.querySelector('.ic').getBoundingClientRect();return (i.top+i.bottom)/2-(t.top+t.bottom)/2});
+          return {qs,heights:sums.map(s=>Math.round(s.getBoundingClientRect().height))}})()`);
         await shoot(page, `faq-${width}-${lang}`);
-        assert(m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
-        if (width >= 600) assert(Math.abs(m.head) <= 1, `heading and first question differ by ${m.head}`);
+        assert(m.qs.length === 12 && m.qs.every((d) => Math.abs(d) <= 1), `icons off the line centre: ${m.qs}`);
+        assert(m.heights.every((h) => h >= 44), `question rows under 44 px: ${m.heights}`);
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').click()`);
       });
     } finally { await page.close(); }
   }
@@ -4100,47 +4248,38 @@ async function runCssA11yFixes(base) {
   }
 }
 
-// Phone scroll (2026-11-08): on an iPhone "the rows pop in weirdly". Safari
-// draws a content-visibility:auto row only once it is already on screen
-// (WebKit's observer has no margin; Chrome's reaches half a screen further)
-// and has no scroll anchoring, so each row scrolled in blank at its
-// placeholder height, then drew and the rows under it jumped. Chrome hides
-// all of this, so the page here runs under a model of Safari: anchoring off
-// and a row drawn only once it is on screen, unless the site drew it early
-// (.near). Before the fix a blank row was on screen in 51 of 254 frames at
-// 390 px (64 of 252 at 320); after, none. Unslowed, the shift stays small
-// either way (it reached about 1.0 at 4x CPU, measured by hand), so the old
-// placeholder sizes are caught by the placeholder comparison instead.
+// Phone scroll: sample actual row/gap visibility during touch flings. Windowing
+// replaces the old content-visibility/.near model; every mounted row is drawn.
 async function runRowScroll(base) {
   watchdog.refresh();
   const safari = `document.addEventListener('DOMContentLoaded',()=>{
-    const st=document.createElement('style');st.textContent='html,body{overflow-anchor:none}.item:not(.wk-on):not(.near){content-visibility:hidden}';document.head.append(st);
-    const io=new IntersectionObserver((es)=>{for(const e of es)e.target.classList.toggle('wk-on',e.isIntersecting)});
-    new MutationObserver((ms)=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1&&n.classList.contains('item'))io.observe(n)}).observe(document.documentElement,{childList:true,subtree:true});
     window.__shift=0;new PerformanceObserver((l)=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__shift+=e.value}).observe({type:'layout-shift'});
   });`;
   for (const [width, height] of [[390, 844], [320, 640]]) {
     const page = await openPage(`${base}?ui=en`, width, height);
     try {
-      await check(`${width}/en`, 'ROW scroll', 'flicking down the list under a Safari model shows no blank row and no layout shift; row placeholders are within 15% of the real rows', async () => {
+      await check(`${width}/en`, 'ROW scroll', 'flicking down the list shows no blank row or spacer in the viewport and keeps bounded DOM', async () => {
         await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
         await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed')`);
         await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
         await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
         await page.send('Page.addScriptToEvaluateOnNewDocument', { source: safari });
         await page.send('Page.reload');
-        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n===t,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
-        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if(it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
-        for (let i = 0; i < 8; i++) {
-          await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
+        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n>0&&n<100,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
+        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if((it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))||document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.row-space'))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
+        // Flicks inside the screen, from 90% to 10% of its height, each with
+        // the glide after it, until the list is well past 6000 px. The finger
+        // never leaves the screen.
+        for (let i = 0; i < 20 && await page.ev('scrollY') < 6500; i++) {
+          await touchSwipe(page, { x: Math.round(width / 2), y: Math.round(height * 0.9), yDistance: -Math.round(height * 0.8), speed: 4000 });
+          await page.ev('new Promise((r) => setTimeout(r, 250))');
         }
         const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
-        // Every row drawn once, to compare its real height with the placeholder.
-        const h = await page.ev(`(()=>{const it=[...document.querySelectorAll('#results .item')];const cis=parseFloat(getComputedStyle(it[0]).containIntrinsicSize.replace('auto',''));it.forEach(e=>e.style.contentVisibility='visible');const hs=it.map(e=>e.getBoundingClientRect().height);it.forEach(e=>e.style.contentVisibility='');return {cis,mean:Math.round(hs.reduce((a,b)=>a+b,0)/hs.length)}})()`);
+        console.log(`MEASURE ${width} ROW scroll ${m.y} px in ${m.frames} frames`);
         assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
         assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
         assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
-        assert(Math.abs(h.mean - h.cis) <= h.mean * 0.15, `placeholder ${h.cis} px, real rows average ${h.mean} px`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'unbounded DOM after scroll');
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
@@ -4217,11 +4356,13 @@ async function runBadgeFlush(base) {
         const m = await page.ev(measure);
         verdict(m);
         assert(m.wrapped.length, 'no wrapped badge in My list ' + JSON.stringify(m));
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
           verdict(await page.ev(measure));
-        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
       });
       assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
     } finally { await page.close(); }
@@ -4277,14 +4418,14 @@ async function runCompareTouchScroll(base) {
     for (const [where, spot] of Object.entries(spots)) {
       assert(spot, `${label}: no table cell in the middle of the screen`);
       await page.ev(`scrollTo({ top: 0, behavior: 'instant' }); document.querySelector('#compare .cmp-scroll').scrollTop = 0`);
-      await page.send('Input.synthesizeScrollGesture', { x: spot[0], y: spot[1], xDistance: 0, yDistance: -300, gestureSourceType: 'touch', speed: 1200 }, 30000);
+      await touchSwipe(page, { x: spot[0], y: spot[1], yDistance: -300, speed: 1200 });
       const m = await page.ev(`new Promise((r) => setTimeout(() => r({ y: Math.round(scrollY), box: document.querySelector('#compare .cmp-scroll').scrollTop,
         html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }), 300))`);
       assert(m.y >= 100, `${label}, swipe over the ${where}: the page moved ${m.y} px (scroll box ${m.box} px, html ${m.html}, body ${m.body})`);
     }
     // The columns still swipe sideways.
     await page.ev(`scrollTo({ top: 0, behavior: 'instant' })`);
-    await page.send('Input.synthesizeScrollGesture', { x: spots.table[0], y: spots.table[1], xDistance: -200, yDistance: 0, gestureSourceType: 'touch', speed: 1200 }, 30000);
+    await touchSwipe(page, { x: spots.table[0], y: spots.table[1], xDistance: -200, speed: 1200 });
     const left = await page.ev(`new Promise((r) => setTimeout(() => r(document.querySelector('#compare .cmp-scroll').scrollLeft), 600))`);
     assert(left > 0, `${label}: a sideways swipe over the table did not move the columns`);
     await page.ev(`document.querySelector('#compare .cmp-scroll').scrollLeft = 0`);
@@ -4430,7 +4571,7 @@ async function runColdSheet(base, want) {
           ` });
           await page.send('Page.navigate', { url: base });
           if (trial === 0) {
-            await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'cold catalogue');
+            await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'cold catalogue');
             await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
           } else {
             await page.waitFor(`({ok:window.__cold.paint>0,why:'first rows not painted'})`, 15000, 'first rows');
@@ -4457,9 +4598,161 @@ async function runColdSheet(base, want) {
   }
 }
 
+async function runRowKeyboard(base) {
+  for (const width of [390, 1300]) for (const language of ['en', 'sk']) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=' + language });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'keyboard ready');
+      await check(`${width}/${language}`, 'row keyboard', 'one summary Tab stop, arrows across windows, toggle/rebuild/crossing focus', async () => {
+        const single = `([...document.querySelectorAll('#results>.item')].every(r=>[...r.querySelectorAll('.row button')].filter(b=>b.tabIndex===0).length===1))`;
+        assert(await page.ev(single), 'more than one summary Tab stop');
+        const ids = await page.ev(`(()=>{const rows=[...document.querySelectorAll('#results>.item')];rows[0].querySelector('button.open').focus();return rows.slice(0,3).map(r=>r.dataset.id)})()`);
+        for (const id of ids.slice(1)) {
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement.matches('button.open')&&document.activeElement.closest('.item').dataset.id===${JSON.stringify(id)}`), 'Tab did not skip Compare and Save');
+        }
+        for (const selector of ['button.cmpi', 'button.star']) {
+          await page.key('ArrowRight', 'ArrowRight', 39);
+          assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.tabIndex===0`), 'Right did not reach '+selector);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.getAttribute('aria-pressed')==='true'`), 'toggle lost focus/state');
+          assert(await page.ev(single), 'toggle added a Tab stop');
+        }
+        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;document.querySelector('[data-language="${language === 'en' ? 'sk' : 'en'}"]').click()`);
+        assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&document.activeElement.tabIndex===0`), 'rebuild lost Save focus/Tab stop');
+        await page.send('Emulation.setDeviceMetricsOverride', { width: width === 390 ? 1300 : 390, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&${single}`), 'crossing lost focus/Tab stop');
+        // Focus the last drawn row without scrolling it first: Down must mount
+        // the next window on demand, retaining the Save column.
+        const position = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].at(-1);r.querySelector('button.star').focus({preventScroll:true});return Number(r.getAttribute('aria-posinset'))})()`);
+        await page.key('ArrowDown', 'ArrowDown', 40);
+        assert(await page.ev(`document.activeElement.matches('button.star')&&Number(document.activeElement.closest('.item').getAttribute('aria-posinset'))===${position + 1}&&document.querySelectorAll('#results>.item').length<100&&${single}`), 'Down lost column/window or unbounded DOM');
+        await page.key('ArrowLeft', 'ArrowLeft', 37);
+        assert(await page.ev(`document.activeElement.matches('button.cmpi')&&${single}`), 'Left did not return to Compare');
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
+async function runWindow(base, want) {
+  for (const width of [390, 1300]) {
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'window ready');
+      await check(width, 'window', 'full length from first draw; deep scroll evicts rows, focus survives, print restores the window', async () => {
+        const first = await page.ev(`(()=>{const l=document.querySelector('#results');return {height:l.offsetHeight,n:l.querySelectorAll('.item').length,id:l.querySelector('.item').dataset.id}})()`);
+        assert(first.height > want.total * 60 && first.n < 100, JSON.stringify(first));
+        for (const y of [30000, 100000, 3000, 50000]) {
+          await page.ev(`scrollTo(0,${y})`);
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          const actualY = await page.ev('scrollY');
+          assert(Math.abs(actualY - y) < 844, `jump ${y} collapsed to ${actualY}`);
+          await page.waitFor(`({ok:!!document.elementFromPoint(innerWidth/3,600)?.closest('.item')&&document.querySelectorAll('#results>.item').length<100,why:'window not drawn'})`,5000,'deep window');
+        }
+        assert(await page.ev(`!document.querySelector('#results [data-id="${first.id}"]')`), 'first row never evicted');
+        const anchor = await page.ev(`(()=>{const r=document.elementFromPoint(innerWidth/3,600).closest('.item');return {id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY}})()`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length===${want.total}`), 'deep print lost rows');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        const returned = await page.ev(`(()=>{const r=document.querySelector('#results>[data-id="${anchor.id}"]');return {top:r?.getBoundingClientRect().top,y:scrollY}})()`);
+        assert(Math.abs(returned.top-anchor.top)<=1 && Math.abs(returned.y-anchor.y)<=1, 'print moved the visible programme: '+JSON.stringify({anchor,returned}));
+        await page.ev(`document.elementFromPoint(innerWidth/3,600).closest('.item').querySelector('button.open').focus({preventScroll:true});window.__focusId=document.activeElement.closest('.item').dataset.id;scrollTo(0,0)`);
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`document.activeElement.closest('.item')?.dataset.id===__focusId&&document.querySelectorAll('#results>.item').length<100`), 'focus lost or distant focus filled the gap');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length===${want.total}&&!document.querySelector('#results>.row-space')`), 'print lost rows');
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'print left full DOM');
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
+// Review of the windowing PR (2026-11-09). Compare hides the list, and an
+// update while it is open (here a language switch) emptied the rows: closing
+// it showed a blank list or jumped near the top. A language switch scrolled
+// back to the old pixel offset after the rows had changed height, so another
+// programme ended up on top. Print near the bottom read a clamped position.
+async function runWindowFixes(base, want) {
+  const frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))';
+  const probe = `(()=>{const r=document.elementFromPoint(innerWidth/3,500)?.closest('#results>.item');return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY}:null})()`;
+  const topOf = (id) => `document.querySelector('#results>[data-id="'+${JSON.stringify(id)}+'"]')?.getBoundingClientRect().top`;
+  for (const width of [390, 1300]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'loading'})`, 15000, 'window fixes ready');
+      await check(width, 'window fixes', 'a language switch keeps the programme on top in place, both ways', async () => {
+        // About row 150, under the sticky header.
+        await page.ev(`scrollTo(0,document.querySelector('#results').getBoundingClientRect().top+scrollY+150*parseFloat(getComputedStyle(document.querySelector('#results')).getPropertyValue('--row-estimate')))`);
+        await page.ev(frames); await page.ev(frames);
+        // The first row below the sticky header (its scroll margin).
+        const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>parseFloat(getComputedStyle(r).scrollMarginTop));return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,posinset:r.getAttribute('aria-posinset')}:null})()`);
+        assert(anchor && anchor.posinset > 100, 'no row near 150: ' + JSON.stringify(anchor));
+        for (const language of ['sk', 'en']) {
+          await page.ev(`document.querySelector('[data-language=${language}]').click()`);
+          await page.ev(frames); await page.ev(frames);
+          const top = await page.ev(topOf(anchor.id));
+          assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 2, `${language}: row moved ${JSON.stringify({ anchor, top })}`);
+        }
+      });
+      await check(width, 'window fixes', 'an update while Compare is open leaves the list drawn, in place and focus on the trigger after Close', async () => {
+        await page.ev(`scrollTo(0,30000)`);
+        await page.ev(frames); await page.ev(frames);
+        const anchor = await page.ev(probe);
+        assert(anchor, 'no row at the probe point');
+        await page.ev(`(()=>{const r=document.querySelector('#results>[data-id="'+${JSON.stringify(anchor.id)}+'"]');r.querySelector('button.cmpi').click();r.nextElementSibling.querySelector('button.cmpi').click()})()`);
+        await page.ev(frames);
+        const trigger = width < 600 ? 'cmp-tray-open' : 'header-compare';
+        await page.ev(`document.getElementById('${trigger}').focus();document.getElementById('${trigger}').click()`);
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare open');
+        await page.ev(`document.querySelector('[data-language=sk]').click()`);
+        await page.ev(frames);
+        await page.ev(`document.querySelector('#cmp-close').click()`);
+        await page.ev(frames); await page.ev(frames);
+        const after = await page.ev(`({n:document.querySelectorAll('#results>.item').length,at:${probe},y:scrollY,focus:document.activeElement.id})`);
+        assert(after.n > 0 && after.n < 100 && after.at, 'list blank after Close: ' + JSON.stringify(after));
+        assert(Math.abs(after.y - anchor.y) < 844, 'scroll not restored: ' + JSON.stringify({ anchor, after }));
+        assert(after.focus === trigger, 'focus not on the trigger: ' + JSON.stringify(after));
+        await page.ev(`document.querySelector('[data-language=en]').click()`);
+      });
+      await check(width, 'window fixes', 'print at the very bottom keeps the visible programme', async () => {
+        await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
+        await page.ev(frames); await page.ev(frames);
+        await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
+        await page.ev(frames); await page.ev(frames);
+        // The last rows: the footer may cover the usual probe point.
+        const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>150);return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,y:scrollY,last:r.getAttribute('aria-posinset')}:null})()`);
+        assert(anchor, 'no row at the probe point');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        await page.ev('document.body.offsetHeight');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev('document.body.offsetHeight');
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        const top = await page.ev(topOf(anchor.id));
+        assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 1, 'print moved the visible programme: ' + JSON.stringify({ anchor, top, y: await page.ev('scrollY') }));
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
 // Flex must retain row/slot geometry, keyboard scroll margins, wide details,
 // list semantics and print flow. The Safari-model flick check below guards
-// .near and the measured placeholder heights as well.
+// the mounted rows and reserved gaps as well.
 async function runSheetListLayout(base, want) {
   for (const width of [320, 390, 700, 1300]) {
     watchdog.refresh();
@@ -4467,7 +4760,7 @@ async function runSheetListLayout(base, want) {
     try {
       await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
       await page.send('Page.navigate', { url: base + '?ui=en' });
-      await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'mounting'})`, 20000, 'list mount');
+      await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'mounting'})`, 20000, 'list mount');
       await check(width, 'sheet flex list', 'expanded rows, pane, keyboard targets, list semantics and print keep their geometry', async () => {
         assert(await page.ev(`getComputedStyle(document.querySelector('#results')).display==='flex'&&getComputedStyle(document.querySelector('#results>.item')).display==='block'`), 'list/row display');
         const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>.item')` });
@@ -4490,11 +4783,13 @@ async function runSheetListLayout(base, want) {
           await page.ev(`document.querySelectorAll('#results>.item')[20].querySelector('button.open').focus({preventScroll:true})`);
           await page.key('ArrowDown', 'ArrowDown', 40);
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
-          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row===document.querySelectorAll('#results>.item')[21]&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
+          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row.querySelector('button.open').getAttribute('aria-current')==='true'&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
         }
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         assert(await page.ev(`(()=>{const list=document.querySelector('#results'),rows=[...list.children];return getComputedStyle(list).display==='block'&&rows.length===${want.total}&&rows.every(r=>getComputedStyle(r).contentVisibility==='visible')&&getComputedStyle(document.querySelector('#pane')).display==='none'})()`), 'print lost rows or kept containment/pane');
         await page.send('Emulation.setEmulatedMedia', { media: '' });
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
       });
     } finally { await page.close(); }
   }
@@ -4522,7 +4817,7 @@ async function runSheetPacing(base, want) {
         ` });
         await page.send('Page.navigate', { url: base + '?ui=en' });
         if (when === 'settled') {
-          await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total}&&document.querySelector('#filter-sheet').classList.contains('is-warm'),why:'mounting'})`, 20000, 'warm sheet');
+          await page.waitFor(`({ok:document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}'&&document.querySelector('#filter-sheet').classList.contains('is-warm'),why:'mounting'})`, 20000, 'warm sheet');
           await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         } else {
           await page.waitFor(`({ok:window.__pacing?.paint>0,why:'first paint'})`, 15000, 'first rows');
@@ -4552,12 +4847,13 @@ async function runSheetPacing(base, want) {
 // suite. Native touch events and in-page clocks include the work before paint.
 async function runNonModalSheet(base, want) {
   for (const [width, height] of [[390, 844], [320, 640]]) {
+    watchdog.refresh();
     const page = await openPage(base, width, height);
     try {
       await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
       await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
-      await page.waitFor(`({ok:!window.__oldPage&&document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'all rows');
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'all rows');
       await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
       const tap = async (selector) => {
         const { x, y } = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
@@ -4615,15 +4911,19 @@ async function runNonModalSheet(base, want) {
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
         const before = await page.ev('scrollY');
         await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: 40, deltaX: 0, deltaY: 450 });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: width / 2, y: 100 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: width / 2, y: 20 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        // A finger dragged up over the scrim, resting before it lifts. The
+        // old drag was one 80 px jump and a lift: a fling, and a fling
+        // swallows the next tap, which may be why the scrim tap below never
+        // closed the sheet at 390 on GitHub (2026-11-09).
+        await touchSwipe(page, { x: width / 2, y: 100, yDistance: -80, speed: 800, fling: false });
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         assert(await page.ev(`scrollY===${before}&&getComputedStyle(document.documentElement).overflow==='hidden'&&document.elementFromPoint(10,10).id==='sheet-scrim'`), 'background scrolled or scrim missed');
+        // What reached the scrim, for the failure message.
+        await page.ev(`window.__scrimLog=[];for(const t of ['pointerdown','pointerup','click'])document.querySelector('#sheet-scrim').addEventListener(t,()=>__scrimLog.push(t))`);
         assert(await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),z=e=>+getComputedStyle(e).zIndex;return z(s)>z(document.querySelector('#sheet-scrim'))&&z(document.querySelector('#sheet-scrim'))>Math.max(z(document.querySelector('.hd')),z(document.querySelector('#toasts')),z(document.querySelector('.cmp-tray'))||0)})()`), 'stack below tray/header/toasts');
         await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 10, y: 10 }] });
         await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await page.waitFor(settled(false), 5000, 'scrim close');
+        await page.waitFor(`(()=>{const r=${settled(false)};return {ok:r.ok,why:'sheet '+(document.querySelector('#filter-sheet').open?'open':'closed')+', scrim saw '+(__scrimLog.join(' ')||'nothing')}})()`, 5000, 'scrim close');
         assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'&&scrollY===${before}&&!document.documentElement.classList.contains('sheet-open')`), 'tap return/scroll cleanup');
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reopen');
         await page.send('Emulation.setDeviceMetricsOverride', { width: 800, height, deviceScaleFactor: 1, mobile: true });
@@ -4635,9 +4935,13 @@ async function runNonModalSheet(base, want) {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reduced-motion sheet');
         assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`), 'reduced motion still transitions');
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print scrim/scroll lock');
         await page.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        // Media emulation does not deliver the browser's afterprint event.
+        await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+        assert(await page.ev(`document.querySelectorAll('#results>.item').length<100`), 'print left the full catalogue mounted');
         await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
         await page.waitFor(`({ok:document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.querySelector('#sheet-scrim').classList.contains('is-open'),why:'setup handover'})`, 5000, 'Setup taking over');
         await page.key('Escape', 'Escape', 27);
@@ -4662,7 +4966,7 @@ async function runNonModalSetup(base, want) {
     };
     const reload = async () => {
       await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
-      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelectorAll('#results>.item').length===${want.total},why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
       await page.waitFor(settled,5000,'Setup settled');
     };
     try {
@@ -4674,14 +4978,24 @@ async function runNonModalSetup(base, want) {
         const times=[], opened=[];
         for(const action of ['skip','finish','skip']) {
           await reload();
-          if(action==='finish')for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+          if(action==='finish'){
+            for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+            // At 390 px "Show my programmes" sits exactly where Finish was, and
+            // a tap there inside the double-tap window is the second click of a
+            // double-tap (detail 2), which Show ignores on purpose. GitHub's
+            // Linux Chrome counted it so (2026-11-09): Setup stayed open and the
+            // Filters tap hit its scrim, read as [true,false,true]. Wait it out.
+            await new Promise(r=>setTimeout(r,800));
+          }
           // Click timestamp includes handler work and the next paint. Counting
           // transitionend alone hid the old inert frame on WebKit.
-          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',()=>{const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
+          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',e=>{window.__obDetail=e.detail;const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
           await tap(action==='skip'?'#onboarding .skipwrap button':'#onboarding .ob-done-foot .btn-p');
           // Deliver the immediate tap even if the old exiting backdrop covers it.
           await tap('#f-more', true);
           await page.waitFor(`({ok:window.__obFrame!==null,why:'close frame pending'})`,5000,'frame after close');
+          // A double-tap is the test's mistake, not a blocked tap: say so.
+          assert(await page.ev('__obDetail')===1,`${action}: the close tap counted as click ${await page.ev('__obDetail')} of a double-tap, so Setup ignored it`);
           opened.push(await page.ev(`document.querySelector('#filter-sheet').open`));
           times.push(await page.ev('__obFrame'));
           await page.key('Escape','Escape',27);
@@ -4733,6 +5047,411 @@ async function runNonModalSetup(base, want) {
   }
 }
 
+async function runSmarterSort(base) {
+  const ready = `({ok:!window.__oldPage && document.querySelector('#loading')?.hidden,why:'reload'})`;
+
+  for (const width of [1280, 768, 390]) {
+    const page = await openPage(`${base}?ui=en`, width, 900);
+    try {
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'sort boot');
+      const pickSort = async (value) => {
+        // Wide lists show column headings; reveal the menu at its own breakpoint.
+        if (width===1280) await page.send('Emulation.setDeviceMetricsOverride',{width:768,height:900,deviceScaleFactor:1,mobile:false});
+        await page.click(`document.querySelector('#dd-sort>summary')`, 'open Sort');
+        await page.click(`document.querySelector('#sort-options input[value="${value}"]')`, 'pick sort');
+        if (width===1280) await page.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+      };
+      await check(width,'SORT','Setup points activate Best match and order the results',async()=>{
+        await page.ev(`localStorage.clear(); window.__oldPage=true; location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden && document.querySelector('#onboarding').open,why:'fresh Setup'})`,15000,'fresh Setup');
+        assert(await page.ev(`[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true`),'Best match offered without points');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Start Setup');
+        await page.click(`document.querySelector('#ob-points')`,'My points'); await page.type('36');
+        for(let i=0;i<4;i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`,'next Setup step');
+        assert(await page.ev(`Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-sort').value==='best:asc' && document.querySelector('#sort-current').textContent==='Best match'`),'Setup did not activate Best match on done');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Show my programmes');
+        await page.ev('scrollTo({top:0,behavior:"instant"})');
+        await page.waitFor(`({ok:document.querySelector('#results>.item[aria-posinset="1"]'),why:'first row not mounted'})`,5000,'first Best match row');
+        const order = await page.ev(`(async()=>{const {loadData}=await import('./js/data.js');const {createFilterState,applyFilters,sortRows}=await import('./js/filters.js');const rows=(await loadData()).programmes;const st={...createFilterState(),myIbPoints:36,sort:'best'};const expected=sortRows(applyFilters(rows,st,new Set()),'best','asc',st).slice(0,20).map(r=>r.id);const dom=[...document.querySelectorAll('#results>.item')].slice(0,20).map(r=>r.dataset.id);const actual=[];document.querySelector('#results>.item[aria-posinset="1"] button.open').focus({preventScroll:true});for(let i=0;i<expected.length;i++){actual.push(document.activeElement.closest('.item').dataset.id);if(i+1<expected.length)document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));}return {actual,expected,dom}})()`);
+        assert(order.dom.length>0&&JSON.stringify(order.dom)===JSON.stringify(order.expected.slice(0,order.dom.length)), 'Best match DOM order differs: '+JSON.stringify(order));
+        assert(JSON.stringify(order.actual)===JSON.stringify(order.expected), 'Best match row order differs: '+JSON.stringify(order));
+        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='cost:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='cost:desc' && new URLSearchParams(location.search).get('points')==='38',why:'explicit sort or points lost'})`,5000,'explicit sort retention');
+        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='best:asc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc' && [...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true,why:'clear did not restore deadline'})`,5000,'points clear fallback');
+      });
+      // Leon, 2026-11-09: a sort the student picks survives a reload, and
+      // points set afterwards leave it alone; Clear all forgets it.
+      await check(width,'SORT saved','a hand-picked sort survives a reload (plain address), points set after it keep it, and Clear all forgets it',async()=>{
+        await pickSort('name:desc');
+        await page.waitFor(`({ok:JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='name',why:'sort not saved'})`,5000,'saved sort');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden,why:'reload'})`,15000,'reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='name:desc'`),`sort after reload: ${await page.ev(`document.querySelector('#f-sort').value`)}`);
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='36';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:new URLSearchParams(location.search).get('points')==='36',why:'points not applied'})`,5000,'points');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='name:desc'`),'points replaced the saved sort with Best match');
+        await page.ev(`document.querySelector('#f-clear').click()`);
+        await page.waitFor(`({ok:localStorage.getItem('ibuf.filters.v1')===null,why:'saved sort kept after Clear all'})`,5000,'clear all');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&!new URLSearchParams(location.search).has('sort')`),'Clear all kept the sort');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Clear all kept explicit sort'})`,5000,'auto sort after Clear all');
+
+      });
+      await check(width,'SORT deadline','Deadline with points survives URL and saved-preference reloads',async()=>{
+        await pickSort('deadline:asc');
+        await page.waitFor(`({ok:new URLSearchParams(location.search).get('sort')==='deadline'&&JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='deadline',why:'Deadline not serialized'})`,5000,'Deadline saved');
+        await page.ev(`window.__oldPage=true;location.reload()`);
+        await page.waitFor(ready,15000,'URL reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value==='38'`),'URL lost Deadline');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(ready,15000,'saved reload');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value==='38'`),'saved preferences lost Deadline');
+      });
+      await check(width,'SORT invalid best','Best match URL without points still switches automatically once points are entered',async()=>{
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}+'?ui=en&sort=best'`);
+        await page.waitFor(ready,15000,'Best match URL');
+        assert(await page.ev(`document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#f-points').value===''`),'URL merged saved preferences or offered Best match without points');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Best match suppressed'})`,5000,'Best match after points');
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+  for (const width of [390, 1280]) for (const language of ['en','sk']) {
+    const page = await openPage(`${base}?ui=${language}&q=`,width,900);
+    try {
+      await page.waitFor(ready,15000,'disabled Best match boot');
+      await check(`${width}/${language}`,'SORT disabled','Best match stays visible but unavailable until points are set',async()=>{
+        const hint = language === 'en' ? 'Best match (enter your IB points first)' : 'Najlepšia zhoda (najprv zadaj svoje IB body)';
+        const enabled = language === 'en' ? 'Best match' : 'Najlepšia zhoda';
+        const off = await page.ev(`(()=>{const option=[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc');const radio=document.querySelector('#sort-options input[value="best:asc"]');radio.click();return {option:option?.disabled,radio:radio?.disabled,label:radio?.parentElement.textContent,optionLabel:option?.textContent,checked:radio?.checked,sort:document.querySelector('#f-sort').value}})()`);
+        assert(off.option&&off.radio&&!off.checked&&off.sort==='deadline:asc'&&off.label===hint&&off.optionLabel===hint,JSON.stringify(off));
+        if (width===390) {
+          await page.click(`document.querySelector('#dd-sort>summary')`,'open disabled Sort');
+          assert(await page.ev(`document.querySelector('#sort-options input[value="best:asc"]').parentElement.getBoundingClientRect().height>0`),'disabled hint hidden');
+          await page.key('Tab','Tab',9);
+          assert(await page.ev(`document.activeElement!==document.querySelector('#sort-options input[value="best:asc"]')`),'keyboard reached disabled Best match');
+          await page.key('Escape','Escape',27);
+        }
+        await page.ev(`const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'points not applied'})`,5000,'enable Best match');
+        assert(await page.ev(`(()=>{const option=[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc'),radio=document.querySelector('#sort-options input[value="best:asc"]');return !option.disabled&&!radio.disabled&&option.textContent===${JSON.stringify(enabled)}&&radio.parentElement.textContent===${JSON.stringify(enabled)}})()`),'Best match not enabled or hint retained');
+        await page.ev(`{const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc'&&document.querySelector('#sort-options input[value="best:asc"]').disabled,why:'clear did not disable Best match'})`,5000,'disable Best match');
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+
+}
+
+// The FAQ panel behind the header's "?" (Leon, 2026-11-09): the FAQ was only
+// in the footer, below every row. The header must still fit at every width;
+// the panel slides like the Filters sheet (a sheet on phones, from the right
+// from 600 px), traps focus, closes by Escape, scrim and its X, can be
+// reopened mid-close, fades under reduced motion, follows the language, and
+// is what Setup's "Read the FAQ" opens. Screenshots go to the system temp
+// folder (ib-faq).
+async function runFaqPanel(base, want) {
+  const shots = join(tmpdir(), 'ib-faq');
+  await mkdir(shots, { recursive: true });
+  const ready = `({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'page loading'})`;
+  const moving = `[...document.querySelector('#faq-panel').getAnimations(),...document.querySelector('#faq-scrim').getAnimations()].some(a=>a.playState==='running')`;
+  const settled = (open) => `({ok:document.querySelector('#faq-panel').open===${open}&&!(${moving})&&getComputedStyle(document.querySelector('#faq-scrim')).display==='${open ? 'block' : 'none'}',why:'panel moving'})`;
+  // Header: "?" fits beside My list, Compare, SK/EN, the logo and Search,
+  // in both languages, with no overlap, no sideways scroll and one row.
+  // A touch screen at 600 px gets 44 px header buttons: the tightest case.
+  for (const [width, height, touch = width < 600] of [[320, 640], [360, 740], [390, 844], [600, 900], [600, 900, true], [1023, 768], [1024, 768], [1280, 800], [1440, 900]]) {
+    for (const ui of ['en', 'sk']) {
+      watchdog.refresh();
+      const page = await openPage(`${base}?ui=${ui}`, width, height);
+      try {
+        await page.waitFor(ready, 15000, 'page');
+        if (touch) {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        }
+        await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+        await page.waitFor(ready, 15000, 'reload');
+        await check(`${width}/${ui}${touch ? '/touch' : ''}`, 'FAQ header', '"?" fits the header beside My list, Compare, SK/EN, the logo and Search; named for screen readers', async () => {
+          const m = await page.ev(`(()=>{
+            const box=(n)=>n&&n.getClientRects().length?n.getBoundingClientRect():null;
+            const q=box(document.querySelector('#faq-open')),hd=box(document.querySelector('.hd'));
+            const others={list:document.querySelector('.hd #header-list'),compare:document.querySelector('#header-compare'),lang:document.querySelector('.hd .lang'),search:document.querySelector('.hd .search'),mark:document.querySelector('.hd .mark')};
+            const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
+            const hits=Object.entries(others).filter(([,n])=>box(n)&&overlap(q,box(n))).map(([k])=>k);
+            const mid=(r)=>(r.top+r.bottom)/2, lang=box(others.lang);
+            const hit=document.elementFromPoint(q.left+q.width/2,q.top+q.height/2);
+            return {q:[q.left,q.top,q.width,q.height].map(Math.round),hits,inside:q.left>=0&&q.right<=innerWidth&&q.top>=hd.top-0.5&&q.bottom<=hd.bottom+0.5,
+              row:Math.abs(mid(q)-mid(lang)),beforeLang:q.right<=lang.left,search:Math.round(box(others.search).width),hd:Math.round(hd.height),
+              sw:document.documentElement.scrollWidth,w:innerWidth,hit:document.querySelector('#faq-open').contains(hit),
+              label:box(document.querySelector('#faq-open .faq-l'))?document.querySelector('#faq-open .faq-l').textContent:null};
+          })()`);
+          const tap = touch ? 44 : 36;
+          // Leon, 2026-11-09: the word beside "?" from 1024 px; "?" alone below.
+          assert(m.label === (width >= 1024 ? (ui === 'sk' ? 'Časté otázky' : 'FAQ') : null), `label ${JSON.stringify(m.label)} at ${width}`);
+          if (width < 1024) assert(m.q[2] === tap, `"?" alone should be ${tap} wide, is ${m.q[2]}`);
+          assert(m.q[2] >= tap && m.q[3] >= tap, `"?" is ${m.q[2]}x${m.q[3]}, want ${tap}`);
+          assert(!m.hits.length && m.inside && m.hit && m.row <= 1 && m.beforeLang, `layout: ${JSON.stringify(m)}`);
+          assert(m.sw === m.w, `page is ${m.sw} wide at ${m.w}`);
+          assert(m.search >= (width < 600 ? 80 : 160), `Search is only ${m.search} wide`);
+          assert(m.hd <= 57, `header grew to ${m.hd} px`);
+          const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height: 64, scale: 2 } });
+          await writeFile(join(shots, `header-${width}-${ui}${touch ? '-touch' : ''}.png`), Buffer.from(data, 'base64'));
+          const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#faq-open')` });
+          const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+          const name = nodes[0]?.name?.value ?? '';
+          assert(name === (ui === 'sk' ? 'Časté otázky' : 'FAQ'), `accessible name "${name}"`);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // The panel itself: phone (touch) and a wide screen (mouse and keys).
+  for (const [width, height] of [[390, 844], [1280, 900]]) {
+    watchdog.refresh();
+    const phone = width < 600;
+    const page = await openPage(`${base}?ui=en`, width, height);
+    try {
+      await page.waitFor(ready, 15000, 'page');
+      if (phone) {
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      }
+      await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+      await page.waitFor(ready, 15000, 'reload');
+      // Timing is measured once the whole catalogue is in, as for the Filters
+      // sheet. With windowing only nearby rows are mounted, so the count is
+      // each row's aria-setsize, not how many rows the page holds.
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'all rows');
+      const tap = async (selector) => {
+        const spot = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered by '+(hit?.id||hit?.className));return {x,y}})()`);
+        if (phone) {
+          await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [spot] });
+          await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        } else for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: spot.x, y: spot.y, button: 'left', clickCount: 1 });
+      };
+      // What is on screen, not the whole page: the panel is fixed.
+      const viewShot = async (name) => {
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(join(shots, name), Buffer.from(data, 'base64'));
+      };
+      const tapAt = async (x, y) => {
+        if (phone) {
+          await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+          await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        } else for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+      };
+      const reset = async () => {
+        await page.ev(`document.querySelector('#faq-panel').open&&document.querySelector('#faq-panel .faqp-x').click()`);
+        await page.waitFor(settled(false), 5000, 'the panel closed');
+      };
+      await check(width, 'FAQ open', `"?" ${phone ? 'slides up a sheet' : 'slides in a side panel from the right'} in 280 ms (220 ms back) with the sheet's curve, the scrim and every question`, async () => {
+        await page.ev(`window.__faqT=null;const p=document.querySelector('#faq-panel');document.querySelector('#faq-open').addEventListener('pointerdown',()=>{window.__faqT={start:performance.now()}});p.addEventListener('transitionend',(e)=>{if(e.target===p&&e.propertyName==='transform'&&window.__faqT)window.__faqT.end=performance.now()})`);
+        await tap('#faq-open');
+        await page.waitFor(settled(true), 5000, 'the open panel');
+        // transitionend is dispatched a frame after the transition stops
+        // running, so "settled" can be seen before it: at 30 fps (macOS Low
+        // Power Mode) that read "tap to settled null ms" (2026-11-09).
+        await page.waitFor(`({ok:!!window.__faqT?.end,why:window.__faqT?'no transform transitionend yet':'no pointerdown on "?"'})`, 2000, 'the slide\'s transitionend');
+        const m = await page.ev(`(()=>{const p=document.querySelector('#faq-panel'),r=p.getBoundingClientRect(),c=getComputedStyle(p);
+          return {r:[r.left,r.top,r.right,r.bottom].map(Math.round),w:innerWidth,h:innerHeight,dur:c.transitionDuration,ease:c.transitionTimingFunction,modal:p.matches(':modal'),
+            focus:document.activeElement?.id,ring:document.activeElement?.matches(':focus-visible'),expanded:document.querySelector('#faq-open').getAttribute('aria-expanded'),
+            qs:[...p.querySelectorAll('summary')].map(s=>s.textContent.trim()),foot:document.querySelectorAll('.foot details').length,warm:p.classList.contains('is-warm'),
+            overflow:getComputedStyle(document.documentElement).overflow,t:window.__faqT&&Math.round(window.__faqT.end-window.__faqT.start)}})()`);
+        if (phone) assert(m.r[0] === 0 && m.r[2] === m.w && m.r[3] === m.h && m.r[1] > m.h * 0.1, `sheet at ${m.r}`);
+        else assert(m.r[2] === m.w && m.r[1] === 0 && m.r[3] === m.h && m.r[2] - m.r[0] === 440, `side panel at ${m.r}`);
+        assert(m.dur.startsWith('0.28s') && m.ease.startsWith('cubic-bezier(0.32, 0.72, 0, 1)') && !m.modal, `motion ${m.dur} ${m.ease} modal ${m.modal}`);
+        assert(m.focus === 'faq-h' && !m.ring && m.expanded === 'true', `focus ${m.focus} ring ${m.ring} expanded ${m.expanded}`);
+        assert(m.qs.length === 12 && m.qs.every(Boolean) && m.foot === 0, `questions ${JSON.stringify(m.qs)}, footer details ${m.foot}`);
+        assert(m.warm, 'the panel was not laid out (is-warm) before its first open');
+        assert(m.overflow === (phone ? 'hidden' : 'visible'), `page overflow ${m.overflow}`);
+        assert(m.t !== null && m.t < 600, `tap to settled ${m.t} ms`);
+        console.log(`MEASURE ${width} FAQ tap-to-settled ms ${m.t}`);
+        await viewShot(`panel-${width}-en.png`);
+        assert(await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).transitionDuration`) === '0.28s, 0.28s', 'open duration');
+      });
+      await reset();
+      await check(width, 'FAQ scrim', 'tapping the scrim closes it in 220 ms and returns to "?" without a ring; the page behind never scrolls', async () => {
+        await page.ev('window.scrollTo(0,0)');
+        await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
+        const before = await page.ev('scrollY');
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 10, y: height / 2, deltaX: 0, deltaY: 600 });
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width - 20, y: height - 40, deltaX: 0, deltaY: 600 });
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`scrollY===${before}`), 'the list behind scrolled');
+        const closing = await page.ev(`(()=>{const p=document.querySelector('#faq-panel');p.addEventListener('transitionend',()=>{},{once:true});return 1})()`);
+        await tapAt(10, phone ? 20 : height / 2);
+        const dur = await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).transitionDuration`);
+        await page.waitFor(settled(false), 5000, 'closed by the scrim');
+        const m = await page.ev(`({focus:document.activeElement?.id,ring:document.activeElement?.matches(':focus-visible'),expanded:document.querySelector('#faq-open').getAttribute('aria-expanded'),lock:document.documentElement.classList.contains('faq-open'),y:scrollY})`);
+        assert(closing && dur.startsWith('0.22s'), `close duration ${dur}`);
+        assert(m.focus === 'faq-open' && !m.ring && m.expanded === 'false' && !m.lock && m.y === before, JSON.stringify(m));
+      });
+      await reset();
+      await check(width, 'FAQ keys', 'Enter opens with a ring; Tab and Shift+Tab stay inside; a question opens by Space; Escape closes and returns to "?" with a ring', async () => {
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        await page.ev(`document.querySelector('#faq-open').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(settled(true), 5000, 'open by Enter');
+        assert(await page.ev(`document.activeElement.id==='faq-h'&&document.activeElement.matches(':focus-visible')`), 'heading not focused with a ring');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab missed the close button');
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), 'Shift+Tab left the panel or stuck on a hidden control');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab left the panel');
+        await page.key('Tab', 'Tab', 9);
+        await page.key(' ', 'Space', 32, [], ' ');
+        assert(await page.ev(`document.querySelector('#faq-panel details').open`), 'Space did not open the question');
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        assert(await page.ev(`document.activeElement.id==='faq-h'`), 'focus escaped to the page');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(settled(false), 5000, 'closed by Escape');
+        assert(await page.ev(`document.activeElement.id==='faq-open'&&document.activeElement.matches(':focus-visible')&&document.querySelector('#faq-open').getAttribute('aria-expanded')==='false'`), 'Escape did not return to "?" with a ring');
+        await page.ev(`document.querySelector('#faq-panel details').open=false`);
+      });
+      await reset();
+      // The last answer ends with the contact address as a mailto link
+      // (2026-11-09): reachable by keyboard once that question is open, and
+      // still inside the panel's focus trap.
+      await check(width, 'FAQ mailto', 'with the last question open, Shift+Tab from the close button reaches the underlined mailto link with a ring, and Tab wraps back', async () => {
+        await page.ev(`document.querySelector('#faq-open').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(settled(true), 5000, 'open by Enter');
+        // An answer grows open (2026-11-09); its content is shown from the
+        // first frame of that, not in the same task as the click.
+        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=true`);
+        await page.ev('new Promise(r=>setTimeout(r,350))');
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        const m = await page.ev(`(()=>{const a=document.activeElement,c=getComputedStyle(a);return {tag:a.tagName,href:a.getAttribute('href'),text:a.textContent,ring:a.matches(':focus-visible'),line:c.textDecorationLine,inPanel:!!a.closest('#faq-panel'),links:document.querySelectorAll('a[href^="mailto:"]').length}})()`);
+        assert(m.tag === 'A' && m.href === 'mailto:ibuniversityfinder@gmail.com' && m.text === 'ibuniversityfinder@gmail.com' && m.ring && m.line === 'underline' && m.inPanel
+          && m.links === 1, JSON.stringify(m));
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.classList.contains('faqp-x')`), 'Tab from the link left the panel');
+        await page.ev(`[...document.querySelectorAll('#faq-panel details')].at(-1).open=false`);
+      });
+      await reset();
+      // Leon, 2026-11-09: an answer grows open (and shuts) instead of
+      // snapping, with the "+" turning in step; the focus trap still skips a
+      // closed answer's link once it has shut.
+      await check(width, 'FAQ answer', 'an answer grows open over about 260 ms with the "+" turning; once the last one has shut again, Shift+Tab from Close lands on its question, not its link', async () => {
+        await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
+        const d = '[...document.querySelectorAll("#faq-panel details")]';
+        const shut = await page.ev(`${d}[1].getBoundingClientRect().height`);
+        await tap('#faq-panel details:nth-of-type(2) summary');
+        await page.ev('new Promise(r=>setTimeout(r,90))');
+        const mid = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,open:x.open,turn:getComputedStyle(x.querySelector('summary .ic')).transform}})()`);
+        await page.ev('new Promise(r=>setTimeout(r,400))');
+        const full = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,a:getComputedStyle(x.querySelector('.a')).opacity}})()`);
+        assert(mid.open && mid.h > shut + 4 && mid.h < full.h - 4 && mid.turn !== 'none', `not growing: shut ${shut}, mid ${JSON.stringify(mid)}, full ${JSON.stringify(full)}`);
+        assert(full.a === '1', `answer opacity ${full.a}`);
+        await tap('#faq-panel details:nth-of-type(2) summary');
+        await page.ev('new Promise(r=>setTimeout(r,500))');
+        assert(Math.abs(await page.ev(`${d}[1].getBoundingClientRect().height`) - shut) <= 0.5, 'the answer did not shut');
+        await page.ev(`{const x=${d}.at(-1);x.open=true;}`);
+        await page.ev('new Promise(r=>setTimeout(r,400))');
+        await page.ev(`${d}.at(-1).open=false`);
+        await page.ev('new Promise(r=>setTimeout(r,500))');
+        await page.ev(`document.querySelector('#faq-panel .faqp-x').focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        assert(await page.ev(`document.activeElement===[...document.querySelectorAll('#faq-panel summary')].at(-1)`), `Shift+Tab went to ${await page.ev('document.activeElement.outerHTML.slice(0,80)')}`);
+      });
+      await reset();
+      await check(width, 'FAQ interrupt', '"?" tapped mid-close reaches the button through the fading scrim and glides back open', async () => {
+        await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
+        await page.click(`document.querySelector('#faq-panel .faqp-x')`, 'close');
+        await page.ev('new Promise(r=>setTimeout(r,70))');
+        const mid = await page.ev(`(()=>{const p=document.querySelector('#faq-panel'),q=document.querySelector('#faq-open').getBoundingClientRect(),hit=document.elementFromPoint(q.left+q.width/2,q.top+q.height/2);
+          return {open:p.open,shown:p.checkVisibility(),transform:getComputedStyle(p).transform,hit:document.querySelector('#faq-open').contains(hit)}})()`);
+        await tap('#faq-open');
+        const back = await page.ev(`getComputedStyle(document.querySelector('#faq-panel')).transform`);
+        await page.waitFor(settled(true), 5000, 'reopened');
+        const end = await page.ev(`({t:getComputedStyle(document.querySelector('#faq-panel')).transform,focus:document.activeElement?.id})`);
+        assert(!mid.open && mid.shown && mid.transform !== 'none' && mid.hit, `mid-close ${JSON.stringify(mid)}`);
+        assert(back !== 'none' && end.t === 'none' && end.focus === 'faq-h', `reopen ${back} → ${JSON.stringify(end)}`);
+      });
+      await reset();
+      await check(width, 'FAQ reduced motion', 'reduced motion fades the panel in about 120 ms with no slide', async () => {
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        try {
+          // The warm panel is laid out while closed, so switching the setting
+          // on starts its own 120 ms fade from 1 to 0, hidden. A tap during
+          // that fade only reverses it from about 1, which is what failed on
+          // GitHub (2026-11-09, "o":1). A real tap comes long after the
+          // setting changed: wait for the closed panel to rest at 0.
+          await page.waitFor(`(()=>{const p=document.querySelector('#faq-panel'),o=getComputedStyle(p).opacity;return {ok:!p.open&&o==='0'&&!p.getAnimations().some(a=>a.playState==='running'),why:'closed panel at opacity '+o}})()`, 3000, 'the closed panel at rest');
+          // Read the start inside the page, when the opacity transition
+          // begins: a separate read after the tap could come 120 ms late on
+          // a slow runner and find the fade already over.
+          await page.ev(`(()=>{const p=document.querySelector('#faq-panel');window.__fadeStart=null;p.addEventListener('transitionrun',(e)=>{if(e.target!==p||e.propertyName!=='opacity'||__fadeStart)return;const c=getComputedStyle(p);__fadeStart={t:c.transform,o:Number(c.opacity),d:c.transitionDuration,p:c.transitionProperty}})})()`);
+          await tap('#faq-open');
+          await page.waitFor(`({ok:!!window.__fadeStart,why:'no opacity transition began'})`, 3000, 'the fade to start');
+          const first = await page.ev(`__fadeStart`);
+          await page.waitFor(settled(true), 3000, 'faded in');
+          const end = await page.ev(`(()=>{const c=getComputedStyle(document.querySelector('#faq-panel'));return {t:c.transform,o:c.opacity}})()`);
+          assert(first.t === 'none' && first.o < 1 && first.d.startsWith('0.12s') && first.p.startsWith('opacity'), `fade start ${JSON.stringify(first)}`);
+          assert(end.t === 'none' && end.o === '1', `fade end ${JSON.stringify(end)}`);
+          await page.key('Escape', 'Escape', 27);
+          await page.waitFor(settled(false), 3000, 'faded out');
+        } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+      });
+      await reset();
+      await check(width, 'FAQ language', 'switching to SK translates the panel\'s questions, heading and close button; print hides it', async () => {
+        await page.click(`document.querySelector('.hd .lang [data-language="sk"]')`, 'SK');
+        await page.waitFor(`({ok:document.documentElement.lang==='sk',why:'still '+document.documentElement.lang})`, 5000, 'Slovak');
+        await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
+        const m = await page.ev(`({h:document.querySelector('#faq-h').textContent,q:document.querySelector('#faq-panel summary').textContent.trim(),x:document.querySelector('#faq-panel .faqp-x').getAttribute('aria-label')})`);
+        assert(m.h === 'Časté otázky' && m.q === 'Čo je táto stránka a môžem sa cez ňu prihlásiť?' && m.x === 'Zavrieť časté otázky', JSON.stringify(m));
+        if (phone) await viewShot(`panel-${width}-sk.png`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          assert(await page.ev(`['#faq-panel','#faq-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print shows the panel or keeps the lock');
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(settled(false), 5000, 'closed');
+        await page.click(`document.querySelector('.hd .lang [data-language="en"]')`, 'EN');
+      });
+      await check(width, 'FAQ setup', 'Setup\'s "Read the FAQ" opens the panel without scrolling; closing it lands on the list', async () => {
+        await page.ev('window.scrollTo(0,0)');
+        if (phone) {
+          await page.click(`document.querySelector('#f-more')`, 'Filters');
+          await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        } else await page.click(`document.querySelector('.status [data-edit]')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'Setup');
+        for (let i = 0; i < 5; i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'the next Setup step');
+        const y = await page.ev('scrollY');
+        await page.click(`[...document.querySelectorAll('#onboarding .ob-foot .btn')].find(b=>b.textContent==='Read the FAQ')`, 'Read the FAQ');
+        await page.waitFor(settled(true), 5000, 'the panel from Setup');
+        assert(await page.ev(`!document.querySelector('#onboarding').open&&document.activeElement.id==='faq-h'&&scrollY===${y}`), 'Setup left open, focus elsewhere or the page scrolled');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(settled(false), 5000, 'closed');
+        assert(await page.ev(`document.activeElement===document.querySelector('section[aria-labelledby="results-h"]')`), 'focus did not land on the list');
+      });
+      // Last: scrolling to the footer mounts rows there, which would crowd the timing checks above.
+      await check(width, 'FAQ footer', 'the footer has no questions, only a "FAQ" button that opens the panel without scrolling and gets focus back on close', async () => {
+        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'end',behavior:'instant'})`);
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        const y = await page.ev('scrollY');
+        assert(await page.ev(`!document.querySelector('.foot details')&&!document.querySelector('#faq')&&document.querySelector('#faq-foot').textContent==='FAQ'`), 'footer still holds questions or lacks its button');
+        await tap('#faq-foot');
+        await page.waitFor(settled(true), 5000, 'open from the footer');
+        assert(await page.ev(`document.activeElement.id==='faq-h'&&scrollY===${y}`), 'focus or scroll wrong after opening from the footer');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(settled(false), 5000, 'closed');
+        assert(await page.ev(`document.activeElement.id==='faq-foot'&&scrollY===${y}`), `focus went to ${await page.ev('document.activeElement.id')}, scroll ${await page.ev('scrollY')} (was ${y})`);
+        await page.ev('window.scrollTo(0,0)');
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4750,7 +5469,42 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sheet-pacing-only')) {
+  // --only=runRowScroll,runFaqPanel runs just those sections, by function
+  // name, for sections without a flag of their own.
+  const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean);
+  if (only) {
+    if (!only.length) throw new Error('--only: name at least one section, e.g. --only=runRowScroll');
+    const sections = { runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
+      runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
+      runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
+      runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout };
+    const unknown = only.filter((name) => !Object.hasOwn(sections, name));
+    if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
+    for (const name of only) await sections[name](base, want);
+  } else if (args.has('--integration-fixes-only')) {
+    await runSmarterSort(base);
+    await runBatch2C(base);
+    await runBatch3C(base);
+    await runAlignListCompare(base);
+    await runCompareHeaderR2(base);
+    await runPhoneFixes(base);
+    await runNonModalSheet(base, want);
+    await runColdSheet(base, want);
+  } else if (args.has('--sort-only')) {
+    await runSmarterSort(base);
+  } else if (args.has('--faq-only')) {
+    await runFaqPanel(base, want);
+  } else if (args.has('--row-keyboard-only')) {
+    await runRowKeyboard(base);
+  } else if (args.has('--round2-only')) {
+    await runRound2(base);
+  } else if (args.has('--window-fixes-only')) {
+    await runWindowFixes(base, want);
+  } else if (args.has('--window-only')) {
+    await runWindow(base, want);
+    await runSheetListLayout(base, want);
+  } else if (args.has('--sheet-pacing-only')) {
     await runSheetPacing(base, want);
   } else if (args.has('--sheet-list-only')) {
     await runSheetListLayout(base, want);
@@ -4759,6 +5513,8 @@ async function main() {
   } else if (args.has('--setup-only') || args.has('--onboarding-only')) {
     await runNonModalSetup(base, want);
     if (args.has('--setup-only')) { await runRound2(base); await runBatch3C(base); await runAlignChromeSetup(base); await runSetupCompareReview(base); }
+  } else if (args.has('--phone-fixes-only')) {
+    await runPhoneFixes(base);
   } else if (args.has('--sheet-only')) {
     await runNonModalSheet(base, want);
     await runColdSheet(base, want);
@@ -4767,7 +5523,7 @@ async function main() {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
-    if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    if (anyBooted) { await runSmarterSort(base); await runRowKeyboard(base); await runWindow(base, want); await runWindowFixes(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
       await runBatch2A(base);
       await runBatch2B(base);
       await runBatch2C(base);
@@ -4790,7 +5546,8 @@ async function main() {
       await runNonModalSetup(base, want);
       await runBadgeFlush(base);
       await runCompareTouchScroll(base);
-      await runRowScroll(base); }
+      await runRowScroll(base);
+      await runFaqPanel(base, want); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

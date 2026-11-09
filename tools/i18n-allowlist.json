@@ -2,6 +2,17 @@
   "note": "Pinned technical literals, proper names and machine-read English source vocabulary. New visible wording belongs in js/i18n.js. Hard-token exceptions match exact field, en and sk; no blanket token exemptions.",
   "sources": {
     "js/app.js": [
+      "button.open, button.cmpi, button.star",
+      "button.cmpi",
+      "button.star",
+      "--row-estimate",
+      ".row-space",
+      "aria-posinset",
+      "aria-setsize",
+      "li",
+      "presentation",
+      "row-space",
+      "ul",
       " [data-save-id=\"",
       "\"] button.open",
       "#i-chevron",
@@ -277,6 +288,8 @@
       "saved",
       "scroll",
       "scrollend",
+      "touchstart",
+      "wheel",
       "section[aria-labelledby=\"results-h\"]",
       "select",
       "shared",
@@ -318,7 +331,13 @@
       "Arrow",
       "Enter",
       "keyup",
-      "pointerdown"
+      "pointerdown",
+      "dir",
+      "best",
+      "ArrowLeft",
+      "ArrowRight",
+      "tabindex",
+      "./faq.js"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -507,7 +526,8 @@
       "_filters",
       "_points",
       "filters_points",
-      "shared"
+      "shared",
+      "best"
     ],
     "js/points.js": [
       "./i18n.js",
@@ -796,7 +816,8 @@
       "i-chevron-left",
       "i-chevron-right",
       "cmp-lr",
-      "colspan"
+      "colspan",
+      "best"
     ],
     "js/shortlist.js": [
       "./cost.js",
@@ -1031,7 +1052,9 @@
       "string",
       "subject",
       "subjectAreas",
-      "url"
+      "url",
+      "desc",
+      "best"
     ],
     "js/onboarding.js": [
       "(max-width: 599.98px)",
@@ -1039,8 +1062,6 @@
       " back",
       "keydown",
       "pointerdown",
-      "touchstart",
-      "wheel",
       "./i18n.js",
       "./round2.js",
       "./saved-state.js",
@@ -1103,7 +1124,6 @@
       "polite",
       "r2_ob",
       "range",
-      "results",
       "rng",
       "rng-top",
       "scaleX(",
@@ -1113,7 +1133,6 @@
       "small",
       "sp",
       "span",
-      "start",
       "subjectAreas",
       "svg",
       "switch",
@@ -1122,11 +1141,6 @@
       "./render.js",
       "degreeTypes",
       "f-search",
-      "(prefers-reduced-motion: reduce)",
-      "auto",
-      "faq",
-      "smooth",
-      "summary",
       "#i-bookmark",
       "#i-compare",
       "ic",
@@ -1143,7 +1157,11 @@
       "focusin",
       "is-open",
       "onboarding-open",
-      "onboarding-scrim"
+      "onboarding-scrim",
+      "./faq.js",
+      "#i-help",
+      "ob-tools ob-help-hint",
+      "{help}"
     ],
     "js/compare-set.js": [
       "./compare.js",
@@ -1153,6 +1171,39 @@
       "removed",
       "restored",
       "string"
+    ],
+    "js/faq.js": [
+      ".faqp-b",
+      ".faqp-x",
+      "Escape",
+      "Tab",
+      "aria-expanded",
+      "button,summary,a[href],[tabindex]",
+      "click",
+      "close",
+      "details",
+      "false",
+      "faq",
+      "faq-h",
+      "faq-open",
+      "faq-panel",
+      "faq-scrim",
+      "focusin",
+      "is-open",
+      "keydown",
+      "open",
+      "pointerdown",
+      "true",
+      "undefined",
+      "wheel",
+      "(prefers-reduced-motion: reduce)",
+      "complete",
+      "faq-foot",
+      "is-sliding",
+      "is-warm",
+      "load",
+      "transform",
+      "transitionend"
     ]
   },
   "hardExceptions": [

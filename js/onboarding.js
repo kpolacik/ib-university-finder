@@ -2,6 +2,7 @@ import { t, facetLabel, formatCount } from './i18n.js';
 import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers } from './saved-state.js';
 import { dataValue } from './render.js';
 import { syncSlider } from './round2.js';
+import { openFaq } from './faq.js';
 
 export function readSaved() {
   try { return JSON.parse(localStorage.getItem(FILTER_KEY)); } catch { return null; }
@@ -64,33 +65,6 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   const close = (applied = false) => {
     if (!done) dismiss(applied ? 'completed' : 'dismissed');
     draft = null; done = false; appliedOnClose = applied; dialog.close(); finishClose();
-  };
-  const showFaq = () => {
-    const faq = document.getElementById('faq'), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // The FAQ sits below all 2,900 rows. Smooth-scrolling that far took
-    // seconds, and the rows drawn on the way and near the bottom change height
-    // (content-visibility placeholders, b14ff68), so the page stopped about
-    // 12,000 px short of the FAQ. Far away (or with reduced motion) it jumps,
-    // then keeps re-aiming for a moment while the rows there settle. Close by,
-    // it still glides, and aims once more if the list grew meanwhile.
-    const far = reduce || Math.abs(faq.getBoundingClientRect().top) > innerHeight * 2;
-    faq.scrollIntoView({ block: 'start', behavior: far ? 'auto' : 'smooth' });
-    focus(faq.querySelector('summary'));
-    const target = faq.getBoundingClientRect().top;
-    const list = document.getElementById('results');
-    const size = () => `${list.children.length}:${list.offsetHeight}`;
-    let last = size(), grew = false, still = 0, frames = 0, frame;
-    // The reader scrolling first cancels it.
-    const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
-    const stop = () => { cancelAnimationFrame(frame); for (const type of inputs) document.removeEventListener(type, stop, true); };
-    const watch = () => {
-      const now = size();
-      if (now !== last) { last = now; grew = true; still = 0; } else still++;
-      if (far && Math.abs(faq.getBoundingClientRect().top - target) > 1) faq.scrollIntoView({ block: 'start', behavior: 'auto' });
-      if (still >= 6 || ++frames > 300) { stop(); if (grew && !far) faq.scrollIntoView({ block: 'start', behavior: 'smooth' }); } else frame = requestAnimationFrame(watch);
-    };
-    for (const type of inputs) document.addEventListener(type, stop, true);
-    frame = requestAnimationFrame(watch);
   };
   const chips = (field, values, country = false) => {
     const box = el('div', 'chips');
@@ -157,7 +131,10 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       syncSlider(slider, draft.maxBudget); top.append(label, input); wrap.append(top, slider, error); section.append(wrap);
     }
     body.replaceChildren(label, section); body.scrollTop = 0;
-    const skip = el('div', 'skipwrap'); skip.append(button('r2_skip', 'btn btn-q', () => close()), el('small', '', t('r2_skip_sub')));
+    // The hint is part of Skip (its accessible name says the answers go), so
+    // the footer has no extra row under the button (Leon, 2026-11-09).
+    const skipButton = button('r2_skip', 'btn btn-q', () => close()); skipButton.append(el('small', '', t('r2_skip_sub')));
+    const skip = el('div', 'skipwrap'); skip.append(skipButton);
     const spacer = el('span', 'sp');
     const previous = button('r2_back', 'btn', () => { step--; draw(true); }); previous.hidden = step === 1;
     const next = button(step === 1 ? 'r2_start' : step === 5 ? 'r3_ob_finish' : 'r2_next', 'btn btn-p', () => {
@@ -170,26 +147,30 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
   // filters, so it says so, how many programmes that leaves, and offers the
-  // list or the FAQ, which sits at the very bottom where few people scroll.
+  // list or the FAQ (once only at the very bottom, where few people scroll).
   // It replaces the toast setup used to end with, and step 1's FAQ link.
   // The one moment every new student reads: say what the two row icons do,
   // with the icons themselves in the sentence (Leon, 2026-11-06).
-  const toolsHint = () => {
-    const p = el('p', 'ob-tools');
-    for (const part of t('r4_ob_done_tools').split(/(\{bookmark\}|\{scales\})/)) {
-      if (part === '{bookmark}' || part === '{scales}') {
+  // The same for the header's "?" (Leon, 2026-11-09), which reopens the FAQ.
+  const iconHint = (key, className, icons) => {
+    const p = el('p', className);
+    for (const part of t(key).split(/(\{\w+\})/)) {
+      const icon = icons[part];
+      if (icon) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('class', 'ic');
         svg.setAttribute('aria-hidden', 'true');
         const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        use.setAttribute('href', part === '{bookmark}' ? '#i-bookmark' : '#i-compare');
+        use.setAttribute('href', icon[0]);
         svg.append(use);
-        const label = el('span', 'visually-hidden', t(part === '{bookmark}' ? 'r4_icon_bookmark' : 'r4_icon_scales'));
+        const label = el('span', 'visually-hidden', t(icon[1]));
         p.append(svg, label);
       } else if (part) p.append(part);
     }
     return p;
   };
+  const toolsHint = () => iconHint('r4_ob_done_tools', 'ob-tools', { '{bookmark}': ['#i-bookmark', 'r4_icon_bookmark'], '{scales}': ['#i-compare', 'r4_icon_scales'] });
+  const faqHint = () => iconHint('r6_ob_faq_later', 'ob-tools ob-help-hint', { '{help}': ['#i-help', 'r6_icon_help'] });
   // Where the filters are: the Filters button on phones, the bar above the
   // list from 600 px, which has no Filters button (review of PR 1, 2026-11-07).
   // "Your existing filters still apply" only when a filter is on.
@@ -212,20 +193,26 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     // Maths and rows without a figure stay in too, so the line splits them as
     // the count line does. t() picks the plural from the number; only the
     // numbers on screen are formatted ("2,915"), as the count line does.
-    const count = (any ? [t('r3_ob_done_count', { count: shown }), ...summary].join(' · ') : t('r3_ob_shown_count', { count: shown }))
+    // Only the lead is formatted here: the summary parts come from
+    // pointsSummaryParts already grouped, and a second pass over their digits
+    // turned "1,033" into "1,33".
+    const lead = t(any ? 'r3_ob_done_count' : 'r3_ob_shown_count', { count: shown })
       .replace(/\d+/g, (value) => formatCount(Number(value)));
+    const count = any ? [lead, ...summary].join(' · ') : lead;
     // Without answers the count is whatever the page's own filters (search,
     // city…) leave, so it must not claim those rows match anything.
     doneNote = { node: el('p', ''), any, filtered, sheetFiltered };
     doneNote.node.textContent = t(noteKey(doneNote));
-    section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint());
+    section.append(heading, el('p', 'ob-count', count), doneNote.node, toolsHint(), faqHint());
     body.replaceChildren(section); body.scrollTop = 0;
     // The primary comes first, so it is first in tab order and on top on phones;
     // from 600 px the row is reversed to put it on the right, as Next was.
     // detail > 1 is the second click of a double-click on Finish, which would
     // otherwise land on this button and close the screen before it is read.
     const show = button('r2_show_mine', 'btn btn-p', (event) => { if (event?.detail > 1) return; close(true); });
-    const faq = button('r3_ob_faq', 'btn', () => { close(true); showFaq(); });
+    // The FAQ opens in its panel over the list (Leon, 2026-11-09), as from the
+    // header's "?"; closing it returns to the list, where Setup has put focus.
+    const faq = button('r3_ob_faq', 'btn', () => { close(true); openFaq(results); });
     foot.classList.add('ob-done-foot'); foot.replaceChildren(show, faq, el('span', 'sp'));
     focus(heading);
   };

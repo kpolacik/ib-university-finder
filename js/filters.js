@@ -1,4 +1,4 @@
-import { t, translatedSearchText } from './i18n.js';
+import { t, formatCount, translatedSearchText } from './i18n.js';
 // Pure functions: given rows and a filter state, give back the rows that match,
 // in the requested order. No DOM in here, so this stays easy to reason about.
 
@@ -197,9 +197,10 @@ export function pointsSummaryParts(rows, state) {
     const bucket = pointsBucket(row, state);
     if (bucket in n) n[bucket]++;
   }
-  const parts = [{ kind: 'fit', text: t('within_your_ib_points_2', { value1: n.within }) }];
-  if (n.maths) parts.push({ kind: 'cond', text: t('only_with_hl_maths_4_2', { value1: n.maths }) });
-  if (n.unknown) parts.push({ kind: 'unk', text: t('can_t_be_compared_2', { value1: n.unknown }) });
+  // Counted like the lead and the Setup done screen: "1,512" / "1 512".
+  const parts = [{ kind: 'fit', text: t('within_your_ib_points_2', { value1: formatCount(n.within) }) }];
+  if (n.maths) parts.push({ kind: 'cond', text: t('only_with_hl_maths_4_2', { value1: formatCount(n.maths) }) });
+  if (n.unknown) parts.push({ kind: 'unk', text: t('can_t_be_compared_2', { value1: formatCount(n.unknown) }) });
   return parts;
 }
 
@@ -279,6 +280,17 @@ function wholeNumberIn(raw, min, max) {
 // out, so the plain page keeps its plain address.
 const DEFAULT_SORT = 'deadline';
 
+// A deliberate sort choice lasts through later points edits, including Setup.
+export function setMyPoints(state, points, explicitSort = false) {
+  const changed = state.myIbPoints !== points;
+  state.myIbPoints = points;
+  if (points === null && state.sort === 'best') {
+    state.sort = DEFAULT_SORT; state.dir = 'asc';
+  } else if (changed && points !== null && !explicitSort) {
+    state.sort = 'best'; state.dir = 'asc';
+  }
+}
+
 export function stateToParams(state) {
   const params = new URLSearchParams();
   if (state.search.trim()) params.set('q', state.search.trim());
@@ -296,7 +308,8 @@ export function stateToParams(state) {
   for (const v of state.cities) params.append('city', v);
   if (state.deadlineWindow !== 'any') params.set('deadline', state.deadlineWindow);
   if (state.dir === 'desc') params.set('dir', 'desc');
-  if (state.sort !== DEFAULT_SORT) params.set('sort', state.sort);
+  // With points, a plain address selects Best match; Deadline must be explicit.
+  if (state.sort !== DEFAULT_SORT || state.myIbPoints !== null) params.set('sort', state.sort);
   return params.toString();
 }
 
@@ -311,7 +324,8 @@ export function paramsToState(query, facets = null) {
   const budget = parseEuros(params.get('budget'));
   const living = parseEuros(params.get('living'));
   const known = (name, values) => new Set(facets ? params.getAll(name).filter((v) => (values || []).includes(v)) : []);
-  const sort = params.get('sort');
+  const requested = params.get('sort');
+  const sort = requested === 'best' && (!points.valid || points.value === null) ? DEFAULT_SORT : requested;
   return {
     search: params.get('q') || '',
     myIbPoints: points.valid ? points.value : null,
@@ -328,7 +342,7 @@ export function paramsToState(query, facets = null) {
     degreeTypes: known('degree', facets && facets.degreeTypes),
     cities: known('city', facets && facets.cities),
     deadlineWindow: Object.hasOwn(DEADLINE_WINDOWS, params.get('deadline')) ? params.get('deadline') : 'any',
-    dir: params.get('dir') === 'desc' ? 'desc' : 'asc',
+    dir: requested === 'best' ? 'asc' : params.get('dir') === 'desc' ? 'desc' : 'asc',
     sort: Object.hasOwn(SORTS, sort) ? sort : DEFAULT_SORT,
   };
 }
@@ -336,6 +350,8 @@ export function paramsToState(query, facets = null) {
 // ------------------------------------------------------------------- sorting
 
 export const SORTS = {
+  get best() { return t('best_match'); },
+  get cost() { return t('total_yearly_cost_lowest_first'); },
   get deadline() { return t('deadline_soonest_first'); },
   get tuition() { return t('eu_fee_lowest_first'); },
   get points() { return t('ib_points_lowest_first'); },
@@ -343,6 +359,7 @@ export const SORTS = {
 };
 
 export const REVERSE_SORTS = {
+  get cost() { return t('total_yearly_cost_highest_first'); },
   get deadline() { return t('deadline_latest_first'); },
   get tuition() { return t('eu_fee_highest_first'); },
   get points() { return t('ib_points_highest_first'); },
@@ -356,14 +373,24 @@ export const DEADLINE_WINDOWS = {
   get any() { return t('any_date'); }, get open() { return t('not_passed_yet'); }, get '30'() { return t('within_30_days'); }, get '60'() { return t('within_60_days'); },
 };
 
-export function sortRows(rows, key, dir = 'asc') {
+export function sortRows(rows, key, dir = 'asc', state = createFilterState()) {
   const direction = dir === 'desc' ? -1 : 1;
-  const compare = COMPARATORS[key] || COMPARATORS.deadline;
+  const compare = (key === 'best' && state.myIbPoints === null ? null : COMPARATORS[key]) || COMPARATORS.deadline;
   // Copy first: sort mutates, and the caller owns the full dataset.
-  return [...rows].sort((a, b) => compare(a, b, direction) || byName(a, b));
+  return [...rows].sort((a, b) => compare(a, b, direction, state) || COMPARATORS.deadline(a, b, 1) || byName(a, b));
 }
 
 const COMPARATORS = {
+  best(a, b, direction, state) {
+    const ranks = { within: 0, maths: 1, unknown: 2, hidden: 3 };
+    return ranks[pointsBucket(a, state)] - ranks[pointsBucket(b, state)]
+      || COMPARATORS.deadline(a, b, 1)
+      || compareNumbers(Math.abs(a.ibPointsMin === null ? Infinity : state.myIbPoints - a.ibPointsMin),
+        Math.abs(b.ibPointsMin === null ? Infinity : state.myIbPoints - b.ibPointsMin), 1);
+  },
+  cost(a, b, direction, state) {
+    return compareNumbers(yearlyCost(a, state.myLiving).low, yearlyCost(b, state.myLiving).low, direction);
+  },
   // Keep actionable, passed and unknown buckets in that order in both directions.
   deadline(a, b, direction) {
     const rank = (r) => (r.deadline === null ? 2 : r.deadlinePassed ? 1 : 0);
@@ -378,14 +405,14 @@ const COMPARATORS = {
 
 // Unknowns stay last even when the known values are reversed.
 function numericNullsLast(key) {
-  return (a, b, direction) => {
-    const left = a[key];
-    const right = b[key];
-    if (left === null && right === null) return 0;
-    if (left === null) return 1;
-    if (right === null) return -1;
-    return (left - right) * direction;
-  };
+  return (a, b, direction) => compareNumbers(a[key], b[key], direction);
+}
+
+function compareNumbers(left, right, direction) {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return (left - right) * direction;
 }
 
 function byName(a, b) {

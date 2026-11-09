@@ -1,10 +1,12 @@
-# Runs the same checks you would run by hand, on GitHub, for every push and
-# pull request. It exists because nothing else stops a broken change: there is
-# no build step, and whatever reaches main is the live site (audit L08).
+# Runs the same checks you would run by hand, on GitHub. It exists because
+# nothing else stops a broken change: there is no build step, and whatever
+# reaches main is the live site (audit L08).
 #
-# It reads the repository and nothing else: no secrets and no network after
-# setup. tools/smoke.mjs is left out on purpose; see STATUS.md,
-# "Running it".
+# Job "checks" (check.mjs and check-contrast.mjs) runs for every push and pull
+# request. Job "smoke" (tools/smoke.mjs, real Chrome, about 9 minutes locally)
+# runs for pull requests only, so a push to main or to a branch without a PR
+# doesn't spend the time twice. Both read the repository and nothing else: no
+# secrets and no network after setup. See STATUS.md, "Running it".
 name: Checks
 
 on: [push, pull_request]
@@ -25,3 +27,33 @@ jobs:
           node-version: 26
       - run: node tools/check.mjs
       - run: node tools/check-contrast.mjs
+
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      # Ubuntu 24.04 can refuse Chrome's sandbox (unprivileged user
+      # namespaces). Allow them on this throwaway machine rather than passing
+      # --no-sandbox to Chrome. Harmless if the setting is absent.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      # smoke.mjs finds the runner's preinstalled google-chrome on PATH.
+      # --require-chrome makes a missing Chrome a failure, not a quiet skip.
+      # --keep leaves Chrome's log in /tmp/ibuf-smoke-*/ for the artifact below.
+      - run: node tools/smoke.mjs --require-chrome --keep
+      # Screenshots go to /tmp/ib-*/ (one folder per smoke section).
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-screenshots-and-chrome-log
+          path: |
+            /tmp/ib-*/
+            /tmp/ibuf-smoke-*/chrome.log
+          if-no-files-found: ignore
+          retention-days: 7

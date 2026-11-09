@@ -269,7 +269,10 @@ function retireToast(toast, { used = false } = {}) {
   toast.classList.add('out');
   state.exit = setTimeout(() => toast.remove(), 160);
 }
-export function showToast(message, actionLabel, action) {
+// focusAction: the removal came from the keyboard, so focus moves to the
+// action (Undo); a 6 s toast would otherwise be gone before Tab could reach
+// it. Escape (or Undo) then dismisses it and focus goes back where it was.
+export function showToast(message, actionLabel, action, { focusAction = false } = {}) {
   const region = document.getElementById('toasts');
   const toast = document.createElement('div'); toast.className = 'toast';
   const state = { timer: undefined, exit: undefined, hover: false };
@@ -296,6 +299,17 @@ export function showToast(message, actionLabel, action) {
     old.remove();
   }
   region.append(toast);
+  const button = toast.querySelector('button');
+  if (focusAction && button) {
+    const from = document.activeElement;
+    button.focus({ preventScroll: true });
+    toast.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault(); event.stopPropagation();
+      if (from?.isConnected) from.focus({ preventScroll: true });
+      retireToast(toast, { used: true });
+    });
+  }
   timeToast(toast);
   // For a caller whose toast goes stale before its timer, such as "Open
   // compare" once Compare is open.

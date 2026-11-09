@@ -1,12 +1,13 @@
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
+import { onFaqSlide } from './faq.js';
 import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
 import { loadData, applyToday } from './data.js';
 import {
-  createFilterState, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
+  createFilterState, setMyPoints, applyFilters, sortRows, buildFacets, activeFilterCount, SORTS, REVERSE_SORTS, DEADLINE_WINDOWS, EXAM_OPTIONS,
   parsePoints, parseFee, parseEuros, stateToParams, paramsToState, pointsSummaryParts, pointsBucket, linkContents,
 } from './filters.js';
 import {
@@ -16,7 +17,7 @@ import {
 import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
-  renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
   setSaved, setInCompare, renderCompare,
 } from './render.js';
 
@@ -140,6 +141,7 @@ const dom = {
 };
 
 const state = createFilterState();
+let explicitSort = false;
 const shortlist = loadShortlist();
 // The list view (state.shortlistOnly) shows the saved programmes, or a shared
 // link's. shared is readSharedList's { raw, ids, unknown } while a ?list= link
@@ -151,7 +153,7 @@ let preferencesDirty = false;
 const editedFacets = new Set();
 const persistPreferences = debounce(() => {
   if (!loaded || !preferencesDirty) return;
-  writeSaved(storedFilters(state, facets)); preferencesDirty = false;
+  writeSaved(storedFilters(state, facets, explicitSort)); preferencesDirty = false;
 }, 300);
 // "Show all saves": the list view without the page's filters.
 let listAll = false;
@@ -201,6 +203,10 @@ const printQuery = matchMedia('print');
 // button. The same query as the CSS.
 const trayQuery = matchMedia('(max-width: 599.98px), (max-height: 500px)');
 let printing = false;
+let printFlushed = false;
+// Where the page was before print: the full list is shorter than the
+// estimates near its end, so the browser clamps the position while it shows.
+let printScrollY = 0;
 let updateAfterPrint = false;
 // Slot motion owned by each slot: its pending frame, transitionend listener and
 // 250 ms fallback. Kept per node so a late callback only ever touches its own
@@ -217,57 +223,20 @@ let returnFocusOnClose = true;
 // after a tap (Leon, 2026-11-08). The ring now follows the input.
 let keyboardInput = false;
 let sentinelAbove = false;
-// L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
-// almost all of them are off screen. update() now draws enough rows to fill the
-// window at once and appends the rest in slices just after the first paint.
-const FIRST_ROWS = 40;
-// Each task after the first paint appends rows a few at a time and stops once
-// SLICE_MS has passed, so the site's own work in a task stays short on a slow
-// machine too. Fixed slices were too big there: 50 rows took about 25 ms and,
-// with one of Chrome's major garbage collections, up to 119 ms; even 20 rows
-// plus a collection once took 53 ms. A collection can still land inside a task
-// (up to 82 ms at 4x CPU) and no budget can shorten it (STATUS.md, L09).
-const SLICE_MS = 8;
-const CHUNK_ROWS = 5;
-// The smallest height a drawn row can take, used to work out how many rows fill
-// the window. A laid-out row is never under 76 px (measured at 320-2560 px), and
-// a row Chrome has not laid out yet takes its contain-intrinsic-size
-// placeholder (90-240 px). If a CSS change makes rows or those placeholders
-// shorter than 60 px, lower this, or the page can end above the scroll position
-// and jump. tools/check.mjs checks the placeholders against it.
-const MIN_ROW_PX = 60;
-// Safari draws a content-visibility:auto row only once it is already on
-// screen: WebKit's observer for it has no margin, where Chrome's reaches half
-// a screen past the window. On an iPhone each row scrolled in as a blank
-// placeholder, then drew and changed height, and the rows under it jumped
-// ("the rows pop in weirdly", 2026-11-08). While the page scrolls, the rows
-// within NEAR_SCREENS screens of the window get .near, which draws them before
-// they arrive. Found by a binary search once a frame, not an
-// IntersectionObserver: one watching all 2,915 rows cost about 1 s of main
-// thread per 18,000 px of scroll at 4x CPU in Chrome.
-const NEAR_SCREENS = 1.5;
-let nearMarked = [];
-let nearFrame = 0;
-// The rows still to append: { rows, next, frame, timer }. Only one at a time;
-// every rebuild cancels it first.
-let pendingRows = null;
-// Old lists waiting to be deleted (L09). With 2,915 rows, removing the old rows
-// in one go took about 430 ms at 4x CPU (about 37 µs a row), so ticking one
-// country froze the page. A rebuild now draws into a fresh empty list and parks
-// the old one out of sight, layout, focus and the accessibility tree, then
-// deletes its rows a slice at a time after the first paint.
-const retiredLists = new Set();
-let retireTimer;
-// A list this short is cheaper to clear in place than to park.
-const PARK_ROWS = 200;
-// After a reload or Back/Forward the browser puts the page back where it was,
-// but only once the page is tall enough, and it gives up soon after loading.
-// With only the first screen drawn, a reload halfway down landed near the top
-// (49,901 px came back as 7,553). So the first draw after such a visit draws
-// every row, as before L09. A fresh visit starts at the top and needs no more.
-let firstDraw = true;
+// Only the viewport and two screens on either side are mounted. The offsets
+// include measured rows and CSS breakpoint estimates for every unseen row.
+const WINDOW_SCREENS = 2;
+let windowRows = [];
+let rowHeights = [];
+let rowOffsets = [0];
+let windowFrame = 0;
+let windowWidth = 0;
+let scrollingHome = false;
+const rowObserver = new ResizeObserver(() => scheduleWindow());
 let sheetWarmScheduled = false;
 let sheetSlideTimer;
+// True while the FAQ panel slides (js/faq.js): rows wait, as for the sheet.
+let faqSliding = false;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
@@ -317,6 +286,7 @@ async function start() {
   crossBar();
   barQuery.addEventListener('change', crossBar);
   wireSheet();
+  onFaqSlide((on) => { faqSliding = on; if (on) cancelRows(); else scheduleWindow(); });
   wireStuck();
   wireDropdowns();
   applyUrlFields();
@@ -333,10 +303,11 @@ async function start() {
     }
   });
   dom.results.addEventListener('click', toggleRow);
-  window.addEventListener('scroll', scheduleNear, { passive: true });
+  window.addEventListener('scroll', scheduleWindow, { passive: true });
+  window.addEventListener('resize', scheduleWindow);
   document.getElementById('pane-close').addEventListener('click', () => {
     const id = selectedId; clearSelection(); selectedId = null; drawPane();
-    dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
+    mountRow(id)?.querySelector('button.open')?.focus({ preventScroll: true });
   });
   // The pane's "Save to my list" and compare button.
   dom.pane.addEventListener('click', (event) => {
@@ -352,8 +323,20 @@ async function start() {
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) { settleSlots(); resumeSheetRows(); } });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
-  window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); syncTray(); });
+  window.addEventListener('beforeprint', () => {
+    printing = true;
+    settleSlots();
+    printFlushed = !compareOpen;
+    printScrollY = window.scrollY;
+    if (printFlushed) flushRows();
+    syncTray();
+  });
   window.addEventListener('afterprint', afterPrint);
+  // Input also releases Home on engines that do not send scrollend.
+  window.addEventListener('scrollend', (event) => { if (event.target === document) scrollingHome = false; });
+  for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+    window.addEventListener(type, () => { scrollingHome = false; }, { capture: true, passive: true });
+  }
   wireTray();
   dom.results.setAttribute('aria-busy', 'true');
 
@@ -366,7 +349,7 @@ async function start() {
 
     renderSourceBanner(dom.banner, meta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, meta.issues);
-    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
     syncSort();
 
     facets = buildFacets(allRows);
@@ -394,6 +377,7 @@ async function start() {
         // the done screen counted) saves the answers rule out, like a 42-point
         // programme for 24 points. The answers are filters: they apply here.
         listAll = false;
+        setMyPoints(state, answers.myIbPoints, explicitSort);
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
         // Setup's done screen says how many programmes this leaves, how they
@@ -423,8 +407,14 @@ function applyUrlFields() {
   const fromUrl = restored.state;
   for (const key of FACET_FIELDS) state[key] = new Set(fromUrl[key]);
   fillFields(fromUrl);
+  const params = new URLSearchParams(location.search);
+  // A saved sort was hand-picked (storedFilters keeps only those), so setting
+  // points later leaves it alone, as it would have before the reload.
+  explicitSort = fromUrl.sort !== 'best' && (restored.sortPicked
+    || (params.has('sort') && params.get('sort') !== 'best') || params.has('dir') || fromUrl.sort !== 'deadline');
   state.sort = fromUrl.sort;
   state.dir = fromUrl.dir;
+  setMyPoints(state, fromUrl.myIbPoints, explicitSort);
 }
 
 function fillFields(fromUrl) {
@@ -458,6 +448,9 @@ function applyUrlLists() {
 function switchLanguage(language) {
   const x = window.scrollX;
   const y = window.scrollY;
+  // Slovak rows are taller, so the old pixel offset lands on another
+  // programme. Keep the one at the top of the list where it was instead.
+  const anchor = loaded && !compareOpen && !dom.listp.hidden ? topRow() : null;
   const paneScroll = dom.pane.scrollTop;
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
@@ -469,7 +462,7 @@ function switchLanguage(language) {
     renderSourceBanner(dom.banner, sourceMeta);
     renderSourceLine(dom.sourceLine, allRows, sourceMeta);
     renderIssues(dom.issues, dom.issuesSummary, dom.issuesList, sourceMeta.issues);
-    renderSortOptions(dom.sort, SORTS, state.sort, state.dir);
+    renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
     syncSort();
     drawChips();
     paneId = null;
@@ -478,7 +471,19 @@ function switchLanguage(language) {
     dom.pane.scrollTop = paneScroll;
   }
   keepAddress();
-  window.scrollTo(x, y);
+  const item = anchor && mountRow(anchor.id);
+  if (item) window.scrollBy(0, item.getBoundingClientRect().top - anchor.top);
+  else window.scrollTo(x, y);
+}
+
+// The first drawn row not hidden under the sticky header (its scroll margin
+// is the header's height), with its place on screen.
+function topRow() {
+  for (const item of dom.results.querySelectorAll('li.item')) {
+    const rect = item.getBoundingClientRect();
+    if (rect.bottom > parseFloat(getComputedStyle(item).scrollMarginTop)) return { id: item.dataset.id, top: rect.top };
+  }
+  return null;
 }
 
 function keepAddress() {
@@ -559,8 +564,8 @@ function readFields() {
   state.deadlineWindow = dom.deadline.value;
   state.myMaths = dom.myMaths.value || null;
   state.exam = dom.exam.value || null;
-  state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-    t('enter_a_whole_number_from_24_to_45'));
+  setMyPoints(state, readNumber(dom.points, dom.pointsError, parsePoints,
+    t('enter_a_whole_number_from_24_to_45')), explicitSort);
   state.hlMaths = dom.maths.checked;
   state.maxTuition = readNumber(dom.tuition, dom.tuitionError, parseFee,
     t('enter_a_whole_number_of_euros_0_or_more'));
@@ -598,8 +603,8 @@ function wireInputs() {
   // Debounced like the search box: typing "3000" otherwise renders four times,
   // and the intermediate "under €3" and "under €30" states flash an empty list.
   dom.points.addEventListener('input', debounce(() => {
-    state.myIbPoints = readNumber(dom.points, dom.pointsError, parsePoints,
-      t('enter_a_whole_number_from_24_to_45'));
+    setMyPoints(state, readNumber(dom.points, dom.pointsError, parsePoints,
+      t('enter_a_whole_number_from_24_to_45')), explicitSort);
     update();
   }, 150));
 
@@ -643,6 +648,8 @@ function wireInputs() {
 
   dom.sort.addEventListener('change', () => {
     [state.sort, state.dir] = dom.sort.value.split(':');
+    explicitSort = state.sort !== 'best';
+    preferencesDirty = true;
     syncSort();
     update();
   });
@@ -650,6 +657,7 @@ function wireInputs() {
   for (const button of dom.sortButtons) {
     button.addEventListener('click', () => {
       const key = button.dataset.sort;
+      explicitSort = true; preferencesDirty = true;
       if (state.sort === key && state.dir === 'desc' && key !== 'deadline') {
         state.sort = 'deadline'; state.dir = 'asc';
       } else {
@@ -674,7 +682,7 @@ function wireInputs() {
   wireList();
 
   dom.exportCsv.addEventListener('click', () => {
-    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir);
+    const rows = sortRows(allRows.filter((r) => shortlist.has(r.id)), state.sort, state.dir, state);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadCsv(`my-shortlist-${stamp}.csv`, toCsv(rows, { myLiving: state.myLiving }));
   });
@@ -883,8 +891,10 @@ function wireTray() {
   if (typeof ResizeObserver !== 'function') return;
   new ResizeObserver((entries) => {
     const height = Math.ceil(entries.at(-1).borderBoxSize?.[0]?.blockSize ?? dom.tray.offsetHeight);
+    // Print hides the tray only for the paper: keeping its room means the
+    // page is as long after print, so the position restored there holds.
     if (height) document.documentElement.style.setProperty('--tray-h', `${height}px`);
-    else document.documentElement.style.removeProperty('--tray-h');
+    else if (!printing) document.documentElement.style.removeProperty('--tray-h');
   }).observe(dom.tray);
 }
 
@@ -959,7 +969,8 @@ function wireList() {
     const save = event.target.closest('button[data-save-id]');
     if (save) { onToggleStar(save.getAttribute('data-save-id')); return; }
     const remove = event.target.closest('button[data-compare-remove]');
-    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'));
+    // detail 0 is a click from the keyboard (Enter or Space), not a pointer.
+    if (remove) removeFromCompare(remove.getAttribute('data-compare-remove'), event.detail === 0);
   });
   dom.compareBrowse.addEventListener('click', () => closeCompare(true));
   // The header button (from 600 px) opens Compare, and closes it when open;
@@ -1162,7 +1173,7 @@ function restoreCompareFocus(focus, ids) {
 // The column's "x": out of Compare, with Undo putting it back in its place,
 // before the programmes that came after it (another may have gone meanwhile),
 // or the limit toast if four have been added since.
-function removeFromCompare(id) {
+function removeFromCompare(id, fromKeyboard = false) {
   const later = compareIds.slice(compareIds.indexOf(id) + 1);
   changeCompare((ids) => ({ ids: ids.filter((x) => x !== id), result: 'removed' }));
   syncCompareControls();
@@ -1181,7 +1192,7 @@ function removeFromCompare(id) {
     const back = compareOpen ? dom.compareBody.querySelector(`[data-compare-remove="${id}"]`)
       : document.querySelector(`.row [data-compare-id="${id}"]`);
     back?.focus({ preventScroll: true });
-  });
+  }, { focusAction: fromKeyboard });
 }
 
 // returnFocus true (Close, Browse, the header button): back where Compare was
@@ -1197,8 +1208,17 @@ function closeCompare(returnFocus) {
   dom.compareBody.replaceChildren();
   renderListBar();
   syncCompareControls();
+  // An update while Compare was open (a filter, the language, another tab)
+  // left the list empty: renderWindow draws nothing under Compare. Hold the
+  // full length so the old position is reachable, then draw the rows there.
+  // Estimates read while the list was hidden used its zero width and no
+  // container query (180 px rows on a 90 px desktop): read them again first.
+  if (dom.results.getBoundingClientRect().width !== windowWidth) resetRowHeights();
+  dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
+  if (returnFocus) window.scrollTo(window.scrollX, from.scrollY);
+  renderWindow();
+  dom.results.style.minHeight = '';
   if (!returnFocus) return;
-  window.scrollTo(window.scrollX, from.scrollY);
   const target = [from.trigger, document.getElementById('header-compare'), document.getElementById('cmp-tray-open')].find(canShow) ?? dom.resultsSection;
   target.focus({ preventScroll: true });
 }
@@ -1215,6 +1235,7 @@ function canShow(node) {
 // pane's pick all stay. update() then drops list= from the address. The logo's
 // handler (wireCompactHeader) scrolls to the top and moves focus.
 function goHome() {
+  scrollingHome = true;
   closeCompare(false);
   shared = null;
   state.shortlistOnly = false;
@@ -1231,6 +1252,7 @@ function clearAll() {
   state.maxBudget = null;
   state.myLiving = null;
   state.myIbPoints = null;
+  state.sort = 'deadline'; state.dir = 'asc'; explicitSort = false;
   state.subjectAreas.clear();
   state.countries.clear();
   state.languages.clear();
@@ -1268,6 +1290,7 @@ function clearAllFrom(button) {
 
 function update() {
   if (!loaded) return;
+  syncSort();
   if (preferencesDirty) persistPreferences();
   // Rebuilt rows while printing would take the paper's layout. Run it after.
   if (printing) { updateAfterPrint = true; return; }
@@ -1298,7 +1321,7 @@ function update() {
   const scope = shared ? new Set(shared.ids) : shortlist;
   const inScope = state.shortlistOnly ? allRows.filter((row) => scope.has(row.id)) : [];
   const filtered = applyFilters(allRows, state, scope);
-  let rows = sortRows(state.shortlistOnly && listAll ? inScope : filtered, state.sort, state.dir);
+  let rows = sortRows(state.shortlistOnly && listAll ? inScope : filtered, state.sort, state.dir, state);
   listIds = sortRows(inScope, 'name').map((row) => row.id);
   listShown = state.shortlistOnly ? filtered.length : 0;
   listHeadings = new Map();
@@ -1310,21 +1333,18 @@ function update() {
   // Read before the rows are rebuilt: afterwards it forces a layout of the
   // whole new list (about 120 ms at 4x CPU throttling, L09).
   const paneScroll = appliedWide ? dom.pane.scrollTop : 0;
-  // Read at the same point for the same reason. They pick no layout, only how
-  // many rows to build now (L09): enough to reach past the bottom of the
-  // window, so the page never gets shorter than where it is scrolled to, plus
-  // the focused row so focus can go back to it.
-  const viewBottom = window.scrollY + document.documentElement.clientHeight;
-  const focusIndex = focus && focus.kind !== 'pane' ? rows.findIndex((row) => row.id === focus.id) : -1;
-  const restoring = firstDraw && ['reload', 'back_forward'].includes(performance.getEntriesByType?.('navigation')[0]?.type);
-  firstDraw = false;
-  const first = restoring ? rows.length
-    : Math.min(rows.length, Math.max(FIRST_ROWS, Math.ceil(viewBottom / MIN_ROW_PX), focusIndex + 1));
   currentlyShown = rows.length;
   currentSummary = pointsSummaryParts(rows, state);
 
-  retireList();
-  renderRows(dom.results, rows.slice(0, first), { state, shortlist, compare: new Set(compareIds), wide: wideQuery.matches, headings: listHeadings });
+  rowObserver.disconnect();
+  // Shown before measuring: coming back from "No programmes match", a hidden
+  // list read zero width and the 180 px estimate (no container query).
+  dom.listp.hidden = rows.length === 0;
+  // Keep the old scroll range during the layout read for the new estimates.
+  dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
+  dom.results.replaceChildren();
+  windowRows = rows;
+  resetRowHeights();
   shownRows = new Map(rows.map((row) => [row.id, row]));
   appliedWide = wideQuery.matches;
   if (appliedWide) {
@@ -1333,9 +1353,9 @@ function update() {
   } else {
     for (const id of openIds) if (!shownRows.has(id)) openIds.delete(id);
   }
-  arrive([...dom.results.children]);
-  // A short list schedules nothing: no frame and no timer.
-  if (first < rows.length) scheduleRows(rows, first);
+  renderWindow(focus?.id);
+  dom.results.style.minHeight = '';
+  if (rows.length > 40) scheduleSheetWarm();
   renderEmptyState(rows.length);
   restoreFocus(focus);
   renderCounts(rows.length);
@@ -1344,102 +1364,138 @@ function update() {
   keepAddress();
 }
 
-// The rest of the rows go in after the first paint: a frame, then a task, so
-// the first slice runs after that frame, then one slice per task.
-function scheduleRows(rows, next) {
-  const pending = { rows, next, frame: undefined, timer: undefined };
-  pendingRows = pending;
-  pending.frame = requestAnimationFrame(() => {
-    pending.frame = undefined;
-    pending.timer = setTimeout(() => moreRows(pending), 0);
-  });
+function resetRowHeights() {
+  windowWidth = dom.results.getBoundingClientRect().width;
+  const estimate = parseFloat(getComputedStyle(dom.results).getPropertyValue('--row-estimate')) || 180;
+  rowHeights = windowRows.map((row) => estimate + (listHeadings.has(row.id) ? 40 : 0));
+  indexRowHeights();
 }
 
-// Appends one slice (chunks until SLICE_MS has passed) and schedules the next.
-// Also called straight away by ArrowDown on the last drawn row. A slice from a
-// cancelled list does nothing.
-function moreRows(pending) {
-  if (pendingRows !== pending) return;
-  stopRows(pending);
-  if (sheetSlideTimer !== undefined) return;
-  const start = performance.now();
-  do appendSlice(pending, CHUNK_ROWS);
-  while (pending.next < pending.rows.length && performance.now() - start < SLICE_MS);
-  if (pending.next < pending.rows.length) pending.timer = setTimeout(() => moreRows(pending), 0);
-  else { pendingRows = null; scheduleSheetWarm(); }
+function indexRowHeights() {
+  rowOffsets = [0];
+  for (const height of rowHeights) rowOffsets.push(rowOffsets.at(-1) + height);
 }
 
-function appendSlice(pending, count) {
-  const rows = pending.rows.slice(pending.next, pending.next + count);
-  pending.next += rows.length;
-  // The list's applied mode, not the query: a flipped query whose change event
-  // has not run yet is crossWide's job.
-  arrive(appendRows(dom.results, rows, { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings }));
+// The row containing this offset (also clamps a restored scroll position).
+function rowAt(offset) {
+  let lo = 0, hi = windowRows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (rowOffsets[mid + 1] <= offset) lo = mid + 1; else hi = mid;
+  }
+  return Math.min(lo, Math.max(0, windowRows.length - 1));
 }
 
-function stopRows(pending) {
-  if (pending.frame !== undefined) cancelAnimationFrame(pending.frame);
-  if (pending.timer !== undefined) clearTimeout(pending.timer);
-  pending.frame = pending.timer = undefined;
+function scheduleWindow() {
+  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined && !faqSliding) {
+    windowFrame = requestAnimationFrame(() => { windowFrame = 0; renderWindow(); });
+  }
 }
 
 function cancelRows() {
-  if (!pendingRows) return;
-  stopRows(pendingRows);
-  pendingRows = null;
+  cancelAnimationFrame(windowFrame);
+  windowFrame = 0;
 }
 
-// Everything left, now: for print and the 1200 crossing, which need every row.
-function flushRows() {
-  const pending = pendingRows;
-  if (!pending) return;
-  cancelRows();
-  appendSlice(pending, Infinity);
-}
-
-// Swaps in an empty copy of the list and parks the old one. content-visibility:
-// hidden goes on before the id comes off, so the old rows are never restyled or
-// laid out again. The parked list has no size, so the page and its scroll
-// anchor do not move (overflow-anchor: none keeps Chrome from following an old
-// row into the parked list).
-function retireList() {
-  const old = dom.results;
-  if (old.children.length <= PARK_ROWS) return;
-  const next = old.cloneNode(false);
-  old.style.cssText = 'content-visibility:hidden;contain:strict;position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;overflow-anchor:none;pointer-events:none';
-  old.inert = true;
-  old.setAttribute('aria-hidden', 'true');
-  old.removeAttribute('id');
-  old.before(next);
-  dom.results = next;
-  next.addEventListener('click', toggleRow);
-  next.addEventListener('keydown', rowKeydown);
-  retiredLists.add(old);
-  if (retireTimer === undefined) {
-    retireTimer = null;
-    requestAnimationFrame(() => { retireTimer = setTimeout(dropRetired, 0); });
+function renderWindow(keepId, all = false) {
+  if (!windowRows.length || (compareOpen && !all)) return;
+  const scrollX = window.scrollX, scrollY = window.scrollY;
+  const box = dom.results.getBoundingClientRect();
+  // WebKit clamps scrollY if any layout read sees the list without its gaps.
+  // Hold its height until the replacement rows and sized gaps are all in place.
+  const minHeight = dom.results.style.minHeight;
+  dom.results.style.minHeight = `${box.height}px`;
+  // Width changes invalidate wrapping heights, including the 800px container
+  // breakpoint. Preserve the visible programme and its offset while reflowing.
+  let top = -box.top;
+  const anchor = rowAt(Math.max(0, top));
+  const oldOffset = rowOffsets[anchor];
+  if (!all && box.width !== windowWidth) {
+    resetRowHeights();
+    top += rowOffsets[anchor] - oldOffset;
   }
-}
-
-// Deletes parked rows from the end (the cheapest order) until SLICE_MS has
-// passed, then yields; the row fill's own slices run in between.
-function dropRetired() {
-  const start = performance.now();
-  for (const old of retiredLists) {
-    while (old.lastChild && performance.now() - start < SLICE_MS) {
-      for (let i = 0; i < CHUNK_ROWS && old.lastChild; i++) old.lastChild.remove();
+  const view = document.documentElement.clientHeight;
+  const start = all ? 0 : rowAt(Math.max(0, top - WINDOW_SCREENS * view));
+  const end = all ? windowRows.length : Math.min(windowRows.length, rowAt(top + (1 + WINDOW_SCREENS) * view) + 1);
+  const indices = new Set(Array.from({ length: end - start }, (_, i) => start + i));
+  // A focused control survives a fling, even outside the visible window. A
+  // separate gap holds its place; it never pulls thousands of rows into DOM.
+  const focusedId = document.activeElement.closest?.('li.item')?.dataset.id;
+  for (const id of [keepId, focusedId]) {
+    const i = windowRows.findIndex((row) => row.id === id);
+    if (i >= 0) indices.add(i);
+  }
+  const wanted = [...indices].sort((a, b) => a - b);
+  const existing = new Map([...dom.results.querySelectorAll('li.item')].map((item) => [item.dataset.id, item]));
+  const wantedIds = new Set(wanted.map((i) => windowRows[i].id));
+  for (const [id, item] of existing) if (!wantedIds.has(id)) {
+    for (const slot of item.querySelectorAll('.expand')) cancelSlotWork(slot);
+    rowObserver.unobserve(item);
+    item.remove();
+  }
+  for (const spacer of dom.results.querySelectorAll('.row-space')) spacer.remove();
+  let cursor = dom.results.children[0] ?? null;
+  const place = (node) => {
+    if (cursor === node) cursor = cursor.nextElementSibling;
+    else dom.results.insertBefore(node, cursor);
+  };
+  const gaps = [];
+  const gap = (from, to) => {
+    if (to <= from) return;
+    const node = document.createElement('li');
+    node.className = 'row-space';
+    node.setAttribute('aria-hidden', 'true');
+    node.setAttribute('role', 'presentation');
+    place(node);
+    gaps.push({ node, from, to });
+  };
+  let previous = 0;
+  for (const i of wanted) {
+    gap(previous, i);
+    const row = windowRows[i];
+    let item = existing.get(row.id);
+    if (!item) {
+      const holder = document.createElement('ul');
+      [item] = appendRows(holder, [row], { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings });
+      arrive([item]);
     }
-    if (old.lastChild) break;
-    old.remove();
-    retiredLists.delete(old);
+    item.setAttribute('aria-posinset', String(i + 1));
+    item.setAttribute('aria-setsize', String(windowRows.length));
+    place(item);
+    if (!all) rowObserver.observe(item);
+    previous = i + 1;
   }
-  retireTimer = retiredLists.size ? setTimeout(dropRetired, 0) : undefined;
+  gap(previous, windowRows.length);
+  const sizeGaps = () => { for (const { node, from, to } of gaps) node.style.height = `${rowOffsets[to] - rowOffsets[from]}px`; };
+  sizeGaps();
+  if (all) { dom.results.style.minHeight = minHeight; return; }
+  let changed = false;
+  for (const i of wanted) {
+    const height = selectedItem(windowRows[i].id).getBoundingClientRect().height;
+    if (height > 0 && Math.abs(height - rowHeights[i]) > 0.25) { rowHeights[i] = height; changed = true; }
+  }
+  if (changed) { indexRowHeights(); sizeGaps(); }
+  dom.results.style.minHeight = minHeight;
+  // Native anchoring is disabled for this page: otherwise Chrome applies the
+  // same correction twice, while Safari applies none. Never anchor above list.
+  const correction = top > 0 ? rowOffsets[anchor] - oldOffset : 0;
+  // A correction is an instant scroll, which cancels the logo's smooth trip
+  // home. Keep measuring the rows, then resume anchoring when it ends.
+  if (scrollingHome && scrollY === 0) scrollingHome = false;
+  if (correction && !scrollingHome) window.scrollTo(scrollX, scrollY + correction);
 }
 
-// Print takes the page as it is, so nothing parked may be left in it.
-function dropRetiredNow() {
-  for (const old of retiredLists) old.remove();
-  retiredLists.clear();
+function mountRow(id) {
+  if (!shownRows.has(id)) return null;
+  renderWindow(id);
+  return selectedItem(id);
+}
+
+// Print is the one exception: synchronously mount the complete filtered list.
+function flushRows() {
+  cancelRows();
+  rowObserver.disconnect();
+  renderWindow(null, true);
 }
 
 // A row that arrives gets the state it had before the rebuild: its slot open
@@ -1450,28 +1506,6 @@ function arrive(items) {
     if (!appliedWide && openIds.has(id)) openRow(item, shownRows.get(id));
     else if (appliedWide && id === selectedId) markSelected(item);
   }
-}
-
-function scheduleNear() {
-  if (!nearFrame) nearFrame = requestAnimationFrame(markNear);
-}
-
-// Rows are in page order, so the first one ending below the margin's top is a
-// binary search; the walk then stops at the first one starting past its end.
-function markNear() {
-  nearFrame = 0;
-  const rows = dom.results.children;
-  const top = -NEAR_SCREENS * window.innerHeight, end = (1 + NEAR_SCREENS) * window.innerHeight;
-  let lo = 0, hi = rows.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (rows[mid].getBoundingClientRect().bottom < top) lo = mid + 1; else hi = mid;
-  }
-  const near = [];
-  for (let i = lo; i < rows.length && rows[i].getBoundingClientRect().top <= end; i++) near.push(rows[i]);
-  for (const row of nearMarked) if (!near.includes(row)) row.classList.remove('near');
-  for (const row of near) row.classList.add('near');
-  nearMarked = near;
 }
 
 // animate is only for a direct narrow toggle. Rebuilds and 1200 crossings put
@@ -1658,18 +1692,35 @@ function selectRow(id) {
   restoreFocus(focus);
 }
 
+// Each summary has one Tab stop. Focus (including a mouse click or a restore)
+// moves that stop between its native controls; detail links keep normal Tab.
+const ROW_CONTROLS = 'button.open, button.cmpi, button.star';
+function rowTabStop(target) {
+  if (!target.matches(ROW_CONTROLS) || !dom.results.contains(target)) return;
+  const item = target.closest('li.item');
+  for (const control of item.querySelectorAll(ROW_CONTROLS)) {
+    control.setAttribute('tabindex', control === target ? '0' : '-1');
+  }
+}
+
 function rowKeydown(event) {
-  if (!wideQuery.matches || !event.target.matches('button.open') || event.isComposing
+  if (!event.target.matches(ROW_CONTROLS) || event.isComposing
     || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
-    || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   event.preventDefault();
   const item = event.target.closest('li.item');
-  // The last drawn row while the rest are still coming: draw the next slice now.
-  if (event.key === 'ArrowDown' && pendingRows && !item.nextElementSibling) moreRows(pendingRows);
-  const next = event.key === 'ArrowUp' ? item.previousElementSibling : item.nextElementSibling;
+  const controls = [...item.querySelectorAll(ROW_CONTROLS)];
+  const column = controls.indexOf(event.target);
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    controls[column + (event.key === 'ArrowLeft' ? -1 : 1)]?.focus({ preventScroll: true });
+    return;
+  }
+  const i = windowRows.findIndex((row) => row.id === item.dataset.id);
+  const row = windowRows[i + (event.key === 'ArrowUp' ? -1 : 1)];
+  const next = row && mountRow(row.id);
   if (!next) return;
-  next.querySelector('button.open').focus({ preventScroll: true });
-  selectRow(next.dataset.id);
+  next.querySelectorAll(ROW_CONTROLS)[column].focus({ preventScroll: true });
+  if (wideQuery.matches) selectRow(next.dataset.id);
   revealRow(next);
 }
 
@@ -1689,6 +1740,10 @@ function snapshotFocus() {
   const id = item?.dataset.id;
   if (active.matches('button.open') && item) return { kind: 'row', id };
   if (active.matches('a.goto') && item) return { kind: 'goto', id };
+  if (item && active.closest('.row')) {
+    if (active.matches('[data-save-id]')) return { kind: 'save', id };
+    if (active.matches('[data-compare-id]')) return { kind: 'compare', id };
+  }
   const inPane = dom.pane.contains(active);
   const inSlot = active.closest('.expand');
   if (!inPane && !inSlot) return null;
@@ -1708,10 +1763,12 @@ function focusResults() {
 
 function restoreFocus(focus) {
   if (!focus) return;
-  const item = selectedItem(focus.id);
+  const item = selectedItem(focus.id) ?? mountRow(focus.id);
   const button = item?.querySelector('button.open');
   let target;
-  if (focus.kind === 'row') target = button;
+  if (focus.kind === 'save') target = item?.querySelector('button.star');
+  else if (focus.kind === 'compare') target = item?.querySelector('button.cmpi');
+  else if (focus.kind === 'row') target = button;
   else if (focus.kind === 'goto') target = item?.querySelector('a.goto') ?? button;
   else if (wideQuery.matches) {
     target = focus.kind === 'pane' || focus.id === selectedId
@@ -1727,6 +1784,7 @@ function restoreFocus(focus) {
 // Chrome can clear focus when CSS hides the pane, before the change callback.
 // Real focus moves or a blur within the current layout invalidate this record.
 function rememberFocus() {
+  rowTabStop(document.activeElement);
   crossingFocus = snapshotFocus();
   listFocus = isListTool(document.activeElement) ? document.activeElement : null;
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;
@@ -1756,13 +1814,12 @@ function crossWide() {
   // While printing the query follows the paper; afterPrint() runs any crossing
   // still due from the restored screen.
   if (!loaded || appliedWide === wide || isPrinting()) return;
-  // Every row changes its ARIA here, so every row must be in.
-  flushRows();
+  // Mounted rows change now; later arrivals use appliedWide.
   const focus = snapshotFocus() ?? (document.activeElement === document.body ? crossingFocus : null);
   settleSlots();
   clearSelection();
   if (wide) {
-    for (const item of dom.results.children) {
+    for (const item of dom.results.querySelectorAll('li.item')) {
       const button = item.querySelector('button.open');
       button.removeAttribute('aria-controls');
       item.querySelector('.expand')?.remove();
@@ -1782,6 +1839,7 @@ function crossWide() {
     renderPane({ pane: dom.pane, heading: dom.paneHeading, body: dom.paneBody }, null, false, state);
     paneId = null;
     openIds.clear();
+    if (selectedId && shownRows.has(selectedId)) openIds.add(selectedId);
     const item = selectedItem();
     if (item) {
       openRow(item, shownRows.get(selectedId));
@@ -1789,6 +1847,7 @@ function crossWide() {
     }
   }
   appliedWide = wide;
+  renderWindow(focus?.id);
   restoreFocus(focus);
   // Only the row/pane record: a 600 crossing may still be pending.
   crossingFocus = snapshotFocus();
@@ -1887,7 +1946,23 @@ function isPrinting() {
 
 function afterPrint() {
   printing = false;
+  // The tray's room at the foot of the page first, or the restored position
+  // is clamped by its height on phones. A tray that stays hidden gives the
+  // room back (wireTray keeps it during print).
   syncTray();
+  if (dom.tray.hidden) document.documentElement.style.removeProperty('--tray-h');
+  // Drop the printed catalogue before reading screen geometry, retaining the
+  // measured offsets so the same programme stays in view.
+  if (printFlushed) {
+    printFlushed = false;
+    const focus = snapshotFocus();
+    dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
+    dom.results.replaceChildren();
+    window.scrollTo(window.scrollX, printScrollY);
+    renderWindow(focus?.id);
+    dom.results.style.minHeight = '';
+    restoreFocus(focus);
+  }
   crossBar();
   crossWide();
   if (updateAfterPrint) {
@@ -1902,7 +1977,7 @@ function afterPrint() {
 function wireSheet() {
   document.addEventListener('keydown', () => { keyboardInput = true; }, true);
   document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
-  // Stop slices at finger-down, before the browser synthesises the click.
+  // Pause window updates at finger-down, before the browser synthesises the click.
   // A cancelled tap is released by the same bounded fallback as a lost end.
   dom.more.addEventListener('pointerdown', () => { if (!barQuery.matches) pauseSheetRows(); });
   dom.more.addEventListener('click', openSheet);
@@ -1936,11 +2011,10 @@ function wireSheet() {
 }
 
 // WebKit's long list layouts compete with either direction of the slide.
-// Leave the pending slice intact until it ends; print/widen can still
-// flush it synchronously. The timer covers a cancelled/missing transition.
+// Resume window updates when it ends; print still mounts all rows. The timer covers a cancelled/missing transition.
 function pauseSheetRows() {
   if (motionQuery.matches) return;
-  if (pendingRows) stopRows(pendingRows);
+  cancelRows();
   clearTimeout(sheetSlideTimer);
   dom.sheet.classList.add('is-sliding');
   dom.sheetScrim.classList.add('is-sliding');
@@ -1954,23 +2028,19 @@ function resumeSheetRows() {
   sheetSlideTimer = undefined;
   dom.sheet.classList.remove('is-sliding');
   dom.sheetScrim.classList.remove('is-sliding');
-  if (pendingRows) {
-    const pending = pendingRows;
-    pending.timer = setTimeout(() => moreRows(pending), 0);
-  }
+  scheduleWindow();
 }
 
-// Prepare the closed layout only after the final slice has painted. Safari
-// need not support requestIdleCallback, and a timer must not add work halfway
-// through the mount. Hidden controls never receive focus or open a dialog.
+// Prepare the closed layout after the visible window has painted. Safari
+// need not support requestIdleCallback. Hidden controls never receive focus or open a dialog.
 function scheduleSheetWarm() {
-  if (sheetWarmScheduled || pendingRows || barQuery.matches) return;
+  if (sheetWarmScheduled || barQuery.matches) return;
   sheetWarmScheduled = true;
   requestAnimationFrame(() => requestAnimationFrame(warmSheet));
 }
 
 function warmSheet() {
-  if (pendingRows || dom.sheet.open || barQuery.matches || isPrinting()) return;
+  if (dom.sheet.open || barQuery.matches || isPrinting()) return;
   dom.sheet.classList.add('is-warm');
 }
 
@@ -2100,7 +2170,9 @@ function sortPick() {
     input.name = 'sort-pick';
     input.value = option.value;
     input.checked = option.selected;
+    input.disabled = option.disabled;
     input.addEventListener('change', () => {
+      if (input.disabled) return;
       const arrow = sortByArrow;
       sortByArrow = false;
       dom.sort.value = input.value;
@@ -2117,6 +2189,8 @@ function sortPick() {
 }
 
 function syncSort() {
+  setMyPoints(state, state.myIbPoints, explicitSort);
+  renderSortOptions(dom.sort, SORTS, state.sort, state.dir, state);
   dom.sort.value = `${state.sort}:${state.dir}`;
   sortPick();
   for (const button of dom.sortButtons) {
@@ -2411,7 +2485,8 @@ function wireDropdowns() {
     const open = dom.dropdowns.find((d) => d.open);
     if (!open) {
       if (!selectedId || document.querySelector('dialog[open]')) return;
-      const item = selectedItem();
+      // The pick may be far off screen and not drawn (the pane keeps it).
+      const item = mountRow(selectedId);
       if (wideQuery.matches) { selectedId = null; decorateSelection(); drawPane(); }
       else if (item) closeRow(item);
       item?.querySelector('button.open')?.focus({ preventScroll: true });

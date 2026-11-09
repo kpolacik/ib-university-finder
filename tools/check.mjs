@@ -43,20 +43,25 @@ const equal = (name, actual, expected) =>
 // renderers can run here with no browser or DOM package. Text nodes are plain
 // strings (not counted by childElementCount), and appending a node that already
 // has a parent moves it, as the real DOM does.
+// The style methods sit on a prototype, so a style still holds only its values.
+const stubStyle = { setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } };
 class ChromeNode {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.hidden = false; this.attributes = {};
     this.className = ''; this.parent = null; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 300;
-    this.listeners = {}; this.value = ''; this.validity = { badInput: false }; this.style = {};
+    this.listeners = {}; this.value = ''; this.validity = { badInput: false }; this.style = Object.create(stubStyle);
   }
   get lastChild() { return this.children.at(-1) ?? null; }
   before(node) { this.parent.insertBefore(node, this); }
   after(node) { const next = this.parent.children[this.parent.children.indexOf(this) + 1] ?? null; this.parent.insertBefore(node, next); }
-  // A shallow copy, as cloneNode(false): tag, id, class and attributes, no
-  // children and no listeners.
-  cloneNode() {
+  // A copy without listeners: tag, id, class and attributes, and with
+  // cloneNode(true) the children too.
+  cloneNode(deep = false) {
     const node = new ChromeNode(this.tagName);
     node.id = this.id; node.className = this.className; node.attributes = { ...this.attributes };
+    // parseHtml keeps <details open> as a property; the real attribute is cloned.
+    if (deep && this.open) node.open = true;
+    if (deep) for (const child of this.children) node.append(typeof child === 'string' ? child : child.cloneNode(true));
     return node;
   }
   set textContent(text) { this.replaceChildren(String(text)); }
@@ -737,7 +742,15 @@ check('language buttons expose both available choices, with their own language n
 check('each language button names its language in that language, in both UIs',
   /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
     && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
-    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
+    && UI.en.slovak === ' (slovenčina)' && UI.sk.slovak === ' (slovenčina)' && UI.en.english === ' (English)' && UI.sk.english === ' (English)');
+// applyLanguage rewrites that hidden text; without the leading space a screen
+// reader said "SK(slovenčina)". Run it for real and read the button's text.
+check('applyLanguage keeps the space before the hidden language name ("SK (slovenčina)", "EN (English)"), in both UIs', (() => {
+  const spans = ['slovak', 'english'].map((key) => ({ getAttribute: (name) => (name === 'data-i18n' ? key : null), textContent: 'x' }));
+  const root = { documentElement: {}, querySelectorAll: (selector) => (selector === '[data-i18n]' ? spans : []) };
+  const read = (lang) => { i18n.setLanguage(lang, { setItem() {} }); i18n.applyLanguage(root); return `SK${spans[0].textContent} EN${spans[1].textContent}`; };
+  try { return read('sk') === 'SK (slovenčina) EN (English)' && read('en') === 'SK (slovenčina) EN (English)'; } finally { i18n.setLanguage('en', { setItem() {} }); }
+})());
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
@@ -1153,13 +1166,15 @@ check('compact header keeps its full visible height and offsets; translated-head
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
   // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
   // 150/140 reduced latency; 280/220 now preserves a visible settling tail.
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 280ms') && text.includes('transition:transform 220ms')
+  // 2026-11-09: the 280/220 ms and the curve are tokens shared with the FAQ.
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('--t-sheet-in:280ms') && text.includes('--t-sheet-out:220ms')
+    && text.includes('transition:transform var(--t-sheet-in) var(--ease-sheet)') && text.includes('transition:transform var(--t-sheet-out) var(--ease-sheet)')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
-    && text.includes('transition:transform 220ms') && text.includes('animation:toast-out 160ms')
+    && text.includes('transition:transform var(--t-answer) var(--ease-out)') && text.includes('animation:toast-out 160ms')
     && text.includes('@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}');
-  return valid(css) && !valid(css.replace('max-height:85dvh', 'max-height:90dvh'))
+  return valid(css) && !valid(css.replaceAll('max-height:85dvh', 'max-height:90dvh'))
     && !valid(css.replace('animation:toast-out 160ms', 'animation:none'))
     && !valid(css.replaceAll('.tip{display:none;', '.tip{display:block;'));
 })());
@@ -1167,10 +1182,11 @@ check('header and onboarding controls inherit Plex and tabular figures; UA font 
   const valid = (source) => source.includes(':where(.hd,.ob) :where(button,input,select){font-family:inherit;font-variant-numeric:tabular-nums}');
   return valid(css) && !valid(css.replace('font-family:inherit;font-variant-numeric:tabular-nums', 'font-family:Arial'));
 })());
-check('round 2 moves search to the header and provenance/disclaimer/FAQ to the footer',
+// The FAQ itself left the footer for its panel on 2026-11-09 (Leon); the
+// footer keeps a button to it (checked under "FAQ panel" below).
+check('round 2 moves search to the header and provenance/disclaimer to the footer',
   elementSource(indexHtml, /<header class="hd">/).includes('id="f-search"')
   && elementSource(indexHtml, /<footer class="foot">/).includes('id="source-line"')
-  && elementSource(indexHtml, /<div class="faq" id="faq">/).includes('<details>')
   && !elementSource(indexHtml, /<main class="shell">/).includes(UI.en.r2_footer_p));
 
 const { syncSlider } = await import('../js/round2.js');
@@ -2342,6 +2358,14 @@ equal('applyFilters drops only the hidden bucket', visible(36, false),
   bk.map((p) => p.id).filter((id) => !['c-625', 'nl-37'].includes(id)));
 equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, fstate(36)), filtersMod.pointsSummary(bk, fstate(36, true))],
   ['5 within your IB points · 2 only with HL Maths 4+ · 2 can’t be compared', '7 within your IB points · 2 can’t be compared']);
+// The count line printed "1512 can't be compared" while the Setup done screen
+// said "1,512" / "1 512" (PR 1 leftovers). Same formatting, both languages.
+{
+  const many = Array.from({ length: 1512 }, () => ({ ibPointsMin: null }));
+  const summaryIn = (lang) => { i18n.setLanguage(lang, { setItem() {} }); try { return filtersMod.pointsSummary(many, fstate(36)); } finally { i18n.setLanguage('en', { setItem() {} }); } };
+  equal('pointsSummary groups thousands like the count line: 1,512 in English, 1 512 in Slovak',
+    [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
+}
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
   [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
@@ -2373,7 +2397,7 @@ console.log(`        ${r2Rows.length} cutoff rows convert differently between ro
 equal('maths=1 survives the address round trip; maths=yes and no maths are unticked',
   [paramsToState(stateToParams(fstate(36, true))).hlMaths, stateToParams(fstate(36, true)),
     paramsToState('points=36&maths=yes').hlMaths, paramsToState('points=36').hlMaths],
-  [true, 'points=36&maths=1', false, false]);
+  [true, 'points=36&maths=1&sort=deadline', false, false]);
 check('the tick counts as a filter, so Clear all clears it',
   filtersMod.activeFilterCount(fstate(null, true)) === 1);
 check('app.js restores, reads, clears and names the tick, and the count carries the split',
@@ -2736,15 +2760,16 @@ check('render.js calls pointsNote once, in renderDetail, and the cell builder do
 // The save star came back on 2026-11-03 (Leon): the rows now take the saved
 // ids and the list view's group headings. Batch 3 · A: and the compare set,
 // for the compare toggle beside the star.
-check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
+// app.js draws rows with appendRows since the windowing; renderRows is left
+// for the test harness, so only its signature is pinned.
+check('renderRows (test helper) keeps its signature: saved ids for the star, compare ids for its toggle, group headings',
   /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, compare: new Set\(compareIds\), wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
   /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
-    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, compare: new Set\(compareIds\), wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
+    && appSrc.includes('appendRows(holder, [row], { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings })'));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -2759,16 +2784,13 @@ check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.t
   && !/\.card(?![\w-])/.test(cssRules) && /\.sk-row/.test(cssRules));
 check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
   /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
-check('off-screen rows are skipped on screen and printed in full',
-  /content-visibility:\s*auto/.test(ruleBody('.item'))
-    && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
 // Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
 // display:list-item that content-visibility has never drawn make every
 // inherited style change rebuild the whole list. showModal() makes the page
 // inert, which is such a change: the sheet froze ~500 ms (4x CPU) before it
 // moved. Rows are display:block, and no rule may turn them back.
-check('result rows are display:block beside content-visibility:auto, never list-item (sheet open/close stall)',
-  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /content-visibility:\s*auto/.test(ruleBody('.item'))
+check('result rows are display:block with layout/style/paint containment, never list-item (sheet open/close stall)',
+  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /contain:\s*layout style paint/.test(ruleBody('.item'))
     && (() => {
       // Every rule whose selector ends on a result row (.item, li.item,
       // .item.is-open, .results>li, ...) may only set display to block.
@@ -3033,17 +3055,17 @@ check('count builds marks with identical text, preserves nodes on no change and 
   return first && !same && kept && text && marks && renderCount(n, '11 programmes', []) && n.textContent === '11 programmes';
 }));
 const headerButtons = [...indexHtml.matchAll(/<button[^>]*data-sort="([^"]+)"[^>]*>[\s\S]*?<\/button>/g)];
-check('sort header has all four SORTS keys, hidden direction text and one default pressed button',
-  headerButtons.length === 4 && headerButtons.map((m) => m[1]).sort().join() === Object.keys(filtersMod.SORTS).sort().join()
+check('sort header keeps its four column sorts, hidden direction text and one default pressed button',
+  headerButtons.length === 4 && headerButtons.map((m) => m[1]).sort().join() === ['deadline', 'name', 'points', 'tuition'].join()
     && headerButtons.filter((m) => /aria-pressed="true"/.test(m[0])).length === 1
     && headerButtons.every((m) => m[0].includes('class="visually-hidden"')));
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
-    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
-check('row toggle retains slots while arrows select only wide without roving tabindex',
+    && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*explicitSort = state.sort !== 'best';\s*preferencesDirty = true;\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
+check('row toggle retains slots and native button/list semantics with roving controls',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
-    && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
+    && !/listbox/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
   (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
     && !/shimmer|@keyframes sk-/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
@@ -3055,7 +3077,7 @@ check('row wraps whole point parts without clipping requirements; containment on
   /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
     && !/line-clamp|max-height|overflow\s*:\s*hidden/.test(ruleBody('.line'))
     && !/content-visibility/.test(ruleBody('.detail') + ruleBody('.expand') + ruleBody('.results>.detail'))
-    && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
+    && /--row-estimate:180px/.test(ruleBody('.results')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
     new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h', '--logo-travel', '--logo-dock'].includes(t))
@@ -3407,11 +3429,12 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, onFaqSlide(fn) { context.faqSlide = fn; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
       IntersectionObserver, navigator: { clipboard },
       ...shortlistMod, ...compareMod, ...compareSetMod,
       // The real compare-set functions on context.compareStorage, a stand-in
@@ -3429,7 +3452,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       // left unset, storage cannot be read (private browsing).
       readStoredShortlist: () => (context.stored ? [...context.stored] : null),
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
-      getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
+      getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
@@ -3494,14 +3517,14 @@ appCheck('actual handlers: filtered B remains the hidden pick when A is still op
   run("state.search = ''; update();");
   return item(b).classList.contains('is-sel') && body.querySelector('h2').id === `p-${b}`;
 });
-appCheck('actual arrows prevent ends without selecting them; narrow, modified and composing keys stay native', ({ run, flip, get, click, context, ids }) => {
+appCheck('actual arrows prevent ends without selecting them; narrow moves focus only and modified/composing keys stay native', ({ run, flip, get, click, context, ids }) => {
   const key = (button, key, extra = {}) => {
     const e = { target: button, key, preventDefault() { this.defaultPrevented = true; }, ...extra };
     context.keyEvent = e; run('rowKeydown(keyEvent);'); return !!e.defaultPrevented;
   };
   const first = get('results').children[0].querySelector('button.open'); first.focus();
-  if (key(first, 'ArrowDown')) return false;
-  flip(true); click(ids[1]);
+  if (!key(first, 'ArrowDown') || run('selectedId') !== null || run('openIds.size') !== 0) return false;
+  first.focus(); flip(true); click(ids[1]);
   if (!key(first, 'ArrowUp') || run('selectedId') !== ids[1] || stubDocument.activeElement !== first) return false;
   for (const prop of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) if (key(first, 'ArrowDown', { [prop]: true })) return false;
   if (!key(first, 'ArrowDown')) return false;
@@ -3509,6 +3532,24 @@ appCheck('actual arrows prevent ends without selecting them; narrow, modified an
   if (stubDocument.activeElement !== second || run('selectedId') !== second.closest('li.item').dataset.id) return false;
   const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
   return key(last, 'ArrowDown') && stubDocument.activeElement === last && run('selectedId') === second.closest('li.item').dataset.id;
+});
+appCheck('row keyboard: one Tab stop follows title/Compare/Save focus and survives rebuild/crossing', ({ run, get, item, flip, context }) => {
+  const first = get('results').querySelector('li.item'), id = first.dataset.id;
+  const controls = () => item(id).querySelectorAll('button.open, button.cmpi, button.star');
+  const one = (at) => controls().every((b, i) => b.tabIndex === (i === at ? 0 : -1));
+  if (!one(0)) return false;
+  // The focus stub does not dispatch focusin; deliver that browser event.
+  controls()[0].focus(); run('rememberFocus();');
+  for (const index of [1, 2]) {
+    context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowRight', preventDefault() {} };
+    run('rowKeydown(keyEvent); rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+    run('update(); rememberFocus();'); flip(true); run('rememberFocus();'); flip(false); run('rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+  }
+  context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowLeft', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === controls()[1] && one(1);
 });
 appCheck('actual Go to details preserves URL and modifiers and selection never enters address state', ({ run, flip, click, item, context, pane, ids: [a] }) => {
   flip(true); click(a); const goto = item(a).querySelector('a.goto');
@@ -3695,7 +3736,7 @@ appCheck('actual 600 crossings move .more-filters, Clear all, Copy link and My l
   const box = get('dd-countries'), tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox');
   box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
-  stubDocument.moved = (n) => { moves++; hook(n); };
+  stubDocument.moved = (n) => { if (n.isConnected) moves++; hook(n); };
   flip600(true);
   if (!wideOk() || moves !== 6) return false;
   flip600(true); run('placeFilters();');
@@ -3825,7 +3866,7 @@ check('sheet warm stays hidden and untappable until opened',
 check('results use a flex column on screen and block flow in print',
   /\.results\{[^}]*display:flex;flex-direction:column/.test(css)
     && /@media print[\s\S]*\.results[^}]*display: ?block/.test(css));
-appCheck('row slices pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
+appCheck('window updates pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
   run('allRows = live; update();');
   const count = get('results').children.length;
   fire(get('f-more'), 'pointerdown'); flushFrame(); advance(0);
@@ -3835,9 +3876,9 @@ appCheck('row slices pause during the sheet slide and resume on its transform en
   fire(get('filter-sheet'), 'transitionend', { propertyName: 'opacity' }); advance(0);
   if (get('results').children.length !== count) return false;
   fire(get('filter-sheet'), 'transitionend', { propertyName: 'transform' }); advance(0);
-  return get('results').children.length === run('allRows.length');
+  flushFrame(); return get('results').querySelectorAll('li.item').length < 40;
 });
-appCheck('paused slices recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
+appCheck('paused window updates recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
   for (const action of ['wide', 'reduce', 'timeout', 'print']) {
     flip600(false); motionMedia.matches = false;
     run('closeSheet(); allRows = live; update();'); fire(get('f-more'), 'click');
@@ -3852,7 +3893,7 @@ appCheck('paused slices recover on widening, reduced motion and a missing transi
     }
     if (action === 'print') fireWindow('beforeprint');
     advance(0);
-    if (get('results').children.length !== run('allRows.length')) return false;
+    if (action === 'print' ? get('results').children.length !== run('allRows.length') : run('sheetSlideTimer !== undefined')) return false;
     if (action === 'print') fireWindow('afterprint');
   }
   return true;
@@ -3871,14 +3912,14 @@ appCheck('both sheet slides pause rows and promote only until transform end; can
   fire(sheet, 'transitionend', { propertyName: 'opacity' }); advance(0);
   if (!promoted() || get('results').children.length !== count) return false;
   fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
-  if (promoted() || get('results').children.length !== run('allRows.length')) return false;
+  if (promoted() || get('results').children.length !== count) return false;
   fire(get('f-more'), 'pointerdown'); advance(499);
   if (!promoted()) return false;
   advance(1); if (promoted()) return false;
   motionMedia.matches = true; fire(get('f-more'), 'click'); fire(get('sheet-done'), 'click');
   return !promoted();
 });
-appCheck('sheet warm waits until the last row slice and two frames, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
+appCheck('sheet warm waits two frames after the visible window, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
   run('sheetWarmScheduled = false; allRows = live; update();');
   const sheet = get('filter-sheet');
   context.warms = 0; run('const actualWarm = warmSheet; warmSheet = () => { warms++; actualWarm(); };');
@@ -3886,8 +3927,7 @@ appCheck('sheet warm waits until the last row slice and two frames, runs once, a
   let writes = 0; context.history.replaceState = () => writes++; context.writeSaved = () => writes++;
   sheet.show = sheet.close = () => { throw Error('warming opened/closed the dialog'); };
   flushFrame(); if (context.warms) return false;
-  advance(0); if (context.warms || run('pendingRows !== null')) return false;
-  flushFrame(); if (context.warms) return false;
+  advance(0); if (context.warms) return false;
   flushFrame(); run('scheduleSheetWarm();'); flushFrame(); flushFrame();
   return sheet.classList.contains('is-warm') && context.warms === 1 && !sheet.open && !writes && stubDocument.activeElement === before
     && !get('sheet-scrim').classList.contains('is-open');
@@ -3914,7 +3954,7 @@ appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on 
     radio.checked = true; fire(radio, 'change');
   };
   details.open = true;
-  const [first, second, third] = radios().map((node) => node.value);
+  const [first, second, third] = radios().filter((node) => !node.disabled).map((node) => node.value);
   pick(second, 'arrow');
   if (!details.open || run('`${state.sort}:${state.dir}`') !== second || stubDocument.activeElement?.value !== second
     || stubDocument.activeElement === radios().find((node) => node.value === first)) return false;
@@ -4099,8 +4139,11 @@ const transitions = allCss.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body)
 // surfaces, never shown); every other transition must be one listed here.
 const motionAllowed = {
   '.btn': 'transition:transform 120ms ease-out,background-color 120ms ease-out',
-  '.faq summary>.ic': 'transition:transform 220ms var(--ease-out)',
-  '.faq summary>span[aria-hidden]': 'transition:transform 220ms var(--ease-out)',
+  // The FAQ's "+" turns in step with its answer opening (2026-11-09).
+  '.faq summary>.ic': 'transition:transform var(--t-answer) var(--ease-out)',
+  // Where height:auto can animate, an FAQ answer grows open and fades in.
+  '.faq details::details-content': 'transition:height var(--t-answer) var(--ease-out),content-visibility var(--t-answer) allow-discrete',
+  '.faq .a': 'transition:opacity 200ms var(--ease-out)',
   '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
   // Setup now owns the scrim, since show() has no native ::backdrop.
   'dialog.ob': 'transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete',
@@ -4133,24 +4176,41 @@ const motionAllowed = {
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
   // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
-  '.sheet': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms',
-  '.sheet[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  // 2026-11-09: the times and curve became tokens shared with the FAQ panel.
+  '.sheet': 'transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)',
+  '.sheet[open]': 'transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
-  '.sheet-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  '.sheet-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+  // The FAQ panel behind the header's "?" (Leon, 2026-11-09) moves exactly as
+  // the sheet does; visibility waits for the closing slide once it is warm.
+  '.faqp': 'transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)',
+  '.faqp[open]': 'transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+  '.faq-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete',
+  '.faq-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+};
+// The one exception to "reduced motion stops everything": the FAQ panel and
+// its scrim fade in 120 ms instead of sliding (Leon, 2026-11-09), so the panel
+// does not blink into place. No transform; only here.
+const reducedFade = {
+  '.faqp': 'transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important',
+  '.faq-scrim': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
   const sel = r.selector.split(',').map((x) => x.trim()).join(',');
   if (legacyMotion.includes(r.selector.trim())) return false;
+  if (r.media.length === 1 && /^@media \(prefers-reduced-motion: ?reduce\)$/.test(r.media[0]) && reducedFade[sel]) return !r.body.includes(reducedFade[sel]) || /transform\s+\d/.test(r.body);
   const want = motionAllowed[sel];
   return !want || !r.body.includes(want) || r.media.some((m) => !/min-width: (?:600|1200)px|^@supports \(interpolate-size:allow-keywords\)$/.test(m));
 }).map((r) => r.selector);
 check('§8: every transition is a listed effect with its token time and easing; only the dormant legacy rules keep theirs',
   transitions.length >= 8 && motionProblems(allCss).length === 0 && legacyMotion.every((sel) => rulesFor(sel).length > 0)
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
-    && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
+    && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1
+    && motionProblems(cssTree(cssRules + '@media (prefers-reduced-motion:reduce){.sheet{transition:opacity 120ms linear}}')).length === 1
+    && motionProblems(cssTree(cssRules + '@media (prefers-reduced-motion:reduce){.faqp{transition:transform 120ms linear}}')).length === 1,
   motionProblems(allCss).join(', '));
 // 2026-11-08: the phone logo handover (option C: logo-travel, logo-shrink,
 // logo-off, tile-on, count-glide) runs on the scroll, not the clock.
@@ -4184,8 +4244,9 @@ check('sheet slide contains paint and promotes transform and scrim opacity only 
       && body('.sheet.is-sliding') === 'will-change:transform'
       && body('.sheet-scrim.is-sliding') === 'will-change:opacity'
       && !/will-change/.test(body('.sheet') + body('.sheet-scrim'))
-      && /transition:transform 280ms cubic-bezier\(\.32,\.72,0,1\),display 280ms allow-discrete/.test(body('.sheet[open]'))
-      && /transition:transform 220ms cubic-bezier\(\.32,\.72,0,1\),display 220ms allow-discrete,visibility 220ms/.test(body('.sheet'));
+      && body('.sheet[open]').includes('transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete')
+      && body('.sheet').includes('transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)')
+      && /--ease-sheet:cubic-bezier\(\.32,\.72,0,1\);/.test(source);
   };
   return valid(css) && !valid(css.replace('contain:layout paint;', ''))
     && !valid(css.replace('.sheet.is-sliding{will-change:transform}', '.sheet{will-change:transform}'));
@@ -4363,182 +4424,243 @@ appCheck('pane scroll: a refresh keeps and clamps it, a new pick resets it, and 
   run('update();');
   return heightReads === 0 && readAt.length === 1 && readAt[0] === old && get('results').children[0] !== old && top === 0;
 });
-// L09: update() draws the first screen of rows at once and appends the rest in
-// slices after the first paint. Each check below runs on the 1,240 real rows
-// unless it says otherwise, and each was seen to fail with the line it guards
-// broken.
+// Windowing replaces the old eventual full-mount scheduler. Layout/anchoring
+// is tested in browsers; this harness checks state and row identity.
 const l09 = (run) => {
   run('allRows = live; facets = buildFacets(allRows); update();');
-  return run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+  return run('windowRows.map(row => row.id)');
 };
-const listIds = (get) => get('results').children.map((n) => n.dataset.id);
-const sameList = (get, want) => { const got = listIds(get); return got.length === want.length && new Set(got).size === got.length && got.every((id, i) => id === want[i]); };
-appCheck('L09 a: a short list schedules no frame and no timer', ({ run, frames, timers }) => {
-  const before = timers.size; run('update();');
-  return frames.size === 0 && timers.size === before && run('pendingRows') === null;
+const listIds = (get) => get('results').querySelectorAll('li.item').map(n => n.dataset.id);
+const sameList = (get, want) => listIds(get).join() === want.join();
+appCheck('row keyboard: narrow arrows cross the window edge on Save without opening details', ({ run, get, item, context }) => {
+  const ids = l09(run), last = get('results').querySelectorAll('li.item').at(-1);
+  const nextId = ids[ids.indexOf(last.dataset.id) + 1];
+  const button = last.querySelector('button.star'); button.focus();
+  context.keyEvent = { target: button, key: 'ArrowDown', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === item(nextId).querySelector('button.star')
+    && item(nextId).querySelector('button.star').tabIndex === 0
+    && item(nextId).querySelector('button.open').tabIndex === -1
+    && run('openIds.size') === 0 && run('selectedId') === null && listIds(get).length < 40;
 });
-appCheck('L09 b: the first update draws 40 rows at the top, the count is whole at once, and the rest arrive in order with no duplicates', ({ run, get, drain }) => {
-  const want = l09(run);
-  if (want.length !== live.length || get('results').children.length !== 40 || run('currentlyShown') !== live.length
-    || !get('result-count').textContent.includes(new Intl.NumberFormat('en-IE').format(live.length))) return false;
-  drain();
-  return sameList(get, want) && run('pendingRows') === null;
+appCheck('window: full estimated length at once, bounded DOM after idle, correct list positions', ({ run, get, drain }) => {
+  const ids = l09(run); drain();
+  return listIds(get).length < 40 && run('rowOffsets.at(-1)') === ids.length * 180
+    && get('results').querySelector('.row-space').getAttribute('aria-hidden') === 'true'
+    && get('results').querySelector('li.item').getAttribute('aria-setsize') === String(ids.length);
 });
-appCheck('L09 c: scrolled 6000 px down (narrow), update() draws enough rows to reach the window bottom at 60 px a row', ({ run, get, context }) => {
-  context.window.scrollY = 6000; l09(run);
-  return get('results').children.length === Math.ceil((6000 + 844) / 60);
-});
-// advance(0) would run every nested zero timer, so the old list is left
-// pending at its timer (short case) or at its frame (long case).
-appCheck('L09 d: a second update before the slices finish leaves exactly the second result, short or long', ({ run, get, drain, flushFrame }) => {
-  l09(run); flushFrame();
-  if (run('pendingRows')?.timer === undefined) return false;
-  const term = run('live[500].programme');
-  run(`state.search = ${JSON.stringify(term)}; update();`);
-  const short = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  drain(); if (short.length >= 40 || !sameList(get, short)) return false;
-  run("state.search = ''; update();");
-  if (run('pendingRows')?.frame === undefined) return false;
-  run("state.countries.add('Ireland'); update();");
-  const long = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  drain();
-  return long.length > 40 && sameList(get, long);
-});
-appCheck('L09 e: beforeprint while rows are pending puts every row in, in order, with a late open slot open', ({ run, get, item, click, drain, fireWindow }) => {
-  const want = l09(run); drain(); const late = want[300];
-  click(late); drain(); run('update();');
-  if (get('results').children.length >= want.length || item(late)) return false;
-  fireWindow('beforeprint');
-  return sameList(get, want) && run('printing') === true && run('pendingRows') === null
-    && item(late).querySelector('.expand')?.getAttribute('data-state') === 'open'
-    && item(late).querySelector('button.open').getAttribute('aria-expanded') === 'true';
-});
-appCheck('L09 f: a 1200 crossing while rows are pending gives every row the new mode, both ways, and narrowing opens a late pick', ({ run, get, item, click, flip, drain }) => {
-  const want = l09(run);
-  flip(true);
-  if (!sameList(get, want) || !get('results').children.every((li) => {
-    const b = li.querySelector('button.open'); return b.getAttribute('aria-controls') === 'pane' && b.getAttribute('aria-expanded') === null;
-  })) return false;
-  const late = want[300]; click(late); run('update();');
-  if (item(late)) return false;
-  flip(false);
-  return sameList(get, want) && get('results').children.every((li) => {
-    const b = li.querySelector('button.open');
-    return li.dataset.id === late
-      ? b.getAttribute('aria-expanded') === 'true' && li.querySelector('.expand')?.getAttribute('data-state') === 'open'
-      : b.getAttribute('aria-expanded') === 'false' && b.getAttribute('aria-controls') === null && !li.querySelector('.expand');
-  });
-});
-appCheck('L09 g: wide, ArrowDown on the last drawn row while rows are pending moves focus and the pick to the next row', ({ run, get, flip, drain, context }) => {
-  flip(true); const want = l09(run);
-  const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
-  const e = { target: last, key: 'ArrowDown', preventDefault() { this.defaultPrevented = true; } };
-  context.keyEvent = e; run('rowKeydown(keyEvent);');
-  const next = get('results').children[40];
-  return e.defaultPrevented && next?.dataset.id === want[40] && stubDocument.activeElement === next.querySelector('button.open')
-    && run('selectedId') === want[40] && next.classList.contains('is-sel');
-});
-appCheck('L09 h: a focused row deep in the list is drawn at once and keeps focus', ({ run, get, item, drain }) => {
-  const want = l09(run); drain();
-  item(want[300]).querySelector('button.open').focus();
-  run('update();');
-  return get('results').children.length >= 301 && stubDocument.activeElement === item(want[300])?.querySelector('button.open');
-});
-appCheck('L09 i: a late row gets its open slot (narrow, no motion) or its selection marks (wide) when it arrives', ({ run, get, item, click, flip, drain, frames }) => {
-  const want = l09(run); drain(); const late = want[300];
-  click(late); drain(); run('update();');
-  if (item(late)) return false;
-  drain();
-  const slot = item(late).querySelector('.expand');
-  if (slot?.getAttribute('data-state') !== 'open' || item(late).querySelector('button.open').getAttribute('aria-expanded') !== 'true'
-    || run('slotWork.size') !== 0) return false;
-  flip(true); click(late); run('update();');
-  if (item(late)) return false;
-  drain();
-  const marked = get('results').children.filter((li) => li.classList.contains('is-sel') || li.querySelector('a.goto') || li.querySelector('[aria-current]'));
-  return marked.length === 1 && marked[0] === item(late) && item(late).classList.contains('is-sel')
-    && item(late).querySelector('button.open').getAttribute('aria-current') === 'true' && item(late).querySelector('a.goto')?.textContent === 'Go to details';
-});
-// A fixed 20-row slice plus one of Chrome's major garbage collections once ran
-// 53 ms at 4x CPU. Each fill task now stops once SLICE_MS has passed, so a
-// slow machine gets smaller slices instead of long tasks.
-appCheck('L09 k: each fill task appends rows only until its time budget is spent, and every row still arrives in order', ({ run, get, perf, timers, flushFrame, context }) => {
-  const want = l09(run);
-  const realAppend = context.appendRows;
-  let cost = 1.5;
-  context.appendRows = (container, rows, opts) => { perf.t += rows.length * cost; return realAppend(container, rows, opts); };
-  perf.tick = 0;
-  // One fill task at a time, the way the browser runs them.
-  const task = () => {
-    const id = run('pendingRows?.timer');
-    if (id === undefined) return null;
-    const before = get('results').children.length;
-    const t = timers.get(id); timers.delete(id); t.fn();
-    return get('results').children.length - before;
-  };
-  flushFrame();
-  const cheap = [];
-  for (let i = 0; i < 3; i++) cheap.push(task());
-  // 1.5 ms a row: a 5-row chunk is 7.5 ms, under the 8 ms budget, so a task
-  // takes a second chunk and then stops (10 rows).
-  if (!cheap.every((n) => n === 10)) return false;
-  // 10 ms a row: one chunk is already over the budget, and a task still makes
-  // progress (one chunk, never zero rows).
-  cost = 10;
-  const dear = [];
-  for (let i = 0; i < 3; i++) dear.push(task());
-  if (!dear.every((n) => n === 5)) return false;
-  cost = 0.5;
-  for (let i = 0; i < 1000 && run('pendingRows') !== null; i++) { const n = task(); if (n === null || n < 1 || n > 20) return false; }
-  context.appendRows = realAppend;
-  return sameList(get, want) && run('pendingRows') === null;
-});
-// A reload halfway down the list came back near the top: the browser puts the
-// scroll back only once the page is tall enough, and only the first screen was
-// drawn. The first draw after a reload or Back/Forward now draws every row.
-appCheck('L09 l: the first draw after a reload or Back draws every row at once; a fresh visit and later changes draw the first screen', ({ run, get, perf }) => {
-  const drawn = (nav) => { perf.navType = nav; run('firstDraw = true;'); const want = l09(run); return [get('results').children.length, want.length, run('pendingRows')]; };
-  for (const nav of ['reload', 'back_forward']) {
-    const [n, total, pending] = drawn(nav);
-    if (n !== total || total !== live.length || pending !== null) return false;
-    run('update();');
-    if (get('results').children.length !== 40) return false;
+appCheck('window: Save and Compare focus restore on rebuild, including a distant row', ({ run, item }) => {
+  const ids = l09(run), id = ids[300];
+  for (const selector of ['button.star', 'button.cmpi']) {
+    run(`mountRow(${JSON.stringify(id)}).querySelector(${JSON.stringify(selector)}).focus(); update();`);
+    if (stubDocument.activeElement !== item(id).querySelector(selector)) return false;
   }
-  const [n, total] = drawn('navigate');
-  return n === 40 && total === live.length;
+  return true;
 });
-// L09 with 2,915 rows: clearing every old row in one task took about 430 ms at
-// 4x CPU, so ticking one country froze the page. update() now parks the old list
-// out of sight, layout, focus and the accessibility tree, and deletes it a slice
-// at a time after the first paint. Print drops whatever is still parked.
-appCheck('L09 m: a rebuild parks the old list and deletes it in slices after the first paint; print drops it at once', ({ run, get, drain, flushFrame, timers, fireWindow }) => {
-  l09(run); drain();
-  const old = get('results');
-  run("state.countries.add('Ireland'); update();");
-  const next = get('results');
-  if (next === old || old.id || !old.inert || old.getAttribute('aria-hidden') !== 'true' || !old.parent
-    || !old.style.cssText.includes('content-visibility:hidden') || !old.style.cssText.includes('width:0;height:0')
-    || next.listeners.click?.length !== 1 || next.listeners.keydown?.length !== 1
-    || old.children.length !== live.length || run('retiredLists.size') !== 1) return false;
-  // Nothing is deleted before the first paint, then one task deletes only a slice.
-  const dropTask = () => { const id = run('retireTimer'); const t = timers.get(id); if (!t) return false; timers.delete(id); t.fn(); return true; };
-  if (dropTask()) return false;
-  flushFrame();
-  if (!dropTask() || old.children.length === live.length || old.children.length === 0 || !old.parent) return false;
-  drain();
-  const want = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  if (old.parent || run('retiredLists.size') !== 0 || run('retireTimer') !== undefined || !sameList(get, want)) return false;
-  run("state.countries.delete('Ireland'); update();");
-  const parked = get('results') !== next && next.parent;
+appCheck('window: deep focus survives a rebuild without mounting all preceding rows', ({ run, get, item }) => {
+  const ids = l09(run);
+  run(`mountRow(${JSON.stringify(ids[300])}).querySelector('button.open').focus(); update();`);
+  return listIds(get).length < 40 && stubDocument.activeElement === item(ids[300]).querySelector('button.open');
+});
+appCheck('window: print includes every row and saved open slot, afterprint returns to bounded DOM', ({ run, get, item, fireWindow }) => {
+  const ids = l09(run);
+  run(`openIds.add(${JSON.stringify(ids[300])});`);
   fireWindow('beforeprint');
-  const dropped = !next.parent && run('retiredLists.size') === 0 && get('results').children.length === live.length;
-  fireWindow('afterprint'); drain();
-  return parked && dropped;
+  if (!sameList(get, ids) || !item(ids[300]).querySelector('.expand') || get('results').querySelector('.row-space')) return false;
+  fireWindow('afterprint');
+  return listIds(get).length < 40 && run('openIds.size') === 1;
 });
-appCheck('L09 j: total failure while rows are pending appends nothing afterwards', ({ run, get, drain }) => {
-  l09(run); const drawn = get('results').children.length;
-  run("showTotalFailure(new Error('controlled failure'));"); drain();
-  return drawn === 40 && get('results').children.length === drawn && run('pendingRows') === null;
+appCheck('window: afterprint prunes the full catalogue before reading screen geometry', ({ run, get, fireWindow }) => {
+  l09(run);
+  fireWindow('beforeprint');
+  const list = get('results'), rect = list.getBoundingClientRect.bind(list);
+  let fullReads = 0;
+  list.getBoundingClientRect = () => {
+    if (list.querySelectorAll('li.item').length > 40) fullReads++;
+    return rect();
+  };
+  fireWindow('afterprint');
+  return fullReads === 0 && listIds(get).length < 40;
+});
+appCheck('window: print keeps the visible programme when measured heights differ from estimates', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  run('rowHeights = rowHeights.map((height, i) => i < 30 ? 220 : height); indexRowHeights();');
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  const before = run('windowRows[rowAt(window.scrollY)].id');
+  fireWindow('beforeprint'); fireWindow('afterprint');
+  return run('windowRows[rowAt(window.scrollY)].id') === before;
+});
+appCheck('window: printing Compare keeps the hidden list window and restores it on close', ({ run, get, fireWindow }) => {
+  const ids = l09(run), before = listIds(get);
+  run(`compareIds = ${JSON.stringify(ids.slice(0, 2))}; openCompare(null);`);
+  fireWindow('beforeprint'); fireWindow('afterprint');
+  if (!sameList(get, before)) return false;
+  run('closeCompare(true);');
+  return sameList(get, before);
+});
+appCheck('window: ArrowDown past mounted edge mounts the next row and selects it wide', ({ run, get, flip, context }) => {
+  flip(true); const ids = l09(run);
+  const items = get('results').querySelectorAll('li.item'), last = items.at(-1);
+  const index = ids.indexOf(last.dataset.id);
+  context.keyEvent = { target: last.querySelector('button.open'), key: 'ArrowDown', preventDefault() {} };
+  run('rowKeydown(keyEvent);');
+  return stubDocument.activeElement.closest('li.item').dataset.id === ids[index + 1]
+    && run('selectedId') === ids[index + 1] && listIds(get).length < 40;
+});
+appCheck('window: crossing modes stays bounded and late arrivals inherit selection/open state', ({ run, get, item, flip }) => {
+  const ids = l09(run), id = ids[300];
+  flip(true); run(`selectedId = ${JSON.stringify(id)}; mountRow(selectedId);`);
+  if (!item(id).classList.contains('is-sel')) return false;
+  flip(false); run('mountRow(selectedId);');
+  return listIds(get).length < 40 && item(id).querySelector('button.open').getAttribute('aria-expanded') === 'true';
+});
+appCheck('window: measurements correct only heights above the visible anchor', ({ run, get, context }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  const first = get('results').querySelector('li.item');
+  first.rect = { height: 220 };
+  run('renderWindow();');
+  return context.window.scrollY === 6040 && run('rowAt(6000)') === 33;
+});
+appCheck('window: Home reaches the top without height corrections cancelling its smooth scroll; scrollend restores anchoring', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('goHome();');
+  let corrections = 0;
+  context.window.scrollTo = () => { corrections++; };
+  get('results').querySelector('li.item').rect = { height: 220 };
+  run('renderWindow();');
+  if (corrections !== 0) return false;
+  fireWindow('scrollend', { target: get('pane') });
+  get('results').querySelector('li.item').rect = { height: 240 };
+  run('renderWindow();');
+  if (corrections !== 0) return false;
+  fireWindow('scrollend', { target: stubDocument });
+  get('results').querySelector('li.item').rect = { height: 260 };
+  run('renderWindow();');
+  return corrections === 1;
+});
+appCheck('window: interrupted Home restores anchoring on user input even without scrollend', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  // pointerdown: dragging the scrollbar, where no scrollend comes (Safari < 17.4).
+  for (const type of ['touchstart', 'wheel', 'pointerdown', 'keydown']) {
+    run('goHome();');
+    let corrections = 0;
+    context.window.scrollTo = () => { corrections++; };
+    fireWindow(type);
+    get('results').querySelector('li.item').rect = { height: 220 };
+    run('renderWindow();');
+    if (corrections !== 1) return false;
+  }
+  return true;
+});
+appCheck('window: a big jump keeps its scroll position through intermediate layout reads', ({ run, get, context }) => {
+  l09(run);
+  const list = get('results');
+  list.rect = { top: -30000, width: 0, height: 500000 };
+  context.window.scrollY = 30000;
+  const prototype = Object.getPrototypeOf(list), remove = prototype.remove;
+  // Model WebKit clamping during a layout read while the gaps are absent.
+  prototype.remove = function () {
+    remove.call(this);
+    if (!list.querySelector('.row-space') && !parseFloat(list.style.minHeight)) context.window.scrollY = 0;
+  };
+  try {
+    run('renderWindow();');
+    list.rect.top = -100000;
+    context.window.scrollY = 100000;
+    run('renderWindow();');
+    return context.window.scrollY === 100000;
+  } finally { prototype.remove = remove; }
+});
+appCheck('window: height changes below the anchor never interrupt scrolling', ({ run, get, context }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  get('results').querySelectorAll('li.item').at(-1).rect = { height: 400 };
+  let corrections = 0;
+  context.window.scrollTo = () => { corrections++; };
+  run('renderWindow();');
+  return corrections === 0;
+});
+// Review of the windowing PR (2026-11-09). An update while Compare was open
+// emptied the hidden list, and Close never drew it again: a blank list, or the
+// old position clamped near the top. smoke "window fixes" checks it in Chrome.
+appCheck('window: an update while Compare is open leaves the list drawn after Close, at the old scroll, focus on the trigger', ({ run, get, context }) => {
+  const ids = l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  run(`compareIds = ${JSON.stringify(ids.slice(0, 2))};`);
+  get('header-compare').focus();
+  run('openCompare(dom.headerCompare);');
+  context.window.scrollY = 0;
+  run("state.search = live[0].programme.slice(0, 3); update();");
+  if (listIds(get).length !== 0) return false;
+  run('closeCompare(true);');
+  return listIds(get).length > 0 && listIds(get).length < 40 && context.window.scrollY === 6000
+    && stubDocument.activeElement === get('header-compare');
+});
+// A language switch scrolled back to the old pixel offset after the rows had
+// changed height (Slovak rows are taller): another programme ended up on top.
+// smoke "window fixes" measures the real rows in Chrome.
+appCheck('window: a language switch keeps the programme at the top of the list where it was on screen', ({ run, get, item, context }) => {
+  const ids = l09(run), id = ids[4];
+  context.window.scrollY = 6000;
+  context.window.scrollBy = function (x, y) { this.scrollX += x; this.scrollY += y; };
+  item(id).rect = { top: 120, bottom: 300, height: 180 };
+  run("switchLanguage('sk');");
+  // The rebuilt row sits at 0 here, so the page moves up by its 120 px shift.
+  return context.window.scrollY === 5880 && !!item(id);
+});
+// Print near the end: the full list is shorter than the estimates, so the
+// position read after print was clamped; and the tray's room went with it.
+appCheck('window: afterprint goes back to the position read before print, with the tray\'s room kept', ({ run, get, context, fireWindow, html }) => {
+  l09(run);
+  context.window.scrollY = 6000;
+  html.style.setProperty('--tray-h', '62px');
+  fireWindow('beforeprint');
+  context.window.scrollY = 4000;
+  fireWindow('afterprint');
+  // The tray observer keeps --tray-h while printing; a tray still hidden
+  // after print (none here: Compare is empty) gives the room back.
+  return context.window.scrollY === 6000 && html.style['--tray-h'] === undefined
+    && appSrc.includes("else if (!printing) document.documentElement.style.removeProperty('--tray-h');");
+});
+// Escape in the wide pane focused nothing when the picked row was not drawn.
+appCheck('window: Escape in the wide pane returns focus to a picked row that was scrolled out of the window', ({ run, get, item, flip, fire, context }) => {
+  flip(true); const ids = l09(run), id = ids[300];
+  run(`selectRow(${JSON.stringify(id)});`);
+  get('results').rect = { top: -30000, width: 0, height: 500000 };
+  context.window.scrollY = 30000;
+  get('pane').focus();
+  run('renderWindow();');
+  if (item(id)) return false;
+  fire(get('pane'), 'keydown', { key: 'Escape' });
+  return run('selectedId') === null && stubDocument.activeElement === item(id)?.querySelector('button.open') && listIds(get).length < 40;
+});
+// The list was measured while still hidden after "No programmes match".
+appCheck('window: rows come back from "No programmes match" measured at the shown width', ({ run, get, tree }) => {
+  l09(run);
+  const list = get('results'), listp = tree.querySelector('.listp');
+  list.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, height: 0, width: listp.hidden ? 0 : 800 });
+  run("state.search = 'zzzz'; update();");
+  if (!listp.hidden || listIds(get).length) return false;
+  run('clearAll();');
+  return !listp.hidden && run('windowWidth') === 800 && listIds(get).length > 0;
+});
+appCheck('window: a second filter update replaces the dataset and removes stale focus rows', ({ run, get, drain }) => {
+  l09(run); run("state.search = live[500].programme; update();"); drain();
+  const want = run('windowRows.map(row => row.id)');
+  return want.length < 40 && sameList(get, want);
 });
 
 // L09 (Stage 6): points.js had no modulepreload, so the browser found it only
@@ -4567,7 +4689,7 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
   fireWindow('beforeprint');
   if (item(b).querySelector('.expand') || run('slotWork.size') !== 0) return false;
   const before = { open: run('[...openIds].join()'), sel: run('selectedId'), slots: slotsOf(get).length, more: tree.querySelector('.more-filters').parent };
-  let moves = 0; const hook = stubDocument.moved; stubDocument.moved = (n) => { moves++; hook(n); };
+  let moves = 0; const hook = stubDocument.moved; stubDocument.moved = (n) => { if (n.isConnected) moves++; hook(n); };
   printMedia.matches = true; media.matches = true; for (const fn of media.listeners) fn({ matches: true });
   media600.matches = true; for (const fn of media600.listeners) fn({ matches: true });
   const term = run('fixture[0].programme'); get('f-search').value = term; fire(get('f-search'), 'input'); advance(150);
@@ -4584,59 +4706,24 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
 // A08 print, as CSS: the list on screen, ink on white, open slots whole.
 const printRules = allCss.filter((r) => r.media.join() === '@media print');
 const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
-// L09: update() assumes no row is shorter than MIN_ROW_PX on screen. A row
-// Chrome has not laid out yet takes its placeholder height, so every screen
-// placeholder must be at least that, or the list could end above the scroll.
-{
-  const minRow = Number(appSrc.match(/const MIN_ROW_PX = (\d+);/)?.[1]);
-  const sizes = allCss.filter((r) => !r.media.join().includes('print') && r.selector.split(',').some((x) => x.trim() === '.item'))
-    .flatMap((r) => [...r.body.matchAll(/contain-intrinsic-size:\s*([^;]+)/g)].map((m) => m[1]));
-  const px = sizes.map((v) => Number(v.match(/(\d+(?:\.\d+)?)px/)?.[1]));
-  check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
-    `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
-}
-// Phone scroll (2026-11-08, "the rows pop in weirdly" on an iPhone). A row
-// not drawn yet holds its placeholder, then takes its real height; Safari has
-// no scroll anchoring, so the difference moved the rows on screen. The old
-// 260 / 200 / 120 px placeholders were 40-60% taller than the real rows. Each
-// placeholder must stay near the measured average row at its width: 320 px
-// 230-264, 390 px 186, 430 px 174, 600-899 px 152-156, an 800 px list 85-102.
-{
-  const at = (media) => allCss.filter((r) => r.media.join() === media && r.selector.split(',').some((x) => x.trim() === '.item'))
-    .map((r) => Number(r.body.match(/contain-intrinsic-size:\s*auto\s+(\d+)px/)?.[1])).filter(Boolean);
-  const between = (media, lo, hi) => { const v = at(media); return v.length === 1 && v[0] >= lo && v[0] <= hi; };
-  check('row placeholders match the measured row height at each width (phone scroll pop-in)',
-    between('', 170, 195) && between('@media (max-width: 359.98px)', 225, 255)
-      && between('@media (min-width: 600px)', 145, 165) && between('@container (min-width: 800px)', 80, 105),
-    JSON.stringify(['', '@media (max-width: 359.98px)', '@media (min-width: 600px)', '@container (min-width: 800px)'].map(at)));
-  // Safari draws a content-visibility:auto row only once it is on screen, so
-  // rows near the window get .near and are drawn early. .near keeps the
-  // containment auto gives a drawn row: dropping it on each toggle made Chrome
-  // restyle the rows after it (0.1 s to 1.9 s of style work per phone scroll).
-  const near = ruleBody('.item.near');
-  check('.near rows are drawn and keep layout, style and paint containment on screen, and print uncontained',
-    /content-visibility:\s*visible/.test(near) && /contain:\s*layout style paint/.test(near) && /contain: none/.test(printBody('.item.near')));
-  check('rows are marked .near from one passive scroll listener, not an IntersectionObserver on every row',
-    /window\.addEventListener\('scroll', scheduleNear, \{ passive: true \}\)/.test(appSrc)
-      && Number(appSrc.match(/const NEAR_SCREENS = ([\d.]+);/)?.[1]) >= 1
-      && (appSrc.match(/new IntersectionObserver/g) ?? []).length === 1);
-}
-appCheck('scrolling marks the rows within 1.5 screens of the window .near, and only those; a burst of scroll events is one frame', ({ run, get, drain, fireWindow, frames, flushFrame }) => {
-  l09(run); drain();
-  const rows = get('results').children;
-  if (rows.length < 30) return false;
-  run('window.innerHeight = 844;');
-  const place = (offset) => rows.forEach((row, i) => { row.rect = { top: i * 200 - offset, bottom: i * 200 - offset + 200, left: 0, right: 390, width: 390, height: 200 }; });
-  const marked = () => rows.flatMap((row, i) => (row.classList.contains('near') ? [i] : []));
-  const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-  // The margin is 1.5 x 844 = 1,266 px each way: tops from -1,466 to 2,110.
-  place(3000);
+// Each estimate belongs to the layout it was measured in: the base phone row,
+// a 320 px phone, the 600 px tablet list and the 800 px list container.
+check('window estimates are the measured heights, each on .results under its own media or container query; native anchoring is off',
+  JSON.stringify(allCss.filter((r) => /--row-estimate/.test(r.body)).map((r) => [r.selector, r.media.join(' '), r.body.trim()]))
+    === JSON.stringify([['.results', '', '--row-estimate:180px'], ['.results', '@media (max-width: 359.98px)', '--row-estimate:240px'],
+      ['.results', '@media (min-width: 600px)', '--row-estimate:152px'], ['.results', '@container (min-width: 800px)', '--row-estimate:90px']])
+    && /overflow-anchor:none/.test(ruleAt(cssText, 'html')));
+// Windowing replaced the old content skipping. Print mounts every row
+// (flushRows); the gaps that stand in for unmounted rows must not print.
+check('print shows every row: containment off, gaps hidden',
+  /contain: none/.test(printBody('.item')) && /display: none/.test(printBody('.row-space')));
+appCheck('window: scroll bursts schedule one frame and do not run under the Filters slide', ({ run, fireWindow, frames, flushFrame, fire, get }) => {
+  l09(run); flushFrame(); flushFrame();
   fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
   if (frames.size !== 1) return false;
-  flushFrame();
-  if (marked().join() !== span(8, 25).join()) return false;
-  place(1000); fireWindow('scroll'); flushFrame();
-  return marked().join() === span(0, 15).join() && frames.size === 0;
+  fire(get('f-more'), 'pointerdown');
+  fireWindow('scroll');
+  return frames.size === 0;
 });
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
@@ -4644,6 +4731,48 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+check('the print block has no .src-more rule: nothing renders that element, so the rule was dead', printBody('.src-more') === ''
+  && !printRules.some((r) => r.selector.includes('src-more')));
+// GitHub can't be run here, so this only pins the shape of the workflow: smoke
+// on pull requests only (the checks job keeps running on pushes), the real-Chrome
+// flag that turns "no Chrome" into a failure, the pinned action majors, and the
+// least-privilege token.
+{
+  const workflow = read('.github/workflows/checks.yml');
+  const jobs = workflow.split(/^jobs:\n/m)[1] ?? '';
+  const smokeJob = jobs.split(/^  smoke:\n/m)[1] ?? '', checksJob = (jobs.split(/^  smoke:\n/m)[0] ?? '');
+  check('GitHub checks: "checks" runs on every push and PR; "smoke" runs on pull requests only, in real Chrome (--require-chrome), Node 26, 40 minutes, with a failure-only artifact',
+    /^on: \[push, pull_request\]$/m.test(workflow) && /^permissions:\n  contents: read$/m.test(workflow)
+    && !/^    if:/m.test(checksJob) && /node tools\/check\.mjs/.test(checksJob) && /node tools\/check-contrast\.mjs/.test(checksJob)
+    && /^    if: github\.event_name == 'pull_request'$/m.test(smokeJob) && /^    runs-on: ubuntu-latest$/m.test(smokeJob) && /^    timeout-minutes: 40$/m.test(smokeJob)
+    && /node-version: 26/.test(smokeJob) && /run: node tools\/smoke\.mjs --require-chrome\b/.test(smokeJob)
+    && /if: failure\(\)\n        uses: actions\/upload-artifact@v7/.test(smokeJob)
+    && [...workflow.matchAll(/uses: (\S+)/g)].every((m) => /@v\d+$/.test(m[1])));
+}
+// The first GitHub smoke run (2026-11-09) failed 22 checks that pass on a Mac.
+// These pin the fixes in tools/smoke.mjs so they can't quietly come back.
+{
+  const smoke = read('tools/smoke.mjs');
+  const code = smoke.replace(/^\s*\/\/.*$/gm, '');
+  check('smoke drags with Input.dispatchTouchEvent (touchSwipe), never Input.synthesizeScrollGesture: on GitHub\'s Linux Chrome that left every page unscrolled (B3A, R4B, CMP, ROW)',
+    !/synthesizeScrollGesture/.test(code) && /async function touchSwipe\(/.test(code)
+    && (code.match(/touchSwipe\(page, /g) ?? []).length >= 6
+    && /y: Math\.round\(yDistance < 0 \? height \* 0\.8 : height \* 0\.2\)/.test(code));
+  check('smoke Chrome says it has a mouse (pointer fine, hover) on every system: Linux headless says pointer:none, so the facet search never focused (R3A)',
+    /'--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'/.test(code));
+  check('smoke "FAQ reduced motion" waits for the closed panel to rest at opacity 0 first (switching the media setting starts a hidden 120 ms fade; GitHub read opacity 1), then reads the fade start in the page',
+    /'the closed panel at rest'/.test(code) && /!p\.open&&o==='0'&&!p\.getAnimations\(\)\.some\(a=>a\.playState==='running'\)/.test(code)
+    && /addEventListener\('transitionrun'/.test(code) && /'the fade to start'/.test(code));
+  check('smoke "FAQ open" waits for the slide\'s transitionend before it reads tap-to-settled (it read null once)',
+    /'the slide\\'s transitionend'/.test(code));
+  check('smoke --only=<section,…> runs just the named sections and rejects unknown names and an empty list (it passed with 0 checks)',
+    /startsWith\('--only='\)/.test(code) && /if \(!only\.length\) throw/.test(code) && /--only: no section/.test(code) && /Object.hasOwn\(sections, name\)/.test(code));
+  // PR #6's second GitHub run: Show sits where Finish was, so a quick tap was
+  // the second click of a double-tap, which Show ignores on purpose.
+  check('smoke "NMO timing" waits out the double-tap window after Finish and fails by name if a Setup close tap counts as a double-tap (GitHub read it as a blocked Filters tap)',
+    /if\(action==='finish'\)\{\s*for\(let i=0;i<5;i\+\+\)\{[^\n]*\}\s*await new Promise\(r=>setTimeout\(r,800\)\);\s*\}/.test(code)
+    && /window\.__obDetail=e\.detail/.test(code) && /await page\.ev\('__obDetail'\)===1/.test(code));
+}
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
 // smoke "PR print head" measures both on emulated print media.
@@ -4663,7 +4792,9 @@ check('A08 print is ink on white: no row, cell, selected, open or banner fill or
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
     && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
-  /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
+  /contain: none/.test(printBody('.item'))
+    && !allCss.some((r) => /(?:^|[\s,>])(?:li)?\.item(?![\w-])/.test(r.selector) && /content-visibility/.test(r.body))
+    && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
     && /break-inside: avoid/.test(printBody('.row')) && !/break-inside: avoid/.test(printBody('.item'))
     && /transition: none !important; animation: none !important/.test(printBody('*')));
@@ -4747,9 +4878,9 @@ check('unknown degree and all three city states have visible summary/detail labe
   const r = { ...revisionBase, degreeType, city: '' };
   return rowOf(r).textContent.includes('Degree type unknown') && rowOf(r).textContent.includes('City unknown') && detailOf(r).textContent.includes('Degree type unknown') && detailOf(r).textContent.includes('City unknown') && detailOf({ ...r, cityUnknown: true }).textContent.includes('City not published');
 })));
-check('sort select renders eight explicit synchronized choices', withStubDocument(() => {
+check('sort select keeps Best match disabled without points alongside yearly cost', withStubDocument(() => {
   const select = new ChromeNode('select'); renderSortOptions(select, filtersMod.SORTS, 'tuition', 'desc');
-  return select.children.length === 8 && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 8;
+  return select.children.length === 11 && select.children.find((o) => o.value === 'best:asc')?.disabled === true && select.children.filter((o) => o.selected).map((o) => o.value).join() === 'tuition:desc' && new Set(select.children.map((o) => o.value)).size === 11;
 }));
 check('option search starts above 12, folds accents, clears/no-matches and preserves hidden selection nodes', withStubDocument(() => {
   const panel = new ChromeNode('div'); panel.setAttribute('aria-label','Fixture');
@@ -4779,7 +4910,7 @@ appCheck('sort headings toggle both ways, a new key starts naturally, select/fil
   get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
   if (context.document.querySelector('.sort-label').textContent !== 'Programme — A to Z') return false;
   get('f-deadline').value = 'open'; fire(get('f-deadline'),'change'); fire(get('f-clear'),'click');
-  return run('state.sort + state.dir') === 'tuitiondesc' && get('f-sort').value === 'tuition:desc' && get('f-deadline').value === 'any';
+  return run('state.sort + state.dir') === 'deadlineasc' && get('f-sort').value === 'deadline:asc' && get('f-deadline').value === 'any';
 });
 // Phase 3 diagnosis: the active mark was a CSS triangle that pointed down in
 // both directions and a different box from the inactive one. Now every heading
@@ -4917,7 +5048,7 @@ appCheck('country and local option-search changes retain full new facet vocabula
     && run("state.degreeTypes.has('BSc') && state.cities.has('Odense')")
     && countNodes.every((n,i) => get('result-count').children[i] === n);
 });
-check('both the list and the my-list export pass direction', /sortRows\(state.shortlistOnly && listAll \? inScope : filtered, state.sort, state.dir\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir\)/.test(appSrc));
+check('both the list and the my-list export pass direction', /sortRows\(state.shortlistOnly && listAll \? inScope : filtered, state.sort, state.dir, state\)/.test(appSrc) && /sortRows\(allRows.filter\(\(r\) => shortlist.has\(r.id\)\), state.sort, state.dir, state\)/.test(appSrc));
 
 // X02: the dev server used to listen on every interface and serve .git/, so
 // anyone on the same Wi-Fi could download the repository. Start the real
@@ -5826,9 +5957,9 @@ appCheck('removing an applied filter persists the explicit edit, without storing
   advance(500);
   return context.prefWrites?.at(-1)?.filters.countries.length === 0 && !('sort' in context.prefWrites.at(-1).filters);
 });
-await asyncAppCheck('onboarding apply callback preserves sort and persists exactly once through the shared debounce', async ({run,get,context,settle,advance}) => {
+await asyncAppCheck('onboarding apply callback preserves sort and persists exactly once through the shared debounce', async ({run,get,fire,context,settle,advance}) => {
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
-  run("state.sort = 'tuition'; state.dir = 'desc';");
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'), 'change');
   context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:38}));
   advance(500);
   return get('f-points').value === '38' && run('state.sort') === 'tuition' && run('state.dir') === 'desc'
@@ -5874,7 +6005,7 @@ appCheck('heading sort cycles include the default order, announced next state an
 function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,openFaq(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -6449,9 +6580,9 @@ await asyncAppCheck('B1 each of the nine actual copy results describes its URL, 
   const list = run('fixture[0].id + "," + fixture[1].id');
   for (const [kind, shared, points, filters, sort, query] of [
     ['none',false,false,false,false,''],['sort',false,false,false,true,'?sort=name'],
-    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36'],['filters_points',false,true,true,false,'?q=biology&points=36'],
+    ['filters',false,false,true,false,'?q=biology'],['points',false,true,false,false,'?points=36&sort=best'],['filters_points',false,true,true,false,'?q=biology&points=36&sort=best'],
     ['shared',true,false,false,false,`?list=${list}`],['shared_filters',true,false,true,false,`?list=${list}&q=biology`],
-    ['shared_points',true,true,false,false,`?list=${list}&points=36`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36`]
+    ['shared_points',true,true,false,false,`?list=${list}&points=36&sort=best`],['shared_filters_points',true,true,true,false,`?list=${list}&q=biology&points=36&sort=best`]
   ]) {
     context.copyCase = {shared,points,filters,sort};
     run("Object.assign(state, createFilterState()); shared = copyCase.shared ? {raw:fixture[0].id+','+fixture[1].id,ids:[fixture[0].id,fixture[1].id],unknown:[]} : null; state.shortlistOnly = !!shared; state.sort = copyCase.sort ? 'name' : 'deadline'; dom.points.value = copyCase.points ? '36' : ''; dom.search.value = copyCase.filters ? 'biology' : ''; update();");
@@ -6740,7 +6871,9 @@ appCheck('A2 programmes already in Compare draw pressed: a slot opened later, th
   const late = context.live[70].id, early = context.live[1].id;
   run(`allRows = live.slice(0, 120); compareIds = [${JSON.stringify(late)}, ${JSON.stringify(early)}]; update();`);
   if (item(late)) return false;
-  drain();
+  run(`mountRow(${JSON.stringify(late)}); mountRow(${JSON.stringify(context.live[2].id)});`);
+  // Focus-pinning keeps the late row mounted while the early one arrives.
+  run(`mountRow(${JSON.stringify(late)}).querySelector('button.open').focus(); mountRow(${JSON.stringify(context.live[2].id)});`);
   if (cmpOf(item(late))?.getAttribute('aria-pressed') !== 'true' || cmpOf(item(context.live[2].id)).getAttribute('aria-pressed') !== 'false') return false;
   click(early);
   if (item(early).querySelector('.expand button.cmpb')?.getAttribute('aria-pressed') !== 'true') return false;
@@ -6762,6 +6895,13 @@ appCheck('A3 three columns: "x" on the middle one leaves two with focus on the n
     || cmpStored(context).join() !== [a, c].join() || get('compare').hidden) return false;
   toast.action();
   return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
+});
+appCheck('A3 a column "x" pressed from the keyboard (click detail 0) asks the toast to move focus to Undo; a pointer click does not', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  fire(cmpX(get, b), 'click', { detail: 0 });
+  if (context.toasts.at(-1).options?.focusAction !== true) return false;
+  fire(cmpX(get, a), 'click', { detail: 1 });
+  return context.toasts.at(-1).options?.focusAction === false;
 });
 appCheck('A3 Undo after two removals puts the programme back before the ones that came after it', ({ run, get, fire, context, ids: [a, b, c] }) => {
   context.fixture.push(...context.live.slice(1, 2));
@@ -6957,7 +7097,7 @@ appCheck('A5 desktop: opening Compare from the header retires the "Open compare"
   const ids = context.fixture.map((r) => r.id);
   run('allRows = fixture; update();');
   const toasts = [];
-  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  context.showToast = (message, label, action, options) => { const toast = { message, label, action, options, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
   fire(cmpOf(get('results').children[0]), 'click');
   const added = toasts.at(-1);
   if (added?.label !== 'Open compare' || added.gone) return false;
@@ -7048,6 +7188,19 @@ appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 l
     dispatchStub(buttonOf(third), { type: 'click' });
     advance(200);
     return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 toasts: asked to (a keyboard removal), the toast moves focus to its Undo, and Escape there closes it without anything else handling the key; otherwise focus stays put', toastPage(({ region, advance, show, buttonOf }) => {
+    stubDocument.activeElement = null;
+    show('Removed A', 'Undo', () => {});
+    if (stubDocument.activeElement !== null) return false;
+    show('Removed B', 'Undo', () => {}, { focusAction: true });
+    const toast = region.children[0];
+    if (region.children.length !== 1 || stubDocument.activeElement !== buttonOf(toast)) return false;
+    dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Enter' });
+    if (region.children.length !== 1) return false;
+    const stopped = !dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Escape' });
+    advance(200);
+    return stopped && region.children.length === 0;
   }));
   check('A5 hovering during toast exit cancels removal until the pointer leaves', toastPage(({ region, advance, show }) => {
     show('Removed'); const toast = region.children[0];
@@ -7339,7 +7492,7 @@ section('Batch 3 · C');
     ['1 zobrazený program', 'Zobrazený je 1 program', '3 zobrazené programy', 'Zobrazené sú 3 programy',
       '312 zobrazených programov', 'Zobrazených je 312 programov', '0 zobrazených programov', 'Zobrazených je 0 programov']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
-    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'Nastavenie zostalo prázdne.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
   // Verification of PR 1: only the no-answers count ended with a full stop,
   // so the two done-screen counts read differently.
   check('done-screen counts never end with a full stop, EN and SK',
@@ -7369,48 +7522,23 @@ appCheck('B3C1 a second Finish click applies nothing more; the done screen forma
   h.fire(primary(), 'click', { detail: 2 });
   return applied.length === 1 && dialog.open && doneScreen()?.count === '2,915 programmes shown';
 });
-appCheck('B3C1 the done screen FAQ button closes setup as completed, then lands on the FAQ', (h) => {
-  const {get}=h, {dialog,next,writes}=realSetup(h);
-  for (let i = 0; i < 5; i++) next();
-  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed'
-    && (stubDocument.scrolls ?? []).some((s) => s.node === get('faq')) && stubDocument.activeElement === get('faq').querySelector('summary');
-});
-// Found by smoke R2M: Finish re-renders the list, which fills in after the FAQ
-// scroll starts, so a quick tap landed mid-list. The FAQ aims once more when the
-// list stops growing; never every frame (a restarted smooth scroll crawls), and
-// not at all once the reader scrolls.
-for (const [name, grow, input] of [['aims once more after the list grows', true, false], ['does not aim again when nothing grew', false, false], ['stops when the reader scrolls', true, true]]) appCheck(`B3C1 the done screen FAQ ${name}`, (h) => {
-  const {get}=h, frames=new Map(); let id=0;
-  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+// The done screen's FAQ button used to scroll to the footer FAQ below every
+// row, re-aiming while rows near the bottom settled. Since the header's "?"
+// panel (Leon, 2026-11-09) it opens that panel instead, and closing the panel
+// returns to the list. Nothing scrolls any more.
+appCheck('B3C1 the done screen FAQ button closes setup as completed, then opens the FAQ panel over the list', (h) => {
+  const {resultsSection}=h, faqOpens=[];
+  const {dialog,next,writes}=realSetup(h,{env:{openFaq:(back)=>faqOpens.push({back,setupOpen:dialog.open})}});
   for (let i = 0; i < 5; i++) next();
   stubDocument.scrolls = [];
   h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  const aims = () => stubDocument.scrolls.filter((s) => s.node === get('faq')).length;
-  if (aims() !== 1) return false;
-  if (input) for (const fn of [...(stubDocument.listeners.wheel ?? [])]) fn({ type: 'wheel' });
-  for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
-  return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
+  return !dialog.open && writes.length === 1 && writes[0][1] === 'completed' && faqOpens.length === 1
+    && faqOpens[0].back === resultsSection && faqOpens[0].setupOpen === false && stubDocument.scrolls.length === 0;
 });
-// Full smoke after the row pop-in fix (b14ff68): the FAQ sits below all
-// 2,900 rows, a smooth scroll that far took seconds, and rows drawn near the
-// bottom grew the list after it, so the page stopped ~12,000 px short. Far
-// away it now jumps, then re-aims each frame the FAQ drifts, without smooth.
-appCheck('the done screen FAQ jumps when far away and re-aims while the rows below settle', (h) => {
-  const {get}=h, frames=new Map(); let id=0, top=20000;
-  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
-  for (let i = 0; i < 5; i++) next();
-  const faq = get('faq'); faq.getBoundingClientRect = () => ({ top, bottom: top + 100, left: 0, right: 0, width: 0, height: 100 });
-  stubDocument.scrolls = [];
-  const origScroll = faq.scrollIntoView;
-  faq.scrollIntoView = function (opts) { top = 56; return origScroll.call(this, opts); };
-  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
-  const aims = () => stubDocument.scrolls.filter((s) => s.node === faq);
-  const first = aims()[0];
-  top = 900; // rows near the bottom were drawn and pushed the FAQ down
-  for (let i = 0; i < 3 && frames.size; i++) { const [[n, fn]] = frames; frames.delete(n); fn(); }
-  return aims().length >= 2 && aims().every((s) => (s.options?.behavior ?? s.behavior) === 'auto') && first !== undefined;
-});
+check('the done screen no longer scrolls to the footer FAQ: the jump and its re-aiming and scroll margin are gone',
+  !/showFaq|scrollIntoView|getElementById\('faq'\)/.test(read('js/onboarding.js'))
+  && /import \{ openFaq \} from '\.\/faq\.js';/.test(read('js/onboarding.js')) && /openFaq\(results\)/.test(read('js/onboarding.js'))
+  && !/#faq\{scroll-margin/.test(cssRules));
 appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
   const {dialog,next,doneScreen,api,writes}=realSetup(h);
   for (let i = 0; i < 6; i++) next();
@@ -7444,6 +7572,22 @@ appCheck('B3C1 the done screen says "shown" and splits it as the count line does
   const {next,doneScreen}=realSetup(h,{shown:36,summary});
   next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
   return doneScreen()?.count === '36 programmes shown · 10 within your IB points · 2 only with HL Maths 4+ · 24 can’t be compared';
+});
+// Review of list-perf (2026-11-09): the done screen ran one digit-regex over
+// the lead AND the summary parts, which pointsSummaryParts had already grouped,
+// so "1,033" became "1,33" and Slovak "1 033" lost its group. Only the lead is
+// formatted there now.
+for (const [lang, sep] of [['en', ','], ['sk', ' ']]) appCheck(`B3C1 the done screen keeps a grouped count in the points parts intact: ${lang}`, (h) => {
+  const {get,fire}=h, many=Array.from({length:1033},()=>({ibPointsMin:null}));
+  i18n.setLanguage(lang,{setItem(){}});
+  try {
+    const summary=filtersMod.pointsSummaryParts(many,fstate(36)).map((p)=>p.text);
+    const {next,doneScreen}=realSetup(h,{shown:1033,summary});
+    next(); const points=get('ob-points'); points.value='30'; fire(points,'input'); next(); next(); next(); next();
+    const count=doneScreen()?.count.replace(/[  ]/g,' ');
+    return count === [i18n.t('r3_ob_done_count',{count:1033}).replace('1033',`1${sep}033`), ...summary].join(' · ').replace(/[  ]/g,' ')
+      && count.includes(`1${sep}033 `) && !/(^|\D)33(\D|$)/.test(count);
+  } finally { i18n.setLanguage('en',{setItem(){}}); }
 });
 // Review of PR 1 (2026-11-07): setup's last line named Filters, which only
 // phones have, and "Your existing filters still apply" showed with none on.
@@ -7764,9 +7908,13 @@ check('AL-S1 setup: the step column never outgrows the dialog; the switch label 
 check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
-  && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
-check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
-  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
+  // Leon, 2026-11-09 (option B): the hint is a second line inside Skip, which stacks its two lines.
+  && /flex-direction:column/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
+  && /skipButton\.append\(el\('small', '', t\('r2_skip_sub'\)\)\)/.test(read('js/onboarding.js'))
+  && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
+// The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
+check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',
+  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && !ruleAt(cssText, '.foot h2', '(min-width:600px)'));
 
 section("Phone My list and Compare, 2026-11-06");
 // Leon (iPhone 16, 393 x 852): the phone My list box took half the screen,
@@ -7878,15 +8026,21 @@ check('LR3 phones: the IB tile sits on the page margin, in the header and the st
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
-  && /function syncSort\(\) \{\s*dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
+  && /function syncSort\(\) \{[\s\S]*?dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
   && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
 check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
   /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
   && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
-  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\)\)/.test(read('js/onboarding.js'))
-  && ['r4_faq_tools', 'r4_faq_stored'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
+  /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\), faqHint\(\)\)/.test(read('js/onboarding.js'))
+  && ['r7_faq_list'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
   && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
+// Leon, 2026-11-09: the done screen says the FAQ can be reopened from the
+// header's "?", with the icon itself in the sentence, in natural EN and SK.
+check('Setup done screen: one line says the "?" at the top reopens the FAQ, with the icon and a spoken name, EN and SK',
+  /const faqHint = \(\) => iconHint\('r6_ob_faq_later', 'ob-tools ob-help-hint', \{ '\{help\}': \['#i-help', 'r6_icon_help'\] \}\);/.test(read('js/onboarding.js'))
+  && UI.en.r6_ob_faq_later === 'Reopen the FAQ any time with {help} at the top.' && UI.sk.r6_ob_faq_later === 'Časté otázky otvoríš kedykoľvek cez {help} hore.'
+  && UI.en.r6_icon_help === 'the question mark' && UI.sk.r6_icon_help === 'otáznik');
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
 
@@ -7903,8 +8057,9 @@ section('Compare and header, round 2, 2026-11-06');
     /display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status', phone))
     && /margin-top:12px;scroll-margin-top:12px/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.cmp', phone))
     && !/display:none/.test(ruleAt(cssText, '.stream:has(>#compare:not([hidden]))>.status')));
-  check('CH2 from 600 px the footer sits 24 px under an open Compare; under the list it keeps its 48 px',
-    /margin-top:24px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
+  // 36 px since the footer FAQ went (2026-11-09): the heading lost its 12 px offset.
+  check('CH2 from 600 px the footer sits 36 px under an open Compare (heading 44 px under it); under the list it keeps its 48 px',
+    /margin-top:36px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', '(min-width:600px)'))
     && lastValue('.foot', 'margin-top') === '48px');
   check('CH2b phones: an open Compare puts the footer 36 px lower so its heading sits 44 px under the card, as on desktop; the list keeps 48 px',
     /margin-top:36px/.test(ruleAt(cssText, 'body:has(#compare:not([hidden])) .foot', phone))
@@ -7944,30 +8099,28 @@ section('Facts and copy, review of PR 1, 2026-11-07');
 {
   const inLang = (lang, fn) => { i18n.setLanguage(lang, { setItem() {} }); try { return fn(); } finally { i18n.setLanguage('en', { setItem() {} }); } };
   // The source FAQ said unchecked rows "are marked"; none are (every row is
-  // AI-DRAFT and only signed rows carry a badge). It now quotes the badge a
-  // signed row really shows, so the two cannot drift apart.
-  equal('FAQ source answer quotes the real "Checked" badge, names the CAO and no longer claims unchecked rows are marked',
+  // AI-DRAFT and only signed rows carry a badge). The FAQ quotes the badge a
+  // signed row really shows, so the two cannot drift apart (since 2026-11-09
+  // in "Can I rely on what it says?").
+  equal('FAQ quotes the real "Checked" badge and never claims unchecked rows are marked',
     ['en', 'sk'].map((lang) => inLang(lang, () => {
-      const a = t('r2_faq_source_a');
-      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), a.includes('CAO'), /are marked|sú označené/.test(a)];
-    })), [[true, true, false], [true, true, false]]);
-  check('FAQ CAO answer names the UCD exception in EN and SK',
-    /UCD is the exception/.test(UI.en.r2_faq_cao_a) && /Výnimkou je UCD/.test(UI.sk.r2_faq_cao_a));
-  // Verification of PR 1: with the UCD sentence in between, "We convert it" /
-  // "Prepočítavame ju" pointed at UCD's minimum (or UCD itself); the footer
-  // still said all data comes from the universities' pages; and the source
-  // answer left out living costs borrowed from another university in the city.
-  check('CAO answer names the cutoff it converts, EN and SK',
-    UI.en.r2_faq_cao_a.includes('We convert the cutoff') && !UI.en.r2_faq_cao_a.includes('convert it')
-      && UI.sk.r2_faq_cao_a.includes('Hranicu prepočítavame') && !UI.sk.r2_faq_cao_a.includes('Prepočítavame ju')
-      && read('index.html').includes('We convert the cutoff with the CAO’s IB table'));
+      const a = t('r7_faq_rely_a');
+      return [a.includes(t('checked', { value1: t('by', { value1: '…' }) })), /are marked|sú označené/.test(a)];
+    })), [[true, false], [true, false]]);
+  check('FAQ CAO answer names the UCD exception and the HL Maths bonus in EN and SK',
+    /UCD shows its own IB minimum/.test(UI.en.r7_faq_cao_a) && /UCD uvádza vlastné minimum/.test(UI.sk.r7_faq_cao_a)
+      && /601 to 625/.test(UI.en.r7_faq_cao_a) && /601 do 625/.test(UI.sk.r7_faq_cao_a));
+  // Review of list-perf (2026-11-09): "the CAO minimum (35)" read as 35 CAO points;
+  // the HPAT minimum is 480 CAO points = 35 IB. The Slovak answer also said "sa dá
+  // dosiahnuť len s ňou" for the 601-625 band; it is "možno dosiahnuť".
+  check('FAQ CAO answer gives the HPAT minimum as 480 points (35 IB) in EN and SK, and the Slovak band wording is natural',
+    /CAO minimum \(480 points, 35 IB\)/.test(UI.en.r7_faq_cao_a) && /minimum CAO \(480 bodov, 35 IB\)/.test(UI.sk.r7_faq_cao_a)
+      && !/sa dá dosiahnuť/.test(UI.sk.r7_faq_cao_a) && /601 do 625 možno dosiahnuť len s ňou/.test(UI.sk.r7_faq_cao_a));
+  // Verification of PR 1: the footer still said all data comes from the
+  // universities' pages.
   check('footer source line names the CAO and calls living costs estimates, EN and SK',
     /CAO/.test(UI.en.r2_footer_data) && /estimates/.test(UI.en.r2_footer_data)
       && /CAO/.test(UI.sk.r2_footer_data) && /odhady/.test(UI.sk.r2_footer_data));
-  check('source answer covers living costs from another university and says "podrobnosti" in SK',
-    /another university’s in the same city/.test(UI.en.r2_faq_source_a)
-      && /inej univerzity v tom istom meste/.test(UI.sk.r2_faq_source_a) && /v podrobnostiach programu/.test(UI.sk.r2_faq_source_a)
-      && !/v detailoch/.test(UI.sk.r2_faq_source_a));
   // On phones the points field is in the Filters sheet, not "above".
   check('share help points to the filters, not "above", in EN and SK',
     /in the filters/.test(UI.en.enter_your_ib_points_above_to_include_them) && !/above/.test(UI.en.enter_your_ib_points_above_to_include_them)
@@ -7978,7 +8131,7 @@ section('Facts and copy, review of PR 1, 2026-11-07');
   equal('Slovak sort, setup and done-screen grammar',
     [inLang('sk', () => t('sorted_activate_to_sort', { value1: 'X', value2: t('r2_default_order') })), UI.sk.r2_ob2m, UI.sk.r3_ob_done_h_none,
       UI.sk.r4_ob_done_tools.replace('{bookmark}', UI.sk.r4_icon_bookmark).replace('{scales}', UI.sk.r4_icon_scales)],
-    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'V nastavení nie sú žiadne odpovede.',
+    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'Nastavenie zostalo prázdne.',
       'Tlačidlom so záložkou si programy uložíš do Môjho zoznamu a tlačidlom s váhami porovnáš až 4 vedľa seba.']);
   // WebKit and VoiceOver drop list semantics from a list with list-style:none
   // (the results) or display:grid items (the points lines).
@@ -7996,6 +8149,398 @@ check('Compare\'s sideways scroll box never scrolls vertically: overflow-y:hidde
   /overflow-x:auto;overflow-y:hidden/.test(ruleAt(cssText, '.cmp-scroll'))
     && cssTree(cssText).filter((r) => /\.cmp-scroll(?![\w-])/.test(r.selector) && !r.media.some((m) => /print/.test(m)))
       .every((r) => !/(?:^|;)\s*(?:overflow(?:-y)?\s*:\s*(?:auto|scroll|visible)|overflow\s*:\s*\S+\s+(?:auto|scroll)|touch-action)/.test(r.body)));
+
+
+section('Smarter sort');
+{
+  const st = { ...noFilters(), myIbPoints: 36 };
+  const base = { ...revisionBase, ibPointsMin: 30, pointsKind: 'minimum', cao: null, livingCostMin: 500, livingCostMax: 600 };
+  const make = (id, changes = {}) => ({ ...base, id, university: id, programme: id, deadline: new Date('2027-02-01'), deadlinePassed: false, ...changes });
+  const maths = make('maths', { pointsKind: 'cutoff', cao: { rounds: [{round:1, points: 520}], test: false } });
+  // Pick a cutoff just above the student's CAO total, requiring the bonus.
+  const { caoPointsFor } = await import('../js/points.js');
+  maths.cao.rounds[0].points = caoPointsFor(36) + 10;
+  const rows = [make('unknown', {ibPointsMin:null}), maths, make('far'), make('near', {ibPointsMin:35}), make('early', {deadline:new Date('2027-01-01')}), make('passed', {deadline:new Date('2026-01-01'),deadlinePassed:true}), make('no-date', {deadline:null})];
+  equal('Best match: buckets, deadline before closeness, then smaller gap', sortRows(rows, 'best', 'asc', st).map(r=>r.id), ['early','near','far','passed','no-date','maths','unknown']);
+  equal('Best match has the same useful order for a reverse request', sortRows(rows, 'best', 'desc', st).map(r=>r.id), sortRows(rows, 'best', 'asc', st).map(r=>r.id));
+  const ties = [make('z'),make('a'),make('early',{deadline:new Date('2027-01-01')}),make('unknown',{deadline:null})];
+  for (const key of ['tuition','points','cost']) for (const dir of ['asc','desc']) equal(`${key} ${dir}: ties use deadline then university/name`, sortRows(ties,key,dir,st).map(r=>r.id), ['early','a','z','unknown']);
+  const costs = [make('low',{tuitionEu:0}),make('high',{tuitionEu:2000}),make('missing-fee',{tuitionEu:null}),make('missing-living',{tuitionEu:100,livingCostMin:null})];
+  equal('cost lowest: unknown fee/living last', sortRows(costs,'cost','asc',st).map(r=>r.id), ['low','high','missing-fee','missing-living']);
+  equal('cost highest: unknown fee/living still last', sortRows(costs,'cost','desc',st).map(r=>r.id), ['high','low','missing-fee','missing-living']);
+  equal('cost uses personal living costs, including zero', sortRows(costs,'cost','asc',{...st,myLiving:0}).map(r=>r.id), ['low','missing-living','high','missing-fee']);
+  for (const key of ['best','cost','deadline']) {
+    const parsed = paramsToState(stateToParams({...st,sort:key}));
+    equal(`${key} URL round trip`, [parsed.sort,parsed.myIbPoints], [key,36]);
+  }
+  equal('Deadline with points is explicit in shared and reloaded URLs', new URLSearchParams(stateToParams({...st,sort:'deadline'})).get('sort'), 'deadline');
+  equal('Best match URL without usable points falls back to deadline', ['sort=best','sort=best&points=bad','sort=best&points=46'].map(q=>paramsToState(q).sort), ['deadline','deadline','deadline']);
+  equal('saved Best match without points falls back to deadline', savedState.validateFilters({sort:'best'}).sort, 'deadline');
+  equal('saved Best match with points is valid', savedState.validateFilters({sort:'best',myIbPoints:36}).sort, 'best');
+  const state = noFilters(); filtersMod.setMyPoints(state,36);
+  equal('setting points activates Best match', state.sort, 'best');
+  state.sort='cost'; filtersMod.setMyPoints(state,38,true);
+  equal('explicit pick sticks through points edits', state.sort, 'cost');
+  state.sort='best'; filtersMod.setMyPoints(state,null,true);
+  equal('clearing points on Best match restores deadline', [state.sort,state.dir], ['deadline','asc']);
+  check('Best match menu is conditional and has only one direction', withStubDocument(()=>{
+    const select = new ChromeNode('select'); renderSortOptions(select,filtersMod.SORTS,'best','asc',st);
+    return select.children.length===11 && select.children.filter(o=>o.value.startsWith('best:')).map(o=>o.value).join()==='best:asc';
+  }));
+}
+appCheck('points field auto-switches, explicit menu choice sticks, and clear removes Best match', ({run,get,fire,advance}) => {
+  run('wireInputs();'); get('f-points').value='36'; fire(get('f-points'),'input'); advance(200);
+  if(run('state.sort')!=='best') return false;
+  get('f-sort').value='cost:desc'; fire(get('f-sort'),'change');
+  get('f-points').value='38'; fire(get('f-points'),'input'); advance(200);
+  if(run('state.sort')!=='cost' || run('state.dir')!=='desc') return false;
+  get('f-sort').value='best:asc'; fire(get('f-sort'),'change');
+  run('clearAll();');
+  return run('state.sort')==='deadline' && get('f-sort').children.find(o=>o.value==='best:asc')?.disabled === true;
+});
+await asyncAppCheck('Setup done activates Best match before showing results', async ({run,context,settle})=>{
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:36}));
+  return run('state.sort')==='best' && run('state.myIbPoints')===36;
+},{boot:true});
+// Leon, 2026-11-09: a hand-picked sort was lost on reload, because
+// storedFilters dropped sort and dir ("Sort is never written to preferences").
+{
+  const { storedFilters, restoration } = savedState;
+  const base = { ...savedState.validateFilters({ myIbPoints: 36 }), sort: 'name', dir: 'desc' };
+  equal('a hand-picked sort is stored with its direction', [storedFilters(base, null, true).filters.sort, storedFilters(base, null, true).filters.dir], ['name', 'desc']);
+  check('a sort the page chose is not stored', !('sort' in storedFilters(base, null, false).filters) && !('dir' in storedFilters(base).filters));
+  check('Best match is never stored, even when picked', !('sort' in storedFilters({ ...base, sort: 'best', dir: 'asc' }, null, true).filters));
+  const back = restoration('', storedFilters(base, null, true));
+  check('a stored sort comes back and counts as picked', back.source === 'saved' && back.state.sort === 'name' && back.state.dir === 'desc' && back.sortPicked === true);
+  check('a stored sort that fails validation is not picked', [{ sort: 'best' }, { sort: 'bogus' }].every((f) => restoration('', { version: 1, filters: f }).sortPicked === false && restoration('', { version: 1, filters: f }).state.sort === 'deadline'));
+  check('stored Best match with stored points still restores', restoration('', { version: 1, filters: { sort: 'best', myIbPoints: 36 } }).state.sort === 'best');
+  check('a filter or sort URL ignores the stored sort (never merged)', ['?country=Ireland', '?points=36', '?sort=tuition'].every((q) => { const r = restoration(q, storedFilters(base, null, true)); return r.source === 'url' && r.state.sort !== 'name' && !r.sortPicked; }));
+  check('older snapshots without a sort restore deadline order, not picked', restoration('', { version: 1, filters: { myIbPoints: 36 } }).sortPicked === false);
+}
+await asyncAppCheck('a sort picked in the menu is saved; Clear all removes it with the filters', async ({run,get,fire,context,settle,advance}) => {
+  Object.defineProperty(get('f-sort'), 'options', {get() { return this.children; }});
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  context.Event = class { constructor(type) { this.type = type; this.bubbles = false; } };
+  fire(get('sort-options').querySelectorAll('input').find((n) => n.value === 'tuition:desc'), 'change'); advance(500);
+  const last = context.prefWrites?.at(-1)?.filters;
+  if (last?.sort !== 'tuition' || last?.dir !== 'desc') return false;
+  run('clearAll();'); advance(500);
+  if (context.prefWrites.at(-1) !== null || run('state.sort') !== 'deadline' || run('state.dir') !== 'asc' || run('explicitSort')) return false;
+  get('f-points').value = '38'; fire(get('f-points'), 'input'); advance(500);
+  return run('state.sort') === 'best';
+}, {boot:true});
+await asyncAppCheck('a sort picked from a column header is saved too', async ({fire,context,settle,advance}) => {
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  fire(context.document.querySelector('.cols [data-sort="points"]'),'click'); advance(500);
+  return context.prefWrites?.at(-1)?.filters.sort === 'points';
+}, {boot:true});
+await asyncAppCheck('a restored hand-picked sort survives setting points (no switch to Best match)', async ({run,get,fire,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{sort:'name',dir:'asc'}};
+  run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  if (run('state.sort') !== 'name' || run('explicitSort') !== true) return false;
+  get('f-points').value = '36'; fire(get('f-points'),'input'); advance(500);
+  if (run('state.sort') !== 'name') return false;
+  context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:38}));
+  return run('state.sort') === 'name' && run('state.myIbPoints') === 38;
+}, {boot:true});
+await asyncAppCheck('saved points without a saved sort still select Best match on reload', async ({run,context,settle,advance}) => {
+  context.savedPrefs = {version:1,filters:{myIbPoints:36}};
+  run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+  return run('state.sort') === 'best' && run('explicitSort') === false;
+}, {boot:true});
+appCheck('Clear all forgets a hand-picked Tuition sort and points can choose Best match again', ({run,get,fire,advance}) => {
+  run('wireInputs();');
+  get('f-sort').value = 'tuition:desc'; fire(get('f-sort'),'change');
+  run('clearAll();');
+  if (run('state.sort') !== 'deadline' || run('state.dir') !== 'asc' || run('explicitSort') || new URLSearchParams(run('stateToParams(state)')).has('sort')) return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  return run('state.sort') === 'best';
+});
+appCheck('URL points are applied before syncSort builds the initial Best match menu', ({run,context}) => {
+  context.location.search = '?points=36&sort=best';
+  run('state.myIbPoints = null; applyUrlFields(); syncSort();');
+  return run('state.sort') === 'best' && run('state.myIbPoints') === 36;
+});
+appCheck('Best match radios mirror disabled options, reject disabled changes, and enable/disable with points', ({run,get,fire,context,advance}) => {
+  Object.defineProperty(get('f-sort'), 'options', {get() { return this.children; }});
+  context.Event = class { constructor(type) { this.type = type; this.bubbles = false; } };
+  run('syncSort(); wireInputs();');
+  const best = () => get('sort-options').querySelectorAll('input').find((n) => n.value === 'best:asc');
+  if (!best()?.disabled || !get('f-sort').children.find((n) => n.value === 'best:asc')?.disabled) return false;
+  fire(best(), 'change');
+  if (run('state.sort') !== 'deadline') return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  if (best().disabled || run('state.sort') !== 'best') return false;
+  get('f-points').value = ''; fire(get('f-points'),'input'); advance(500);
+  return best().disabled === true && run('state.sort') === 'deadline';
+});
+for (const language of ['en','sk']) check(`${language}: Best match disabled hint is readable and disappears with points`, withStubDocument(() => {
+  i18n.setLanguage(language);
+  try {
+    const select = new ChromeNode('select');
+    renderSortOptions(select,filtersMod.SORTS,'deadline');
+    const off = select.children.find(o=>o.value==='best:asc');
+    if (!off?.disabled || off.textContent !== (language === 'en' ? 'Best match (enter your IB points first)' : 'Najlepšia zhoda (najprv zadaj svoje IB body)')) return false;
+    renderSortOptions(select,filtersMod.SORTS,'best','asc',{myIbPoints:38});
+    const on = select.children.find(o=>o.value==='best:asc');
+    return on.disabled === false && on.textContent === (language === 'en' ? 'Best match' : 'Najlepšia zhoda');
+  } finally { i18n.setLanguage('en'); }
+}));
+// Reload through the same boot ordering: URL fields, syncSort, then data/readFields.
+for (const source of ['url', 'saved']) {
+  await asyncAppCheck(`${source}: explicit Deadline with points survives boot and later points edits`, async ({run,get,fire,context,settle,advance}) => {
+    if (source === 'url') context.location.search = '?points=36&sort=deadline';
+    else context.savedPrefs = {version:1,filters:{myIbPoints:36,sort:'deadline',dir:'asc'}};
+    run('applyUrlFields(); syncSort();');
+    context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+    if (run('state.sort') !== 'deadline' || run('state.myIbPoints') !== 36) return false;
+    get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+    return run('state.sort') === 'deadline';
+  }, {boot:true});
+}
+await asyncAppCheck('a URL Best match without points does not suppress automatic Best match later', async ({run,get,fire,context,settle,advance}) => {
+  context.location.search = '?sort=best';
+  run('applyUrlFields(); syncSort();');
+  context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
+  if (run('state.sort') !== 'deadline') return false;
+  get('f-points').value = '38'; fire(get('f-points'),'input'); advance(500);
+  return run('state.sort') === 'best' && run('explicitSort') === false;
+}, {boot:true});
+section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');
+// The FAQ lived only in the footer, below every row. The header's "?" opens
+// the same questions in a panel (js/faq.js), built like the Filters sheet:
+// show(), its own scrim, focus trap and Escape, never a page-wide inert.
+// Runs the real module against the real index.html as stand-in nodes.
+// The twelve questions approved by Leon on 2026-11-09, in order.
+const FAQ_KEYS = ['what', 'rely', 'check', 'points', 'no_points', 'unknown', 'cao', 'fee', 'cost', 'setup', 'list', 'who'].map((k) => `r7_faq_${k}`);
+function faqHarness(test) {
+  const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners', 'canFocus', 'queueTask', 'scrolls', 'focusLog', 'focusOptions'];
+  const saved = Object.fromEntries(keys.map((k) => [k, stubDocument[k]]));
+  const original = globalThis.document;
+  globalThis.document = stubDocument;
+  try {
+    const tree = parseHtml(read('index.html')), all = () => [...nodesOf(tree)];
+    const get = (id) => all().find((n) => n.id === id) ?? null;
+    const tasks = [], hidden = new Set();
+    Object.assign(stubDocument, {
+      getElementById: get, querySelector: (sel) => tree.querySelector(sel), querySelectorAll: (sel) => tree.querySelectorAll(sel),
+      body: tree.querySelector('body'), documentElement: tree.querySelector('html'), activeElement: tree.querySelector('body'),
+      listeners: {}, scrolls: [], focusLog: [], focusOptions: undefined, queueTask: (fn) => tasks.push(fn),
+      // A closed <details> shows only its summary, so the mailto link in the
+      // last answer is out of the Tab order until that question is open.
+      canFocus: (node) => {
+        for (let n = node, c = null; n; c = n, n = n.parent) {
+          if (n.hidden || hidden.has(n) || (n.tagName === 'dialog' && !n.open) || (n.tagName === 'details' && !n.open && c && c.tagName !== 'summary')) return false;
+        }
+        return true;
+      },
+    });
+    // The module wires itself when there is a document, as in the browser.
+    // Timers and frames only queue: a test runs them when it means to.
+    const timers = [], slides = [];
+    const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq, onFaqSlide });', { document: stubDocument,
+      setTimeout: (fn) => timers.push(fn), clearTimeout() {}, requestAnimationFrame: (fn) => timers.push(fn) });
+    api.onFaqSlide((on) => slides.push(on));
+    api.wireFaq(); // a second call changes nothing
+    const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
+    return test({ tree, get, api, fire, tasks, timers, slides, hide: (node) => hidden.add(node), panel: get('faq-panel'), opener: get('faq-open'), heading: get('faq-h'), footer: get('faq-foot'),
+      scrim: get('faq-scrim'), html: stubDocument.documentElement, results: tree.querySelector('section[aria-labelledby="results-h"]') });
+  } catch (err) { console.log(`        ${err.message}`); return false; } finally {
+    Object.assign(stubDocument, saved);
+    globalThis.document = original;
+  }
+}
+{
+  const html = read('index.html'), faqSrc = read('js/faq.js').replace(/\/\/.*$/gm, '');
+  const shut = ({ panel, html: root, scrim, opener }) => !panel.open && !root.classList.contains('faq-open') && !scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'false';
+  // Leon, 2026-11-09: the panel is the FAQ's only home; the footer keeps a button to it.
+  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
+    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="lang"/.test(html)
+      && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html)
+      && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
+      && /\.faq-l\{display:none\}/.test(cssText) && /display:inline/.test(ruleAt(cssText, '#faq-open .faq-l', '(min-width:1024px)')));
+  check('FAQ lives only in its panel: twelve questions, each key once in the page, none in the footer; the footer has a "FAQ" button to the panel',
+    (() => {
+      const panelSrc = elementSource(html, /<div class="faqp-b faq">/), footSrc = elementSource(html, /<footer class="foot">/);
+      return (panelSrc.match(/<details>/g) ?? []).length === 12 && !/<details/.test(footSrc) && !/id="faq"/.test(html)
+        && FAQ_KEYS.every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2 && panelSrc.includes(`data-i18n="${k}_a"`))
+        && /<button type="button" class="btn btn-a" id="faq-foot" aria-haspopup="dialog" aria-controls="faq-panel" data-i18n="r6_faq_l">FAQ<\/button>/.test(footSrc)
+        && footSrc.includes('id="source-line"') && footSrc.includes('data-i18n="r2_footer_h"')
+        && !/cloneNode|getElementById\('faq'\)/.test(faqSrc) && !/#faq(?![\w-])/.test(cssText);
+    })());
+  check('FAQ: all twelve questions and answers are written in EN and SK',
+    FAQ_KEYS.every((k) => [k, `${k}_a`].every((key) => UI.en[key]?.trim() && UI.sk[key]?.trim() && UI.sk[key] !== UI.en[key])));
+  equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close', 'r6_faq_l'].flatMap((k) => [UI.en[k], UI.sk[k]]),
+    ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky', 'FAQ', 'Časté otázky']);
+  check('FAQ panel opens with show(): no showModal, inert or background aria-hidden (WebKit restyles every row for those)',
+    faqSrc.includes('panel.show();') && !/showModal\(|\binert\b|aria-hidden/.test(faqSrc));
+  check('FAQ panel starts with its twelve questions closed, in the approved order; the footer\'s "FAQ" opens it and gets focus back',
+    faqHarness(({ fire, panel, footer, heading, opener, get }) => {
+      const qs = panel.querySelectorAll('details');
+      const order = qs.map((d) => d.querySelector('summary [data-i18n]').getAttribute('data-i18n'));
+      if (qs.length !== 12 || JSON.stringify(order) !== JSON.stringify(FAQ_KEYS) || qs.some((d) => d.open) || get('faq')) return false;
+      fire(footer, 'click');
+      const opened = panel.open && stubDocument.activeElement === heading && opener.getAttribute('aria-expanded') === 'true';
+      fire(heading, 'keydown', { key: 'Escape' });
+      return opened && !panel.open && stubDocument.activeElement === footer;
+    }) === true);
+  check('FAQ panel pauses row mounting while it slides, both ways, and resumes once its transform transition ends (or the fallback timer runs)',
+    faqHarness(({ fire, panel, opener, scrim, slides, timers }) => {
+      fire(opener, 'pointerdown');
+      const early = slides.join() === 'true' && panel.classList.contains('is-sliding') && scrim.classList.contains('is-sliding');
+      fire(opener, 'click');
+      const once = slides.join() === 'true';
+      fire(panel.querySelector('summary'), 'transitionend', { propertyName: 'height' });
+      const notByAnswer = slides.join() === 'true';
+      fire(panel, 'transitionend', { propertyName: 'transform' });
+      const resumed = slides.join() === 'true,false' && !panel.classList.contains('is-sliding');
+      fire(panel.querySelector('.faqp-x'), 'click');
+      const closing = slides.join() === 'true,false,true';
+      while (timers.length) timers.shift()();
+      return early && once && notByAnswer && resumed && closing && slides.join() === 'true,false,true,false' && !scrim.classList.contains('is-sliding');
+    }) === true);
+  check('FAQ panel: switching language translates the copies, the heading and both buttons\' names',
+    faqHarness(({ tree, panel, heading, opener }) => {
+      const root = { documentElement: {}, querySelectorAll: (sel) => tree.querySelectorAll(sel) };
+      i18n.setLanguage('sk', { setItem() {} });
+      try {
+        i18n.applyLanguage(root);
+        return panel.querySelector('summary span').textContent === UI.sk.r7_faq_what && panel.querySelectorAll('.a span').at(-1).textContent === UI.sk.r7_faq_who_a
+          && panel.querySelector('a[href^="mailto:"]').textContent === UI.sk.r7_faq_email
+          && heading.textContent === UI.sk.r6_faq_h && opener.getAttribute('aria-label') === UI.sk.r6_faq
+          && panel.querySelector('.faqp-x').getAttribute('aria-label') === UI.sk.r6_faq_close;
+      } finally { i18n.setLanguage('en', { setItem() {} }); i18n.applyLanguage(root); }
+    }) === true);
+  check('FAQ "?" opens the panel with its scrim and lock class, says so, and focuses the heading; Escape closes and returns to "?"',
+    faqHarness((h) => {
+      const { fire, opener, panel, heading, scrim, html: root } = h;
+      fire(opener, 'click');
+      const opened = panel.open && root.classList.contains('faq-open') && scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'true'
+        && stubDocument.activeElement === heading;
+      fire(heading, 'keydown', { key: 'Escape', defaultPrevented: true });
+      const keptForOthers = panel.open;
+      fire(heading, 'keydown', { key: 'Escape' });
+      return opened && keptForOthers && shut(h) && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel: the scrim and the close button each close it and return to "?"',
+    faqHarness((h) => {
+      const { fire, opener, panel, scrim } = h;
+      fire(opener, 'click'); fire(scrim, 'click');
+      const byScrim = shut(h) && stubDocument.activeElement === opener;
+      fire(opener, 'click'); fire(panel.querySelector('.faqp-x'), 'click');
+      return byScrim && shut(h) && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel traps Tab both ways and pulls stray focus back to its heading',
+    faqHarness(({ fire, get, opener, panel, heading }) => {
+      fire(opener, 'click');
+      const close = panel.querySelector('.faqp-x'), summaries = panel.querySelectorAll('summary'), last = summaries.at(-1);
+      fire(heading, 'keydown', { key: 'Tab' });
+      const first = stubDocument.activeElement === close;
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const back = stubDocument.activeElement === last;
+      fire(last, 'keydown', { key: 'Tab' });
+      const wrap = stubDocument.activeElement === close;
+      const mid = summaries[1]; mid.focus(); const event = { key: 'Tab' };
+      const inside = fire(mid, 'keydown', event) && stubDocument.activeElement === mid; // the browser moves it
+      fire(get('f-search'), 'focusin');
+      return first && back && wrap && inside && stubDocument.activeElement === heading;
+    }) === true);
+  check('FAQ panel: Setup\'s done screen hands over the results list, which gets focus back; a hidden target falls back to "?"; a second open does nothing',
+    faqHarness(({ api, opener, results, hide, panel }) => {
+      api.openFaq(results); api.openFaq(); api.closeFaq();
+      const toList = stubDocument.activeElement === results;
+      api.openFaq(results); hide(results); api.closeFaq();
+      return toList && !panel.open && stubDocument.activeElement === opener;
+    }) === true);
+  check('FAQ panel: a quick reopen survives the queued close event of the close before it',
+    faqHarness(({ fire, opener, panel, scrim, tasks, html: root }) => {
+      fire(opener, 'click'); fire(scrim, 'click'); fire(opener, 'click');
+      while (tasks.length) tasks.shift()();
+      return panel.open && root.classList.contains('faq-open') && scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'true';
+    }) === true);
+  check('FAQ panel: a wheel over the scrim, or over a panel with nothing to scroll, never scrolls the list behind',
+    faqHarness(({ fire, opener, panel, scrim }) => {
+      fire(opener, 'click');
+      const body = panel.querySelector('.faqp-b'), summary = panel.querySelector('summary');
+      const scrimBlocked = !fire(scrim, 'wheel'), headBlocked = !fire(panel.querySelector('.faqp-x'), 'wheel'), bodyScrolls = fire(summary, 'wheel');
+      body.scrollHeight = body.clientHeight;
+      return scrimBlocked && headBlocked && bodyScrolls && !fire(summary, 'wheel');
+    }) === true);
+  // CSS: the Filters sheet's stacking, curve and timing; a bottom sheet on
+  // phones, from the right from 600 px; "?" mid-close reaches the button
+  // through the fading scrim; reduced motion fades; print hides it all.
+  const z = (sel) => Number(ruleAt(cssText, sel).match(/z-index:(\d+)/)?.[1]);
+  check('FAQ panel CSS: above header, tray and toasts, below Setup; sheet on phones, side panel from 600 px; the closing scrim lets "?" through',
+    z('.faqp') === 70 && z('.faq-scrim') === 69 && z('.faq-scrim') > Math.max(z('.hd'), z('.toasts'), z('.cmp-tray')) && z('dialog.ob') > z('.faqp')
+      && /transform:translateY\(100%\)/.test(ruleAt(cssText, '.faqp')) && /max-height:85dvh/.test(ruleAt(cssText, '.faqp'))
+      && /inset:0 0 0 auto;width:min\(440px,100%\);max-height:none;[^}]*transform:translateX\(100%\)/.test(ruleAt(cssText, '.faqp', '(min-width:600px)'))
+      && /@media \(min-width:600px\)\{[^@]*@starting-style\{\.faqp\[open\]\{transform:translateX\(100%\)\}\}/.test(cssText)
+      && /pointer-events:none/.test(ruleAt(cssText, '.faq-scrim')) && /pointer-events:auto/.test(ruleAt(cssText, '.faq-scrim.is-open'))
+      && /overflow:hidden/.test(ruleAt(cssText, 'html.faq-open', '(max-width:599.98px)')) && !ruleAt(cssText, 'html.faq-open'));
+// Smoke F1 found it: with touch at 600 px the 44 px "?" left Search 148 px
+// wide (it wants 160). Only there the header buttons sit 4 px apart.
+check('FAQ "?" on a 600-700 px touch screen: the header tightens its gaps so Search keeps 160 px',
+  /gap:4px/.test(ruleAt(cssText, '.hd .hd-right', '(pointer:coarse) and (min-width:600px) and (max-width:700px)'))
+    && /gap:12px/.test(ruleAt(cssText, '.hd .hd-in', '(pointer:coarse) and (min-width:600px) and (max-width:700px)')));
+  check('FAQ panel CSS: reduced motion fades it in 120 ms with no slide; print hides the panel and scrim',
+    /transform:none/.test(ruleAt(cssText, '.faqp[open]', '(prefers-reduced-motion:reduce)'))
+      && /@media \(prefers-reduced-motion:reduce\)\{[^@]*@starting-style\{\.faqp\[open\]\{opacity:0;transform:none\}\}/.test(cssText)
+      && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
+      && /display:none/.test(ruleAt(cssText, 'dialog.faqp[open]', 'print')) && /display:none/.test(ruleAt(cssText, '.faq-scrim.is-open', 'print')));
+}
+
+section('FAQ text, twelve questions (Leon, 2026-11-09)');
+// Rewritten from /tmp/ib-lp/faq/draft-v2.md after three reviews. Quoted UI
+// labels must be the labels the page really shows in that language, so a
+// renamed button or badge fails here instead of leaving the FAQ wrong.
+{
+  // Since 2026-11-09 the questions are in the panel, not the footer.
+  const html = read('index.html'), footFaq = elementSource(html, /<div class="faqp-b faq">/);
+  const email = 'ibuniversityfinder@gmail.com';
+  equal('FAQ panel has the twelve approved questions, in order, each with its answer',
+    [...footFaq.matchAll(/<summary><span data-i18n="([^"]+)">/g)].map((m) => m[1]), FAQ_KEYS);
+  check('FAQ: every question and answer has nonempty EN and SK text, used once in index.html',
+    FAQ_KEYS.flatMap((k) => [k, `${k}_a`]).every((k) => UI.en[k]?.trim() && UI.sk[k]?.trim() && UI.en[k] !== UI.sk[k]
+      && html.split(`data-i18n="${k}"`).length === 2));
+  check('FAQ: the old five questions\' keys are gone from i18n.js and index.html',
+    !Object.keys(UI.en).some((k) => /^r[24]_faq_/.test(k)) && !Object.keys(UI.sk).some((k) => /^r[24]_faq_/.test(k)) && !/data-i18n="r[24]_faq_/.test(html));
+  check('FAQ: the last answer ends with a working mailto link to the contact address, the same in EN and SK',
+    UI.en.r7_faq_email === email && UI.sk.r7_faq_email === email
+      && footFaq.includes(`<span data-i18n="r7_faq_who_a">${UI.en.r7_faq_who_a}</span> <a href="mailto:${email}" data-i18n="r7_faq_email">${email}</a>.</div></details>`)
+      && html.split('href="mailto:').length === 2 && /Tell us at$/.test(UI.en.r7_faq_who_a) && /Napíš nám na$/.test(UI.sk.r7_faq_who_a)
+      && /Jakub and Leon/.test(UI.en.r7_faq_who_a) && /Jakub a Leon/.test(UI.sk.r7_faq_who_a));
+  check('FAQ link is the accent colour and underlined like the site\'s other text links',
+    /color:var\(--accent\);text-decoration:underline/.test(ruleAt(cssText, '.faq .a a')) && /color:var\(--accent-press\)/.test(ruleAt(cssText, '.faq .a a:hover')));
+  // "Checked by …" is built from two keys, as on a signed row; "national
+  // minimum" is the start of the row's "national minimum, not a full budget".
+  const labels = (lang) => {
+    const ui = UI[lang];
+    return [`${ui.checked.replace('{value1}', ui.by.replace('{value1}', '…'))}`, ui.deadline_notes, ui.entrance_exam, ui.r2_pts_test_in_cutoff, ui.not_published,
+      ui.not_checked_yet, ui.national_minimum_not_a_full_budget.split(',')[0], ui.my_living_costs, ui.r2_edit].sort();
+  };
+  const quoted = (lang) => [...new Set(FAQ_KEYS.flatMap((k) => [UI[lang][k], UI[lang][`${k}_a`]])
+    .flatMap((text) => [...text.matchAll(lang === 'en' ? /“([^”]+)”/g : /„([^“]+)“/g)].map((m) => m[1])))].sort();
+  equal('FAQ quotes exactly the real EN labels', quoted('en'), labels('en'));
+  equal('FAQ quotes exactly the real SK labels', quoted('sk'), labels('sk'));
+  check('FAQ EN text uses curly quotes and apostrophes only; SK uses „…“',
+    FAQ_KEYS.flatMap((k) => [UI.en[k], UI.en[`${k}_a`]]).every((text) => !/["']/.test(text))
+      && FAQ_KEYS.flatMap((k) => [UI.sk[k], UI.sk[`${k}_a`]]).every((text) => !/["'“”]/.test(text.replace(/„[^“]*“/g, ''))));
+  check('FAQ focus trap skips controls in closed answers with checkVisibility (Chrome gives a hidden mailto link client rects; smoke "FAQ keys")',
+    /node\.getClientRects\(\)\.length && \(node\.checkVisibility\?\.\(\) \?\? true\)/.test(read('js/faq.js')));
+  check('FAQ panel: with the last question open, Shift+Tab from the close button reaches the mailto link and Tab wraps back; closed, the link is skipped',
+    faqHarness(({ fire, opener, panel }) => {
+      fire(opener, 'click');
+      const close = panel.querySelector('.faqp-x'), last = panel.querySelectorAll('details').at(-1), link = last.querySelector('a');
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const skipped = stubDocument.activeElement === last.querySelector('summary');
+      last.open = true; close.focus();
+      fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+      const reached = stubDocument.activeElement === link && link.getAttribute('href') === 'mailto:ibuniversityfinder@gmail.com';
+      fire(link, 'keydown', { key: 'Tab' });
+      return skipped && reached && stubDocument.activeElement === close;
+    }) === true);
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
