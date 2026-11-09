@@ -288,6 +288,8 @@
       "saved",
       "scroll",
       "scrollend",
+      "touchstart",
+      "wheel",
       "section[aria-labelledby=\"results-h\"]",
       "select",
       "shared",
