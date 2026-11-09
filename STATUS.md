@@ -605,6 +605,30 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**One Tab stop per programme (2026-11-09, backlog a):** Each programme
+summary has one Tab stop. Left/Right moves between its title, Compare and Save;
+Up/Down moves to the same control in the neighbouring programme, mounting it
+when needed. On wide screens it also selects that programme in the details
+pane; on narrow screens it leaves open details unchanged. Save, Compare,
+rebuilds and breakpoint changes keep focus. Detail links retain normal Tab.
+
+**Windowed results (2026-11-09, local `lp-window3`):** Only the viewport
+and two screens on either side stay mounted. Spacers reserve the full list
+length, using measured heights for visited rows and breakpoint estimates for
+unseen ones. Expanded state and the wide selection survive eviction; a focused
+row stays mounted. Print temporarily mounts all results and then restores the
+window. Browser Find searches only mounted rows; the site's Search still
+searches every programme (Leon's accepted tradeoff).
+
+WebKit clamps scrolling when a layout read sees the list with its spacers
+removed. Window updates now hold the list's height until the replacement gaps
+are sized. Corrections use the starting scroll position and run only when
+heights above the visible anchor change; changing rows below it does not call
+scrollTo. The old full-list slices, parked lists and near-row marking are gone.
+Focused WebKit 26 and Chrome 157 probes cover large jumps, expansion above the
+viewport, eviction, rebuild focus and print. Physical iPhone momentum and
+VoiceOver remain untested; these are local browser checks.
+
 **Phone Filters slide (2026-11-09, local `fu-sheet-anim`):** Keep both
 slides, now 280 ms up / 220 ms down with `cubic-bezier(.32,.72,0,1)`.
 The old 150/140 ms curve left too little visible travel after the first

@@ -2758,12 +2758,12 @@ check('render.js calls pointsNote once, in renderDetail, and the cell builder do
 check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
   /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
     && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
-    && /renderRows\(dom.results, rows\.slice\(0, first\), \{ state, shortlist, compare: new Set\(compareIds\), wide: wideQuery.matches, headings: listHeadings \}\)/.test(appSrc));
+    && appSrc.includes('windowRows = rows;'));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
   /export function appendRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\) \{\n  const items = rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\);\n  container\.append\(\.\.\.items\);\n  return items;/.test(renderSrc)
-    && /arrive\(appendRows\(dom.results, rows, \{ state, shortlist, compare: new Set\(compareIds\), wide: appliedWide, headings: listHeadings \}\)\)/.test(appSrc));
+    && appSrc.includes('appendRows(holder, [row], { state, shortlist, compare: new Set(compareIds), wide: appliedWide, headings: listHeadings })'));
 
 // CSS: the detail paints canonical tokens only, and the old card is gone.
 const oldTokens = ['--surface', '--ink-soft', '--ink-faint', '--line', '--line-soft', '--inset', '--warn', '--warn-soft', '--warn-line',
@@ -2779,15 +2779,15 @@ check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.t
 check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
   /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
 check('off-screen rows are skipped on screen and printed in full',
-  /content-visibility:\s*auto/.test(ruleBody('.item'))
+  /contain:\s*layout style paint/.test(ruleBody('.item'))
     && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
 // Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
 // display:list-item that content-visibility has never drawn make every
 // inherited style change rebuild the whole list. showModal() makes the page
 // inert, which is such a change: the sheet froze ~500 ms (4x CPU) before it
 // moved. Rows are display:block, and no rule may turn them back.
-check('result rows are display:block beside content-visibility:auto, never list-item (sheet open/close stall)',
-  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /content-visibility:\s*auto/.test(ruleBody('.item'))
+check('result rows are display:block with layout/style/paint containment, never list-item (sheet open/close stall)',
+  /(?:^|;)\s*display:\s*block\s*(?:;|$)/.test(ruleBody('.item')) && /contain:\s*layout style paint/.test(ruleBody('.item'))
     && (() => {
       // Every rule whose selector ends on a result row (.item, li.item,
       // .item.is-open, .results>li, ...) may only set display to block.
@@ -3059,10 +3059,10 @@ check('sort header keeps its four column sorts, hidden direction text and one de
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
     && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*explicitSort = state.sort !== 'best';\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
-check('row toggle retains slots while arrows select only wide without roving tabindex',
+check('row toggle retains slots and native button/list semantics with roving controls',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
-    && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
+    && !/listbox/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
   (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
     && !/shimmer|@keyframes sk-/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
@@ -3074,7 +3074,7 @@ check('row wraps whole point parts without clipping requirements; containment on
   /white-space:nowrap/.test(ruleBody('.pt')) && !/white-space:\s*nowrap/.test(ruleBody('.row .cell'))
     && !/line-clamp|max-height|overflow\s*:\s*hidden/.test(ruleBody('.line'))
     && !/content-visibility/.test(ruleBody('.detail') + ruleBody('.expand') + ruleBody('.results>.detail'))
-    && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
+    && /--row-estimate:180px/.test(ruleBody('.results')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
     new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h', '--logo-travel', '--logo-dock'].includes(t))
@@ -3431,6 +3431,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
       history: { replaceState() {} }, Date, console, setTimeout: fakeSetTimeout, clearTimeout: fakeClearTimeout, performance: perf,
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
       IntersectionObserver, navigator: { clipboard },
       ...shortlistMod, ...compareMod, ...compareSetMod,
       // The real compare-set functions on context.compareStorage, a stand-in
@@ -3448,7 +3449,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       // left unset, storage cannot be read (private browsing).
       readStoredShortlist: () => (context.stored ? [...context.stored] : null),
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
-      getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px' }; },
+      getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
@@ -3513,14 +3514,14 @@ appCheck('actual handlers: filtered B remains the hidden pick when A is still op
   run("state.search = ''; update();");
   return item(b).classList.contains('is-sel') && body.querySelector('h2').id === `p-${b}`;
 });
-appCheck('actual arrows prevent ends without selecting them; narrow, modified and composing keys stay native', ({ run, flip, get, click, context, ids }) => {
+appCheck('actual arrows prevent ends without selecting them; narrow moves focus only and modified/composing keys stay native', ({ run, flip, get, click, context, ids }) => {
   const key = (button, key, extra = {}) => {
     const e = { target: button, key, preventDefault() { this.defaultPrevented = true; }, ...extra };
     context.keyEvent = e; run('rowKeydown(keyEvent);'); return !!e.defaultPrevented;
   };
   const first = get('results').children[0].querySelector('button.open'); first.focus();
-  if (key(first, 'ArrowDown')) return false;
-  flip(true); click(ids[1]);
+  if (!key(first, 'ArrowDown') || run('selectedId') !== null || run('openIds.size') !== 0) return false;
+  first.focus(); flip(true); click(ids[1]);
   if (!key(first, 'ArrowUp') || run('selectedId') !== ids[1] || stubDocument.activeElement !== first) return false;
   for (const prop of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) if (key(first, 'ArrowDown', { [prop]: true })) return false;
   if (!key(first, 'ArrowDown')) return false;
@@ -3528,6 +3529,24 @@ appCheck('actual arrows prevent ends without selecting them; narrow, modified an
   if (stubDocument.activeElement !== second || run('selectedId') !== second.closest('li.item').dataset.id) return false;
   const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
   return key(last, 'ArrowDown') && stubDocument.activeElement === last && run('selectedId') === second.closest('li.item').dataset.id;
+});
+appCheck('row keyboard: one Tab stop follows title/Compare/Save focus and survives rebuild/crossing', ({ run, get, item, flip, context }) => {
+  const first = get('results').querySelector('li.item'), id = first.dataset.id;
+  const controls = () => item(id).querySelectorAll('button.open, button.cmpi, button.star');
+  const one = (at) => controls().every((b, i) => b.tabIndex === (i === at ? 0 : -1));
+  if (!one(0)) return false;
+  // The focus stub does not dispatch focusin; deliver that browser event.
+  controls()[0].focus(); run('rememberFocus();');
+  for (const index of [1, 2]) {
+    context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowRight', preventDefault() {} };
+    run('rowKeydown(keyEvent); rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+    run('update(); rememberFocus();'); flip(true); run('rememberFocus();'); flip(false); run('rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+  }
+  context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowLeft', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === controls()[1] && one(1);
 });
 appCheck('actual Go to details preserves URL and modifiers and selection never enters address state', ({ run, flip, click, item, context, pane, ids: [a] }) => {
   flip(true); click(a); const goto = item(a).querySelector('a.goto');
@@ -3714,7 +3733,7 @@ appCheck('actual 600 crossings move .more-filters, Clear all, Copy link and My l
   const box = get('dd-countries'), tick = get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox');
   box.open = true; tick.checked = true; get('f-tuition').value = '3000'; get('f-sort').value = 'tuition:desc';
   let moves = 0; const hook = stubDocument.moved;
-  stubDocument.moved = (n) => { moves++; hook(n); };
+  stubDocument.moved = (n) => { if (n.isConnected) moves++; hook(n); };
   flip600(true);
   if (!wideOk() || moves !== 6) return false;
   flip600(true); run('placeFilters();');
@@ -3844,7 +3863,7 @@ check('sheet warm stays hidden and untappable until opened',
 check('results use a flex column on screen and block flow in print',
   /\.results\{[^}]*display:flex;flex-direction:column/.test(css)
     && /@media print[\s\S]*\.results[^}]*display: ?block/.test(css));
-appCheck('row slices pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
+appCheck('window updates pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
   run('allRows = live; update();');
   const count = get('results').children.length;
   fire(get('f-more'), 'pointerdown'); flushFrame(); advance(0);
@@ -3854,9 +3873,9 @@ appCheck('row slices pause during the sheet slide and resume on its transform en
   fire(get('filter-sheet'), 'transitionend', { propertyName: 'opacity' }); advance(0);
   if (get('results').children.length !== count) return false;
   fire(get('filter-sheet'), 'transitionend', { propertyName: 'transform' }); advance(0);
-  return get('results').children.length === run('allRows.length');
+  flushFrame(); return get('results').querySelectorAll('li.item').length < 40;
 });
-appCheck('paused slices recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
+appCheck('paused window updates recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
   for (const action of ['wide', 'reduce', 'timeout', 'print']) {
     flip600(false); motionMedia.matches = false;
     run('closeSheet(); allRows = live; update();'); fire(get('f-more'), 'click');
@@ -3871,7 +3890,7 @@ appCheck('paused slices recover on widening, reduced motion and a missing transi
     }
     if (action === 'print') fireWindow('beforeprint');
     advance(0);
-    if (get('results').children.length !== run('allRows.length')) return false;
+    if (action === 'print' ? get('results').children.length !== run('allRows.length') : run('sheetSlideTimer !== undefined')) return false;
     if (action === 'print') fireWindow('afterprint');
   }
   return true;
@@ -3890,14 +3909,14 @@ appCheck('both sheet slides pause rows and promote only until transform end; can
   fire(sheet, 'transitionend', { propertyName: 'opacity' }); advance(0);
   if (!promoted() || get('results').children.length !== count) return false;
   fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
-  if (promoted() || get('results').children.length !== run('allRows.length')) return false;
+  if (promoted() || get('results').children.length !== count) return false;
   fire(get('f-more'), 'pointerdown'); advance(499);
   if (!promoted()) return false;
   advance(1); if (promoted()) return false;
   motionMedia.matches = true; fire(get('f-more'), 'click'); fire(get('sheet-done'), 'click');
   return !promoted();
 });
-appCheck('sheet warm waits until the last row slice and two frames, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
+appCheck('sheet warm waits two frames after the visible window, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
   run('sheetWarmScheduled = false; allRows = live; update();');
   const sheet = get('filter-sheet');
   context.warms = 0; run('const actualWarm = warmSheet; warmSheet = () => { warms++; actualWarm(); };');
@@ -3905,8 +3924,7 @@ appCheck('sheet warm waits until the last row slice and two frames, runs once, a
   let writes = 0; context.history.replaceState = () => writes++; context.writeSaved = () => writes++;
   sheet.show = sheet.close = () => { throw Error('warming opened/closed the dialog'); };
   flushFrame(); if (context.warms) return false;
-  advance(0); if (context.warms || run('pendingRows !== null')) return false;
-  flushFrame(); if (context.warms) return false;
+  advance(0); if (context.warms) return false;
   flushFrame(); run('scheduleSheetWarm();'); flushFrame(); flushFrame();
   return sheet.classList.contains('is-warm') && context.warms === 1 && !sheet.open && !writes && stubDocument.activeElement === before
     && !get('sheet-scrim').classList.contains('is-open');
@@ -4397,182 +4415,112 @@ appCheck('pane scroll: a refresh keeps and clamps it, a new pick resets it, and 
   run('update();');
   return heightReads === 0 && readAt.length === 1 && readAt[0] === old && get('results').children[0] !== old && top === 0;
 });
-// L09: update() draws the first screen of rows at once and appends the rest in
-// slices after the first paint. Each check below runs on the 1,240 real rows
-// unless it says otherwise, and each was seen to fail with the line it guards
-// broken.
+// Windowing replaces the old eventual full-mount scheduler. Layout/anchoring
+// is tested in browsers; this harness checks state and row identity.
 const l09 = (run) => {
   run('allRows = live; facets = buildFacets(allRows); update();');
-  return run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
+  return run('windowRows.map(row => row.id)');
 };
-const listIds = (get) => get('results').children.map((n) => n.dataset.id);
-const sameList = (get, want) => { const got = listIds(get); return got.length === want.length && new Set(got).size === got.length && got.every((id, i) => id === want[i]); };
-appCheck('L09 a: a short list schedules no frame and no timer', ({ run, frames, timers }) => {
-  const before = timers.size; run('update();');
-  return frames.size === 0 && timers.size === before && run('pendingRows') === null;
+const listIds = (get) => get('results').querySelectorAll('li.item').map(n => n.dataset.id);
+const sameList = (get, want) => listIds(get).join() === want.join();
+appCheck('row keyboard: narrow arrows cross the window edge on Save without opening details', ({ run, get, item, context }) => {
+  const ids = l09(run), last = get('results').querySelectorAll('li.item').at(-1);
+  const nextId = ids[ids.indexOf(last.dataset.id) + 1];
+  const button = last.querySelector('button.star'); button.focus();
+  context.keyEvent = { target: button, key: 'ArrowDown', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === item(nextId).querySelector('button.star')
+    && item(nextId).querySelector('button.star').tabIndex === 0
+    && item(nextId).querySelector('button.open').tabIndex === -1
+    && run('openIds.size') === 0 && run('selectedId') === null && listIds(get).length < 40;
 });
-appCheck('L09 b: the first update draws 40 rows at the top, the count is whole at once, and the rest arrive in order with no duplicates', ({ run, get, drain }) => {
-  const want = l09(run);
-  if (want.length !== live.length || get('results').children.length !== 40 || run('currentlyShown') !== live.length
-    || !get('result-count').textContent.includes(new Intl.NumberFormat('en-IE').format(live.length))) return false;
-  drain();
-  return sameList(get, want) && run('pendingRows') === null;
+appCheck('window: full estimated length at once, bounded DOM after idle, correct list positions', ({ run, get, drain }) => {
+  const ids = l09(run); drain();
+  return listIds(get).length < 40 && run('rowOffsets.at(-1)') === ids.length * 180
+    && get('results').querySelector('.row-space').getAttribute('aria-hidden') === 'true'
+    && get('results').querySelector('li.item').getAttribute('aria-setsize') === String(ids.length);
 });
-appCheck('L09 c: scrolled 6000 px down (narrow), update() draws enough rows to reach the window bottom at 60 px a row', ({ run, get, context }) => {
-  context.window.scrollY = 6000; l09(run);
-  return get('results').children.length === Math.ceil((6000 + 844) / 60);
-});
-// advance(0) would run every nested zero timer, so the old list is left
-// pending at its timer (short case) or at its frame (long case).
-appCheck('L09 d: a second update before the slices finish leaves exactly the second result, short or long', ({ run, get, drain, flushFrame }) => {
-  l09(run); flushFrame();
-  if (run('pendingRows')?.timer === undefined) return false;
-  const term = run('live[500].programme');
-  run(`state.search = ${JSON.stringify(term)}; update();`);
-  const short = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  drain(); if (short.length >= 40 || !sameList(get, short)) return false;
-  run("state.search = ''; update();");
-  if (run('pendingRows')?.frame === undefined) return false;
-  run("state.countries.add('Ireland'); update();");
-  const long = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  drain();
-  return long.length > 40 && sameList(get, long);
-});
-appCheck('L09 e: beforeprint while rows are pending puts every row in, in order, with a late open slot open', ({ run, get, item, click, drain, fireWindow }) => {
-  const want = l09(run); drain(); const late = want[300];
-  click(late); drain(); run('update();');
-  if (get('results').children.length >= want.length || item(late)) return false;
-  fireWindow('beforeprint');
-  return sameList(get, want) && run('printing') === true && run('pendingRows') === null
-    && item(late).querySelector('.expand')?.getAttribute('data-state') === 'open'
-    && item(late).querySelector('button.open').getAttribute('aria-expanded') === 'true';
-});
-appCheck('L09 f: a 1200 crossing while rows are pending gives every row the new mode, both ways, and narrowing opens a late pick', ({ run, get, item, click, flip, drain }) => {
-  const want = l09(run);
-  flip(true);
-  if (!sameList(get, want) || !get('results').children.every((li) => {
-    const b = li.querySelector('button.open'); return b.getAttribute('aria-controls') === 'pane' && b.getAttribute('aria-expanded') === null;
-  })) return false;
-  const late = want[300]; click(late); run('update();');
-  if (item(late)) return false;
-  flip(false);
-  return sameList(get, want) && get('results').children.every((li) => {
-    const b = li.querySelector('button.open');
-    return li.dataset.id === late
-      ? b.getAttribute('aria-expanded') === 'true' && li.querySelector('.expand')?.getAttribute('data-state') === 'open'
-      : b.getAttribute('aria-expanded') === 'false' && b.getAttribute('aria-controls') === null && !li.querySelector('.expand');
-  });
-});
-appCheck('L09 g: wide, ArrowDown on the last drawn row while rows are pending moves focus and the pick to the next row', ({ run, get, flip, drain, context }) => {
-  flip(true); const want = l09(run);
-  const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
-  const e = { target: last, key: 'ArrowDown', preventDefault() { this.defaultPrevented = true; } };
-  context.keyEvent = e; run('rowKeydown(keyEvent);');
-  const next = get('results').children[40];
-  return e.defaultPrevented && next?.dataset.id === want[40] && stubDocument.activeElement === next.querySelector('button.open')
-    && run('selectedId') === want[40] && next.classList.contains('is-sel');
-});
-appCheck('L09 h: a focused row deep in the list is drawn at once and keeps focus', ({ run, get, item, drain }) => {
-  const want = l09(run); drain();
-  item(want[300]).querySelector('button.open').focus();
-  run('update();');
-  return get('results').children.length >= 301 && stubDocument.activeElement === item(want[300])?.querySelector('button.open');
-});
-appCheck('L09 i: a late row gets its open slot (narrow, no motion) or its selection marks (wide) when it arrives', ({ run, get, item, click, flip, drain, frames }) => {
-  const want = l09(run); drain(); const late = want[300];
-  click(late); drain(); run('update();');
-  if (item(late)) return false;
-  drain();
-  const slot = item(late).querySelector('.expand');
-  if (slot?.getAttribute('data-state') !== 'open' || item(late).querySelector('button.open').getAttribute('aria-expanded') !== 'true'
-    || run('slotWork.size') !== 0) return false;
-  flip(true); click(late); run('update();');
-  if (item(late)) return false;
-  drain();
-  const marked = get('results').children.filter((li) => li.classList.contains('is-sel') || li.querySelector('a.goto') || li.querySelector('[aria-current]'));
-  return marked.length === 1 && marked[0] === item(late) && item(late).classList.contains('is-sel')
-    && item(late).querySelector('button.open').getAttribute('aria-current') === 'true' && item(late).querySelector('a.goto')?.textContent === 'Go to details';
-});
-// A fixed 20-row slice plus one of Chrome's major garbage collections once ran
-// 53 ms at 4x CPU. Each fill task now stops once SLICE_MS has passed, so a
-// slow machine gets smaller slices instead of long tasks.
-appCheck('L09 k: each fill task appends rows only until its time budget is spent, and every row still arrives in order', ({ run, get, perf, timers, flushFrame, context }) => {
-  const want = l09(run);
-  const realAppend = context.appendRows;
-  let cost = 1.5;
-  context.appendRows = (container, rows, opts) => { perf.t += rows.length * cost; return realAppend(container, rows, opts); };
-  perf.tick = 0;
-  // One fill task at a time, the way the browser runs them.
-  const task = () => {
-    const id = run('pendingRows?.timer');
-    if (id === undefined) return null;
-    const before = get('results').children.length;
-    const t = timers.get(id); timers.delete(id); t.fn();
-    return get('results').children.length - before;
-  };
-  flushFrame();
-  const cheap = [];
-  for (let i = 0; i < 3; i++) cheap.push(task());
-  // 1.5 ms a row: a 5-row chunk is 7.5 ms, under the 8 ms budget, so a task
-  // takes a second chunk and then stops (10 rows).
-  if (!cheap.every((n) => n === 10)) return false;
-  // 10 ms a row: one chunk is already over the budget, and a task still makes
-  // progress (one chunk, never zero rows).
-  cost = 10;
-  const dear = [];
-  for (let i = 0; i < 3; i++) dear.push(task());
-  if (!dear.every((n) => n === 5)) return false;
-  cost = 0.5;
-  for (let i = 0; i < 1000 && run('pendingRows') !== null; i++) { const n = task(); if (n === null || n < 1 || n > 20) return false; }
-  context.appendRows = realAppend;
-  return sameList(get, want) && run('pendingRows') === null;
-});
-// A reload halfway down the list came back near the top: the browser puts the
-// scroll back only once the page is tall enough, and only the first screen was
-// drawn. The first draw after a reload or Back/Forward now draws every row.
-appCheck('L09 l: the first draw after a reload or Back draws every row at once; a fresh visit and later changes draw the first screen', ({ run, get, perf }) => {
-  const drawn = (nav) => { perf.navType = nav; run('firstDraw = true;'); const want = l09(run); return [get('results').children.length, want.length, run('pendingRows')]; };
-  for (const nav of ['reload', 'back_forward']) {
-    const [n, total, pending] = drawn(nav);
-    if (n !== total || total !== live.length || pending !== null) return false;
-    run('update();');
-    if (get('results').children.length !== 40) return false;
+appCheck('window: Save and Compare focus restore on rebuild, including a distant row', ({ run, item }) => {
+  const ids = l09(run), id = ids[300];
+  for (const selector of ['button.star', 'button.cmpi']) {
+    run(`mountRow(${JSON.stringify(id)}).querySelector(${JSON.stringify(selector)}).focus(); update();`);
+    if (stubDocument.activeElement !== item(id).querySelector(selector)) return false;
   }
-  const [n, total] = drawn('navigate');
-  return n === 40 && total === live.length;
+  return true;
 });
-// L09 with 2,915 rows: clearing every old row in one task took about 430 ms at
-// 4x CPU, so ticking one country froze the page. update() now parks the old list
-// out of sight, layout, focus and the accessibility tree, and deletes it a slice
-// at a time after the first paint. Print drops whatever is still parked.
-appCheck('L09 m: a rebuild parks the old list and deletes it in slices after the first paint; print drops it at once', ({ run, get, drain, flushFrame, timers, fireWindow }) => {
-  l09(run); drain();
-  const old = get('results');
-  run("state.countries.add('Ireland'); update();");
-  const next = get('results');
-  if (next === old || old.id || !old.inert || old.getAttribute('aria-hidden') !== 'true' || !old.parent
-    || !old.style.cssText.includes('content-visibility:hidden') || !old.style.cssText.includes('width:0;height:0')
-    || next.listeners.click?.length !== 1 || next.listeners.keydown?.length !== 1
-    || old.children.length !== live.length || run('retiredLists.size') !== 1) return false;
-  // Nothing is deleted before the first paint, then one task deletes only a slice.
-  const dropTask = () => { const id = run('retireTimer'); const t = timers.get(id); if (!t) return false; timers.delete(id); t.fn(); return true; };
-  if (dropTask()) return false;
-  flushFrame();
-  if (!dropTask() || old.children.length === live.length || old.children.length === 0 || !old.parent) return false;
-  drain();
-  const want = run('sortRows(applyFilters(allRows, state, shortlist), state.sort, state.dir).map((row) => row.id)');
-  if (old.parent || run('retiredLists.size') !== 0 || run('retireTimer') !== undefined || !sameList(get, want)) return false;
-  run("state.countries.delete('Ireland'); update();");
-  const parked = get('results') !== next && next.parent;
+appCheck('window: deep focus survives a rebuild without mounting all preceding rows', ({ run, get, item }) => {
+  const ids = l09(run);
+  run(`mountRow(${JSON.stringify(ids[300])}).querySelector('button.open').focus(); update();`);
+  return listIds(get).length < 40 && stubDocument.activeElement === item(ids[300]).querySelector('button.open');
+});
+appCheck('window: print includes every row and saved open slot, afterprint returns to bounded DOM', ({ run, get, item, fireWindow }) => {
+  const ids = l09(run);
+  run(`openIds.add(${JSON.stringify(ids[300])});`);
   fireWindow('beforeprint');
-  const dropped = !next.parent && run('retiredLists.size') === 0 && get('results').children.length === live.length;
-  fireWindow('afterprint'); drain();
-  return parked && dropped;
+  if (!sameList(get, ids) || !item(ids[300]).querySelector('.expand') || get('results').querySelector('.row-space')) return false;
+  fireWindow('afterprint');
+  return listIds(get).length < 40 && run('openIds.size') === 1;
 });
-appCheck('L09 j: total failure while rows are pending appends nothing afterwards', ({ run, get, drain }) => {
-  l09(run); const drawn = get('results').children.length;
-  run("showTotalFailure(new Error('controlled failure'));"); drain();
-  return drawn === 40 && get('results').children.length === drawn && run('pendingRows') === null;
+appCheck('window: ArrowDown past mounted edge mounts the next row and selects it wide', ({ run, get, flip, context }) => {
+  flip(true); const ids = l09(run);
+  const items = get('results').querySelectorAll('li.item'), last = items.at(-1);
+  const index = ids.indexOf(last.dataset.id);
+  context.keyEvent = { target: last.querySelector('button.open'), key: 'ArrowDown', preventDefault() {} };
+  run('rowKeydown(keyEvent);');
+  return stubDocument.activeElement.closest('li.item').dataset.id === ids[index + 1]
+    && run('selectedId') === ids[index + 1] && listIds(get).length < 40;
+});
+appCheck('window: crossing modes stays bounded and late arrivals inherit selection/open state', ({ run, get, item, flip }) => {
+  const ids = l09(run), id = ids[300];
+  flip(true); run(`selectedId = ${JSON.stringify(id)}; mountRow(selectedId);`);
+  if (!item(id).classList.contains('is-sel')) return false;
+  flip(false); run('mountRow(selectedId);');
+  return listIds(get).length < 40 && item(id).querySelector('button.open').getAttribute('aria-expanded') === 'true';
+});
+appCheck('window: measurements correct only heights above the visible anchor', ({ run, get, context }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  const first = get('results').querySelector('li.item');
+  first.rect = { height: 220 };
+  run('renderWindow();');
+  return context.window.scrollY === 6040 && run('rowAt(6000)') === 33;
+});
+appCheck('window: a big jump keeps its scroll position through intermediate layout reads', ({ run, get, context }) => {
+  l09(run);
+  const list = get('results');
+  list.rect = { top: -30000, width: 0, height: 500000 };
+  context.window.scrollY = 30000;
+  const prototype = Object.getPrototypeOf(list), remove = prototype.remove;
+  // Model WebKit clamping during a layout read while the gaps are absent.
+  prototype.remove = function () {
+    remove.call(this);
+    if (!list.querySelector('.row-space') && !parseFloat(list.style.minHeight)) context.window.scrollY = 0;
+  };
+  try {
+    run('renderWindow();');
+    list.rect.top = -100000;
+    context.window.scrollY = 100000;
+    run('renderWindow();');
+    return context.window.scrollY === 100000;
+  } finally { prototype.remove = remove; }
+});
+appCheck('window: height changes below the anchor never interrupt scrolling', ({ run, get, context }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  get('results').querySelectorAll('li.item').at(-1).rect = { height: 400 };
+  let corrections = 0;
+  context.window.scrollTo = () => { corrections++; };
+  run('renderWindow();');
+  return corrections === 0;
+});
+appCheck('window: a second filter update replaces the dataset and removes stale focus rows', ({ run, get, drain }) => {
+  l09(run); run("state.search = live[500].programme; update();"); drain();
+  const want = run('windowRows.map(row => row.id)');
+  return want.length < 40 && sameList(get, want);
 });
 
 // L09 (Stage 6): points.js had no modulepreload, so the browser found it only
@@ -4601,7 +4549,7 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
   fireWindow('beforeprint');
   if (item(b).querySelector('.expand') || run('slotWork.size') !== 0) return false;
   const before = { open: run('[...openIds].join()'), sel: run('selectedId'), slots: slotsOf(get).length, more: tree.querySelector('.more-filters').parent };
-  let moves = 0; const hook = stubDocument.moved; stubDocument.moved = (n) => { moves++; hook(n); };
+  let moves = 0; const hook = stubDocument.moved; stubDocument.moved = (n) => { if (n.isConnected) moves++; hook(n); };
   printMedia.matches = true; media.matches = true; for (const fn of media.listeners) fn({ matches: true });
   media600.matches = true; for (const fn of media600.listeners) fn({ matches: true });
   const term = run('fixture[0].programme'); get('f-search').value = term; fire(get('f-search'), 'input'); advance(150);
@@ -4618,59 +4566,16 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
 // A08 print, as CSS: the list on screen, ink on white, open slots whole.
 const printRules = allCss.filter((r) => r.media.join() === '@media print');
 const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
-// L09: update() assumes no row is shorter than MIN_ROW_PX on screen. A row
-// Chrome has not laid out yet takes its placeholder height, so every screen
-// placeholder must be at least that, or the list could end above the scroll.
-{
-  const minRow = Number(appSrc.match(/const MIN_ROW_PX = (\d+);/)?.[1]);
-  const sizes = allCss.filter((r) => !r.media.join().includes('print') && r.selector.split(',').some((x) => x.trim() === '.item'))
-    .flatMap((r) => [...r.body.matchAll(/contain-intrinsic-size:\s*([^;]+)/g)].map((m) => m[1]));
-  const px = sizes.map((v) => Number(v.match(/(\d+(?:\.\d+)?)px/)?.[1]));
-  check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
-    `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
-}
-// Phone scroll (2026-11-08, "the rows pop in weirdly" on an iPhone). A row
-// not drawn yet holds its placeholder, then takes its real height; Safari has
-// no scroll anchoring, so the difference moved the rows on screen. The old
-// 260 / 200 / 120 px placeholders were 40-60% taller than the real rows. Each
-// placeholder must stay near the measured average row at its width: 320 px
-// 230-264, 390 px 186, 430 px 174, 600-899 px 152-156, an 800 px list 85-102.
-{
-  const at = (media) => allCss.filter((r) => r.media.join() === media && r.selector.split(',').some((x) => x.trim() === '.item'))
-    .map((r) => Number(r.body.match(/contain-intrinsic-size:\s*auto\s+(\d+)px/)?.[1])).filter(Boolean);
-  const between = (media, lo, hi) => { const v = at(media); return v.length === 1 && v[0] >= lo && v[0] <= hi; };
-  check('row placeholders match the measured row height at each width (phone scroll pop-in)',
-    between('', 170, 195) && between('@media (max-width: 359.98px)', 225, 255)
-      && between('@media (min-width: 600px)', 145, 165) && between('@container (min-width: 800px)', 80, 105),
-    JSON.stringify(['', '@media (max-width: 359.98px)', '@media (min-width: 600px)', '@container (min-width: 800px)'].map(at)));
-  // Safari draws a content-visibility:auto row only once it is on screen, so
-  // rows near the window get .near and are drawn early. .near keeps the
-  // containment auto gives a drawn row: dropping it on each toggle made Chrome
-  // restyle the rows after it (0.1 s to 1.9 s of style work per phone scroll).
-  const near = ruleBody('.item.near');
-  check('.near rows are drawn and keep layout, style and paint containment on screen, and print uncontained',
-    /content-visibility:\s*visible/.test(near) && /contain:\s*layout style paint/.test(near) && /contain: none/.test(printBody('.item.near')));
-  check('rows are marked .near from one passive scroll listener, not an IntersectionObserver on every row',
-    /window\.addEventListener\('scroll', scheduleNear, \{ passive: true \}\)/.test(appSrc)
-      && Number(appSrc.match(/const NEAR_SCREENS = ([\d.]+);/)?.[1]) >= 1
-      && (appSrc.match(/new IntersectionObserver/g) ?? []).length === 1);
-}
-appCheck('scrolling marks the rows within 1.5 screens of the window .near, and only those; a burst of scroll events is one frame', ({ run, get, drain, fireWindow, frames, flushFrame }) => {
-  l09(run); drain();
-  const rows = get('results').children;
-  if (rows.length < 30) return false;
-  run('window.innerHeight = 844;');
-  const place = (offset) => rows.forEach((row, i) => { row.rect = { top: i * 200 - offset, bottom: i * 200 - offset + 200, left: 0, right: 390, width: 390, height: 200 }; });
-  const marked = () => rows.flatMap((row, i) => (row.classList.contains('near') ? [i] : []));
-  const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-  // The margin is 1.5 x 844 = 1,266 px each way: tops from -1,466 to 2,110.
-  place(3000);
+check('window estimates retain the measured phone/tablet/wide heights and print removes containment',
+  ['--row-estimate:180px', '--row-estimate:240px', '--row-estimate:152px', '--row-estimate:90px'].every(v => css.includes(v))
+    && /contain: none/.test(printBody('.item')) && /overflow-anchor:none/.test(css));
+appCheck('window: scroll bursts schedule one frame and do not run under the Filters slide', ({ run, fireWindow, frames, flushFrame, fire, get }) => {
+  l09(run); flushFrame(); flushFrame();
   fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
   if (frames.size !== 1) return false;
-  flushFrame();
-  if (marked().join() !== span(8, 25).join()) return false;
-  place(1000); fireWindow('scroll'); flushFrame();
-  return marked().join() === span(0, 15).join() && frames.size === 0;
+  fire(get('f-more'), 'pointerdown');
+  fireWindow('scroll');
+  return frames.size === 0;
 });
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
@@ -4715,7 +4620,7 @@ check('A08 print is ink on white: no row, cell, selected, open or banner fill or
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
     && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
-  /content-visibility: visible; contain-intrinsic-size: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
+  /content-visibility: visible; contain: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
     && /break-inside: avoid/.test(printBody('.row')) && !/break-inside: avoid/.test(printBody('.item'))
     && /transition: none !important; animation: none !important/.test(printBody('*')));
@@ -6792,7 +6697,9 @@ appCheck('A2 programmes already in Compare draw pressed: a slot opened later, th
   const late = context.live[70].id, early = context.live[1].id;
   run(`allRows = live.slice(0, 120); compareIds = [${JSON.stringify(late)}, ${JSON.stringify(early)}]; update();`);
   if (item(late)) return false;
-  drain();
+  run(`mountRow(${JSON.stringify(late)}); mountRow(${JSON.stringify(context.live[2].id)});`);
+  // Focus-pinning keeps the late row mounted while the early one arrives.
+  run(`mountRow(${JSON.stringify(late)}).querySelector('button.open').focus(); mountRow(${JSON.stringify(context.live[2].id)});`);
   if (cmpOf(item(late))?.getAttribute('aria-pressed') !== 'true' || cmpOf(item(context.live[2].id)).getAttribute('aria-pressed') !== 'false') return false;
   click(early);
   if (item(early).querySelector('.expand button.cmpb')?.getAttribute('aria-pressed') !== 'true') return false;

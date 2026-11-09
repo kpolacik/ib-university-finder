@@ -684,29 +684,14 @@ html.sheet-open{overflow:hidden}
 .listp>.f-sort{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;background:var(--hover);border-bottom:1px solid var(--hairline);border-radius:var(--r-panel) var(--r-panel) 0 0}
 .listp>.f-sort>label{white-space:nowrap}
 .listp>.f-sort .inp{flex:1 1 auto;width:auto;max-width:22rem}
-/* Rows are display:block, not the <li> default list-item. In Chrome a
-   list-item row that content-visibility has never drawn (nearly all 2,915)
-   makes every inherited style change rebuild the whole list: opening the
-   phone Filters sheet (showModal makes the page inert) froze the page for
-   ~500 ms at 4x CPU slowdown before the sheet moved; with block rows that
-   showModal() call takes ~90 ms (measured 2026-11-06, 393 px, Chrome 157).
-   The list has no markers (list-style:none), so nothing visible changes. */
-.item{display:block;position:relative;content-visibility:auto;contain-intrinsic-size:auto 180px}
-/* A row not drawn yet holds its placeholder height, then takes its real one
-   once drawn; Safari has no scroll anchoring, so every difference moved the
-   rows on screen. The placeholders are the measured average row at each width
-   (2026-11-08, all 2,915 rows, EN and SK): 320 px 230-264, 390 px 186, 430 px
-   174, 600-899 px 152-156, a list of 800 px or more 85-102. The old 260 / 200 /
-   120 px were 40-60% too tall, so each row shrank as it was drawn. */
-@media (max-width: 359.98px){.item{contain-intrinsic-size:auto 240px}}
-/* .near (app.js markNear) draws rows before they reach the window, because
-   WebKit draws a content-visibility:auto row only once it is already on
-   screen. It keeps the containment auto gives a drawn row: without it each
-   toggle moved the <li> out of style containment, and Chrome restyled the
-   rows after it (style work during a phone scroll went from 0.1 to 1.9 s at
-   4x CPU). */
-.item.near{content-visibility:visible;contain:layout style paint}
-.item+.item{border-top:1px solid var(--hairline)}
+/* Windowing measures every mounted row. Unseen rows are represented by
+   spacers; native anchoring would double the app's Safari-safe correction. */
+html{overflow-anchor:none}
+.results{--row-estimate:180px}
+.row-space{display:block;flex:none;pointer-events:none}
+.item{display:block;position:relative;contain:layout style paint}
+@media (max-width: 359.98px){.results{--row-estimate:240px}}
+.item[aria-posinset]:not([aria-posinset="1"]){border-top:1px solid var(--hairline)}
 .row{position:relative;min-width:0;overflow-wrap:anywhere;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"main main main" "pts ddl fee";gap:8px;padding:12px}
 .row:hover{background:var(--hover)}
 .is-open>.row{background:var(--hover)}
@@ -878,7 +863,7 @@ html.sheet-open{overflow:hidden}
   .is-stuck .cfull{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
   .is-stuck .cshort{display:none}
   .status .copy{display:inline-flex}
-  .item{contain-intrinsic-size:auto 152px}
+  .results{--row-estimate:152px}
   /* Stacked facts on a tablet-width list: one band of three. */
   .row{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main main main" "pts ddl fee";padding:14px 16px}
   .chev{top:17px;right:16px}
@@ -916,7 +901,7 @@ html.sheet-open{overflow:hidden}
   .cols,.row{grid-template-columns:minmax(0,1fr) 168px 148px 128px 16px;column-gap:12px;padding-inline:16px}
   .cols{display:grid}
   .row{grid-template-areas:"main pts ddl fee chev";row-gap:6px;padding-block:12px;align-items:start}
-  .item{contain-intrinsic-size:auto 90px}
+  .results{--row-estimate:90px}
   .r-main{padding-right:0}
   .chev{position:static;grid-area:chev;margin-top:3px}
   .row .lab{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -2245,9 +2230,8 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
   /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
      whole; a long open detail may run on to the next page. */
-  .item { content-visibility: visible; contain-intrinsic-size: none; }
-  /* Rows the screen drew early (.near) print like the rest, uncontained. */
-  .item.near { contain: none; }
+  .item { content-visibility: visible; contain: none; }
+  .row-space { display: none; }
   .row { break-inside: avoid; page-break-inside: avoid; }
   /* An open slot prints open, mid-animation or not; one that is closing goes. */
   .expand { grid-template-rows: 1fr; opacity: 1; }
