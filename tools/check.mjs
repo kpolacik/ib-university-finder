@@ -4660,6 +4660,8 @@ check('A08 print hides controls, count, sort header and the list Sort select, pa
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
+check('the print block has no .src-more rule: nothing renders that element, so the rule was dead', printBody('.src-more') === ''
+  && !printRules.some((r) => r.selector.includes('src-more')));
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
 // smoke "PR print head" measures both on emulated print media.

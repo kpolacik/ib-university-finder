@@ -2188,7 +2188,6 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
      lost every other bit of context. The saved-copy and failure banners go. */
   .bn { border: 1px solid var(--ink); color: var(--ink); background: none; box-shadow: none; }
   .bn-sample { border-width: 2px; }
-  .src-more { display: inline; }
 
   .results { display: block; }
   /* The country stays in words; its tint goes, like every other fill. */

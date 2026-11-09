@@ -884,6 +884,7 @@ students, and where each rule lives:
   Setup done screen ("1,512" / "1 512").
   The language buttons read "SK (slovenčina)" to screen readers again; the
   hidden text lost its leading space whenever the page re-applied the language.
+  The dead `.src-more` rule in the print block is gone.
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
