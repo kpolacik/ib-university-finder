@@ -119,14 +119,18 @@ class ChromeNode {
     stubDocument.activeElement = this; stubDocument.focusOptions = options;
     stubDocument.focusLog?.push({ node: this, options });
   }
+  blur() { if (stubDocument.activeElement === this) stubDocument.activeElement = stubDocument.body; }
+  get isConnected() { return !!stubDocument.body?.contains(this); }
+  getClientRects() { return stubDocument.canFocus?.(this) === false ? [] : [this.getBoundingClientRect()]; }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== fn); }
   dispatchEvent(event) { return dispatchStub(this, event); }
   getBoundingClientRect() { return this.rect ?? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; }
   scrollIntoView(options) { (stubDocument.scrolls ??= []).push({ node: this, options, selected: this.classList.contains('is-sel') }); }
-  // <dialog>: close() puts focus back on what had it before showModal() and
+  // <dialog>: show() and showModal() focus a heading; close() returns focus and
   // queues the close event, so it can run after a reopen.
-  showModal() {
+  showModal() { this.show(); }
+  show() {
     if (this.open) throw new Error('InvalidStateError: the dialog is already open');
     this.open = true; this.returnTo = stubDocument.activeElement;
   }
@@ -138,6 +142,10 @@ class ChromeNode {
       stubDocument.activeElement = stubDocument.body; back?.focus();
     }
     stubDocument.queueTask?.(() => dispatchStub(this, { type: 'close', bubbles: false }));
+  }
+  get tabIndex() {
+    const explicit = this.getAttribute('tabindex');
+    return explicit !== null ? Number(explicit) : (/^(button|input|select|textarea|summary)$/.test(this.tagName) || (this.tagName === 'a' && this.getAttribute('href')) ? 0 : -1);
   }
   get nextElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) + 1] ?? null; }
   get previousElementSibling() { const a = this.parent?.children.filter((c) => typeof c !== 'string') ?? []; return a[a.indexOf(this) - 1] ?? null; }
@@ -1143,8 +1151,9 @@ check('compact header keeps its full visible height and offsets; translated-head
     && !fullHeight(css + '.page.compact{--header-visible:44px}');
 })());
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
-  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06).
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 240ms') && text.includes('transition:transform 200ms')
+  // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
+  // 150/140 reduced latency; 280/220 now preserves a visible settling tail.
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 280ms') && text.includes('transition:transform 220ms')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
@@ -3049,7 +3058,7 @@ check('row wraps whole point parts without clipping requirements; containment on
     && /contain-intrinsic-size:auto/.test(ruleBody('.item')) && /border:0;border-radius:0/.test(ruleBody('.expand-inner>.detail')));
 check('all CSS variable references are canonical or page variables, with shadow reserved for the pane',
   [...cssRules.replace(/:root\s*\{[^{}]*\}/g, '').matchAll(/var\((--[\w-]+)/g)].every(([, t]) =>
-    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h'].includes(t))
+    new RegExp(`${t}\\s*:`).test(cssRules.match(/:root\s*\{([^{}]*)\}/)[1]) || ['--gut', '--ctl', '--fs-ctl', '--tap', '--p', '--fill', '--header-visible', '--columns-height', '--count-height', '--tray-h', '--logo-travel', '--logo-dock'].includes(t))
     && (css.match(/var\(--shadow\)/g) ?? []).length === 1
     && /box-shadow:var\(--shadow\)/.test(cssRules.match(/\.pane\{display:block;[^}]+/)?.[0] ?? ''));
 
@@ -3398,7 +3407,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -3587,9 +3596,16 @@ check('.status holds the live count, its aria-hidden twin and Copy link after a 
     && statusSrc.includes('id="f-copy"') && !statusSrc.includes('f-sort') && /<div class="stuck-mark" aria-hidden="true"><\/div>\s*<div class="status">/.test(indexHtml)
     && elementSource(indexHtml, /<div class="sheet-f">/).includes('id="sheet-show"') && !indexHtml.includes('sort-field'));
 check('the sheet is a labelled native dialog with a focusable heading and Done, controlled by Filters',
-  /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
-    && /id="sheet-done"[^>]*aria-label="Close filters"[^>]*><svg/.test(sheetSrc) && !/role="dialog"|aria-modal/.test(indexHtml)
+  /<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">/.test(indexHtml) && /<h2 id="sheet-h" tabindex="-1">Filters<\/h2>/.test(sheetSrc)
+    && /id="sheet-done"[^>]*aria-label="Close filters"[^>]*><svg/.test(sheetSrc) && /<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"><\/div>/.test(indexHtml)
     && /<button type="button" class="btn more" id="f-more" aria-haspopup="dialog" aria-expanded="false" aria-controls="filter-sheet">/.test(statusSrc));
+// Modal/inert and aria-hidden on the large results ancestor both stall WebKit.
+// The old tests pinned browser-owned backdrop/focus; the sheet now owns them.
+check('the sheet uses show(), never showModal/inert or background aria-hidden; its own scrim and sheet stack above header, tray and toasts',
+  appSrc.includes('dom.sheet.show();') && !/dom\.sheet\.showModal\(/.test(appSrc)
+    && !/\.sheet(?:::backdrop|:modal)|html:has\(\.sheet\[open\]\)/.test(css)
+    && /z-index:70/.test(paneRule('.sheet')) && /z-index:69/.test(paneRule('.sheet-scrim'))
+    && !/setAttribute\('aria-hidden'|\.inert\s*=/.test(appSrc.slice(appSrc.indexOf('function wireSheet()'), appSrc.indexOf('function wireStuck()'))));
 check('every button in the filter form and the sheet is type="button" (no implicit submit)', [formSrc, sheetSrc].every((src) => {
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
@@ -3607,8 +3623,8 @@ check('the globe and funnel licence lines sit directly on their own symbols',
 check('app and CSS share the 600 px query', appSrc.includes("matchMedia('(min-width: 600px)')") && paneCss.some((r) => atMedia(r, '(min-width: 600px)')));
 check('the closed sheet never renders: no screen display on bare .sheet, flex only when open, print may hide it; the page behind does not scroll',
   paneCss.filter((r) => r.selector.split(',').map((s) => s.trim()).includes('.sheet') && /display\s*:/.test(r.body)).every((r) => atMedia(r, 'print') && /display:none/.test(r.body))
-    && /display:flex/.test(paneRule('.sheet[open]')) && /overflow:hidden/.test(paneRule('html:has(.sheet[open])'))
-    && /background:var\(--scrim\)/.test(paneRule('.sheet::backdrop')) && /min-height:0;overflow:auto/.test(paneRule('.sheet-b'))
+    && /display:flex/.test(paneRule('.sheet[open]')) && /overflow:hidden/.test(paneRule('html.sheet-open'))
+    && /background:var\(--scrim\)/.test(paneRule('.sheet-scrim')) && /min-height:0;overflow:auto/.test(paneRule('.sheet-b'))
     && /margin:0;padding:0;border:0/.test(paneRule('.sheet')));
 check('stuck: the full sentence is clipped like .visually-hidden, never display:none; the 600 block resets every clip and hides the twin',
   /position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect\(0 0 0 0\);clip-path:inset\(50%\);white-space:nowrap/.test(paneRule('.is-stuck .cfull'))
@@ -3734,12 +3750,36 @@ appCheck('actual sheet: Filters opens it on the heading; Done, Show N, Escape an
   const closed = () => { advance(0); return !sheet.open && more.getAttribute('aria-expanded') === 'false' && stubDocument.activeElement === more; };
   if (!open()) return false; fire(get('sheet-done'), 'click'); if (!closed()) return false;
   if (!open()) return false; fire(get('sheet-show'), 'click'); if (!closed()) return false;
-  if (!open()) return false; if (fire(sheet, 'cancel', { bubbles: false })) sheet.close(); if (!closed()) return false;
-  if (!open()) return false; fire(sheet, 'click', { clientX: 200, clientY: 120 }); if (!closed()) return false;
+  if (!open()) return false; fire(heading, 'keydown', { key: 'Escape' }); if (!closed()) return false;
+  if (!open()) return false; fire(get('sheet-scrim'), 'click'); if (!closed()) return false;
   if (!open()) return false;
   fire(sheet, 'click', { clientX: 200, clientY: 500 }); fire(heading, 'click', { clientX: 0, clientY: 0 });
   fire(get('f-tuition'), 'click', { clientX: 0, clientY: 0 }); advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true';
+});
+// iPhone (Leon, 2026-11-08): after a tap the Filters button showed a focus
+// ring. iOS never focuses a tapped button, so the scripted heading focus
+// matched :focus-visible and the close's focus return inherited it. The ring
+// now follows the last input: none after a pointer, shown after a key.
+appCheck('actual sheet: after a tap neither the heading nor Filters gets a focus ring; after a key both do', ({ get, fire, advance, docBody }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), heading = get('sheet-h'), done = get('sheet-done');
+  const ring = (node) => stubDocument.activeElement === node && stubDocument.focusOptions?.focusVisible;
+  // As in a browser: show() focuses the heading itself (its first
+  // focusable element) with the browser's own ring, and focusing a focused
+  // element changes nothing.
+  const show = sheet.show;
+  sheet.show = function () { show.call(this); stubDocument.activeElement = heading; stubDocument.focusOptions = { focusVisible: true }; };
+  heading.focus = function (options) { if (stubDocument.activeElement !== heading) ChromeNode.prototype.focus.call(this, options); };
+  heading.blur = function () { if (stubDocument.activeElement === heading) stubDocument.activeElement = docBody; };
+  stubDocument.activeElement = docBody;
+  fire(more, 'pointerdown'); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== false) return false;
+  fire(done, 'pointerdown'); fire(done, 'click'); advance(0);
+  if (sheet.open || ring(more) !== false) return false;
+  fire(more, 'keydown', { key: 'Enter' }); fire(more, 'click');
+  if (!sheet.open || ring(heading) !== true) return false;
+  fire(heading, 'keydown', { key: 'Escape' }); advance(0);
+  return !sheet.open && ring(more) === true;
 });
 appCheck('actual sheet: widening closes it without a focus return; a queued close after a quick reopen neither steals focus nor clears aria-expanded', ({ get, fire, flip600, advance }) => {
   const sheet = get('filter-sheet'), more = get('f-more'), fee = get('f-tuition');
@@ -3748,6 +3788,115 @@ appCheck('actual sheet: widening closes it without a focus return; a queued clos
   flip600(false); fire(more, 'click'); flip600(true); flip600(false); fire(more, 'click');
   advance(0);
   return sheet.open && more.getAttribute('aria-expanded') === 'true' && stubDocument.activeElement === get('sheet-h');
+});
+appCheck('actual sheet: Tab and Shift+Tab wrap at both ends, skip disabled/hidden controls, and keep an empty sheet on its heading', ({ get, fire }) => {
+  const sheet = get('filter-sheet'), heading = get('sheet-h'), first = get('sheet-done'), last = get('sheet-show');
+  fire(get('f-more'), 'click');
+  const tab = (node, shiftKey = false) => { node.focus(); return fire(node, 'keydown', { key: 'Tab', shiftKey }); };
+  if (tab(heading) || stubDocument.activeElement !== first) return false;
+  if (tab(last) || stubDocument.activeElement !== first) return false;
+  if (tab(first, true) || stubDocument.activeElement !== last) return false;
+  if (tab(heading, true) || stubDocument.activeElement !== last) return false;
+  const hidden = new ChromeNode('button'); hidden.hidden = true; sheet.append(hidden);
+  const disabled = new ChromeNode('button'); disabled.disabled = true; sheet.append(disabled);
+  if (tab(last) || stubDocument.activeElement !== first) return false;
+  if (!tab(first)) return false; // Interior stops retain native keyboard behavior.
+  for (const node of sheet.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')) node.disabled = true;
+  return !tab(heading) && stubDocument.activeElement === heading;
+});
+appCheck('actual sheet: background focus redirects inside; handled Escape stays open; close/widen/reopen keep scrim and scroll lock in sync', ({ get, fire, html, advance, flip600 }) => {
+  const sheet = get('filter-sheet'), more = get('f-more'), scrim = get('sheet-scrim');
+  const locked = () => html.classList.contains('sheet-open') && scrim.classList.contains('is-open');
+  fire(more, 'click'); if (!locked()) return false;
+  get('f-search').focus(); fire(get('f-search'), 'focusin');
+  if (stubDocument.activeElement !== get('sheet-h')) return false;
+  fire(get('sheet-h'), 'keydown', { key: 'Escape', defaultPrevented: true }); if (!sheet.open) return false;
+  fire(get('sheet-h'), 'keydown', { key: 'Escape' });
+  if (locked() || sheet.open || stubDocument.activeElement !== more) return false;
+  fire(more, 'click'); advance(0); if (!sheet.open || !locked()) return false;
+  flip600(true); advance(0); if (sheet.open || locked()) return false;
+  flip600(false); fire(more, 'click'); sheet.close(); advance(0);
+  return !locked() && stubDocument.activeElement === more;
+});
+// A flex column avoids WebKit re-laying out every previous block on append.
+check('sheet warm stays hidden and untappable until opened',
+  /\.sheet\.is-warm\{display:flex;flex-direction:column;visibility:hidden;pointer-events:none/.test(css)
+    && /\.sheet\.is-warm\[open\]\{visibility:visible;pointer-events:auto/.test(css));
+check('results use a flex column on screen and block flow in print',
+  /\.results\{[^}]*display:flex;flex-direction:column/.test(css)
+    && /@media print[\s\S]*\.results[^}]*display: ?block/.test(css));
+appCheck('row slices pause during the sheet slide and resume on its transform end', ({ run, get, fire, flushFrame, advance }) => {
+  run('allRows = live; update();');
+  const count = get('results').children.length;
+  fire(get('f-more'), 'pointerdown'); flushFrame(); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('f-more'), 'click'); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('filter-sheet'), 'transitionend', { propertyName: 'opacity' }); advance(0);
+  if (get('results').children.length !== count) return false;
+  fire(get('filter-sheet'), 'transitionend', { propertyName: 'transform' }); advance(0);
+  return get('results').children.length === run('allRows.length');
+});
+appCheck('paused slices recover on widening, reduced motion and a missing transition event; print flushes immediately', ({ run, get, fire, flushFrame, advance, flip600, motionMedia, fireWindow }) => {
+  for (const action of ['wide', 'reduce', 'timeout', 'print']) {
+    flip600(false); motionMedia.matches = false;
+    run('closeSheet(); allRows = live; update();'); fire(get('f-more'), 'click');
+    flushFrame(); advance(0);
+    if (get('results').children.length === run('allRows.length')) return false;
+    if (action === 'wide') flip600(true);
+    if (action === 'reduce') { motionMedia.matches = true; for (const fn of motionMedia.listeners) fn(); }
+    if (action === 'timeout') {
+      advance(250);
+      if (get('results').children.length === run('allRows.length')) return false;
+      advance(250);
+    }
+    if (action === 'print') fireWindow('beforeprint');
+    advance(0);
+    if (get('results').children.length !== run('allRows.length')) return false;
+    if (action === 'print') fireWindow('afterprint');
+  }
+  return true;
+});
+appCheck('both sheet slides pause rows and promote only until transform end; cancelled taps and reduced motion release promotion', ({ run, get, fire, advance, motionMedia }) => {
+  const sheet = get('filter-sheet'), scrim = get('sheet-scrim');
+  const promoted = () => sheet.classList.contains('is-sliding') && scrim.classList.contains('is-sliding');
+  run('allRows = live; update();'); fire(get('f-more'), 'click');
+  if (!promoted()) return false;
+  fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
+  if (promoted()) return false;
+  run('allRows = live; update();');
+  const count = get('results').children.length;
+  fire(get('sheet-done'), 'click'); advance(0);
+  if (!promoted() || get('results').children.length !== count) return false;
+  fire(sheet, 'transitionend', { propertyName: 'opacity' }); advance(0);
+  if (!promoted() || get('results').children.length !== count) return false;
+  fire(sheet, 'transitionend', { propertyName: 'transform' }); advance(0);
+  if (promoted() || get('results').children.length !== run('allRows.length')) return false;
+  fire(get('f-more'), 'pointerdown'); advance(499);
+  if (!promoted()) return false;
+  advance(1); if (promoted()) return false;
+  motionMedia.matches = true; fire(get('f-more'), 'click'); fire(get('sheet-done'), 'click');
+  return !promoted();
+});
+appCheck('sheet warm waits until the last row slice and two frames, runs once, and changes no focus, URL, preferences, scrim or dialog state', ({ run, context, get, flushFrame, advance }) => {
+  run('sheetWarmScheduled = false; allRows = live; update();');
+  const sheet = get('filter-sheet');
+  context.warms = 0; run('const actualWarm = warmSheet; warmSheet = () => { warms++; actualWarm(); };');
+  const before = stubDocument.activeElement;
+  let writes = 0; context.history.replaceState = () => writes++; context.writeSaved = () => writes++;
+  sheet.show = sheet.close = () => { throw Error('warming opened/closed the dialog'); };
+  flushFrame(); if (context.warms) return false;
+  advance(0); if (context.warms || run('pendingRows !== null')) return false;
+  flushFrame(); if (context.warms) return false;
+  flushFrame(); run('scheduleSheetWarm();'); flushFrame(); flushFrame();
+  return sheet.classList.contains('is-warm') && context.warms === 1 && !sheet.open && !writes && stubDocument.activeElement === before
+    && !get('sheet-scrim').classList.contains('is-open');
+});
+appCheck('an early open or widening cancels the pending warm without affecting the sheet', ({ run, get, flushFrame, fire, flip600 }) => {
+  run('scheduleSheetWarm();'); flushFrame(); fire(get('f-more'), 'click'); flushFrame();
+  if (!get('filter-sheet').open || get('filter-sheet').classList.contains('is-warm')) return false;
+  fire(get('sheet-done'), 'click'); flip600(true); run('warmSheet();');
+  return !get('filter-sheet').classList.contains('is-warm') && !get('filter-sheet').open;
 });
 // Each arrow press in the Sort pick-list committed a sort and closed the
 // list, sending focus back to its button after one step.
@@ -3823,11 +3972,12 @@ appCheck('actual sheet Clear all clears every filter and moves focus to the shee
   return stubDocument.activeElement === get('sheet-h') && clear.disabled && clear.textContent === 'Clear all'
     && run('activeFilterCount(state)') === 0 && !get('f-countries').querySelectorAll('input').find((node) => node.type === 'checkbox').checked && get('f-tuition').value === '';
 });
-appCheck('actual dropdowns: in the sheet Escape is left to the dialog and outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
+appCheck('actual dropdowns: handled inner Escape leaves the sheet open; outside taps or Tab-out keep accordions open; bar panels keep A06', ({ get, fire, flip600 }) => {
   const subjects = get('dd-subjects'), countries = get('dd-countries');
   fire(get('f-more'), 'click'); subjects.open = true;
   const summary = subjects.querySelector('summary'); summary.focus();
-  fire(summary, 'keydown', { key: 'Escape' });
+  // round2.js handles the inner Escape in capture phase (real smoke below).
+  fire(summary, 'keydown', { key: 'Escape', defaultPrevented: true });
   if (!subjects.open || stubDocument.activeElement !== summary) return false;
   fire(get('sheet-h'), 'click'); fire(subjects, 'focusout', { relatedTarget: get('sheet-done') });
   if (!subjects.open) return false;
@@ -3952,12 +4102,16 @@ const motionAllowed = {
   '.faq summary>.ic': 'transition:transform 220ms var(--ease-out)',
   '.faq summary>span[aria-hidden]': 'transition:transform 220ms var(--ease-out)',
   '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
-  'dialog.ob': 'transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out),overlay 250ms allow-discrete,display 250ms allow-discrete',
-  'dialog.ob::backdrop': 'transition:opacity 200ms,overlay 200ms allow-discrete,display 200ms allow-discrete',
+  // Setup now owns the scrim, since show() has no native ::backdrop.
+  'dialog.ob': 'transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete',
+  'dialog.ob[open]': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),display 180ms allow-discrete',
+  '.ob-scrim': 'transition:opacity 140ms var(--ease-out),display 140ms allow-discrete',
+  '.ob-scrim.is-open': 'transition:opacity 180ms var(--ease-out),display 180ms allow-discrete',
   '.ob-bar i': 'transition:transform 360ms var(--ease-out)',
   '.ob .chip': 'transition:background 140ms,border-color 140ms,transform 120ms var(--ease-out)',
-  '.dropdown::details-content': 'transition:content-visibility 250ms allow-discrete',
   '.dropdown>.dropdown-panel': 'transition:transform 250ms var(--ease-out),opacity 250ms var(--ease-out)',
+  // Leon 2026-11-08: the bar's lists fade shut in Safari too (round2.js holds [open]).
+  '.dropdown.closing>.dropdown-panel': 'transition:transform 150ms var(--ease-out),opacity 150ms var(--ease-out)',
   '.switch input::after': 'transition:transform 260ms var(--spring-snappy)',
   'input[type=range]::-webkit-slider-thumb': 'transition:transform 160ms var(--ease-out)',
   '.tip': 'transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out),visibility 180ms,display 180ms allow-discrete',
@@ -3978,12 +4132,13 @@ const motionAllowed = {
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
-  '.sheet': 'transition:transform 200ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]': 'transition:transform 240ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
+  '.sheet': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms',
+  '.sheet[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet::backdrop': 'transition:opacity 160ms var(--ease-out),display 200ms allow-discrete,overlay 200ms allow-discrete',
-  '.sheet[open]::backdrop': 'transition:opacity 200ms var(--ease-out),display 240ms allow-discrete,overlay 240ms allow-discrete',
+  '.sheet-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -3997,13 +4152,17 @@ check('§8: every transition is a listed effect with its token time and easing; 
     && motionProblems(cssTree(cssRules + '.results{transition:opacity .2s}')).length === 1
     && motionProblems(cssTree(cssRules + '.expand{transition:height .2s}')).length === 1,
   motionProblems(allCss).join(', '));
-check('round 2 animations use only opacity and transform; arbitrary keyframes and animated dimensions fail', (() => {
+// 2026-11-08: the phone logo handover (option C: logo-travel, logo-shrink,
+// logo-off, tile-on, count-glide) runs on the scroll, not the clock.
+// visibility is allowed in the tile's step and only there: it is not motion,
+// it keeps the hidden tile out of reach of taps and Tab.
+check('round 2 animations use only opacity and transform (the phone tile\'s step also visibility); arbitrary keyframes and animated dimensions fail', (() => {
   const valid = (source) => {
     const animations = [...source.matchAll(/@keyframes ([\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)];
-    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back'].includes(name)
-      && !/(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/.test(body));
+    return animations.every(([, name, body]) => ['toast-in','toast-out','step-in','step-back','logo-travel','logo-shrink','logo-off','tile-on','count-glide'].includes(name)
+      && !(name === 'tile-on' ? /(?:^|[;{])\s*(?!opacity\b|transform\b|visibility\b)[a-z-]+\s*:/ : /(?:^|[;{])\s*(?!opacity\b|transform\b)[a-z-]+\s*:/).test(body));
   };
-  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}');
+  return valid(cssRules) && !valid(cssRules + '@keyframes bad{from{height:0}}') && !valid(cssRules.replace('@keyframes logo-shrink{', '@keyframes logo-shrink{0%{visibility:hidden}'));
 })());
 check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-height:0 child; the chevron box turns whole, with no shift between states',
   /display:grid;grid-template-rows:1fr/.test(bodyOf('.expand')) && /grid-template-rows:0fr;opacity:0/.test(bodyOf('.expand[data-state=closed]'))
@@ -4011,12 +4170,26 @@ check('slot: one grid row 1fr open / 0fr and transparent closed, a clipping min-
     && /^transform:rotate\(180deg\)$/.test(bodyOf('.is-open .chev')));
 check('wide: the selection fill never fades in or out; only an unselected row fades its hover',
   /transition:none/.test(bodyOf('.row', ['@media (min-width: 1200px)'])) && !/transition/.test(bodyOf('.is-sel>.row', ['@media (min-width: 1200px)'])));
-check('sheet: slides from translateY(100%) with @starting-style and discrete display/overlay; the scrim fades; from 600 neither transitions',
+check('sheet: slides from translateY(100%) with @starting-style and discrete display; its own scrim fades; from 600 neither transitions',
   /transform:translateY\(100%\)/.test(bodyOf('.sheet')) && /transform:none/.test(bodyOf('.sheet[open]'))
-    && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet[open]::backdrop', ['@starting-style']))
-    && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet::backdrop')) && /opacity:1/.test(bodyOf('.sheet[open]::backdrop'))
-    && ['.sheet', '.sheet[open]', '.sheet::backdrop', '.sheet[open]::backdrop'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
+    && /transform:translateY\(100%\)/.test(bodyOf('.sheet[open]', ['@starting-style'])) && /opacity:0/.test(bodyOf('.sheet-scrim.is-open', ['@starting-style']))
+    && /background:var\(--scrim\);opacity:0/.test(bodyOf('.sheet-scrim')) && /opacity:1/.test(bodyOf('.sheet-scrim.is-open'))
+    && ['.sheet', '.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open'].every((sel) => /transition:none/.test(bodyOf(sel, ['@media (min-width: 600px)'])))
     && /opacity:0/.test(bodyOf('.pane-body>.fade-in', ['@starting-style'])));
+check('sheet slide contains paint and promotes transform and scrim opacity only while moving; missing-containment and permanent-promotion fixtures fail', (() => {
+  const valid = (source) => {
+    const rules = cssTree(source.replace(/\/\*[\s\S]*?\*\//g, ''));
+    const body = (sel) => rules.filter(r => r.selector === sel && !r.media.length).map(r => r.body).join(';');
+    return /contain:layout paint/.test(body('.sheet'))
+      && body('.sheet.is-sliding') === 'will-change:transform'
+      && body('.sheet-scrim.is-sliding') === 'will-change:opacity'
+      && !/will-change/.test(body('.sheet') + body('.sheet-scrim'))
+      && /transition:transform 280ms cubic-bezier\(\.32,\.72,0,1\),display 280ms allow-discrete/.test(body('.sheet[open]'))
+      && /transition:transform 220ms cubic-bezier\(\.32,\.72,0,1\),display 220ms allow-discrete,visibility 220ms/.test(body('.sheet'));
+  };
+  return valid(css) && !valid(css.replace('contain:layout paint;', ''))
+    && !valid(css.replace('.sheet.is-sliding{will-change:transform}', '.sheet{will-change:transform}'));
+})());
 // The old rule shortened every effect to 0.01ms: still a transition, still
 // firing its events late. Reduced motion is now none, backdrop included.
 const reducedBody = allCss.filter((r) => r.media.join() === '@media (prefers-reduced-motion: reduce)').map((r) => `${r.selector}{${r.body}}`).join('');
@@ -4422,6 +4595,49 @@ const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x
   check('every on-screen .item placeholder height is at least MIN_ROW_PX', minRow > 0 && px.length >= 3 && px.every((n) => n >= minRow),
     `MIN_ROW_PX ${minRow}, placeholders ${sizes.join(' | ')}`);
 }
+// Phone scroll (2026-11-08, "the rows pop in weirdly" on an iPhone). A row
+// not drawn yet holds its placeholder, then takes its real height; Safari has
+// no scroll anchoring, so the difference moved the rows on screen. The old
+// 260 / 200 / 120 px placeholders were 40-60% taller than the real rows. Each
+// placeholder must stay near the measured average row at its width: 320 px
+// 230-264, 390 px 186, 430 px 174, 600-899 px 152-156, an 800 px list 85-102.
+{
+  const at = (media) => allCss.filter((r) => r.media.join() === media && r.selector.split(',').some((x) => x.trim() === '.item'))
+    .map((r) => Number(r.body.match(/contain-intrinsic-size:\s*auto\s+(\d+)px/)?.[1])).filter(Boolean);
+  const between = (media, lo, hi) => { const v = at(media); return v.length === 1 && v[0] >= lo && v[0] <= hi; };
+  check('row placeholders match the measured row height at each width (phone scroll pop-in)',
+    between('', 170, 195) && between('@media (max-width: 359.98px)', 225, 255)
+      && between('@media (min-width: 600px)', 145, 165) && between('@container (min-width: 800px)', 80, 105),
+    JSON.stringify(['', '@media (max-width: 359.98px)', '@media (min-width: 600px)', '@container (min-width: 800px)'].map(at)));
+  // Safari draws a content-visibility:auto row only once it is on screen, so
+  // rows near the window get .near and are drawn early. .near keeps the
+  // containment auto gives a drawn row: dropping it on each toggle made Chrome
+  // restyle the rows after it (0.1 s to 1.9 s of style work per phone scroll).
+  const near = ruleBody('.item.near');
+  check('.near rows are drawn and keep layout, style and paint containment on screen, and print uncontained',
+    /content-visibility:\s*visible/.test(near) && /contain:\s*layout style paint/.test(near) && /contain: none/.test(printBody('.item.near')));
+  check('rows are marked .near from one passive scroll listener, not an IntersectionObserver on every row',
+    /window\.addEventListener\('scroll', scheduleNear, \{ passive: true \}\)/.test(appSrc)
+      && Number(appSrc.match(/const NEAR_SCREENS = ([\d.]+);/)?.[1]) >= 1
+      && (appSrc.match(/new IntersectionObserver/g) ?? []).length === 1);
+}
+appCheck('scrolling marks the rows within 1.5 screens of the window .near, and only those; a burst of scroll events is one frame', ({ run, get, drain, fireWindow, frames, flushFrame }) => {
+  l09(run); drain();
+  const rows = get('results').children;
+  if (rows.length < 30) return false;
+  run('window.innerHeight = 844;');
+  const place = (offset) => rows.forEach((row, i) => { row.rect = { top: i * 200 - offset, bottom: i * 200 - offset + 200, left: 0, right: 390, width: 390, height: 200 }; });
+  const marked = () => rows.flatMap((row, i) => (row.classList.contains('near') ? [i] : []));
+  const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  // The margin is 1.5 x 844 = 1,266 px each way: tops from -1,466 to 2,110.
+  place(3000);
+  fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
+  if (frames.size !== 1) return false;
+  flushFrame();
+  if (marked().join() !== span(8, 25).join()) return false;
+  place(1000); fireWindow('scroll'); flushFrame();
+  return marked().join() === span(0, 15).join() && frames.size === 0;
+});
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
   ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
@@ -4438,9 +4654,9 @@ check('A08 paper carries the site name and the check-the-official-page warning: 
 // Setup and the Filters sheet printed over the list when left open: their
 // [open] rules out-ranked the print hide. smoke "PR print dialogs" prints both.
 check('A08 print hides the open Setup and Filters dialogs and their scrims, at their [open] weight',
-  ['dialog.sheet', 'dialog.sheet[open]', 'dialog.sheet::backdrop', 'dialog.sheet[open]::backdrop', 'dialog.ob', 'dialog.ob[open]', 'dialog.ob::backdrop', 'dialog.ob[open]::backdrop']
+  ['dialog.sheet', 'dialog.sheet[open]', '.sheet-scrim', '.sheet-scrim.is-open', 'dialog.ob', 'dialog.ob[open]', '.ob-scrim', '.ob-scrim.is-open']
     .every((sel) => /display: none/.test(printBody(sel)))
-    && /overflow: visible/.test(printBody('html:has(dialog.sheet[open])')) && /overflow: visible/.test(printBody('html:has(dialog.ob[open])')));
+    && /overflow: visible/.test(printBody('html.sheet-open')) && /overflow: visible/.test(printBody('html.onboarding-open')));
 check('A08 print is ink on white: no row, cell, selected, open or banner fill or shadow; titles and verdicts in ink; marks print with backgrounds off',
   ['.row', '.is-open>.row', '.is-sel>.row', '.cell', '.detail', '.listp', '.bn'].every((sel) => /background: none/.test(printBody(sel)) && /box-shadow: none/.test(printBody(sel)))
     && ['.open', '.d-title', '.cell .verd', '.cell .r2'].every((sel) => /color: var\(--ink\)/.test(printBody(sel)))
@@ -5658,7 +5874,7 @@ appCheck('heading sort cycles include the default order, announced next state an
 function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
   const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
-    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},...env};
+    localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
   const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
@@ -5668,6 +5884,47 @@ function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], 
     buttons:dialog.querySelectorAll('.ob-foot button').map(b=>b.textContent)};};
   return {writes,applied,toasts,compareCloses,dialog,primary,next,doneScreen,api};
 }
+// Setup uses the same cheap modality as Filters: no page-wide inert/ARIA walk.
+check('Setup uses show(), aria-modal and its own scrim, never showModal/inert/background aria-hidden', (() => {
+  const src = read('js/onboarding.js');
+  return src.includes('dialog.show();') && !/showModal\(|\.inert\s*=|setAttribute\(['"](?:inert|aria-hidden)/.test(src.replace(/svg\.setAttribute\([^;]+;/g, ''))
+    && /id="onboarding" aria-modal="true" aria-labelledby="ob-title"/.test(read('index.html'))
+    && /class="ob-scrim" id="onboarding-scrim" aria-hidden="true"/.test(read('index.html'))
+    && !/html:has\([^}]*ob/.test(css) && !css.includes('dialog.ob::backdrop') && /html\.onboarding-open\{overflow:hidden\}/.test(css)
+    && /z-index:80/.test(bodyOf('dialog.ob')) && /z-index:79/.test(bodyOf('.ob-scrim'));
+})());
+appCheck('Setup traps Tab both ways, skips disabled/hidden controls and redirects stray focus', (h) => {
+  const {dialog, primary} = realSetup(h, {phone:true}), {get,fire} = h;
+  const skip=dialog.querySelector('.skipwrap button');
+  fire(get('ob-title'),'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==primary() || !stubDocument.focusOptions.focusVisible)return false;
+  fire(primary(),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==skip)return false;
+  fire(skip,'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==primary())return false;
+  primary().disabled=true; fire(skip,'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==skip)return false;
+  get('f-search').focus(); fire(get('f-search'),'focusin');
+  return stubDocument.activeElement===get('ob-title') && dialog.open;
+});
+appCheck('Setup Escape/Skip restore keyboard/tap focus, release scrim/lock and survive a queued close after reopen', (h) => {
+  const {dialog,api,writes}=realSetup(h), {get,fire,advance}=h;
+  fire(dialog,'keydown',{key:'Escape'});
+  if(dialog.open||writes.at(-1)[1]!=='dismissed'||stubDocument.activeElement!==get('f-search')||!stubDocument.focusOptions.focusVisible)return false;
+  const trigger=get('f-more');api.open(trigger);advance(0);
+  if(!dialog.open||!get('onboarding-scrim').classList.contains('is-open'))return false;
+  fire(dialog,'pointerdown');fire(dialog.querySelector('.skipwrap button'),'click');
+  return !dialog.open&&stubDocument.activeElement===trigger&&!stubDocument.focusOptions.focusVisible
+    &&!get('onboarding-scrim').classList.contains('is-open')&&!stubDocument.documentElement.classList.contains('onboarding-open');
+});
+appCheck('Setup opened from the sheet returns to Filters when Edit is hidden', (h) => {
+  const {dialog,api}=realSetup(h,{phone:true}), {get,fire}=h;
+  fire(dialog,'cancel');const trigger=get('filter-sheet').querySelector('[data-edit]');
+  // A closing sheet can still have boxes during its discrete display fade.
+  trigger.getClientRects=()=>[{}];
+  api.open(trigger);fire(dialog,'keydown',{key:'Escape'});
+  return stubDocument.activeElement===get('f-more');
+});
 // Batch 3 C1 rewrote these: Finish now applies and shows the done screen; the
 // done screen's "Show my programmes" closes setup. Skip and Esc are unchanged.
 for (const outcome of ['apply','skip','cancel']) appCheck(`real onboarding handlers: ${outcome}, fourths progress, one transaction and stable focus`, (h) => {
@@ -5777,9 +6034,12 @@ check('only the maths buttons and closed facet chevrons tighten at 1024-1099 px,
   && /@media \(min-width:1024px\) and \(max-width:1099\.98px\)\{\s*\.seg button\{padding:0 6px\}/.test(cssRules)
   && cssRules.includes('#budget-value:empty{display:none}'));
 section('Review round 2 regressions');
+// The bar's lists no longer hold their content with a ::details-content
+// transition (Safari ignored it; round2.js holds [open] while closing), so
+// nothing delays the content on opening either.
 check('the facet panel is not still hidden when its toggle event focuses the search',
-  cssRules.includes('.dropdown::details-content{transition:content-visibility 250ms allow-discrete}')
-  && cssRules.includes('.dropdown[open]::details-content{transition:none}'));
+  !/(?:^|\})\s*\.dropdown(?:\[open\])?::details-content\{[^}]*transition:(?!none)/.test(cssRules)
+  && /\.sheet-b \.dropdown\[open\]::details-content\{height:auto;transition:height/.test(cssRules));
 check('radios never get a blank value from a panel Clear; the select stays the source of truth',
   read('js/round2.js').includes("input:not([type=range],[type=radio]),select") && read('js/round2.js').includes('input.checked = input.value === select.value'));
 check('one wording for a verdict: rows, legend and status all say "V rámci tvojich IB bodov"', (()=>{
@@ -6229,7 +6489,7 @@ await asyncAppCheck('B1 sheet status repeats once and clears on every close rout
     if (close === 'done') fire(get('sheet-done'), 'click');
     if (close === 'apply') fire(get('sheet-show'), 'click');
     if (close === 'escape') { sheet.close(); }
-    if (close === 'backdrop') fire(sheet, 'click', { clientX: -10, clientY: -10 });
+    if (close === 'backdrop') fire(get('sheet-scrim'), 'click');
     if (close === 'language') run("switchLanguage('sk');");
     if (close === 'widen') flip600(true);
     advance(0); flushFrame();
@@ -6967,6 +7227,52 @@ check('B3B2 the back chevron shows only in the list view, pointing left; the tra
     // The old quiet-text Clear rules are gone (they made it look like an empty cell).
     && !/\.ml-tools>\.btn-q|:has\(#ml-compare\[hidden\]\)/.test(cssText);
 })());
+// iPhone (Leon, 2026-11-08): the bar's pick-lists (Sort too) faded in but
+// snapped shut, because Safari ignores a ::details-content content-visibility
+// transition. holdDropdownClose keeps [open] for the fade under .closing while
+// .open already reads false; a tap on the button mid-fade reopens it.
+{
+  class FakeDetails {
+    constructor() {
+      this.attr = true; this.classes = new Set(); this.events = [];
+      const summary = this.summary = { aria: 'true', listeners: [], setAttribute: (name, value) => { summary.aria = value; }, addEventListener: (type, fn) => summary.listeners.push(fn) };
+      this.classList = { add: (c) => this.classes.add(c), remove: (c) => this.classes.delete(c) };
+    }
+    get open() { return this.attr; }
+    set open(value) { if (this.attr !== Boolean(value)) this.events.push('native'); this.attr = Boolean(value); }
+    querySelector() { return this.summary; }
+    dispatchEvent(event) { this.events.push(event.type); }
+  }
+  let reduced = false;
+  const globals = { HTMLDetailsElement: FakeDetails, matchMedia: () => ({ matches: reduced }) };
+  const make = (inSheet = false) => withGlobals(globals, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => inSheet); return d; });
+  const set = (d, value) => withGlobals(globals, () => { d.open = value; });
+  const tap = (d) => withGlobals(globals, () => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; d.summary.listeners.forEach((fn) => fn(event)); return event.prevented; });
+  const fade = () => new Promise((ok) => setTimeout(ok, (realRound2.DROPDOWN_CLOSE_MS ?? 0) + 40));
+  const state = (d) => ({ reads: d.open, attr: d.attr, closing: d.classes.has('closing'), aria: d.summary.aria, events: d.events.join() });
+  const closing = make(); set(closing, false); const during = state(closing); await fade(); const after = state(closing);
+  check('bar pick-list: closing keeps [open] under .closing for the fade, reads closed at once, and closes for real after it',
+    realRound2.DROPDOWN_CLOSE_MS >= 120 && realRound2.DROPDOWN_CLOSE_MS <= 150
+      && JSON.stringify(during) === JSON.stringify({ reads: false, attr: true, closing: true, aria: 'false', events: '' })
+      && JSON.stringify(after) === JSON.stringify({ reads: false, attr: false, closing: false, aria: 'false', events: 'native' }),
+    JSON.stringify({ during, after }));
+  const back = make(); const tapClosed = tap(back); const midFade = state(back); const tapOpened = tap(back); const reopened = state(back); await fade();
+  check('bar pick-list: a tap on the open button fades it; a second tap mid-fade reopens it with a toggle event, and it stays open',
+    tapClosed && midFade.closing && !midFade.reads && tapOpened && JSON.stringify(reopened) === JSON.stringify(state(back))
+      && reopened.reads && reopened.attr && !reopened.closing && reopened.events === 'toggle',
+    JSON.stringify({ midFade, reopened, now: state(back) }));
+  const sheetList = make(true); set(sheetList, false); const inSheet = state(sheetList);
+  reduced = true; const still = make(); set(still, false); const reducedNow = state(still); reduced = false;
+  const plain = withGlobals({ matchMedia: () => ({ matches: false }) }, () => { const d = new FakeDetails(); realRound2.holdDropdownClose?.(d, () => false); d.open = false; return d.attr; });
+  check('bar pick-list: in the phone sheet, under reduced motion, and without a real <details> it closes at once',
+    !inSheet.attr && !inSheet.closing && !reducedNow.attr && !reducedNow.closing && plain === false, JSON.stringify({ inSheet, reducedNow, plain }));
+  const round2Src = read('js/round2.js');
+  check('bar pick-list: every dropdown is wired to fade shut, Escape skips a fading list, and the fading panel is transparent and takes no taps',
+    /holdDropdownClose\(d, \(\) => dom\.sheet\.contains\(d\)\)/.test(round2Src)
+      && round2Src.includes("document.querySelector('.dropdown[open]:not(.closing),.ml-pop[open]')")
+      && /\.dropdown\.closing>\.dropdown-panel\{transform:scale\(\.97\);opacity:0;pointer-events:none;transition:transform 150ms/.test(cssRules)
+      && cssRules.includes('.dropdown.closing>summary .dd-chev{transform:none}'));
+}
 // B3 (Leon, 2026-11-05): clicking "My list (0)" did nothing, because update()
 // turned an empty list view straight off. The header button is wired in
 // round2.js, which the harness stubs, so the real wireRound2 runs here.
@@ -7086,6 +7392,25 @@ for (const [name, grow, input] of [['aims once more after the list grows', true,
   for (let i = 0; i < 40 && frames.size; i++) { if (grow && i < 3) get('results').append(new ChromeNode('li')); const [[n, fn]] = frames; frames.delete(n); fn(); }
   return aims() === (grow && !input ? 2 : 1) && !(stubDocument.listeners.wheel ?? []).length;
 });
+// Full smoke after the row pop-in fix (b14ff68): the FAQ sits below all
+// 2,900 rows, a smooth scroll that far took seconds, and rows drawn near the
+// bottom grew the list after it, so the page stopped ~12,000 px short. Far
+// away it now jumps, then re-aims each frame the FAQ drifts, without smooth.
+appCheck('the done screen FAQ jumps when far away and re-aims while the rows below settle', (h) => {
+  const {get}=h, frames=new Map(); let id=0, top=20000;
+  const {dialog,next}=realSetup(h,{env:{requestAnimationFrame:(fn)=>{frames.set(++id,fn);return id;},cancelAnimationFrame:(n)=>frames.delete(n)}});
+  for (let i = 0; i < 5; i++) next();
+  const faq = get('faq'); faq.getBoundingClientRect = () => ({ top, bottom: top + 100, left: 0, right: 0, width: 0, height: 100 });
+  stubDocument.scrolls = [];
+  const origScroll = faq.scrollIntoView;
+  faq.scrollIntoView = function (opts) { top = 56; return origScroll.call(this, opts); };
+  h.fire(dialog.querySelectorAll('.ob-foot button').find((b) => b.textContent === t('r3_ob_faq')), 'click');
+  const aims = () => stubDocument.scrolls.filter((s) => s.node === faq);
+  const first = aims()[0];
+  top = 900; // rows near the bottom were drawn and pushed the FAQ down
+  for (let i = 0; i < 3 && frames.size; i++) { const [[n, fn]] = frames; frames.delete(n); fn(); }
+  return aims().length >= 2 && aims().every((s) => (s.options?.behavior ?? s.behavior) === 'auto') && first !== undefined;
+});
 appCheck('B3C1 reopening after completion starts again at step 1 with Skip and no done screen', (h) => {
   const {dialog,next,doneScreen,api,writes}=realSetup(h);
   for (let i = 0; i < 6; i++) next();
@@ -7194,10 +7519,106 @@ appCheck('B3C2 home from Compare: the view closes and the list shows; open panel
 });
 check('B3C2 the app passes goHome to the compact header', /wireCompactHeader\(dom, \{ goHome \}\);/.test(appSrc));
 check('B3C2 the compact header no longer takes the logo out of the tab order', !/\.mark'\)\.tabIndex = allowed/.test(read('js/round2.js')));
-check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile shows only in the stuck row',
+// 2026-11-08: the phone tile is out of the flow, over the row's left edge,
+// hidden until the handover shows it; the count keeps the 50 px on its right.
+check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 94 px at 600–700 px; the phone tile lies over the stuck row\'s left edge',
   /body\.compact \.mark\{opacity:1;transform:none;pointer-events:auto\}\s*body\.compact \.mark h1\{opacity:0;transform:translateY\(-4px\);pointer-events:none\}/.test(cssText)
   && /@media \(min-width:600px\) and \(max-width:700px\)\{\s*\.slot\{width:94px\}\s*\.mark\{width:44px;justify-content:center\}\s*\.filters-btn\{left:50px;width:44px\}/.test(cssText)
-  && /\.home-tile\{display:none\}\s*@media \(max-width:599\.98px\)\{\s*\.status\.is-stuck \.home-tile\{display:inline-flex;[^}]*width:44px;height:44px/.test(cssText));
+  && /\.home-tile\{display:none\}\s*@media screen and \(max-width:599\.98px\)\{\s*\.status \.home-tile\{display:flex;[^}]*position:absolute;left:var\(--gut\);top:0;bottom:0;margin-block:auto;width:44px;height:44px;[^}]*opacity:0;visibility:hidden\}/.test(cssText)
+  && /transform:scale\(\.818\)/.test(ruleAt(cssText, '.status .home-tile .mono', 'screen and (max-width:599.98px)'))
+  && /margin-right:50px/.test(ruleAt(cssText, '.status .count', 'screen and (max-width:599.98px)'))
+  && !/\.is-stuck \.home-tile/.test(cssText));
+
+// Leon, iPhone, 2026-11-08: the stuck row's tile came in late and pushed the
+// count right; on the way up both logos showed. Then, from mockups, option C:
+// the header logo holds its spot while the header leaves, shrinks to 36 px and
+// lands where the row's tile sits, which takes over at that pixel when the row
+// sticks; the count glides 50 px right in the first 16 px of scroll. One scroll
+// timeline (the 1 px mark) drives it all. Reduced motion: no glide or shrink,
+// the count waits one tile in and the tile is a cut. Smoke runBatch3C measures
+// it frame by frame in Chrome, natively and with the fallback forced.
+{
+  const phone = 'screen and (max-width:599.98px)', sup = '@supports (timeline-scope:--a) and (animation-timeline:--a)', off = ':root:not([data-handover=frames]) ';
+  const inSup = (sel, mediaFirst) => cssTree(cssText).filter((r) => r.selector.trim() === sel && r.media.join('|') === (mediaFirst ? [`@media ${mediaFirst}`, sup] : [sup, `@media ${phone}`]).join('|')).map((r) => r.body).join(';');
+  const logo = inSup(off + '.hd .mark'), mono = inSup(off + '.hd .mono'), tile = inSup(off + '.status .home-tile'), count = inSup(off + '.status .count');
+  const rTile = inSup(off + '.status .home-tile', 'screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)');
+  const kf = (name) => (cssText.match(new RegExp(`@keyframes ${name}\\{((?:[^{}]|\\{[^{}]*\\})*)\\}`)) || [])[1] || '';
+  check('B3C2b phones: the logo travels into the row on one scroll timeline: glued while the header leaves, 36 px at the stick, then the tile at the same scroll position; the count glides first; reduced motion is a cut',
+    /timeline-scope:--stuck/.test(inSup('.page')) && /view-timeline:--stuck block/.test(inSup('.stuck-mark'))
+      && /animation:logo-travel linear both,logo-off step-end both;animation-timeline:--stuck,--stuck;animation-range:cover calc\(100% - var\(--logo-travel\)\) cover 100%,cover calc\(100% - 1px\) cover 100%/.test(logo)
+      && /animation:logo-shrink linear both;animation-timeline:--stuck;animation-range:cover calc\(100% - 22px\) cover 100%/.test(mono)
+      && /animation:tile-on step-end both;animation-timeline:--stuck;animation-range:cover calc\(100% - 1px\) cover 100%/.test(tile)
+      && /animation:count-glide linear\(0,\.93 80%,1\) both;animation-timeline:--stuck;animation-range:cover calc\(100% - var\(--logo-travel\)\) cover calc\(100% - var\(--logo-travel\) \+ 16px\)/.test(count)
+      && /animation:tile-on step-end both !important;animation-timeline:--stuck !important;animation-range:cover calc\(100% - 1px\) cover 100% !important/.test(rTile)
+      && /transform:translateX\(50px\)/.test(ruleAt(cssText, '.status .count', 'screen and (max-width:599.98px) and (prefers-reduced-motion:reduce)'))
+      && kf('logo-travel') === 'from{transform:none}to{transform:translateY(calc(var(--logo-travel) + var(--logo-dock)))}'
+      && kf('logo-shrink') === 'from{transform:none}to{transform:scale(.818)}'
+      && kf('logo-off') === 'from{opacity:1}to{opacity:0}'
+      && kf('tile-on') === 'from{opacity:0;visibility:hidden}to{opacity:1;visibility:visible}'
+      && kf('count-glide') === 'from{transform:none}to{transform:translateX(50px)}'
+      && /animation:none/.test(inSup('.page:has(.stream>#compare:not([hidden]),.status[hidden]) :is(.hd .mark,.hd .mono)'))
+      && /--logo-travel:57px;--logo-dock:0px/.test(ruleAt(cssText, '.page', phone))
+      && /padding-block:6px/.test(ruleAt(cssText, '.status', phone)) && /padding:6px var\(--gut\)/.test(ruleAt(cssText, '.status.is-stuck'))
+      && /min-height:var\(--ctl\);line-height:20px/.test(ruleAt(cssText, '.status.is-stuck .cshort', phone)),
+    JSON.stringify({ logo, mono, tile, count, rTile }));
+}
+
+// The keyframes need two distances CSS cannot know (a data banner pushes the
+// row down; a three-line 320 px Slovak count makes the row taller), and Safari
+// before 26 has no scroll timelines: round2.js measures the distances, and
+// there runs option B frame by frame from the same clock. Run here against a
+// fake page, with and without scroll-timeline support.
+{
+  const round2Src = read('js/round2.js');
+  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('function syncSegments'));
+  const run = ({ native, reduced = false, phone = true, statusShown = true }) => {
+    const style = () => { const s = {}; return { s, setProperty(k, v) { s[k] = v; }, removeProperty(k) { delete s[k]; }, get opacity() { return s.opacity; }, set opacity(v) { s.opacity = v; }, get visibility() { return s.visibility; }, set visibility(v) { s.visibility = v; }, get transform() { return s.transform; }, set transform(v) { s.transform = v; } }; };
+    const node = (props = {}) => ({ style: style(), offsetTop: 0, offsetHeight: 0, offsetParent: null, ...props });
+    const body = node(), hd = node({ offsetTop: 0, offsetParent: body }), slot = node({ offsetTop: 6, offsetParent: hd }), logo = node({ offsetTop: 0, offsetParent: slot });
+    const status = node({ offsetTop: 57, offsetParent: body }), tile = node({ offsetTop: 14, offsetParent: statusShown ? status : null });
+    const counts = [node(), node()], banner = node();
+    let markBottom = 57;
+    const stuckMark = node({ offsetTop: 56, offsetHeight: 1, offsetParent: body, getBoundingClientRect: () => ({ bottom: markBottom }) });
+    status.querySelector = (sel) => sel === '.home-tile' ? tile : null;
+    status.querySelectorAll = (sel) => sel === '.count' ? counts : [];
+    hd.querySelector = (sel) => sel === '.mark' ? logo : null;
+    const root = { dataset: {} }, listeners = {}, frames = [];
+    const env = {
+      document: { body, documentElement: root, querySelector: (sel) => sel === '.hd' ? hd : null },
+      ResizeObserver: class { observe() {} },
+      CSS: { supports: (q) => native && /timeline/.test(q) },
+      matchMedia: (q) => ({ matches: q.includes('reduced-motion') ? reduced : phone, addEventListener() {} }),
+      addEventListener: (type, fn) => { listeners[type] = fn; },
+      requestAnimationFrame: (fn) => frames.push(fn),
+    };
+    const wire = runInNewContext(handoverSrc.replace(/^export /, '') + '\nwireLogoHandover;', env);
+    wire({ status, stuckMark, banner });
+    const at = (bottom) => { markBottom = bottom; listeners.scroll?.(); while (frames.length) frames.shift()(); return { logo: { ...logo.style.s }, tile: { ...tile.style.s }, count: counts[0].style.s.transform }; };
+    return { body: body.style.s, root, listeners, at };
+  };
+  const nat = run({ native: true });
+  const fb = run({ native: false });
+  const steps = []; for (let d = -60; d <= 20; d++) steps.push([d, fb.at(-d)]);
+  const both = steps.filter(([, f]) => Number(f.logo.opacity) > 0 && f.logo.visibility !== 'hidden' && Number(f.tile.opacity) > 0 && f.tile.visibility !== 'hidden');
+  const slide = steps.map(([, f]) => Number((f.count || 'translateX(0px)').match(/-?[\d.]+/)[0]));
+  const jumps = slide.slice(1).map((x, i) => Math.abs(x - slide[i]));
+  const red = run({ native: false, reduced: true });
+  const redSteps = [-30, -1, 0, 1, 30].map((d) => [d, red.at(-d)]);
+  const hidden = run({ native: false, statusShown: false });
+  const hiddenAt = hidden.at(-10);
+  check('B3C2c phones: round2.js measures --logo-travel (where the row sticks) and --logo-dock (the tile\'s drop); with scroll timelines it adds nothing else',
+    nat.body['--logo-travel'] === '57px' && nat.body['--logo-dock'] === '8px' && nat.root.dataset.handover === undefined && !nat.listeners.scroll
+      && /wireLogoHandover\(dom\);/.test(appSrc) && /export function wireLogoHandover/.test(round2Src),
+    JSON.stringify(nat.body));
+  check('B3C2d without scroll timelines: option B frame by frame from one clock: the logo fades out first, the count slides 50 px without a jump, the tile fades in; never both; reduced motion is one cut for both at the stick; no row, no handover',
+    fb.root.dataset.handover === 'frames' && typeof fb.listeners.scroll === 'function'
+      && both.length === 0 && slide[0] === 0 && slide.at(-1) === 50 && Math.max(...jumps) <= 4
+      && steps.find(([d]) => d === -20)[1].logo.opacity === '0' && steps.find(([d]) => d === -8)[1].tile.visibility === 'hidden'
+      && steps.find(([d]) => d === 12)[1].tile.opacity === '1'
+      && redSteps.every(([d, f]) => f.tile.opacity === (d >= 0 ? '1' : '0') && f.logo.opacity === (d >= 0 ? '0' : '1') && f.count === undefined)
+      && hiddenAt.logo.opacity === undefined && hiddenAt.tile.opacity === undefined,
+    JSON.stringify({ both: both.slice(0, 2), maxJump: Math.max(...jumps), red: redSteps, hiddenAt }));
+}
 
 section('Alignment · list, detail, Compare');
 // The 2026-11-05 alignment audit (list-detail and compare findings). Layout is
@@ -7438,14 +7859,22 @@ section("Leon's review, 2026-11-06");
 const lastValue = (selector, prop, query) => [...ruleAt(cssText, selector, query).matchAll(new RegExp(`(?:^|;)${prop}:([^;]+)`, 'g'))].at(-1)?.[1];
 check('LR1 rows never cut off the university name: the line wraps and the country tag follows inline',
   lastValue('.sub', 'display') === 'block' && lastValue('.sub .uc', 'white-space') === 'normal' && lastValue('.sub .uc', 'overflow') === 'visible');
+// A margin-left on the badge stayed when the badge wrapped onto its own line,
+// so it sat 6 px in from the name above (smoke BADGE flush measures it).
+check('LR1b the country badge has no left margin; its 6 px gap is the end of the university text',
+  ['.cc', '.sub .cc', '.row .cc'].every((sel) => !/(?:^|;)margin(?:-left|-inline-start)?:/.test(ruleAt(cssText, sel)))
+  && lastValue('.sub .uc', 'margin-right') === '6px');
 check('LR2 phones: the header and count row are one block, and the list starts 12 px below it',
   /border-bottom:0/.test(ruleAt(cssText, '.hd', '(max-width:599.98px)'))
   && /border-bottom:1px solid var\(--hairline\);margin-bottom:12px/.test(ruleAt(cssText, '.status', '(max-width:599.98px)')));
 // 2026-11-07: the tile grew to 44 px and fills its tap area, so it needs no -4 px nudge;
 // a leftover nudge would push the tile 4 px into the margin.
+// 2026-11-08 (option C): the row's tile is placed on the margin (left:var(--gut)),
+// so the header logo lands on it at the same pixel.
 check('LR3 phones: the IB tile sits on the page margin, in the header and the stuck count row',
   /width:44px;height:44px/.test(ruleAt(cssText, '.mono', '(max-width:599.98px),(pointer:coarse)'))
-  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left:-4px/.test(ruleAt(cssText, '.status.is-stuck .home-tile', '(max-width:599.98px)')));
+  && !/margin-left:-4px/.test(ruleAt(cssText, '.mark', '(max-width:599.98px)')) && !/margin-left/.test(ruleAt(cssText, '.status .home-tile', 'screen and (max-width:599.98px)'))
+  && /left:var\(--gut\);[^;]*;[^;]*;margin-block:auto;width:44px;height:44px/.test(ruleAt(cssText, '.status .home-tile', 'screen and (max-width:599.98px)')));
 check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and fire its change; it has no Clear footer',
   /<details class="dropdown sort-dd" id="dd-sort">/.test(indexHtml)
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
@@ -7558,6 +7987,15 @@ section('Facts and copy, review of PR 1, 2026-11-07');
       && byTag(detailOf(fxRow('fx-plain')), 'ul').filter((u) => u.className === 'plines').every((u) => u.getAttribute('role') === 'list')
       && byTag(detailOf(fxRow('fx-plain')), 'ul').some((u) => u.className === 'plines'));
 }
+
+// Leon, iPhone, 2026-11-08: "couldn't scroll down" in Compare. overflow-x:auto
+// alone made the sideways box scroll 2 px down too (the last row's link tap
+// padding), and vertical swipes over the table went to it, not the page. The
+// smoke test (CMP touch scroll) swipes on a touch phone.
+check('Compare\'s sideways scroll box never scrolls vertically: overflow-y:hidden, and no screen rule makes it a vertical scroller or limits touch panning',
+  /overflow-x:auto;overflow-y:hidden/.test(ruleAt(cssText, '.cmp-scroll'))
+    && cssTree(cssText).filter((r) => /\.cmp-scroll(?![\w-])/.test(r.selector) && !r.media.some((m) => /print/.test(m)))
+      .every((r) => !/(?:^|;)\s*(?:overflow(?:-y)?\s*:\s*(?:auto|scroll|visible)|overflow\s*:\s*\S+\s+(?:auto|scroll)|touch-action)/.test(r.body)));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

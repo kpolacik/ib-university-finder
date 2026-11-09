@@ -603,6 +603,73 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**Phone Filters slide (2026-11-09, local `fu-sheet-anim`):** Keep both
+slides, now 280 ms up / 220 ms down with `cubic-bezier(.32,.72,0,1)`.
+The old 150/140 ms curve left too little visible travel after the first
+frame; the longer tail lets the sheet settle, with a faster close. The
+sheet contains layout and paint. The sheet and scrim request separate
+transform/opacity layers only while moving, then release them (also on
+reduced motion, widening or a cancelled tap). Closing now pauses row slices
+until the transform ends, instead of resuming the long list under the slide.
+The lost-event fallback is 500 ms to allow the longer slide and its first
+frame. Hidden prewarming, focus, Tab/Escape and scroll locking stay intact.
+
+Three fresh WebKit 26 contexts per case at 390 x 844 @3x: median open
+first frame is 60 -> 52 ms settled, 75 -> 70 ms early (500 ms after the
+first rows paint). Fully shown is 189 -> 280 ms and 126 -> 251 ms:
+within the intentional 130 ms duration increase. Early-close missed-frame
+median is 4 -> 1, worst frame 88 -> 38 ms. These are two-rAF paint proxies,
+not iPhone measurements. Timeline shows initial style/layout/compositing
+work and row work between slides, not repeated content painting in WebKit.
+Three paired Chrome 157 runs at 4x CPU put the early-close missed-frame
+median at 4 -> 0 and worst gap at 49 -> 19 ms. Early open first frame is
+72 -> 86 ms; fully shown is 222 -> 358 ms (the 130 ms duration change plus
+6 ms of measured overhead). Chrome confirms accelerated transform and
+opacity layers; the scrim and scrolling-content layers retain their paint. Chrome still records shallow
+outer-sheet layout/paint updates, so this is not a claim of zero per-frame
+paint work in that engine.
+
+`check.mjs` pins containment, temporary promotion, the curve, both durations,
+instant reduced motion and row-pause cleanup. Smoke `--sheet-pacing-only`
+bounds each slide at Chrome 4x (390 and 320 px @3x, settled and early):
+no gap of 50 ms or more and at most two missed 60 Hz frames. The old
+150/140 ms pins were updated deliberately; the cold-open total budget grows
+by exactly 130 ms, while its first-frame budget stays unchanged. All 14
+focused `--sheet-only` checks pass (behavior, cold timing and pacing).
+Restoring the old CSS/JS makes three source checks and all four pacing
+checks fail; the candidate files were then restored byte-for-byte. The full
+smoke suite and physical iPhone Safari were not run.
+
+**Phone Filters first open (2026-11-08, local `fu-sheet2`):** The results
+list is a flex column so WebKit does not revisit every previous row on each
+append. Row slices pause from finger-down through the opening slide, with a
+400 ms fallback; closing, widening and reduced motion release them, and print
+still flushes all rows. After the last slice and two frames, the closed phone
+sheet prepares its layout while hidden and untappable, without opening or
+focusing it. There is no one-second timer or dependency on Safari idle callbacks.
+Opening is 150 ms; closing stays 140 ms. Setup is unchanged.
+
+Local WebKit 26 measurements at 390 x 844 (three fresh contexts per delay)
+put first-frame medians at 72/93/98 ms for taps 0.5/1/2 seconds after the
+first rows paint; fully shown at 130/120/161 ms. A settled first open is
+91/159 ms (first frame/fully shown), versus 138/191 ms on `42fee75`.
+One early first-frame sample was 133 ms, above the roughly 120 ms target.
+Chrome 4x also takes longer to finish mounting under repeated early taps:
+at the 0.5-second starting delay, 3,106 -> 3,558 ms; at one second,
+2,869 -> 3,483 ms, with a slower second open in that busy window.
+Separate paired no-tap runs put median mounting at 3,131 -> 2,090 ms in
+WebKit and 3,353 -> 3,321 ms in Chrome; first-row paint is 350 -> 343 ms
+and 823 -> 823 ms respectively. These are local headless measurements,
+not real-iPhone acceptance or an L09 result. The remaining timing tradeoff
+needs review before calling the performance task complete. A separate settled
+WebKit Setup-close probe still took 541 ms to its next painted-frame proxy
+(744 ms on the baseline, one sample each); Setup remains modal.
+
+Focused checks: `tools/smoke.mjs --sheet-only` covers first frames, focus,
+scroll lock, reduced motion and sheet printing; `--sheet-list-only` covers
+expanded rows, the wide pane, keyboard scroll targets, list accessibility,
+Safari-model row drawing and print. The full smoke suite was not run.
+
 **Compare and header, round 2 (2026-11-06, local `compare-header-r2`):**
 Leon's second look. On phones, while Compare is open, the count row (an IB
 tile and Filters over an empty gap, since the count hides in Compare) is
@@ -690,7 +757,7 @@ heights of 500 px or less. Column headings sit below its visible height;
 the pane starts 12 px below it and its maximum height allows for the header.
 Skip and arrow targets clear the header plus column headings plus 8 px;
 below 600 px they clear the sticky count bar plus 8 px (A07). The build
-matches the 85dvh/320 ms phone sheet, 180 ms help reveal, right-edge
+matches the 85dvh phone sheet (now 280 ms open / 220 ms close), 180 ms help reveal, right-edge
 popover origin, FAQ rotation and toast exit, and keeps closed help out of zoomed
 page overflow. The phone maths control uses the mockup's native select.
 Onboarding headings return to the top of each step after scrolling the real
@@ -763,8 +830,22 @@ students, and where each rule lives:
   always goes home: it leaves My list, a shared list or Compare, drops
   `list=`, keeps filters, search, sort, saves and the Compare set, and scrolls
   to the top. The IB tile stays visible when scrolled (beside Filters from
-  600 px, in the stuck count row on phones). Rules: CSS sections "Batch 3 ·
-  A/B/C"; checks in check.mjs and smoke `runBatch3A/B/C`.
+  600 px, in the stuck count row on phones). On phones the logo travels
+  into the count row (Leon, 2026-11-08, option C of the handover mockups,
+  after the tile came in late, pushed the count right and showed beside the
+  returning header logo on his iPhone): the header logo holds its spot while
+  the header slides away, shrinks to 36 px (its tap area stays 44 px) and
+  lands where the row's tile sits; the moment the row sticks, the tile takes
+  over at the same pixel. At the top the count starts at the page margin and
+  glides 50 px right in the first 16 px of scroll; its box keeps one width,
+  so its lines never change. All of it runs on the scroll itself, so a late
+  frame never shows two logos. Safari before 26 has no scroll timelines and
+  gets option B instead, frame by frame (the logo fades out, the count
+  slides, the tile fades in), never a logo moved by script. Reduced motion:
+  no glide or shrink; the count stays one tile in and the tile appears when
+  the row sticks. Phone Compare hides the row, so there the logo just
+  scrolls away. Rules: CSS sections "Batch 3 · A/B/C" and `wireLogoHandover`
+  in round2.js; checks in check.mjs (B3C2–B3C2d) and smoke `runBatch3A/B/C`.
 - *Alignment audit (2026-11-05).* Five read-only Chrome audits (header, list
   and detail, Compare, My list, setup and footer; EN and SK, 320 to 1440 px
   and 844 x 390) found 2 high, 21 medium and about 38 low problems; all high
@@ -1117,6 +1198,159 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   slide is also shorter: 240 ms up, 200 ms down (it was 320 ms both ways),
   and reduced motion is still instant. Never give `.item` another display
   value. `check.mjs` and smoke A10 guard this.
+
+- **Compare would not scroll down on a phone (fixed 2026-11-08).** Leon, on
+  an iPhone: "couldn't scroll down" in Compare. The table's sideways scroll
+  box (`.cmp-scroll`) had only `overflow-x: auto`, which makes the vertical
+  axis `auto` too. The phone tap padding of the "Official page" links in the
+  last row reaches 2 px below the table, so the box could also scroll 2 px
+  down. On a phone the table fills nearly the whole screen, and a vertical
+  swipe that started over it went to that 2 px box, not the page (headless
+  Chrome with touch: the page moved 0 px). The box now has
+  `overflow-y: hidden`. Never let a sideways scroller scroll vertically, and
+  never give it `touch-action: pan-x`. `check.mjs` and smoke "CMP touch
+  scroll" guard this.
+- **Rows popped in while scrolling on an iPhone (fixed 2026-11-08).** Safari
+  draws a `content-visibility: auto` row only once it is already on screen
+  (WebKit's observer has no margin; Chrome's reaches half a screen further),
+  and Safari before 27 has no scroll anchoring. Each row therefore scrolled in
+  as an empty placeholder, then drew and shrank, and the rows under it jumped.
+  The placeholders were also 40-60% too tall: 260 px for phone rows that
+  average 186 px at 390 px. Now the placeholders are the measured average row
+  at each width (180, 240 below 360 px, 152 from 600 px, 90 for a list of
+  800 px or more). While the page scrolls, rows within 1.5 screens of the
+  window get `.near`, which draws them early. In Chrome with Safari's
+  behaviour imitated (4× CPU, 390 px), frames with a blank row went from 94 of
+  161 to 0 and layout shift from 1.10 to 0.004. Chrome itself showed no
+  change in scroll or filter-change timing. Two traps: an IntersectionObserver
+  on all 2,915 rows cost about 1 s of main thread per scroll at 4×, so a
+  binary search once a frame finds the rows instead. And `.near` must keep
+  `contain: layout style paint`: without it, each toggle made Chrome restyle
+  the rows after it (1.9 s of style work per scroll). Scrolling *up* after a
+  long jump still shifts a little in Safari, because rows not yet drawn
+  differ from the average. Only scroll anchoring or exact sizes would fix
+  that. Not yet checked on a real iPhone. `check.mjs` and smoke ROW guard
+  this.
+- **Three iPhone motion problems (2026-11-08).**
+  - The bar's pick-lists, Sort included, faded in but snapped shut. Their
+    close relied on a `::details-content` transition, which Safari ignores.
+    `holdDropdownClose` in `js/round2.js` now keeps `[open]` for a 150 ms
+    fade under `.closing`. During the fade `.open` already reads false, and
+    the fading panel takes no taps. The lists inside the phone sheet still
+    close at once.
+  - The Filters sheet now takes 180 ms to open and 140 ms to close. In
+    Chrome at 4× slowdown, the time from tap to fully shown went from 460 to
+    341 ms, and to fully hidden from 406 to 292 ms. **That motion-only change
+    left Safari slow; the slide length was not the cause.** In WebKit (Playwright's
+    WebKit 26, on a Mac with no slowdown), each `showModal()` and `close()` blocks
+    for about 500 ms. The browser makes the whole page inert, so it restyles all
+    116,000 elements in the 2,915 rows. Unlike Chrome, WebKit does not skip
+    rows that `content-visibility` has not drawn. A non-modal `show()` takes
+    about 30 ms. No CSS fix was found. Leon approved the non-modal sheet
+    below, keeping the complete results list.
+  - After a tap, Filters showed a focus ring. iOS never focuses a tapped
+    button, so `showModal()`'s own focus of the heading counted as keyboard
+    focus, and the focus return after closing inherited the ring. Both
+    focus calls now pass `focusVisible`, true only when the last input was a
+    key. The same rule remains with `show()` below.
+  `check.mjs` and smoke PMO guard all three.
+
+- **Non-modal phone Filters sheet (2026-11-08, local `fu-sheet`).** Leon
+  approved replacing the browser's modal machinery to avoid WebKit's inert
+  restyle. `show()` opens the labelled native dialog with `aria-modal="true"`;
+  `app.js` traps Tab/Shift+Tab, redirects stray focus inside, gives inner
+  pick-lists/help the first Escape, then closes the sheet on Escape. Done,
+  Show programmes and a tap on the scrim close it too. Focus goes to the heading
+  on open and Filters on close, keeping the tap/keyboard ring rule. A class
+  on `html` locks background scrolling; sheet and scrim stack above the
+  header, Compare tray and toasts. The scrim keeps the old colour and fade;
+  the 180/140 ms slide, instant reduced motion, print hiding and widening
+  cleanup remain. Setup now uses the same non-modal pattern after closing
+  Filters (see below).
+  - `aria-hidden` on the background was measured, not adopted: on WebKit,
+    applying it to the few body-level ancestors, including the results,
+    took about 440 ms, removing it about 379 ms (116,642 result descendants).
+    `aria-modal`, focus management and the scrim avoid that work. A screen
+    reader that ignores `aria-modal` may still browse the background. Real
+    iPhone Safari and VoiceOver remain unverified; desktop engine automation
+    does not establish their behavior.
+  - WebKit 26 at 390 px, no CPU slowdown, five paired samples on the same
+    machine: median tap-to-fully-open 733 → 234 ms; fully closed 640 → 188 ms.
+    The ~250 ms target is met for repeated opens/closes. First opens remain
+    variable: 305 ms at 390 px and 275 ms at 320 px in the behavior run, with
+    one 540 ms first-open outlier in the paired run. This does not certify
+    L09 performance or a physical iPhone. Chrome at 4× CPU on the same
+    390 px page: median open 326 → 306 ms, closed 275 → 244 ms (five taps).
+  - Checks: `check.mjs` guards non-modal opening, semantics, stacking, Tab
+    cycling, handled Escape, focus return, scroll-lock/scrim cleanup and
+    queued close/reopen. Old assertions for the browser's `::backdrop` were
+    changed to the explicit scrim because non-modal dialogs have no backdrop.
+    Smoke `--sheet-only` runs only NMS at 390×844 and 320×640: touch timing
+    at Chrome 4× CPU, accessibility-tree modal dialog semantics, keyboard
+    cycling, nested Escape, focus rings, wheel/touch scroll blocking, scrim
+    hit tests, widening, reduced motion, printing and Setup handover. All
+    eight focused smoke checks and the source checks pass. Restoring the
+    three original product files made 11 source checks and all eight smoke
+    checks fail; the edited files were then restored byte-for-byte. The full
+    smoke suite was not run on this shared machine.
+
+
+- **Non-modal Setup (2026-11-08, local `fu-onboard`).** Leon approved the
+  same replacement for the first-visit Setup dialog: WebKit's modal inert
+  update stalled its first painted frame on close and delayed a Filters tap.
+  `onboarding.js` now uses `show()` with `aria-modal="true"`, an explicit
+  scrim above the sheet/header/tray/toasts, Tab/Shift+Tab cycling, stray-focus
+  redirection and Escape handling. Scroll locking uses `html.onboarding-open`,
+  with no inert or background `aria-hidden` walk. The old `html:has(.ob[open])`
+  rule is removed too; it overrode the print scroll unlock.
+  - Skip/Escape still discard the draft; Finish applies once and shows the
+    done screen; Escape there keeps the answers. Results/FAQ keep their
+    existing focus destinations. Edit from the phone sheet returns to Filters,
+    since its Edit button is hidden after handover, including during the
+    sheet's closing fade. Every focus move respects tap versus keyboard rings.
+    First-visit and stored-flag rules are unchanged. Setup/scrim open in 180 ms,
+    close in 140 ms, stop intercepting taps as soon as closed, hide for print
+    and are instant with reduced motion. The Filters implementation is unchanged.
+  - The motion/print source checks now target `.ob-scrim`, since `show()` does
+    not create a native `::backdrop`. New source checks cover non-modal opening,
+    semantics, stacking, focus cycling/return, Escape and queued-close cleanup.
+    Smoke `--setup-only` selects the new NMO checks and the existing Setup
+    sections; `--onboarding-only` selects just NMO for the reverted-code check.
+  - Timing: Playwright WebKit 26 (no CPU slowdown) and Chrome 157 at 4×,
+    390×844, three fresh contexts per flow, Setup never pre-dismissed. The
+    initial open happens during boot; the other measurements wait for all
+    2,915 rows, including the new list after Finish. Paint means two animation
+    frames, not transitionend. Open starts at show/showModal; close starts at
+    the closing click. Filters is tapped immediately after Skip or the done
+    screen's Show programmes, with no wait for Setup's fade.
+
+    | Median milliseconds | WebKit before → after | Chrome 4× before → after |
+    | --- | ---: | ---: |
+    | First-visit open → paint | 97 → 88 | 49 → 44 |
+    | Edit open → paint | 549 → 69 | 218 → 118 |
+    | Skip → paint | 653 → 140 | 139 → 32 |
+    | Done: Show programmes → paint | 656 → 72 | 127 → 22 |
+    | Skip → immediate Filters paint | 656 → 140 | 351 → 166 |
+    | Done: Show programmes → immediate Filters paint | 689 → 107 | 316 → 125 |
+
+  - `check.mjs` passes. All six new Chrome NMO smoke checks pass at 390×844
+    and 320×640; restoring the original three product files makes all six
+    fail, including the 120 ms close-frame median bound (130/125 ms before,
+    25/23 ms after). Four new source checks and the two updated motion/print
+    checks fail with the originals too; final files were restored byte-for-byte.
+    WebKit behavior checks at 320, 390 and 1280 px pass Tab/Shift+Tab, Escape,
+    tap focus return without a ring, done-screen Escape, reduced motion and
+    print, with zero page errors.
+  - The complete focused Setup run has 34/38 passes: R2M's FAQ scroll fails
+    at 390 and 1280 px, then the uncleared answers make the following R2B
+    checks fail. A separate before/after Playwright reproduction proves the
+    FAQ miss also exists with the original `bb042fa` product files: after six
+    seconds it is still about 13,000 px below the viewport on phones and
+    20,000 px on desktop. That unrelated bug and its existing assertions are
+    preserved. An independent R2A/R2J/R2B rerun passes all six checks,
+    including persistence at both widths.
+    The full smoke suite was not run. Real iPhone Safari and VoiceOver remain
+    unverified; a reader that ignores aria-modal may still browse the background.
 
 ## Decisions already made, so they are not relitigated
 

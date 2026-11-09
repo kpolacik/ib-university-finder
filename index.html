@@ -259,8 +259,9 @@
 
     <!-- Below 600 px the count line sticks; app.js watches this 1 px mark
          with an IntersectionObserver and adds .is-stuck once it has scrolled
-         away. The full sentence is the only live region; the short twin is
-         aria-hidden. -->
+         away. The stylesheet also uses it as the scroll timeline that hands
+         the logo from the header to the row's tile. The full sentence is the
+         only live region; the short twin is aria-hidden. -->
     <div class="stuck-mark" aria-hidden="true"></div>
     <div class="status">
       <a class="home-tile" href="#top-marker" data-home aria-label="University Finder, all programmes" data-i18n-attr="aria-label:r3_home_label"><span class="mono" aria-hidden="true"><svg viewBox="0 0 36 36"><use href="#i-logo"/></svg></span></a>
@@ -424,10 +425,11 @@
 
 </main>
 
-<!-- The phone filter sheet. showModal() gives the focus trap, Escape, the inert
-     page and ::backdrop as the scrim. Its body and footer stay empty until
-     app.js moves the controls in below 600 px. -->
-<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h">
+<!-- The phone filter sheet. app.js owns the scrim, focus trap and Escape:
+     making the whole results list inert stalls Safari. Its body and footer stay
+     empty until app.js moves the controls in below 600 px. -->
+<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"></div>
+<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">
   <div class="sheet-h">
     <h2 id="sheet-h" tabindex="-1" data-i18n="filters_2">Filters</h2>
     <button type="button" id="sheet-done" class="btn btn-q" aria-label="Close filters" data-i18n-attr="aria-label:r2_close_filters"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
@@ -445,7 +447,8 @@
 <details><summary><span data-i18n="r4_faq_stored">Where is my list saved?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r4_faq_stored_a">Only in this browser on this device. To move it to another device or send it to someone, use Share in My list.</span></div></details>
 <details><summary><span data-i18n="r2_faq_cao">How are Irish CAO points turned into IB points?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_cao_a">Irish courses list last year’s CAO cutoff, not a minimum. UCD is the exception: its courses show the IB minimum UCD publishes. We convert the cutoff with the CAO’s IB table; a cutoff from 601 to 625 assumes the 25 HL Maths bonus points.</span></div></details><details><summary><span data-i18n="r2_faq_unknown">What does “Not published” mean?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_unknown_a">The university does not publish a figure. The programme stays in your results, because unknown never hides a programme.</span></div></details><details><summary><span data-i18n="r2_faq_source">Where does the data come from?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r2_faq_source_a">Requirements, fees and deadlines come from each university’s official page, and Irish points from the CAO. Living costs are the university’s estimate, another university’s in the same city, or a national one, and the details say which. A row a person has checked says “Checked by …”; the rest were gathered automatically and nobody has checked them yet.</span></div></details></div></footer>
 
-<dialog class="ob" id="onboarding" aria-labelledby="ob-title"></dialog>
+<div class="ob-scrim" id="onboarding-scrim" aria-hidden="true"></div>
+<dialog class="ob" id="onboarding" aria-modal="true" aria-labelledby="ob-title"></dialog>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <script type="module" src="js/app.js"></script>
 </body>

@@ -1,6 +1,6 @@
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
-import { wireRound2, syncRound2, showToast, wireCompactHeader } from './round2.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
@@ -71,6 +71,7 @@ const dom = {
   more: document.getElementById('f-more'),
   moreFilters: document.querySelector('.more-filters'),
   sheet: document.getElementById('filter-sheet'),
+  sheetScrim: document.getElementById('sheet-scrim'),
   sheetHeading: document.getElementById('sheet-h'),
   sheetDone: document.getElementById('sheet-done'),
   sheetBody: document.querySelector('.sheet-b'),
@@ -210,6 +211,11 @@ let appliedBar = null;
 // CSS can clear focus (hide the control) before the change callback runs.
 let filterFocus = null;
 let returnFocusOnClose = true;
+// Whether the last input was a key, for the sheet's scripted focus. iOS never
+// focuses a tapped button, so the heading focused on open matched
+// :focus-visible, and the Filters button inherited it on close: a blue ring
+// after a tap (Leon, 2026-11-08). The ring now follows the input.
+let keyboardInput = false;
 let sentinelAbove = false;
 // L09: building and inserting all 1,240 rows took about 400 ms at 4x CPU, and
 // almost all of them are off screen. update() now draws enough rows to fill the
@@ -226,10 +232,22 @@ const CHUNK_ROWS = 5;
 // The smallest height a drawn row can take, used to work out how many rows fill
 // the window. A laid-out row is never under 76 px (measured at 320-2560 px), and
 // a row Chrome has not laid out yet takes its contain-intrinsic-size
-// placeholder (120-260 px). If a CSS change makes rows or those placeholders
+// placeholder (90-240 px). If a CSS change makes rows or those placeholders
 // shorter than 60 px, lower this, or the page can end above the scroll position
 // and jump. tools/check.mjs checks the placeholders against it.
 const MIN_ROW_PX = 60;
+// Safari draws a content-visibility:auto row only once it is already on
+// screen: WebKit's observer for it has no margin, where Chrome's reaches half
+// a screen past the window. On an iPhone each row scrolled in as a blank
+// placeholder, then drew and changed height, and the rows under it jumped
+// ("the rows pop in weirdly", 2026-11-08). While the page scrolls, the rows
+// within NEAR_SCREENS screens of the window get .near, which draws them before
+// they arrive. Found by a binary search once a frame, not an
+// IntersectionObserver: one watching all 2,915 rows cost about 1 s of main
+// thread per 18,000 px of scroll at 4x CPU in Chrome.
+const NEAR_SCREENS = 1.5;
+let nearMarked = [];
+let nearFrame = 0;
 // The rows still to append: { rows, next, frame, timer }. Only one at a time;
 // every rebuild cancels it first.
 let pendingRows = null;
@@ -248,6 +266,8 @@ const PARK_ROWS = 200;
 // (49,901 px came back as 7,553). So the first draw after such a visit draws
 // every row, as before L09. A fresh visit starts at the top and needs no more.
 let firstDraw = true;
+let sheetWarmScheduled = false;
+let sheetSlideTimer;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
@@ -304,6 +324,7 @@ async function start() {
   wireInputs();
   wireRound2(dom);
   wireCompactHeader(dom, { goHome });
+  wireLogoHandover(dom);
   for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
     const fields = [dom.search, dom.points, dom.maths, dom.tuition, dom.budget, dom.living, dom.deadline, dom.myMaths, dom.exam, dom.sort];
     const boxes = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities];
@@ -312,6 +333,7 @@ async function start() {
     }
   });
   dom.results.addEventListener('click', toggleRow);
+  window.addEventListener('scroll', scheduleNear, { passive: true });
   document.getElementById('pane-close').addEventListener('click', () => {
     const id = selectedId; clearSelection(); selectedId = null; drawPane();
     dom.results.querySelector(`[data-id="${id}"] button.open`)?.focus({ preventScroll: true });
@@ -327,7 +349,7 @@ async function start() {
   wideQuery.addEventListener('change', crossWide);
   document.addEventListener('focusin', rememberFocus);
   document.addEventListener('focusout', forgetFocus);
-  motionQuery.addEventListener('change', () => { if (motionQuery.matches) settleSlots(); });
+  motionQuery.addEventListener('change', () => { if (motionQuery.matches) { settleSlots(); resumeSheetRows(); } });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
   window.addEventListener('beforeprint', () => { flushRows(); dropRetiredNow(); printing = true; settleSlots(); syncTray(); });
@@ -362,6 +384,7 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    scheduleSheetWarm();
     setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
       // Compare covers the results, so "Show my programmes" closes it first.
       // The Compare set stays (review of PR 1, 2026-11-07).
@@ -1338,11 +1361,12 @@ function scheduleRows(rows, next) {
 function moreRows(pending) {
   if (pendingRows !== pending) return;
   stopRows(pending);
+  if (sheetSlideTimer !== undefined) return;
   const start = performance.now();
   do appendSlice(pending, CHUNK_ROWS);
   while (pending.next < pending.rows.length && performance.now() - start < SLICE_MS);
   if (pending.next < pending.rows.length) pending.timer = setTimeout(() => moreRows(pending), 0);
-  else pendingRows = null;
+  else { pendingRows = null; scheduleSheetWarm(); }
 }
 
 function appendSlice(pending, count) {
@@ -1426,6 +1450,28 @@ function arrive(items) {
     if (!appliedWide && openIds.has(id)) openRow(item, shownRows.get(id));
     else if (appliedWide && id === selectedId) markSelected(item);
   }
+}
+
+function scheduleNear() {
+  if (!nearFrame) nearFrame = requestAnimationFrame(markNear);
+}
+
+// Rows are in page order, so the first one ending below the margin's top is a
+// binary search; the walk then stops at the first one starting past its end.
+function markNear() {
+  nearFrame = 0;
+  const rows = dom.results.children;
+  const top = -NEAR_SCREENS * window.innerHeight, end = (1 + NEAR_SCREENS) * window.innerHeight;
+  let lo = 0, hi = rows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (rows[mid].getBoundingClientRect().bottom < top) lo = mid + 1; else hi = mid;
+  }
+  const near = [];
+  for (let i = lo; i < rows.length && rows[i].getBoundingClientRect().top <= end; i++) near.push(rows[i]);
+  for (const row of nearMarked) if (!near.includes(row)) row.classList.remove('near');
+  for (const row of near) row.classList.add('near');
+  nearMarked = near;
 }
 
 // animate is only for a direct narrow toggle. Rebuilds and 1200 crossings put
@@ -1850,38 +1896,97 @@ function afterPrint() {
   }
 }
 
-// The phone sheet: a native modal dialog, so the focus trap, Escape, the inert
-// page and the scrim come from the browser.
+// Safari restyles all 116,000 result elements when a modal makes them inert
+// (~500 ms). aria-hidden on their ancestor costs ~440 ms too. aria-modal,
+// a scrim and managed focus avoid both; VoiceOver on a real iPhone still needs QA.
 function wireSheet() {
+  document.addEventListener('keydown', () => { keyboardInput = true; }, true);
+  document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+  // Stop slices at finger-down, before the browser synthesises the click.
+  // A cancelled tap is released by the same bounded fallback as a lost end.
+  dom.more.addEventListener('pointerdown', () => { if (!barQuery.matches) pauseSheetRows(); });
   dom.more.addEventListener('click', openSheet);
   dom.sheetDone.addEventListener('click', () => closeSheet());
   // Filters apply live, so "Show N programmes" only closes the sheet.
   dom.sheetShow.addEventListener('click', () => closeSheet());
-  // A tap on the backdrop reaches the dialog itself, outside its box. A click
-  // made from the keyboard targets the button, never the dialog.
-  dom.sheet.addEventListener('click', (event) => {
-    if (event.target !== dom.sheet) return;
-    const box = dom.sheet.getBoundingClientRect();
-    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeSheet();
+  dom.sheetScrim.addEventListener('click', () => closeSheet());
+  // Bubble phase: round2.js first gives Escape to an inner pick-list/help.
+  document.addEventListener('keydown', (event) => {
+    if (!dom.sheet.open || event.defaultPrevented) return;
+    if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation(); closeSheet();
+    } else if (event.key === 'Tab') {
+      const controls = [...dom.sheet.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')]
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && canShow(node));
+      const first = controls[0] ?? dom.sheetHeading, last = controls.at(-1) ?? dom.sheetHeading;
+      const active = document.activeElement;
+      if (!controls.includes(active) || (event.shiftKey ? active === first : active === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus({ focusVisible: true });
+      }
+    }
   });
-  dom.sheet.addEventListener('close', () => {
-    cancelAnimationFrame(dom.copyStatusFrame);
-    dom.copyStatus.textContent = '';
-    // A close queued before a quick reopen must not undo the reopen.
-    if (dom.sheet.open) return;
-    dom.more.setAttribute('aria-expanded', 'false');
-    // iOS does not focus a tapped button, so the browser's own return can miss.
-    if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus();
-    returnFocusOnClose = true;
+  document.addEventListener('focusin', (event) => {
+    if (dom.sheet.open && !dom.sheet.contains(event.target)) dom.sheetHeading.focus({ preventScroll: true, focusVisible: keyboardInput });
   });
+  dom.sheet.addEventListener('close', finishSheetClose);
+  dom.sheet.addEventListener('transitionend', (event) => {
+    if (event.target === dom.sheet && event.propertyName === 'transform') resumeSheetRows();
+  });
+}
+
+// WebKit's long list layouts compete with either direction of the slide.
+// Leave the pending slice intact until it ends; print/widen can still
+// flush it synchronously. The timer covers a cancelled/missing transition.
+function pauseSheetRows() {
+  if (motionQuery.matches) return;
+  if (pendingRows) stopRows(pendingRows);
+  clearTimeout(sheetSlideTimer);
+  dom.sheet.classList.add('is-sliding');
+  dom.sheetScrim.classList.add('is-sliding');
+  // Allow the 280 ms slide plus its first-frame work at 4x CPU.
+  sheetSlideTimer = setTimeout(resumeSheetRows, 500);
+}
+
+function resumeSheetRows() {
+  if (sheetSlideTimer === undefined) return;
+  clearTimeout(sheetSlideTimer);
+  sheetSlideTimer = undefined;
+  dom.sheet.classList.remove('is-sliding');
+  dom.sheetScrim.classList.remove('is-sliding');
+  if (pendingRows) {
+    const pending = pendingRows;
+    pending.timer = setTimeout(() => moreRows(pending), 0);
+  }
+}
+
+// Prepare the closed layout only after the final slice has painted. Safari
+// need not support requestIdleCallback, and a timer must not add work halfway
+// through the mount. Hidden controls never receive focus or open a dialog.
+function scheduleSheetWarm() {
+  if (sheetWarmScheduled || pendingRows || barQuery.matches) return;
+  sheetWarmScheduled = true;
+  requestAnimationFrame(() => requestAnimationFrame(warmSheet));
+}
+
+function warmSheet() {
+  if (pendingRows || dom.sheet.open || barQuery.matches || isPrinting()) return;
+  dom.sheet.classList.add('is-warm');
 }
 
 function openSheet() {
   if (dom.sheet.open || barQuery.matches) return;
   returnFocusOnClose = true;
-  dom.sheet.showModal();
+  pauseSheetRows();
+  dom.sheet.show();
+  document.documentElement.classList.add('sheet-open');
+  dom.sheetScrim.classList.add('is-open');
   dom.more.setAttribute('aria-expanded', 'true');
-  dom.sheetHeading.focus();
+  // show() has already focused the heading, its first focusable element,
+  // with the browser's own guess at a ring, and focusing a focused element
+  // changes nothing, so it lets go first.
+  if (document.activeElement === dom.sheetHeading) dom.sheetHeading.blur();
+  dom.sheetHeading.focus({ focusVisible: keyboardInput });
 }
 
 // returnFocus false: widening or total failure, where Filters is hidden.
@@ -1889,6 +1994,23 @@ function closeSheet(returnFocus = true) {
   if (!dom.sheet.open) return;
   returnFocusOnClose = returnFocus;
   dom.sheet.close();
+  finishSheetClose();
+}
+
+function finishSheetClose() {
+  // close is queued: it must not undo a reopen or repeat synchronous cleanup.
+  if (dom.sheet.open || !document.documentElement.classList.contains('sheet-open')) return;
+  // Closing used to resume mounting immediately, stalling the downward slide.
+  if (barQuery.matches || motionQuery.matches) resumeSheetRows();
+  else pauseSheetRows();
+  cancelAnimationFrame(dom.copyStatusFrame);
+  dom.copyStatus.textContent = '';
+  document.documentElement.classList.remove('sheet-open');
+  dom.sheetScrim.classList.remove('is-open');
+  dom.more.setAttribute('aria-expanded', 'false');
+  // iOS does not focus a tapped button, so the browser's own return can miss.
+  if (returnFocusOnClose && !barQuery.matches && !dom.form.hidden) dom.more.focus({ preventScroll: true, focusVisible: keyboardInput });
+  returnFocusOnClose = true;
 }
 
 // Phone only: the count line is stuck once the mark above it has scrolled out

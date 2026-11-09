@@ -1,7 +1,13 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
+//   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
+//   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
+//   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
+//   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
+//   node tools/smoke.mjs --onboarding-only # just the non-modal Setup regressions
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
 //   CHROME=/path/to/chrome node tools/smoke.mjs
 //
@@ -53,6 +59,11 @@ const KEEP = args.has('--keep');
 const REQUIRE_CHROME = args.has('--require-chrome');
 const WIDTHS = [[390, 844], [1024, 768], [1280, 900], [1920, 1080]];
 const WATCHDOG_MS = 120_000;
+// "Wait for the motion to end" means motion on the clock. The phone logo
+// handover (2026-11-08) is a CSS animation on the scroll: at the top of a
+// phone page it is "running" and never finishes, so waiting on every
+// animation would hang.
+const clockAnimations = 'document.getAnimations().filter((a)=>a.timeline===document.timeline)';
 
 let step = 'starting';
 let server = null;
@@ -553,17 +564,18 @@ async function interactions(page, at, want) {
   if (phone) {
     // 2026-11-06: list-item rows that content-visibility had never drawn made
     // showModal() stall ~500 ms (4x CPU) before the sheet moved. Rows are
-    // block and still list items to assistive tech; the sheet takes 240 ms up
-    // and 200 ms down, and none at all with reduced motion.
-    await check(at, 'A10', 'rows are display:block list items; the sheet takes 200 ms to close, none with reduced motion', async () => {
+    // block and still list items to assistive tech; the sheet takes 280 ms up
+    // and 220 ms down (150/140 snapped; the slide now has a settling tail), and
+    // none at all with reduced motion.
+    await check(at, 'A10', 'rows are display:block list items; the sheet takes 220 ms to close, none with reduced motion', async () => {
       const row = await page.ev(`getComputedStyle(document.querySelector('#results>li.item')).display`);
       assert(row === 'block', `a result row is display:${row}, expected block`);
       const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>li.item')` });
       const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
       assert(nodes[0]?.role?.value === 'listitem', `a result row's role is ${nodes[0]?.role?.value}, expected listitem`);
-      const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(s, '::backdrop').transitionDuration; })()`;
+      const times = `(() => { const s = document.querySelector('#filter-sheet'); return getComputedStyle(s).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration; })()`;
       const closed = await page.ev(times);
-      assert(closed === '0.2s, 0.2s, 0.2s / 0.16s, 0.2s, 0.2s', `closed sheet transitions ${closed}`);
+      assert(closed === '0.22s, 0.22s, 0.22s / 0.22s, 0.22s', `closed sheet transitions ${closed}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
         const still = await page.ev(times);
@@ -580,16 +592,15 @@ async function interactions(page, at, want) {
         if (!document.querySelector('.sheet-b').contains(document.querySelector('#dd-countries'))) return { why: 'Country list is not in the sheet' };
         return ${visible('#filter-sheet')};
       })()`, 5000, 'the open sheet');
-      const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
-      assert(opening === '0.24s, 0.24s, 0.24s / 0.2s, 0.24s, 0.24s', `open sheet transitions ${opening}`);
+      const opening = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
+      assert(opening === '0.28s, 0.28s / 0.28s, 0.28s', `open sheet transitions ${opening}`);
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       try {
-        const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#filter-sheet'), '::backdrop').transitionDuration`);
+        const still = await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).transitionDuration + ' / ' + getComputedStyle(document.querySelector('#sheet-scrim')).transitionDuration`);
         assert(still === '0s / 0s', `reduced motion: open sheet transitions ${still}, expected none`);
       } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
     });
-    // A sheet that opened but cannot be seen still makes the page behind it
-    // inert, which would fail every later check for the same reason.
+    // An unseen open sheet still traps focus and locks scrolling behind it.
     if (!sheetOpen) await page.ev(`document.querySelector('#filter-sheet')?.close()`).catch(() => {});
   }
 
@@ -930,6 +941,7 @@ async function runRound2(base) {
         await page.ev(`document.querySelector('#f-clear').click()`);
         assert(await page.ev(`!localStorage.getItem('ibuf.filters.v1') && localStorage.getItem('ibuf.onboarding.v1')==='completed'`),'Clear all removed onboarding state or retained filters');
       });
+      if (args.has('--setup-only')) { assert(!page.errors.length, JSON.stringify(page.errors)); continue; }
       await check(width,'R2C','help, inner Escape, focus return, custom zero budget and no overflow',async()=>{
         if(width<600){
           await page.click(`document.querySelector('#f-more')`,'phone Filters');
@@ -983,7 +995,7 @@ async function runRound2(base) {
         assert(await page.ev(content),'Budget row closes without its height motion');
         await page.waitFor(`({ok:getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height==='0px',why:'Budget row height '+getComputedStyle(document.querySelector('#dd-budget'),'::details-content').height})`,3000,'the Budget row closed');
         await page.ev(`document.querySelector('#dd-budget summary').click()`);
-        await page.waitFor(`({ok:document.getAnimations().length===0,why:'still moving'})`,3000,'re-toggled Budget');
+        await page.waitFor(`({ok:${clockAnimations}.length===0,why:'still moving'})`,3000,'re-toggled Budget');
         assert(await page.ev(`document.querySelector('#dd-budget').open && document.querySelector('#dd-budget summary').getAttribute('aria-expanded')==='true'`),'re-toggled Budget left stale state');
         await page.ev(`document.querySelector('#dd-budget').open=false`);
         await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
@@ -1524,7 +1536,7 @@ async function runBatch2B(base) {
     const el = (id) => `document.querySelector('#${id}')`;
     const shot = async (name) => {
       if (width !== 390 && width !== 1400) return;
-      await page.waitFor(`({ok:document.getAnimations().every(a=>a.playState==='finished'),why:'motion still running'})`,5000,'settled screenshot');
+      await page.waitFor(`({ok:${clockAnimations}.every(a=>a.playState==='finished'),why:'motion still running'})`,5000,'settled screenshot');
       const {data} = await page.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
       await writeFile(`${shots}/${width}-${ui}-${name}.png`, Buffer.from(data, 'base64'));
     };
@@ -1671,7 +1683,7 @@ async function runBatch2C(base) {
   const screenshot = async (page, path, selector) => {
     // A slot can still be growing after its buttons exist; capture its settled position.
     await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    await page.ev(`Promise.all(${clockAnimations}.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
     await page.ev(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
     await page.ev(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     assert(await page.ev(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()`), 'capture target outside viewport');
@@ -1784,7 +1796,7 @@ async function runBatch2Followup(base) {
     await page.waitFor(ready, 15000, 'follow-up reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const hits = 'const hits=(a,b)=>!(a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom);';
 
   // Two filters set, so the count badge shows: the widest the button gets.
@@ -1920,7 +1932,7 @@ async function runBatch3A(base) {
   const frames = (page) => page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   const shot = async (page, name) => {
     await frames(page);
-    await page.ev(`Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+    await page.ev(`Promise.all(${clockAnimations}.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
   };
@@ -2237,7 +2249,7 @@ async function runBatch3B(base) {
     await page.ev(`(()=>{const ids=[...document.querySelectorAll('#results>li.item')].slice(0,${n}).map(li=>li.dataset.id);localStorage.setItem('ib-university-finder:shortlist:v1',JSON.stringify(ids));window.__oldPage=true;location.reload()})()`);
     await page.waitFor(ready, 15000, 'B3B seeded reload');
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
 
   // B1 (Leon, Q2): the phone main view had a half-empty My list box above the
   // cards. Below the status row the list comes first now.
@@ -2415,7 +2427,7 @@ async function runBatch3C(base) {
   const shots = '/tmp/ib-batch3-c';
   await mkdir(shots, { recursive: true });
   const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const shoot = async (page, name) => {
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
@@ -2491,6 +2503,7 @@ async function runBatch3C(base) {
       });
     } finally { await page.close(); }
   }
+  if (args.has('--setup-only')) return;
   // C2: the logo goes home from anywhere, keeps the filters, and can be reached
   // while scrolled: in the compact header from 600 px, in the stuck count row on
   // phones.
@@ -2615,6 +2628,101 @@ async function runBatch3C(base) {
       assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
     } finally { await page.close(); }
   }
+
+  // Leon, iPhone, 2026-11-08: scrolling down, the stuck row's tile came in a
+  // moment late and pushed the count 50 px right; scrolling back up, the tile
+  // and the header logo showed together. Leon then chose option C from the
+  // handover mockups: the header logo holds its spot, shrinks to 36 px and
+  // lands in the row, whose tile takes over at that pixel; the count glides
+  // 50 px right in the first 16 px of scroll. Without scroll timelines (Safari
+  // before 26, forced here by hiding them from CSS.supports) option B runs
+  // frame by frame instead. Both engines, EN and SK, 390 and 320 px, points
+  // set: a real touch swipe down past the stick point and back up, slow and
+  // fast, with and without reduced motion, and a 1 px-per-frame crawl through
+  // the handover; a recorder samples every frame.
+  // - No frame shows both logos (opacity over 0.01 and on screen).
+  // - The count only moves with the scroll: at most 4 px per px scrolled (the
+  //   glide is 3.6 at its steepest), so at most 4 px a frame in the crawl; with
+  //   reduced motion it never moves. Its visible lines never change, and the
+  //   row keeps one height.
+  // - Once stuck the tile is there, at 36 px inside a 44 px target; natively
+  //   the header logo is at that pixel and that size the frame before.
+  const sample = `const shown=(el)=>{const r=el.getBoundingClientRect();if(r.width<1||r.height<1||r.bottom<=0||r.top>=innerHeight)return 0;let o=1;
+      for(let n=el;n;n=n.parentElement){const cs=getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden')return 0;o*=parseFloat(cs.opacity);}return o;};
+    const text=()=>{for(const sel of ['.status .cshort','.status .cfull']){const n=document.querySelector(sel);if(n.getBoundingClientRect().width>1){const g=document.createRange();g.selectNodeContents(n);const rs=[...g.getClientRects()].filter(r=>r.width>1&&r.height>1);if(rs.length)return {x:Math.min(...rs.map(r=>r.left)),lines:new Set(rs.map(r=>Math.round(r.top))).size};}}return {x:NaN,lines:0};};
+    const box=(el)=>{const r=el.getBoundingClientRect();return {top:r.top,left:r.left,w:r.width,h:r.height};};
+    const logo=document.querySelector('.hd .mark'),logoMono=logo.querySelector('.mono'),tile=document.querySelector('.home-tile'),tileMono=tile.querySelector('.mono'),row=document.querySelector('.status'),mark=document.querySelector('.stuck-mark');
+    const take=()=>{const t=text();return {y:scrollY,past:-mark.getBoundingClientRect().bottom,logo:shown(logo),tile:shown(tile),x:t.x,lines:t.lines,h:row.getBoundingClientRect().height,lm:box(logoMono),tb:box(tile),tm:box(tileMono)};};`;
+  for (const engine of ['scroll timelines', 'frames']) for (const [width, height] of [[390, 844], [320, 640]]) for (const lang of ['en', 'sk']) {
+    watchdog.refresh();
+    const page = await openHome(`?ui=${lang}&country=Ireland&points=36`, width, height);
+    try {
+      await check(width, 'R4B logo handover', `phone (${lang}, ${engine}): swiping down and up, the logo travels into the row, the count only glides, and only one logo ever shows`, async () => {
+        if (engine === 'frames') {
+          await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `{const own=CSS.supports.bind(CSS);CSS.supports=(...a)=>/timeline/.test(a.join(' '))?false:own(...a);}` });
+          await page.ev(`window.__oldPage=true;location.reload()`);
+          await page.waitFor(ready, 15000, 'reloaded without scroll timelines');
+        }
+        assert(await page.ev(`document.documentElement.dataset.handover`) === (engine === 'frames' ? 'frames' : undefined), `${engine}: the wrong engine runs`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        for (const reduced of [false, true]) for (const speed of [0, 400, 2400]) {
+          const tag = `${reduced ? 'reduced motion, ' : ''}${speed ? `${speed} px/s` : '1 px a frame'}`;
+          await page.send('Emulation.setEmulatedMedia', { features: reduced ? [{ name: 'prefers-reduced-motion', value: 'reduce' }] : [] });
+          await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
+          await settle(page);
+          let frames;
+          if (!speed) {
+            frames = await page.ev(`(async()=>{${sample}const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const out=[];
+              for(const s of [...Array(91).keys(),...[...Array(90).keys()].reverse()]){scrollTo(0,s);await raf();out.push(take());}return out;})()`);
+          } else {
+            await page.ev(`(()=>{${sample}window.__frames=[];window.__stopFrames=false;const tick=()=>{__frames.push(take());if(!__stopFrames)requestAnimationFrame(tick);};requestAnimationFrame(tick);})()`);
+            const swipe = (yDistance) => page.send('Input.synthesizeScrollGesture', { x: Math.round(width / 2), y: Math.round(height / 2), yDistance, speed, gestureSourceType: 'touch', repeatCount: 0, preventFling: true }, 20000);
+            await swipe(-300);
+            await settle(page);
+            await swipe(400);
+            await settle(page);
+            frames = await page.ev(`window.__stopFrames=true;__frames`);
+          }
+          assert(frames.some((f) => f.past > 60 || (!speed && f.past > 30)) && frames.at(-1).y === 0, `${tag}: the scroll did not go past the stick point and back (${JSON.stringify(frames.map((f) => Math.round(f.y)))})`);
+          // The frames engine paints a frame after the recorder reads, so its
+          // samples may be one scroll step behind: compare with either step.
+          let worst = { over: -Infinity }, heights = new Set(), lines = new Set(), maxStep = 0;
+          for (let i = 1; i < frames.length; i++) {
+            const dx = Math.abs(frames[i].x - frames[i - 1].x), dy = Math.abs(frames[i].y - frames[i - 1].y), dyBefore = i > 1 ? Math.abs(frames[i - 1].y - frames[i - 2].y) : 0;
+            maxStep = Math.max(maxStep, Math.abs(frames[i].past - frames[i - 1].past));
+            const allowed = reduced ? 0.5 : speed ? 4 * Math.max(dy, dyBefore) + 1 : 4;
+            if (!(dx - allowed <= worst.over)) worst = { over: dx - allowed, dx, allowed, at: [frames[i - 1], frames[i]] };
+            heights.add(Math.round(frames[i].h));
+            lines.add(frames[i].lines);
+          }
+          assert(worst.over <= 0, `${tag}: the count jumped ${worst.dx} px sideways in one frame (allowed ${worst.allowed}) ${JSON.stringify(worst.at)}`);
+          assert(heights.size === 1, `${tag}: the row changed height (${[...heights]} px), so the list under it hopped`);
+          assert(lines.size === 1, `${tag}: the count's lines changed (${[...lines]}), so it reflowed`);
+          const both = frames.filter((f) => f.logo > 0.01 && f.tile > 0.01);
+          assert(both.length === 0, `${tag}: both logos showed in ${both.length} frames, e.g. ${JSON.stringify(both[0])}`);
+          // Natively the tile is there from the stick; option B finishes its
+          // fade 12 px later, and its samples can be a step behind.
+          const lateFrom = engine === 'frames' ? 12 + (speed ? maxStep : 0) + 1 : 1;
+          const late = frames.filter((f) => f.past >= lateFrom && f.tile < 0.99);
+          assert(late.length === 0, `${tag}: the tile was missing while stuck, e.g. ${JSON.stringify(late[0])}`);
+          const docked = frames.filter((f) => f.past >= lateFrom).map((f) => [f.tb.w, f.tb.h, f.tm.w, f.tm.h]).filter(([w, h, mw, mh]) => w < 44 || h < 44 || Math.abs(mw - 36) > 0.5 || Math.abs(mh - 36) > 0.5);
+          assert(docked.length === 0, `${tag}: the docked tile is not 36 px inside a 44 px target: ${JSON.stringify(docked[0])}`);
+          if (reduced) assert(frames.every((f) => [0, 1].includes(f.tile) && [0, 1].includes(f.logo)), `${tag}: reduced motion faded instead of cutting`);
+          if (engine !== 'frames' && !reduced) {
+            const landing = frames.filter((f) => f.past > -3 && f.past < 0 && f.logo > 0.01);
+            const stuck = frames.find((f) => f.past >= 1);
+            assert(!stuck || landing.every((f) => Math.abs(f.lm.top - stuck.tm.top) <= 1.5 && Math.abs(f.lm.left - stuck.tm.left) <= 1 && Math.abs(f.lm.w - 36) <= 1), `${tag}: the header logo did not land on the tile: ${JSON.stringify([landing[0], stuck?.tm])}`);
+            // Held at its 6 px spot, drifting at most down to where the row's tile sits.
+            const glued = frames.filter((f) => f.past < -30 && f.logo > 0.01), off = (f) => f.lm.top < 5.5 || f.lm.top > stuck.tm.top - 4 + 0.5;
+            assert(glued.every((f) => !off(f)), `${tag}: the header logo did not hold its spot while the header left: ${JSON.stringify(glued.find(off))}`);
+          }
+        }
+        await page.send('Emulation.setEmulatedMedia', { features: [] });
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
 }
 
 // --- Alignment fixes: list, detail, Compare ---------------------------------------
@@ -2638,7 +2746,7 @@ async function runAlignListCompare(base) {
     await page.waitFor(ready, 15000, 'alignment reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -2994,7 +3102,7 @@ async function runPhoneMyListCompare(base) {
     await page.waitFor(ready, 15000, 'phone reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await page.ev(`scrollTo({top:0,behavior:'instant'})`);
     await settle(page);
@@ -3182,7 +3290,7 @@ async function runPrintFixes(base) {
         else await page.click(`document.querySelector('#f-more')`, 'Filters');
         await page.waitFor(`({ok:document.querySelector('${dialog}').open,why:'dialog closed'})`, 5000, 'dialog open');
         const m = await printed(page, `dialog-${which}-${width}-${ui}`, `(()=>{const d=document.querySelector('${dialog}'),row=document.querySelector('#results>.item .row');
-          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:getComputedStyle(d,'::backdrop').display,
+          return {open:d.open,display:getComputedStyle(d).display,rects:d.getClientRects().length,scrim:getComputedStyle(document.querySelector(d.id==='filter-sheet'?'#sheet-scrim':'#onboarding-scrim')).display,
             row:row.getBoundingClientRect().height,overflow:getComputedStyle(document.documentElement).overflow,
             head:${head},content:document.querySelector('#results').getBoundingClientRect().top+scrollY}})()`);
         assert(m.open && m.display === 'none' && m.rects === 0 && m.scrim === 'none' && m.row > 0 && m.overflow === 'visible', JSON.stringify(m));
@@ -3232,7 +3340,7 @@ async function runCompareHeaderR2(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -3353,7 +3461,7 @@ async function runSetupCompareReview(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const { readSheets } = await import('../js/data.js');
   const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
     await readFile(join(root, 'data/programmes.csv'), 'utf8'), new Date()).programmes;
@@ -3398,6 +3506,8 @@ async function runSetupCompareReview(base) {
     await page.waitFor(`({ok:document.querySelector('#compare').hidden&&!document.querySelector('.split').hidden&&document.activeElement.getAttribute('aria-labelledby')==='results-h'&&document.querySelector('#header-compare-count').textContent==='1',
       why:JSON.stringify({compare:!document.querySelector('#compare').hidden,focus:document.activeElement.tagName+'#'+document.activeElement.id,n:document.querySelector('#header-compare-count').textContent})})`, 5000, 'the results, Compare closed');
   });
+
+  if (args.has('--setup-only')) return;
 
   await run('590-600/en', 'PR1 compare arrow focus', 'a focused "Next programme" arrow hands focus to the comparison when widening hides it', await open(590, 900, { compare: ids }), async (page) => {
     await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
@@ -3536,7 +3646,7 @@ async function runAlignChromeSetup(base) {
   await mkdir(shots, { recursive: true });
   const { UI } = await import('../js/i18n.js');
   const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.map(a=>a.finished.catch(()=>{}))))`);
   const shoot = async (page, name) => {
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(`${shots}/${name}.png`, Buffer.from(data, 'base64'));
@@ -3563,6 +3673,7 @@ async function runAlignChromeSetup(base) {
   // Header: the Search hint is never cut off. The long one shows exactly where
   // it fits whole, in both languages (re-measured after a language switch).
   for (const [width, touch] of [[600, false], [700, false], [850, false], [1024, false], [1280, false], [768, true]]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 800, 'en', { touch });
     try {
       for (const lang of ['en', 'sk', 'en']) {
@@ -3588,6 +3699,7 @@ async function runAlignChromeSetup(base) {
   // Phones: one hairline under the header, and the Filters sheet's points field
   // and bottom actions.
   for (const [width, lang] of [[390, 'en'], [320, 'sk'], [320, 'en']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 844, lang);
     try {
       await check(width, 'AL-H2 header hairline', `(${lang}): between the header and the count row only white, no grey stripe`, async () => {
@@ -3626,6 +3738,7 @@ async function runAlignChromeSetup(base) {
   // Focus rings: the wordmark is not touched by the logo's ring; SK/EN keep
   // theirs inside the button, clear of the pill's border.
   for (const width of [1280, 390]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 800, 'en');
     try {
       await check(width, 'AL-H4 focus rings', 'logo ring clear of "Finder"; language ring inside its button', async () => {
@@ -3657,6 +3770,7 @@ async function runAlignChromeSetup(base) {
     const g=box(document.querySelector('.ml-group')),note=document.querySelector('.ml-export-note'),nr=box(note),card=box(document.querySelector('#ml-tools'));
     return {b,group:{left:g.left,bottom:g.bottom,top:g.top},note:{shown:getComputedStyle(note).display!=='none'&&nr.height>0,top:nr.top,left:nr.left},cardRight:card.right-parseFloat(getComputedStyle(document.querySelector('#ml-tools')).paddingRight),sw:document.documentElement.scrollWidth-innerWidth}})()`;
   for (const [width, lang] of [[1280, 'en'], [1280, 'sk'], [1024, 'sk'], [700, 'sk'], [700, 'en'], [600, 'en'], [600, 'sk']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 900, lang, { saves: 3 });
     try {
       await check(width, 'AL-M1 My list tools', `(${lang}): Share, Export, Print and Clear one row of equal buttons, Clear at the right end, labels on one line; the CSV note below`, async () => {
@@ -3682,6 +3796,7 @@ async function runAlignChromeSetup(base) {
   // Phones: the 2 x 2 grid. Every label on one line in both languages; under
   // 360 px no icons; equal 44 px buttons.
   for (const [width, lang] of [[390, 'sk'], [390, 'en'], [320, 'sk'], [320, 'en']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, 844, lang, { saves: 3 });
     try {
       await check(width, 'AL-M3 phone tools', `(${lang}): four equal 44 px buttons, each label on one line${width < 360 ? ', no icons' : ''}`, async () => {
@@ -3702,6 +3817,7 @@ async function runAlignChromeSetup(base) {
   }
   // A shared list hides Export, so it hides the note about Export too.
   for (const width of [1280, 390]) {
+    if (args.has('--setup-only')) continue;
     let page = await open(width, width < 600 ? 844 : 900, 'en', { saves: 3 });
     const ids = page.ids;
     await page.close();
@@ -3718,6 +3834,7 @@ async function runAlignChromeSetup(base) {
   // An empty My list: one "Back to all programmes"; the card lines up with the
   // pane on wide screens and the bar keeps its rounded bottom on phones.
   for (const [width, lang] of [[1280, 'en'], [390, 'en'], [390, 'sk']]) {
+    if (args.has('--setup-only')) continue;
     const page = await open(width, width < 600 ? 844 : 900, lang);
     try {
       await check(width, 'AL-M4 empty My list', `(${lang}): one way back; the card lines up${width < 600 ? ', the bar is a whole card' : ' with the pane'}`, async () => {
@@ -3797,6 +3914,8 @@ async function runAlignChromeSetup(base) {
     } finally { await page.close(); }
   }
 
+  if (args.has('--setup-only')) return;
+
   // FAQ: the "+" on the first line's centre; from 600 px the footer heading on
   // the first question's line.
   for (const [width, lang] of [[1280, 'en'], [600, 'sk'], [390, 'en']]) {
@@ -3837,7 +3956,7 @@ async function runCssA11yFixes(base) {
     await page.waitFor(ready, 15000, 'reload');
     return page;
   };
-  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
+  const settle = (page) => page.ev(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>Promise.all(${clockAnimations}.filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>Promise.race([a.finished.catch(()=>{}),new Promise(q=>setTimeout(q,1500))]))))`);
   const shot = async (page, name) => {
     await settle(page);
     const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -3981,6 +4100,639 @@ async function runCssA11yFixes(base) {
   }
 }
 
+// Phone scroll (2026-11-08): on an iPhone "the rows pop in weirdly". Safari
+// draws a content-visibility:auto row only once it is already on screen
+// (WebKit's observer has no margin; Chrome's reaches half a screen further)
+// and has no scroll anchoring, so each row scrolled in blank at its
+// placeholder height, then drew and the rows under it jumped. Chrome hides
+// all of this, so the page here runs under a model of Safari: anchoring off
+// and a row drawn only once it is on screen, unless the site drew it early
+// (.near). Before the fix a blank row was on screen in 51 of 254 frames at
+// 390 px (64 of 252 at 320); after, none. Unslowed, the shift stays small
+// either way (it reached about 1.0 at 4x CPU, measured by hand), so the old
+// placeholder sizes are caught by the placeholder comparison instead.
+async function runRowScroll(base) {
+  watchdog.refresh();
+  const safari = `document.addEventListener('DOMContentLoaded',()=>{
+    const st=document.createElement('style');st.textContent='html,body{overflow-anchor:none}.item:not(.wk-on):not(.near){content-visibility:hidden}';document.head.append(st);
+    const io=new IntersectionObserver((es)=>{for(const e of es)e.target.classList.toggle('wk-on',e.isIntersecting)});
+    new MutationObserver((ms)=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1&&n.classList.contains('item'))io.observe(n)}).observe(document.documentElement,{childList:true,subtree:true});
+    window.__shift=0;new PerformanceObserver((l)=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__shift+=e.value}).observe({type:'layout-shift'});
+  });`;
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    const page = await openPage(`${base}?ui=en`, width, height);
+    try {
+      await check(`${width}/en`, 'ROW scroll', 'flicking down the list under a Safari model shows no blank row and no layout shift; row placeholders are within 15% of the real rows', async () => {
+        await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+        await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed')`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: safari });
+        await page.send('Page.reload');
+        await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n===t,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
+        await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if(it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
+        for (let i = 0; i < 8; i++) {
+          await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
+        }
+        const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
+        // Every row drawn once, to compare its real height with the placeholder.
+        const h = await page.ev(`(()=>{const it=[...document.querySelectorAll('#results .item')];const cis=parseFloat(getComputedStyle(it[0]).containIntrinsicSize.replace('auto',''));it.forEach(e=>e.style.contentVisibility='visible');const hs=it.map(e=>e.getBoundingClientRect().height);it.forEach(e=>e.style.contentVisibility='');return {cis,mean:Math.round(hs.reduce((a,b)=>a+b,0)/hs.length)}})()`);
+        assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
+        assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
+        assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
+        assert(Math.abs(h.mean - h.cis) <= h.mean * 0.15, `placeholder ${h.cis} px, real rows average ${h.mean} px`);
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
+// The country badge on a row's second line had margin-left:6px. When the
+// badge wrapped onto a line of its own (long Masaryk or Charles names on a
+// phone), that margin stayed and the badge started 6 px in from the text
+// above it. The gap now sits at the end of the university · city text, so a
+// wrapped badge is flush and an inline one keeps space + 6 px.
+async function runBadgeFlush(base) {
+  watchdog.refresh();
+  const SAVES = 'ib-university-finder:shortlist:v1';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'page loading'})`;
+  const measure = `(()=>{const out={wrapped:[],inline:[]};
+    for(const sub of document.querySelectorAll('#results>.item .sub')){const cc=sub.querySelector('.cc'),uc=sub.querySelector('.uc');
+      if(!cc||!uc||!cc.getClientRects().length)continue;
+      const lines=[...uc.getClientRects()],c=cc.getBoundingClientRect(),last=lines[lines.length-1],id=sub.closest('.item').dataset.id;
+      if(c.top>=last.bottom-1)out.wrapped.push({id,badge:c.left,text:lines[0].left});
+      else{const r=document.createRange();r.selectNodeContents(cc.previousSibling);
+        out.inline.push({id,gap:+(c.left-last.right).toFixed(2),want:+(r.getBoundingClientRect().width+6).toFixed(2)});}}
+    return out})()`;
+  const verdict = (m) => {
+    const bad = m.wrapped.filter((w) => Math.abs(w.badge - w.text) > 1);
+    const off = m.inline.filter((i) => Math.abs(i.gap - i.want) > 0.5);
+    assert(!bad.length, 'wrapped badge indented: ' + JSON.stringify(bad.slice(0, 3)));
+    assert(!off.length, 'inline gap changed: ' + JSON.stringify(off.slice(0, 3)));
+  };
+  const open = async (query, width, height, saves = []) => {
+    const page = await openPage(base + query, width, height);
+    if (width < 600) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    }
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(SAVES)},${JSON.stringify(JSON.stringify(saves))});window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    return page;
+  };
+  const rowsShown = `({ok:document.querySelectorAll('#results>.item .cc').length>0,why:'no rows'})`;
+  const seen = { wrapped: 0, inline: 0 };
+  const savedIds = [];
+  for (const [width, height] of [[320, 640], [390, 844], [600, 900], [1024, 768], [1440, 900]]) for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, width, height);
+    try {
+      await check(`${width}/${ui}`, 'BADGE flush', 'a wrapped country badge starts at the text\'s left edge; an inline one keeps its gap', async () => {
+        const counts = [];
+        for (const q of ['Masaryk', 'Charles', 'University College Dublin']) {
+          await page.ev(`window.__oldPage=true;location.search='?ui=${ui}&q=${encodeURIComponent(q)}'`);
+          await page.waitFor(ready, 15000, q);
+          await page.waitFor(rowsShown, 5000, q + ' rows');
+          const m = await page.ev(measure);
+          seen.wrapped += m.wrapped.length; seen.inline += m.inline.length;
+          counts.push(`${q}: ${m.wrapped.length} wrapped, ${m.inline.length} inline`);
+          if (width === 320 && ui === 'en' && m.wrapped.length && savedIds.length < 3) savedIds.push(...m.wrapped.slice(0, 3 - savedIds.length).map((w) => w.id));
+          verdict(m);
+        }
+        if (width === 320) assert(counts.every((c) => !c.startsWith('Masaryk: 0 wrapped')), 'no wrapped Masaryk badge at 320, so nothing was tested: ' + counts.join('; '));
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  // The same rows in My list, and on paper (the print rule drops the tint and
+  // padding but keeps the gap).
+  for (const ui of ['en', 'sk']) {
+    const page = await open(`?ui=${ui}`, 320, 640, savedIds);
+    try {
+      await check(`320/${ui}`, 'BADGE flush list+print', 'in My list and in print a wrapped badge is flush and an inline one keeps its gap', async () => {
+        assert(savedIds.length, 'no wrapped rows were found to save');
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${savedIds.length},why:'list not shown'})`, 5000, 'My list');
+        const m = await page.ev(measure);
+        verdict(m);
+        assert(m.wrapped.length, 'no wrapped badge in My list ' + JSON.stringify(m));
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          verdict(await page.ev(measure));
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
+      });
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  await check('all', 'BADGE flush seen', 'the widths above showed both a wrapped and an inline badge', async () => {
+    assert(seen.wrapped > 0 && seen.inline > 0, JSON.stringify(seen));
+  });
+}
+
+// On an iPhone Leon "couldn't scroll down" in Compare (2026-11-08). The
+// table's sideways scroll box was also a vertical one: the phone tap padding of
+// the "Official page" links in the last row reaches 2 px below the table, and
+// overflow-x:auto makes overflow-y auto, so the box could scroll 2 px down.
+// Nearly the whole phone screen is that table, and a vertical swipe that
+// starts over it went to the box (Chrome: the first one moved it 2 px and the
+// page not at all), never the page. Each swipe here starts with the box back
+// at its top, so it is the first swipe on a fresh table every time.
+async function runCompareTouchScroll(base) {
+  watchdog.refresh();
+  const page = await openPage(`${base}?ui=en`, 390, 844);
+  const phone = (width, height) => page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 3, mobile: true,
+    screenOrientation: width > height ? { type: 'landscapePrimary', angle: 90 } : { type: 'portraitPrimary', angle: 0 } });
+  // A real tap (touchstart, touchend, then the click), on the element's
+  // middle, once it has stopped moving (the sheet slides in) and nothing else
+  // lies there.
+  const tap = async (elementJs, what) => {
+    const spot = await page.waitFor(`(() => {
+      const el = ${elementJs};
+      if (!el) return { why: 'not in the page' };
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (!r.width || (hit !== el && !el.contains(hit))) return { why: 'covered by ' + hit?.className };
+      const at = [x, y].map(Math.round).join(), stable = at === window.__tapAt;
+      window.__tapAt = at;
+      return { ok: stable, x, y, why: 'still moving' };
+    })()`, 5000, what);
+    await page.ev('window.__tapAt = undefined');
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: spot.x, y: spot.y }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  // One upward swipe of 300 px from each spot after scrolling the page to the
+  // top. It must move the page itself, by at least 100 px.
+  const swipes = async (label) => {
+    const spots = await page.ev(`(() => {
+      scrollTo({ top: 0, behavior: 'instant' });
+      const box = document.querySelector('#compare .cmp-scroll');
+      box.scrollTop = 0;
+      const mid = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; };
+      const cell = [...box.querySelectorAll('tbody td')].find((td) => { const [, y] = mid(td); return y > 320 && y < 640; });
+      return { table: cell && mid(cell), header: mid(box.querySelector('thead th.cmp-p')), page: [8, 420] };
+    })()`);
+    for (const [where, spot] of Object.entries(spots)) {
+      assert(spot, `${label}: no table cell in the middle of the screen`);
+      await page.ev(`scrollTo({ top: 0, behavior: 'instant' }); document.querySelector('#compare .cmp-scroll').scrollTop = 0`);
+      await page.send('Input.synthesizeScrollGesture', { x: spot[0], y: spot[1], xDistance: 0, yDistance: -300, gestureSourceType: 'touch', speed: 1200 }, 30000);
+      const m = await page.ev(`new Promise((r) => setTimeout(() => r({ y: Math.round(scrollY), box: document.querySelector('#compare .cmp-scroll').scrollTop,
+        html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }), 300))`);
+      assert(m.y >= 100, `${label}, swipe over the ${where}: the page moved ${m.y} px (scroll box ${m.box} px, html ${m.html}, body ${m.body})`);
+    }
+    // The columns still swipe sideways.
+    await page.ev(`scrollTo({ top: 0, behavior: 'instant' })`);
+    await page.send('Input.synthesizeScrollGesture', { x: spots.table[0], y: spots.table[1], xDistance: -200, yDistance: 0, gestureSourceType: 'touch', speed: 1200 }, 30000);
+    const left = await page.ev(`new Promise((r) => setTimeout(() => r(document.querySelector('#compare .cmp-scroll').scrollLeft), 600))`);
+    assert(left > 0, `${label}: a sideways swipe over the table did not move the columns`);
+    await page.ev(`document.querySelector('#compare .cmp-scroll').scrollLeft = 0`);
+  };
+  const openCompare = async () => {
+    await tap(`document.querySelector('#cmp-tray-open')`, "the tray's Open");
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&!!document.querySelector('#compare .cmp-scroll'),why:'compare not open'})`, 5000, 'Compare');
+  };
+  try {
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await phone(390, 844);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`, 15000, 'page');
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    await check('390/touch', 'CMP touch scroll', 'swipes up over the Compare table, its header and the page scroll the page: after the Filters sheet, opened again, after rotating', async () => {
+      for (let i = 0; i < 3; i++) {
+        await tap(`document.querySelectorAll('#results>.item .cmpi')[${i}]`, `row ${i + 1}'s Compare`);
+        await page.waitFor(`({ok:document.querySelectorAll('#results .cmpi[aria-pressed=true]').length===${i + 1},why:'not added'})`, 3000, `row ${i + 1} in Compare`);
+      }
+      // The phone filter form, Filters with it, hides while Compare is open,
+      // so the sheet opens and closes first.
+      await tap(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet closed'})`, 3000, 'the sheet');
+      await tap(`document.querySelector('#sheet-done')`, "the sheet's close");
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#cmp-tray').hidden,why:'sheet open or no tray'})`, 3000, 'the sheet closed');
+      await openCompare();
+      await swipes('after the Filters sheet, opened from the tray');
+      await tap(`document.querySelector('#cmp-close')`, "Compare's Close");
+      await page.waitFor(`({ok:document.querySelector('#compare').hidden,why:'still open'})`, 3000, 'Compare closed');
+      await openCompare();
+      await swipes('closed and opened again');
+      await phone(844, 390);
+      await page.ev('new Promise((r) => requestAnimationFrame(() => setTimeout(r, 200)))');
+      await phone(390, 844);
+      await page.waitFor(`({ok:!document.querySelector('#compare').hidden&&innerWidth===390,why:innerWidth})`, 3000, 'back to portrait');
+      await swipes('after rotating');
+    });
+    assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+  } finally { await page.close(); }
+}
+
+// iPhone (Leon, 2026-11-08). 1. The bar's pick-lists, Sort above the list
+// too, faded in but snapped shut: Safari ignores the ::details-content
+// content-visibility transition that held a closing list in Chrome. Here that
+// transition is switched off to behave like Safari, and the list must still
+// fade for about 150 ms, take no taps while it does, and keep Escape's focus
+// return. 2. The Filters sheet opens in 280 ms and closes in 220 ms. 3. After
+// a tap, Filters showed a focus ring: iOS never focuses a tapped button, so the
+// scripted heading focus matched :focus-visible and the focus return inherited
+// it. Taps here are made to not focus their button, as on iOS.
+async function runPhoneMotion(base) {
+  watchdog.refresh();
+  const ready = `({ok:document.querySelector('#loading')?.hidden,why:'page loading'})`;
+  const page = await openPage(`${base}?ui=en`, 390, 844);
+  try {
+    await page.waitFor(ready, 15000, 'page');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(`({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'reloading'})`, 15000, 'reload');
+    await check(390, 'PMO sort fade', 'Sort fades shut in about 150 ms when Safari would snap it, reads closed at once, takes no taps meanwhile; a tap mid-fade reopens it', async () => {
+      await page.ev(`document.head.insertAdjacentHTML('beforeend','<style id="like-safari">::details-content{transition:none!important}</style>')`);
+      const settled = `(()=>{const d=document.querySelector('#dd-sort');return {ok:d.open&&!d.querySelector('.dropdown-panel').getAnimations().some((a)=>a.playState==='running'),why:'not open'}})()`;
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      // Sampled from inside the page: two frames after the closing tap, and
+      // when the toggle event finally reports it closed.
+      await page.ev(`(()=>{const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');window.__fade=null;
+        s.addEventListener('click',()=>{const t0=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=p.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
+          window.__fade={reads:d.open,attr:d.hasAttribute('open'),shown:p.checkVisibility(),opacity:Number(getComputedStyle(p).opacity),hitPanel:!!hit&&p.contains(hit),aria:s.getAttribute('aria-expanded')};
+          d.addEventListener('toggle',()=>{window.__fade.toggle=Math.round(performance.now()-t0);window.__fade.after=d.open||d.hasAttribute('open')},{once:true});}));},{once:true});})()`);
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort again');
+      const m = await page.waitFor(`(()=>{const f=window.__fade;return {ok:!!f&&f.toggle!==undefined,why:JSON.stringify(f),...f}})()`, 3000, 'the fade to end');
+      assert(m.reads === false && m.attr && m.shown && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
+      assert(m.toggle >= 120 && m.toggle <= 400 && m.after === false, `closed after ${m.toggle} ms: ${JSON.stringify(m)}`);
+      // A second tap during the fade brings the list back, open and settled.
+      await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
+      await page.waitFor(settled, 5000, 'the open Sort list');
+      await page.ev(`document.querySelector('#dd-sort>summary').click();document.querySelector('#dd-sort>summary').click()`);
+      await page.ev('new Promise((r)=>setTimeout(r,400))');
+      const back = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,attr:d.hasAttribute('open'),closing:d.classList.contains('closing'),aria:d.querySelector('summary').getAttribute('aria-expanded'),opacity:getComputedStyle(d.querySelector('.dropdown-panel')).opacity}})()`);
+      assert(back.open && back.attr && !back.closing && back.aria === 'true' && back.opacity === '1', `reopened mid-fade: ${JSON.stringify(back)}`);
+      await page.key('Escape', 'Escape', 27);
+      const esc = await page.ev(`(()=>{const d=document.querySelector('#dd-sort');return {open:d.open,focus:document.activeElement===d.querySelector('summary')}})()`);
+      assert(!esc.open && esc.focus, `Escape: ${JSON.stringify(esc)}`);
+      await page.waitFor(`({ok:!document.querySelector('#dd-sort').hasAttribute('open'),why:'still open'})`, 2000, 'Sort to close');
+      await page.ev(`document.querySelector('#like-safari').remove()`);
+    });
+    await check(390, 'PMO sheet time', 'the Filters sheet slides up in 280 ms and down in 220 ms', async () => {
+      const times = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),c=getComputedStyle(s);const closed=c.transitionDuration;document.querySelector('#f-more').click();const open=getComputedStyle(s).transitionDuration;s.close();return {closed,open}})()`);
+      assert(times.closed.startsWith('0.22s') && times.open.startsWith('0.28s'), JSON.stringify(times));
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().length,why:'closing'})`, 3000, 'the sheet to settle');
+    });
+    await check(390, 'PMO no ring', 'after a tap Filters and the sheet heading show no focus ring; after a key they do', async () => {
+      await page.ev(`for(const id of ['f-more','sheet-done'])document.getElementById(id).addEventListener('mousedown',(e)=>e.preventDefault())`);
+      const ring = (id) => `(()=>{const n=document.getElementById('${id}');return {focused:document.activeElement===n,ring:n.matches(':focus-visible'),outline:getComputedStyle(n).outlineStyle}})()`;
+      // Browsers guess a scripted focus's ring from how focus last moved. On
+      // iOS a tap never moves it, so start from a key-moved focus, as there.
+      await page.ev(`document.querySelector('#f-search').focus()`);
+      await page.key('Tab', 'Tab', 9);
+      await page.ev('document.activeElement?.blur()');
+      await page.click(`document.querySelector('#f-more')`, 'Filters');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet');
+      const heading = await page.ev(ring('sheet-h'));
+      await page.click(`document.querySelector('#sheet-done')`, 'Done');
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const tapped = await page.ev(ring('f-more'));
+      assert(heading.focused && !heading.ring && tapped.focused && !tapped.ring && tapped.outline === 'none', JSON.stringify({ heading, tapped }));
+      await page.key('Enter', 'Enter', 13, [], '\r');
+      await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&document.activeElement?.id==='sheet-h',why:'sheet'})`, 5000, 'the sheet from Enter');
+      const keyHeading = await page.ev(ring('sheet-h'));
+      await page.key('Escape', 'Escape', 27);
+      await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&document.activeElement?.id==='f-more',why:document.activeElement?.id})`, 5000, 'focus back on Filters');
+      const keyed = await page.ev(ring('f-more'));
+      assert(keyHeading.ring && keyed.focused && keyed.ring && keyed.outline !== 'none', JSON.stringify({ keyHeading, keyed }));
+    });
+    assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+  } finally { await page.close(); }
+}
+
+// Cold contexts: no earlier open may warm the sheet for this regression.
+async function runColdSheet(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    await check(width, 'cold sheet', 'cold and early touch: first frame below 150 ms at Chrome 4x; warming has no focus or state effects', async () => {
+      const times = [];
+      for (let trial = 0; trial < 4; trial++) {
+        watchdog.refresh();
+        const page = await openPage('about:blank', width, height);
+        try {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+          await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+          await page.send('Network.enable');
+          await page.send('Network.setCacheDisabled', { cacheDisabled: true });
+          await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+            localStorage.setItem('ibuf.onboarding.v1','dismissed');
+            window.__cold={focus:[],start:0,end:0,frame:0,paint:0};
+            const mo=new MutationObserver(()=>{if(document.querySelector('#results>.item')){mo.disconnect();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__cold.paint=performance.now()))}});mo.observe(document,{childList:true,subtree:true});
+            document.addEventListener('click',e=>{if(e.target.closest('#f-more'))requestAnimationFrame(()=>requestAnimationFrame(()=>window.__cold.frame=performance.now()))},true);
+            document.addEventListener('focusin',e=>window.__cold.focus.push(e.target.id),true);
+            document.addEventListener('pointerdown',e=>{if(e.target.closest('#f-more'))window.__cold.start=performance.now()},true);
+            document.addEventListener('transitionend',e=>{if(e.target.id==='filter-sheet'&&e.propertyName==='transform')window.__cold.end=performance.now()},true);
+          ` });
+          await page.send('Page.navigate', { url: base });
+          if (trial === 0) {
+            await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'cold catalogue');
+            await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          } else {
+            await page.waitFor(`({ok:window.__cold.paint>0,why:'first rows not painted'})`, 15000, 'first rows');
+            await page.ev(`new Promise(r=>setTimeout(r,Math.max(0,window.__cold.paint+${[0,500,1000,2000][trial]}-performance.now())))`);
+          }
+          const before = await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');return {warm:s.classList.contains('is-warm'),hidden:getComputedStyle(s).visibility==='hidden',open:s.open,focus:window.__cold.focus,locked:document.documentElement.classList.contains('sheet-open'),scrim:getComputedStyle(document.querySelector('#sheet-scrim')).display,url:location.href,saved:localStorage.getItem('ibuf.filters.v1'),expanded:document.querySelector('#f-more').getAttribute('aria-expanded')}})()`);
+          const { x, y } = await page.ev(`(()=>{const b=document.querySelector('#f-more'),r=b.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;if(!b.contains(document.elementFromPoint(x,y)))throw Error('Filters covered');return {x,y}})()`);
+          await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+          await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await page.waitFor('({ok:window.__cold.end>window.__cold.start&&window.__cold.frame>window.__cold.start,why:"first slide not finished"})', 5000, 'first slide');
+          const ms = await page.ev('Math.max(window.__cold.end,window.__cold.frame)-window.__cold.start'); times.push(ms);
+          const frame = await page.ev('window.__cold.frame-window.__cold.start');
+          console.log(`MEASURE cold sheet ${width} trial ${trial + 1}: first frame ${Math.round(frame)} ms, full ${Math.round(ms)} ms`);
+          assert(frame < 150, `first frame ${Math.round(frame)} ms (limit 150 ms at 4x)`);
+          // Only the intentional 130 ms duration increase extends this total budget.
+          assert(ms < 430, `first open ${Math.round(ms)} ms (limit 430 ms at 4x)`);
+          assert((trial > 0 || (before.warm && before.hidden)) && !before.open && !before.locked && before.scrim === 'none' && before.focus.length === 0
+            && before.expanded === 'false' && before.url === base && before.saved === null, `prewarm side effects: ${JSON.stringify(before)}`);
+          assert(await page.ev(`document.querySelector('#filter-sheet').open&&document.activeElement.id==='sheet-h'&&getComputedStyle(document.querySelector('#filter-sheet')).visibility==='visible'`), 'first open did not show/focus the sheet');
+        } finally { await page.close(); }
+      }
+      console.log(`MEASURE cold sheet ${width} first taps ms ${JSON.stringify(times.map(Math.round))}`);
+    });
+  }
+}
+
+// Flex must retain row/slot geometry, keyboard scroll margins, wide details,
+// list semantics and print flow. The Safari-model flick check below guards
+// .near and the measured placeholder heights as well.
+async function runSheetListLayout(base, want) {
+  for (const width of [320, 390, 700, 1300]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total},why:'mounting'})`, 20000, 'list mount');
+      await check(width, 'sheet flex list', 'expanded rows, pane, keyboard targets, list semantics and print keep their geometry', async () => {
+        assert(await page.ev(`getComputedStyle(document.querySelector('#results')).display==='flex'&&getComputedStyle(document.querySelector('#results>.item')).display==='block'`), 'list/row display');
+        const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#results>.item')` });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+        assert(nodes[0]?.role?.value === 'listitem', 'row lost list semantics (A10)');
+        await page.click(`document.querySelector('#results>.item button.open')`, 'first row');
+        if (width < 1200) {
+          await page.waitFor(`({ok:(()=>{const s=document.querySelector('#results>.item .expand[data-state=open]');return s&&!s.getAnimations().some(a=>a.playState==='running')&&s.getBoundingClientRect().height>100})(),why:'slot opening'})`, 3000, 'expanded row');
+          assert(await page.ev(`(()=>{const a=document.querySelector('#results>.item'),b=a.nextElementSibling,s=a.querySelector('.expand');return s.getBoundingClientRect().height>100&&b.getBoundingClientRect().top>=s.getBoundingClientRect().bottom-1&&a.getBoundingClientRect().bottom>=s.getBoundingClientRect().bottom-1})()`), 'expanded row overlaps the next row');
+        } else {
+          assert(await page.ev(`(()=>{const p=document.querySelector('#pane'),r=p.getBoundingClientRect();return !!p.querySelector('.d-title')&&r.width>200&&r.right<=innerWidth})()`), 'wide pane clipped/missing');
+        }
+        await page.ev(`document.querySelector('.skip-link').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        // Headings can still be below their sticky inset in normal flow.
+        // A07 reserves their stuck height, not an extra gap below that flow.
+        assert(await page.ev(`(()=>{const r=document.querySelector('#results').getBoundingClientRect(),edge=Math.max(0,...[...document.querySelectorAll('.hd,.cols,.status')].filter(e=>getComputedStyle(e).position==='sticky'&&e.getClientRects().length).map(e=>{const r=e.getBoundingClientRect();return Math.min(r.top,parseFloat(getComputedStyle(e).top)||0)+r.height}));return location.hash==='#results'&&r.top>=edge+8-1&&r.top<innerHeight})()`), 'skip target behind sticky chrome (A07)');
+        if (width >= 1200) {
+          await page.ev(`document.querySelectorAll('#results>.item')[20].querySelector('button.open').focus({preventScroll:true})`);
+          await page.key('ArrowDown', 'ArrowDown', 40);
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+          assert(await page.ev(`(()=>{const row=document.activeElement.closest('.item'),r=row.getBoundingClientRect(),m=parseFloat(getComputedStyle(row).scrollMarginTop);return row===document.querySelectorAll('#results>.item')[21]&&r.top>=m-1&&r.top<innerHeight})()`), 'ArrowDown target behind sticky chrome (A07)');
+        }
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`(()=>{const list=document.querySelector('#results'),rows=[...list.children];return getComputedStyle(list).display==='block'&&rows.length===${want.total}&&rows.every(r=>getComputedStyle(r).contentVisibility==='visible')&&getComputedStyle(document.querySelector('#pane')).display==='none'})()`), 'print lost rows or kept containment/pane');
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+      });
+    } finally { await page.close(); }
+  }
+  await runRowScroll(base);
+  await runPrintFixes(base);
+}
+
+// rAF records only clocks, not per-frame layout reads. Early close must not
+// restart row mounting under the slide (the old path missed 4–8 frames).
+async function runSheetPacing(base, want) {
+  for (const width of [390, 320]) for (const when of ['settled', 'early']) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await check(width, 'sheet pacing', `${when} touch open/close stays within two missed frames at Chrome 4x`, async () => {
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 3, mobile: true });
+        await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+          localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__pacing={motions:[]};
+          const first=()=>{if(document.querySelector('#results>.item'))requestAnimationFrame(()=>requestAnimationFrame(()=>__pacing.paint=performance.now()));else requestAnimationFrame(first)};requestAnimationFrame(first);
+          document.addEventListener('pointerdown',e=>{if(e.target.closest('#f-more,#sheet-done'))__pacing.motions.push({tap:performance.now(),frames:[]})},true);
+          document.addEventListener('click',e=>{if(!e.target.closest('#f-more,#sheet-done'))return;const c=__pacing.motions.at(-1);const tick=()=>{c.frames.push(performance.now());if(!c.end)requestAnimationFrame(tick)};requestAnimationFrame(tick)},true);
+          document.addEventListener('transitionend',e=>{if(e.target.id==='filter-sheet'&&e.propertyName==='transform')__pacing.motions.at(-1).end=performance.now()},true);
+        ` });
+        await page.send('Page.navigate', { url: base + '?ui=en' });
+        if (when === 'settled') {
+          await page.waitFor(`({ok:document.querySelectorAll('#results>.item').length===${want.total}&&document.querySelector('#filter-sheet').classList.contains('is-warm'),why:'mounting'})`, 20000, 'warm sheet');
+          await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        } else {
+          await page.waitFor(`({ok:window.__pacing?.paint>0,why:'first paint'})`, 15000, 'first rows');
+          await page.ev('new Promise(r=>setTimeout(r,Math.max(0,__pacing.paint+500-performance.now())))');
+        }
+        assert(await page.ev(`getComputedStyle(document.querySelector('#filter-sheet')).contain==='layout paint'`), 'sheet paint is not contained');
+        for (const [id, duration] of [['f-more', '0.28s'], ['sheet-done', '0.22s']]) {
+          const spot = await page.ev(`(()=>{const e=document.getElementById('${id}'),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!e.contains(document.elementFromPoint(x,y)))throw Error('covered ${id}');return {x,y}})()`);
+          await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [spot] });
+          await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          const style = await page.ev(`(()=>{const s=getComputedStyle(document.querySelector('#filter-sheet')),b=getComputedStyle(document.querySelector('#sheet-scrim'));return {slide:s.transitionProperty,fade:b.transitionProperty,duration:s.transitionDuration,ease:s.transitionTimingFunction,promoted:s.willChange==='transform'&&b.willChange==='opacity'}})()`);
+          assert(style.promoted && style.slide === (id === 'f-more' ? 'transform, display' : 'transform, display, visibility') && style.fade === 'opacity, display'
+            && style.duration.split(', ')[0] === duration && style.ease.startsWith('cubic-bezier(0.32, 0.72, 0, 1)'), JSON.stringify(style));
+          await page.waitFor(`({ok:!!window.__pacing.motions.at(-1)?.end,why:'slide pending'})`, 5000, 'slide end');
+          const m = await page.ev(`(()=>{const c=__pacing.motions.at(-1),g=c.frames.slice(1).map((v,i)=>v-c.frames[i]);return {frames:c.frames.length,long:g.filter(v=>v>25),longest:Math.max(...g),dropped:g.reduce((n,v)=>n+Math.max(0,Math.round(v/(1000/60))-1),0),first:c.frames[1]-c.tap,full:c.end-c.tap}})()`);
+          console.log(`MEASURE sheet pacing ${width} ${when} ${id==='f-more'?'open':'close'} ${JSON.stringify(m)}`);
+          assert(m.frames >= 6 && m.longest < 50 && m.dropped <= 2, `slide skipped frames: ${JSON.stringify(m)}`);
+          assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).willChange==='auto')`), 'layer promotion leaked after the slide');
+        }
+        assert(!page.errors.length && !page.exceptions.length, 'browser errors during slide');
+      });
+    } finally { await page.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await page.close(); }
+  }
+}
+
+// --sheet-only runs this bounded regression without the rest of the catalogue
+// suite. Native touch events and in-page clocks include the work before paint.
+async function runNonModalSheet(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    const page = await openPage(base, width, height);
+    try {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelectorAll('#results>.item').length===${want.total},why:'catalogue loading'})`, 20000, 'all rows');
+      await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const tap = async (selector) => {
+        const { x, y } = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const settled = (open) => `(()=>{const s=document.querySelector('#filter-sheet'),b=document.querySelector('#sheet-scrim');return {ok:s.open===${open}&&![...s.getAnimations(),...b.getAnimations()].some(a=>a.playState==='running')&&getComputedStyle(b).display==='${open ? 'block' : 'none'}',why:'sheet moving'}})()`;
+      // Each check starts closed even if the preceding regression failed.
+      const resetSheet = async () => {
+        await page.ev(`document.querySelector('#filter-sheet').close()`);
+        await page.waitFor(`(()=>{const s=document.querySelector('#filter-sheet');return {ok:!s.open&&!s.getAnimations().some(a=>a.playState==='running'),why:'closing'}})()`, 5000, 'sheet cleanup');
+      };
+      await check(width, 'NMS timing', 'touch opens/closes the non-modal sheet with its scrim at 4x CPU', async () => {
+        await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');window.__sheetTimes={};for(const id of ['f-more','sheet-done']){const e=document.getElementById(id);e.addEventListener('pointerdown',()=>{window.__sheetTimes={start:performance.now()}});s.addEventListener('transitionend',e=>{if(e.target===s&&e.propertyName==='transform')window.__sheetTimes.end=performance.now()})}})()`);
+        const times = { open: [], close: [] };
+        for (let i = 0; i < 3; i++) {
+          for (const [selector, kind, open] of [['#f-more', 'open', true], ['#sheet-done', 'close', false]]) {
+            await tap(selector);
+            await page.waitFor(`({ok:!!window.__sheetTimes.end,why:'no transform end'})`, 5000, 'transition end');
+            await page.waitFor(settled(open), 5000, 'settled sheet and scrim');
+            times[kind].push(await page.ev('Math.round(window.__sheetTimes.end-window.__sheetTimes.start)'));
+            assert(await page.ev(`!document.querySelector('#filter-sheet').matches(':modal')`), 'sheet entered the modal top layer');
+          }
+        }
+        // Chrome 4x gets a scheduling allowance; WebKit's ~250 ms target is
+        // measured separately on its own engine, with no CPU emulation.
+        assert([...times.open, ...times.close].every(ms => ms < 500), JSON.stringify(times));
+        console.log(`MEASURE ${width} Chrome 4x tap-to-settled ms ${JSON.stringify(times)}`);
+      });
+      await resetSheet();
+      await check(width, 'NMS focus', 'Tab wraps inside, nested Escape closes only its panel, then Escape returns focus with a ring', async () => {
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
+        assert(await page.ev(`document.activeElement.id==='sheet-h'&&!document.activeElement.matches(':focus-visible')&&document.querySelector('#filter-sheet').getAttribute('aria-modal')==='true'`), 'tap focus/ARIA');
+        const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('#filter-sheet')` });
+        const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
+        assert(nodes[0]?.role?.value === 'dialog' && nodes[0]?.properties?.some(p => p.name === 'modal' && p.value.value === true), 'accessibility tree lost modal dialog semantics');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.id==='sheet-done'`), 'heading Tab missed first control');
+        await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        assert(await page.ev(`document.activeElement.id==='sheet-show'`), 'Shift+Tab escaped first control');
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.activeElement.id==='sheet-done'`), 'Tab escaped last control');
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        assert(await page.ev(`document.activeElement.id==='sheet-h'`), 'background took focus');
+        await page.click(`document.querySelector('#dd-countries>summary')`, 'Country');
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`document.querySelector('#filter-sheet').open&&!document.querySelector('#dd-countries').open`), 'inner Escape closed sheet');
+        await page.key('Escape', 'Escape', 27); await page.waitFor(settled(false), 5000, 'Escape close');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&document.activeElement.matches(':focus-visible')`), 'keyboard focus return');
+      });
+      await resetSheet();
+      await check(width, 'NMS scroll', 'background stays still, scrim covers tray/toasts, tap close returns focus without a ring, widening cleans up', async () => {
+        await page.ev(`window.scrollTo(0,500)`);
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
+        const before = await page.ev('scrollY');
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: 40, deltaX: 0, deltaY: 450 });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: width / 2, y: 100 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: width / 2, y: 20 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`scrollY===${before}&&getComputedStyle(document.documentElement).overflow==='hidden'&&document.elementFromPoint(10,10).id==='sheet-scrim'`), 'background scrolled or scrim missed');
+        assert(await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),z=e=>+getComputedStyle(e).zIndex;return z(s)>z(document.querySelector('#sheet-scrim'))&&z(document.querySelector('#sheet-scrim'))>Math.max(z(document.querySelector('.hd')),z(document.querySelector('#toasts')),z(document.querySelector('.cmp-tray'))||0)})()`), 'stack below tray/header/toasts');
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 10, y: 10 }] });
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await page.waitFor(settled(false), 5000, 'scrim close');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'&&scrollY===${before}&&!document.documentElement.classList.contains('sheet-open')`), 'tap return/scroll cleanup');
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reopen');
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 800, height, deviceScaleFactor: 1, mobile: true });
+        await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&getComputedStyle(document.querySelector('#sheet-scrim')).display==='none',why:'widening cleanup'})`, 5000, 'wide cleanup');
+      });
+      await resetSheet();
+      await check(width, 'NMS reduced motion', 'sheet and scrim are instant; Edit my answers hands over to Setup; print hides the sheet and scrim', async () => {
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reduced-motion sheet');
+        assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`), 'reduced motion still transitions');
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        assert(await page.ev(`['#filter-sheet','#sheet-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`), 'print scrim/scroll lock');
+        await page.send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.querySelector('#sheet-scrim').classList.contains('is-open'),why:'setup handover'})`, 5000, 'Setup taking over');
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#onboarding').open,why:'setup open'})`, 5000, 'Setup closing');
+      });
+      assert(!page.errors.length, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await page.close(); }
+  }
+}
+
+// WebKit's native Setup close restyled the entire results tree. Keep the
+// first painted frame cheap, and exercise the focus we now own with show().
+async function runNonModalSetup(base, want) {
+  for (const [width, height] of [[390, 844], [320, 640]]) {
+    watchdog.refresh();
+    const page = await openPage(`${base}?ui=en`, width, height);
+    const settled = `({ok:!document.querySelector('#onboarding').getAnimations({subtree:true}).some(a=>a.playState==='running'),why:'Setup moving'})`;
+    const tap = async (selector, allowCovered = false) => {
+      const spot = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!${allowCovered}&&!e.contains(document.elementFromPoint(x,y)))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
+      await page.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[spot] });
+      await page.send('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
+    };
+    const reload = async () => {
+      await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
+      await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#onboarding')?.open&&document.querySelectorAll('#results>.item').length===${want.total},why:'fresh Setup and full list'})`,20000,'fresh Setup with every row');
+      await page.waitFor(settled,5000,'Setup settled');
+    };
+    try {
+      await page.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
+      await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+      await reload();
+      await page.send('Emulation.setCPUThrottlingRate',{rate:4});
+      await check(width,'NMO timing','fresh Setup: Skip/Finish close-to-painted-frame stays cheap and an immediate Filters tap opens the sheet (4x CPU)',async()=>{
+        const times=[], opened=[];
+        for(const action of ['skip','finish','skip']) {
+          await reload();
+          if(action==='finish')for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+          // Click timestamp includes handler work and the next paint. Counting
+          // transitionend alone hid the old inert frame on WebKit.
+          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',()=>{const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
+          await tap(action==='skip'?'#onboarding .skipwrap button':'#onboarding .ob-done-foot .btn-p');
+          // Deliver the immediate tap even if the old exiting backdrop covers it.
+          await tap('#f-more', true);
+          await page.waitFor(`({ok:window.__obFrame!==null,why:'close frame pending'})`,5000,'frame after close');
+          opened.push(await page.ev(`document.querySelector('#filter-sheet').open`));
+          times.push(await page.ev('__obFrame'));
+          await page.key('Escape','Escape',27);
+        }
+        console.log(`MEASURE ${width} Chrome 4x Setup close-to-painted-frame ms ${JSON.stringify(times.map(Math.round))}`);
+        const median=[...times].sort((a,b)=>a-b)[1];
+        assert(median<120,`Setup close median ${Math.round(median)} ms: ${JSON.stringify(times)}`);
+        assert(opened.every(Boolean),`immediate Filters taps blocked: ${JSON.stringify(opened)}`);
+      });
+      await reload();
+      await check(width,'NMO focus','non-modal semantics, Tab/Shift+Tab inside, Escape discards and returns keyboard focus, tap returns without a ring',async()=>{
+        assert(await page.ev(`!document.querySelector('#onboarding').matches(':modal')&&document.querySelector('#onboarding').getAttribute('aria-modal')==='true'&&document.activeElement.id==='ob-title'`),'Setup still native-modal or missing semantics/focus');
+        await page.key('Tab','Tab',9);
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .btn-p')`),'Tab missed first control');
+        await page.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+        await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .skipwrap button')`),'Shift+Tab escaped');
+        for(let i=0;i<4;i++){await page.key('Tab','Tab',9);assert(await page.ev(`document.querySelector('#onboarding').contains(document.activeElement)`),'Tab escaped');}
+        await page.ev(`document.querySelector('#f-search').focus()`);
+        assert(await page.ev(`document.activeElement.id==='ob-title'`),'stray focus escaped');
+        await page.key('Escape','Escape',27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open&&localStorage.getItem('ibuf.onboarding.v1')==='dismissed'&&document.activeElement.id==='f-search'&&document.activeElement.matches(':focus-visible')&&!document.documentElement.classList.contains('onboarding-open')&&!document.querySelector('#onboarding-scrim').classList.contains('is-open')`),'Escape return/cleanup');
+        // Real sheet handover, whose Edit button is hidden after opening Setup.
+        await tap('#f-more');await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations().some(a=>a.playState==='running'),why:'sheet moving'})`,5000,'sheet');
+        await tap('.sheet-edit');await page.waitFor(settled,5000,'Setup handover');
+        assert(await page.ev(`document.querySelector('#onboarding').open&&!document.querySelector('#filter-sheet').open&&!document.documentElement.classList.contains('sheet-open')&&!document.activeElement.matches(':focus-visible')`),'sheet handover/tap ring');
+        await tap('#onboarding .skipwrap button');
+        assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'`),'tap return ring/focus');
+      });
+      await reload();
+      await check(width,'NMO scrim','scrim covers sheet/header/tray/toasts, blocks scrolling and outside taps; reduced motion and print clean up',async()=>{
+        assert(await page.ev(`(()=>{const z=s=>+getComputedStyle(document.querySelector(s)).zIndex;return document.elementFromPoint(4,4).id==='onboarding-scrim'&&z('#onboarding')>z('#onboarding-scrim')&&z('#onboarding-scrim')>Math.max(...['#filter-sheet','.hd','#toasts','.cmp-tray'].map(z))})()`),'Setup stacking');
+        const y=await page.ev('scrollY');
+        await page.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:4,y:4,deltaY:400,deltaX:0});
+        await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:4,y:200}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:4,y:20}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:4,y:4}]});
+        await page.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        assert(await page.ev(`scrollY===${y}&&document.querySelector('#onboarding').open&&getComputedStyle(document.documentElement).overflow==='hidden'`),'background scrolled or outside dismissed');
+        await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+        assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`),'reduced motion');
+        await page.send('Emulation.setEmulatedMedia',{media:'print'});
+        assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`),'print dialog/scrim/scroll: '+JSON.stringify(await page.ev(`({display:['#onboarding','#onboarding-scrim'].map(s=>getComputedStyle(document.querySelector(s)).display),overflow:getComputedStyle(document.documentElement).overflow})`)));
+        await page.send('Emulation.setEmulatedMedia',{media:'',features:[]});await page.key('Escape','Escape',27);
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally {await page.send('Emulation.setCPUThrottlingRate',{rate:1});await page.close();}
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -3998,26 +4750,49 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
-  // A page that never started at any width would only spend another 30 s
-  // failing the same way here.
-  if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
-    await runBatch2A(base);
-    await runBatch2B(base);
-    await runBatch2C(base);
-    await runBatch2Followup(base);
-    await runBatch3A(base);
-    await runBatch3B(base);
-    await runBatch3C(base);
-    await runAlignListCompare(base);
-    await runAlignChromeSetup(base);
-    await runPhoneMyListCompare(base);
-    await runCompareHeaderR2(base);
-    await runPrintFixes(base);
-    await runCssA11yFixes(base);
-    await runSetupCompareReview(base);
-    await runPhoneFixes(base); }
-  else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
+  if (args.has('--sheet-pacing-only')) {
+    await runSheetPacing(base, want);
+  } else if (args.has('--sheet-list-only')) {
+    await runSheetListLayout(base, want);
+  } else if (args.has('--cold-sheet-only')) {
+    await runColdSheet(base, want);
+  } else if (args.has('--setup-only') || args.has('--onboarding-only')) {
+    await runNonModalSetup(base, want);
+    if (args.has('--setup-only')) { await runRound2(base); await runBatch3C(base); await runAlignChromeSetup(base); await runSetupCompareReview(base); }
+  } else if (args.has('--sheet-only')) {
+    await runNonModalSheet(base, want);
+    await runColdSheet(base, want);
+    await runSheetPacing(base, want);
+  } else {
+    for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
+    // A page that never started at any width would only spend another 30 s
+    // failing the same way here.
+    if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+      await runBatch2A(base);
+      await runBatch2B(base);
+      await runBatch2C(base);
+      await runBatch2Followup(base);
+      await runBatch3A(base);
+      await runBatch3B(base);
+      await runBatch3C(base);
+      await runAlignListCompare(base);
+      await runAlignChromeSetup(base);
+      await runPhoneMyListCompare(base);
+      await runCompareHeaderR2(base);
+      await runPrintFixes(base);
+      await runCssA11yFixes(base);
+      await runSetupCompareReview(base);
+      await runPhoneFixes(base);
+      await runPhoneMotion(base);
+      await runNonModalSheet(base, want);
+      await runColdSheet(base, want);
+      await runSheetPacing(base, want);
+      await runNonModalSetup(base, want);
+      await runBadgeFlush(base);
+      await runCompareTouchScroll(base);
+      await runRowScroll(base); }
+    else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
+  }
 
   const failed = results.filter((r) => r.status === 'FAIL').length;
   const skipped = results.filter((r) => r.status === 'SKIP').length;

@@ -110,6 +110,7 @@ export function wireRound2(dom) {
     };
     new ResizeObserver(position).observe(summary);
     window.addEventListener('resize', position);
+    holdDropdownClose(d, () => dom.sheet.contains(d));
     d.addEventListener('toggle', () => {
       summary.setAttribute('aria-expanded', String(d.open));
       position();
@@ -161,11 +162,53 @@ export function wireRound2(dom) {
       event.preventDefault(); dom.search.focus();
     }
     if (event.key !== 'Escape' || document.getElementById('onboarding')?.open) return;
-    const panel = document.querySelector('.dropdown[open],.ml-pop[open]');
+    // A list fading shut keeps [open] for 150 ms; it must not swallow the
+    // next Escape (holdDropdownClose).
+    const panel = document.querySelector('.dropdown[open]:not(.closing),.ml-pop[open]');
     if (panel) {
       event.preventDefault(); event.stopImmediatePropagation(); panel.open = false; panel.querySelector('summary').focus();
     } else if (help) { event.preventDefault(); event.stopImmediatePropagation(); closeHelp(); }
   }, true);
+}
+
+// iPhone (Leon, 2026-11-08): a pick-list in the bar, Sort above the list too,
+// faded in but snapped shut. A closed <details> hides its content at once.
+// Chrome held it for a ::details-content content-visibility transition, but
+// Safari does not transition content-visibility (Playwright's WebKit 26 hides
+// it at once), so the fade never showed there. Closing now keeps [open] for
+// the fade under .closing, while d.open already reads false: every caller
+// (Escape, an outside click, Tab out, one-at-a-time, Sort's pick) sees a
+// closed list at once, and the toggle event fires when the fade ends. Not in
+// the phone sheet, where the lists are inline rows, nor under reduced motion.
+export const DROPDOWN_CLOSE_MS = 150;
+export function holdDropdownClose(d, inSheet) {
+  if (typeof HTMLDetailsElement !== 'function' || !(d instanceof HTMLDetailsElement)) return;
+  const native = Object.getOwnPropertyDescriptor(HTMLDetailsElement.prototype, 'open');
+  let timer = 0;
+  const stop = () => { clearTimeout(timer); timer = 0; d.classList.remove('closing'); };
+  Object.defineProperty(d, 'open', {
+    configurable: true,
+    get() { return !timer && native.get.call(d); },
+    set(value) {
+      value = Boolean(value);
+      if (timer) {
+        if (!value) return;
+        // Reopened mid-fade: [open] never went, so no toggle event would run
+        // the open handlers (one at a time, aria-expanded).
+        stop(); d.dispatchEvent(new Event('toggle')); return;
+      }
+      if (value || !native.get.call(d) || inSheet() || matchMedia('(prefers-reduced-motion: reduce)').matches) { native.set.call(d, value); return; }
+      d.classList.add('closing');
+      d.querySelector('summary').setAttribute('aria-expanded', 'false');
+      timer = setTimeout(() => { stop(); native.set.call(d, false); }, DROPDOWN_CLOSE_MS);
+    },
+  });
+  // A tap or Enter on the button of an open list would close it natively, at once.
+  d.querySelector('summary').addEventListener('click', (event) => {
+    if (!native.get.call(d)) return;
+    event.preventDefault();
+    d.open = !d.open;
+  });
 }
 
 export function syncSlider(slider, value) {
@@ -313,6 +356,74 @@ export function wireCompactHeader(dom, { goHome } = {}) {
   for (const link of [mark, ...document.querySelectorAll('[data-home]')]) link.addEventListener('click', home);
   document.addEventListener('click', (event) => { if (event.target.closest('[data-open-list]')) dom.shortlistOnly.click(); });
   offsets();
+}
+
+// Phones: the header logo hands over to the stuck count row's tile (Leon,
+// 2026-11-08, option C of the handover mockups; the "Phones" comment in the
+// stylesheet has the whole story). Where scroll timelines run, CSS does all
+// the motion; this only measures the two distances its keyframes need, at
+// rest and again whenever the header, a data banner or the row changes size:
+// --logo-travel, the scroll at which the row sticks, and --logo-dock, how much
+// lower the row's tile sits than the header logo. offsetTop ignores
+// transforms, so the moving logo never skews the measurement.
+// Safari before 26 has no scroll timelines. There it runs option B instead,
+// every frame from the same clock (how far the mark above the row has passed
+// the top, d): the logo fades out as the header leaves, then the count slides
+// over and the tile fades in. Opacity and the count's slide only: a logo moved
+// by script lags the native scroll by a frame and wobbles. All three are read
+// from one d, so even a late frame never shows both logos (their ranges do not
+// overlap). With reduced motion the logo and the tile swap in one cut when the
+// row sticks.
+export function wireLogoHandover(dom) {
+  const page = document.body, header = document.querySelector('.hd'), logo = header?.querySelector('.mark');
+  const tile = dom.status?.querySelector('.home-tile'), counts = dom.status ? [...dom.status.querySelectorAll('.count')] : [];
+  if (!logo || !tile || !dom.stuckMark || typeof ResizeObserver !== 'function') return;
+  const phone = matchMedia('(max-width:599.98px)'), reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const docTop = (node) => { let y = 0; for (let n = node; n; n = n.offsetParent) y += n.offsetTop; return y; };
+  const measure = () => {
+    if (!phone.matches || !tile.offsetParent) return;
+    page.style.setProperty('--logo-travel', `${docTop(dom.stuckMark) + dom.stuckMark.offsetHeight}px`);
+    page.style.setProperty('--logo-dock', `${tile.offsetTop - docTop(logo)}px`);
+  };
+  for (const node of [header, dom.banner, dom.status]) if (node) new ResizeObserver(measure).observe(node);
+  measure();
+  const native = typeof CSS !== 'undefined' && CSS.supports?.('timeline-scope: --a') && CSS.supports('animation-timeline: --a');
+  if (native) return;
+
+  document.documentElement.dataset.handover = 'frames';
+  // Smoothstep: at most 1.5 times the average speed, so 3.4 px of slide per px
+  // of scroll; a steeper curve made a slow scroll look like a jump.
+  const ease = (x) => x * x * (3 - 2 * x);
+  const range = (d, from, to) => Math.min(1, Math.max(0, (d - from) / (to - from)));
+  const clear = () => {
+    for (const node of [logo, tile, ...counts]) node.style.removeProperty('opacity'), node.style.removeProperty('visibility'), node.style.removeProperty('transform');
+  };
+  let queued = false;
+  const frame = () => {
+    queued = false;
+    // Compare hides the row: no tile to land in, the logo just scrolls away.
+    if (!phone.matches || !tile.offsetParent) return clear();
+    const d = -dom.stuckMark.getBoundingClientRect().bottom;
+    if (reduce.matches) {
+      // One cut for both: a frame drawn late then still shows only one.
+      clear();
+      logo.style.opacity = d >= 0 ? '0' : '1';
+      tile.style.opacity = d >= 0 ? '1' : '0';
+      tile.style.visibility = d >= 0 ? 'visible' : 'hidden';
+      return;
+    }
+    const out = range(d, -38, -20), slide = ease(range(d, -20, 2)), shown = range(d, -8, 12);
+    logo.style.opacity = String(1 - out);
+    for (const count of counts) count.style.transform = `translateX(${(50 * slide).toFixed(2)}px)`;
+    tile.style.opacity = String(shown);
+    tile.style.visibility = shown > 0 ? 'visible' : 'hidden';
+    tile.style.transform = `scale(${0.85 + 0.15 * shown})`;
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(frame); } };
+  for (const type of ['scroll', 'resize']) addEventListener(type, queue, { passive: true });
+  for (const query of [phone, reduce]) query.addEventListener?.('change', queue);
+  new ResizeObserver(queue).observe(dom.status);
+  frame();
 }
 
 function syncSegments() {
