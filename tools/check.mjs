@@ -53,7 +53,7 @@ class ChromeNode {
   before(node) { this.parent.insertBefore(node, this); }
   after(node) { const next = this.parent.children[this.parent.children.indexOf(this) + 1] ?? null; this.parent.insertBefore(node, next); }
   // A copy without listeners: tag, id, class and attributes, and with
-  // cloneNode(true) the children too (js/faq.js copies the footer FAQ).
+  // cloneNode(true) the children too.
   cloneNode(deep = false) {
     const node = new ChromeNode(this.tagName);
     node.id = this.id; node.className = this.className; node.attributes = { ...this.attributes };
@@ -1164,11 +1164,13 @@ check('compact header keeps its full visible height and offsets; translated-head
 check('round 2 sheet, help, popover origin, FAQ and toast exits match the approved motion', (() => {
   // The sheet's 320 ms became 240 ms up / 200 ms down (Leon, 2026-11-06), then
   // 150/140 reduced latency; 280/220 now preserves a visible settling tail.
-  const valid = (text) => text.includes('max-height:85dvh') && text.includes('transition:transform 280ms') && text.includes('transition:transform 220ms')
+  // 2026-11-09: the 280/220 ms and the curve are tokens shared with the FAQ.
+  const valid = (text) => text.includes('max-height:85dvh') && text.includes('--t-sheet-in:280ms') && text.includes('--t-sheet-out:220ms')
+    && text.includes('transition:transform var(--t-sheet-in) var(--ease-sheet)') && text.includes('transition:transform var(--t-sheet-out) var(--ease-sheet)')
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
-    && text.includes('transition:transform 220ms') && text.includes('animation:toast-out 160ms')
+    && text.includes('transition:transform var(--t-answer) var(--ease-out)') && text.includes('animation:toast-out 160ms')
     && text.includes('@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}');
   return valid(css) && !valid(css.replaceAll('max-height:85dvh', 'max-height:90dvh'))
     && !valid(css.replace('animation:toast-out 160ms', 'animation:none'))
@@ -1178,10 +1180,11 @@ check('header and onboarding controls inherit Plex and tabular figures; UA font 
   const valid = (source) => source.includes(':where(.hd,.ob) :where(button,input,select){font-family:inherit;font-variant-numeric:tabular-nums}');
   return valid(css) && !valid(css.replace('font-family:inherit;font-variant-numeric:tabular-nums', 'font-family:Arial'));
 })());
-check('round 2 moves search to the header and provenance/disclaimer/FAQ to the footer',
+// The FAQ itself left the footer for its panel on 2026-11-09 (Leon); the
+// footer keeps a button to it (checked under "FAQ panel" below).
+check('round 2 moves search to the header and provenance/disclaimer to the footer',
   elementSource(indexHtml, /<header class="hd">/).includes('id="f-search"')
   && elementSource(indexHtml, /<footer class="foot">/).includes('id="source-line"')
-  && elementSource(indexHtml, /<div class="faq" id="faq">/).includes('<details>')
   && !elementSource(indexHtml, /<main class="shell">/).includes(UI.en.r2_footer_p));
 
 const { syncSlider } = await import('../js/round2.js');
@@ -3426,7 +3429,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, onFaqSlide(fn) { context.faqSlide = fn; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -4136,8 +4139,11 @@ const transitions = allCss.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body)
 // surfaces, never shown); every other transition must be one listed here.
 const motionAllowed = {
   '.btn': 'transition:transform 120ms ease-out,background-color 120ms ease-out',
-  '.faq summary>.ic': 'transition:transform 220ms var(--ease-out)',
-  '.faq summary>span[aria-hidden]': 'transition:transform 220ms var(--ease-out)',
+  // The FAQ's "+" turns in step with its answer opening (2026-11-09).
+  '.faq summary>.ic': 'transition:transform var(--t-answer) var(--ease-out)',
+  // Where height:auto can animate, an FAQ answer grows open and fades in.
+  '.faq details::details-content': 'transition:height var(--t-answer) var(--ease-out),content-visibility var(--t-answer) allow-discrete',
+  '.faq .a': 'transition:opacity 200ms var(--ease-out)',
   '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
   // Setup now owns the scrim, since show() has no native ::backdrop.
   'dialog.ob': 'transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete',
@@ -4170,23 +4176,25 @@ const motionAllowed = {
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
   // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
-  '.sheet': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete,visibility 220ms',
-  '.sheet[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  // 2026-11-09: the times and curve became tokens shared with the FAQ panel.
+  '.sheet': 'transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)',
+  '.sheet[open]': 'transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
   // Leon 2026-11-06: the phone Compare tray slides up instead of appearing at once.
   '.cmp-tray': 'transition:transform 280ms var(--ease-out),opacity 200ms var(--ease-out),display 280ms allow-discrete',
-  '.sheet-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
-  '.sheet-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
-  // The FAQ panel behind the header's "?" (Leon, 2026-11-09) moves exactly as the sheet does.
-  '.faqp': 'transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
-  '.faqp[open]': 'transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
-  '.faq-scrim': 'transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete',
-  '.faq-scrim.is-open': 'transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete',
+  '.sheet-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete',
+  '.sheet-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+  // The FAQ panel behind the header's "?" (Leon, 2026-11-09) moves exactly as
+  // the sheet does; visibility waits for the closing slide once it is warm.
+  '.faqp': 'transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)',
+  '.faqp[open]': 'transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+  '.faq-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete',
+  '.faq-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
 };
 // The one exception to "reduced motion stops everything": the FAQ panel and
 // its scrim fade in 120 ms instead of sliding (Leon, 2026-11-09), so the panel
 // does not blink into place. No transform; only here.
 const reducedFade = {
-  '.faqp': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
+  '.faqp': 'transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important',
   '.faq-scrim': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
@@ -4236,8 +4244,9 @@ check('sheet slide contains paint and promotes transform and scrim opacity only 
       && body('.sheet.is-sliding') === 'will-change:transform'
       && body('.sheet-scrim.is-sliding') === 'will-change:opacity'
       && !/will-change/.test(body('.sheet') + body('.sheet-scrim'))
-      && /transition:transform 280ms cubic-bezier\(\.32,\.72,0,1\),display 280ms allow-discrete/.test(body('.sheet[open]'))
-      && /transition:transform 220ms cubic-bezier\(\.32,\.72,0,1\),display 220ms allow-discrete,visibility 220ms/.test(body('.sheet'));
+      && body('.sheet[open]').includes('transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete')
+      && body('.sheet').includes('transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)')
+      && /--ease-sheet:cubic-bezier\(\.32,\.72,0,1\);/.test(source);
   };
   return valid(css) && !valid(css.replace('contain:layout paint;', ''))
     && !valid(css.replace('.sheet.is-sliding{will-change:transform}', '.sheet{will-change:transform}'));
@@ -7719,8 +7728,9 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
   && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
-check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading on the first question\'s line from 600 px',
-  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && /margin-top:12px/.test(ruleAt(cssText, '.foot h2', '(min-width:600px)')));
+// The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
+check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',
+  /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && !ruleAt(cssText, '.foot h2', '(min-width:600px)'));
 
 section("Phone My list and Compare, 2026-11-06");
 // Leon (iPhone 16, 393 x 852): the phone My list box took half the screen,
@@ -8067,10 +8077,14 @@ function faqHarness(test) {
       },
     });
     // The module wires itself when there is a document, as in the browser.
-    const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq });', { document: stubDocument });
+    // Timers and frames only queue: a test runs them when it means to.
+    const timers = [], slides = [];
+    const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq, onFaqSlide });', { document: stubDocument,
+      setTimeout: (fn) => timers.push(fn), clearTimeout() {}, requestAnimationFrame: (fn) => timers.push(fn) });
+    api.onFaqSlide((on) => slides.push(on));
     api.wireFaq(); // a second call changes nothing
     const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
-    return test({ tree, get, api, fire, tasks, hide: (node) => hidden.add(node), panel: get('faq-panel'), opener: get('faq-open'), heading: get('faq-h'),
+    return test({ tree, get, api, fire, tasks, timers, slides, hide: (node) => hidden.add(node), panel: get('faq-panel'), opener: get('faq-open'), heading: get('faq-h'), footer: get('faq-foot'),
       scrim: get('faq-scrim'), html: stubDocument.documentElement, results: tree.querySelector('section[aria-labelledby="results-h"]') });
   } catch (err) { console.log(`        ${err.message}`); return false; } finally {
     Object.assign(stubDocument, saved);
@@ -8080,21 +8094,51 @@ function faqHarness(test) {
 {
   const html = read('index.html'), faqSrc = read('js/faq.js').replace(/\/\/.*$/gm, '');
   const shut = ({ panel, html: root, scrim, opener }) => !panel.open && !root.classList.contains('faq-open') && !scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'false';
-  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and the panel body is empty in index.html (one copy of the text)',
-    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><\/button>\s*<div class="lang"/.test(html)
-      && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html) && /<div class="faqp-b faq"><\/div>/.test(html)
+  // Leon, 2026-11-09: the panel is the FAQ's only home; the footer keeps a button to it.
+  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
+    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="lang"/.test(html)
+      && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html)
       && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
-      && FAQ_KEYS.every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2));
-  equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close'].flatMap((k) => [UI.en[k], UI.sk[k]]),
-    ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky']);
+      && /\.faq-l\{display:none\}/.test(cssText) && /display:inline/.test(ruleAt(cssText, '#faq-open .faq-l', '(min-width:1024px)')));
+  check('FAQ lives only in its panel: twelve questions, each key once in the page, none in the footer; the footer has a "FAQ" button to the panel',
+    (() => {
+      const panelSrc = elementSource(html, /<div class="faqp-b faq">/), footSrc = elementSource(html, /<footer class="foot">/);
+      return (panelSrc.match(/<details>/g) ?? []).length === 12 && !/<details/.test(footSrc) && !/id="faq"/.test(html)
+        && FAQ_KEYS.every((k) => html.split(`data-i18n="${k}"`).length === 2 && html.split(`data-i18n="${k}_a"`).length === 2 && panelSrc.includes(`data-i18n="${k}_a"`))
+        && /<button type="button" class="btn btn-a" id="faq-foot" aria-haspopup="dialog" aria-controls="faq-panel" data-i18n="r6_faq_l">FAQ<\/button>/.test(footSrc)
+        && footSrc.includes('id="source-line"') && footSrc.includes('data-i18n="r2_footer_h"')
+        && !/cloneNode|getElementById\('faq'\)/.test(faqSrc) && !/#faq(?![\w-])/.test(cssText);
+    })());
+  check('FAQ: all twelve questions and answers are written in EN and SK',
+    FAQ_KEYS.every((k) => [k, `${k}_a`].every((key) => UI.en[key]?.trim() && UI.sk[key]?.trim() && UI.sk[key] !== UI.en[key])));
+  equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close', 'r6_faq_l'].flatMap((k) => [UI.en[k], UI.sk[k]]),
+    ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky', 'FAQ', 'Časté otázky']);
   check('FAQ panel opens with show(): no showModal, inert or background aria-hidden (WebKit restyles every row for those)',
     faqSrc.includes('panel.show();') && !/showModal\(|\binert\b|aria-hidden/.test(faqSrc));
-  check('FAQ panel copies every footer question once, closed, with its translation keys; the footer keeps its own',
-    faqHarness(({ get, panel }) => {
-      const foot = get('faq').querySelectorAll('details'), copies = panel.querySelectorAll('details');
-      const keys = (list) => list.map((d) => d.querySelectorAll('[data-i18n]').map((n) => n.getAttribute('data-i18n')).join());
-      return foot.length === 12 && copies.length === 12 && JSON.stringify(keys(copies)) === JSON.stringify(keys(foot))
-        && copies.every((d) => !d.open && d.getAttribute('open') === null && !foot.includes(d)) && get('faq').querySelectorAll('details').length === 12;
+  check('FAQ panel starts with its twelve questions closed, in the approved order; the footer\'s "FAQ" opens it and gets focus back',
+    faqHarness(({ fire, panel, footer, heading, opener, get }) => {
+      const qs = panel.querySelectorAll('details');
+      const order = qs.map((d) => d.querySelector('summary [data-i18n]').getAttribute('data-i18n'));
+      if (qs.length !== 12 || JSON.stringify(order) !== JSON.stringify(FAQ_KEYS) || qs.some((d) => d.open) || get('faq')) return false;
+      fire(footer, 'click');
+      const opened = panel.open && stubDocument.activeElement === heading && opener.getAttribute('aria-expanded') === 'true';
+      fire(heading, 'keydown', { key: 'Escape' });
+      return opened && !panel.open && stubDocument.activeElement === footer;
+    }) === true);
+  check('FAQ panel pauses row mounting while it slides, both ways, and resumes once its transform transition ends (or the fallback timer runs)',
+    faqHarness(({ fire, panel, opener, scrim, slides, timers }) => {
+      fire(opener, 'pointerdown');
+      const early = slides.join() === 'true' && panel.classList.contains('is-sliding') && scrim.classList.contains('is-sliding');
+      fire(opener, 'click');
+      const once = slides.join() === 'true';
+      fire(panel.querySelector('summary'), 'transitionend', { propertyName: 'height' });
+      const notByAnswer = slides.join() === 'true';
+      fire(panel, 'transitionend', { propertyName: 'transform' });
+      const resumed = slides.join() === 'true,false' && !panel.classList.contains('is-sliding');
+      fire(panel.querySelector('.faqp-x'), 'click');
+      const closing = slides.join() === 'true,false,true';
+      while (timers.length) timers.shift()();
+      return early && once && notByAnswer && resumed && closing && slides.join() === 'true,false,true,false' && !scrim.classList.contains('is-sliding');
     }) === true);
   check('FAQ panel: switching language translates the copies, the heading and both buttons\' names',
     faqHarness(({ tree, panel, heading, opener }) => {
@@ -8182,7 +8226,7 @@ check('FAQ "?" on a 600-700 px touch screen: the header tightens its gaps so Sea
   check('FAQ panel CSS: reduced motion fades it in 120 ms with no slide; print hides the panel and scrim',
     /transform:none/.test(ruleAt(cssText, '.faqp[open]', '(prefers-reduced-motion:reduce)'))
       && /@media \(prefers-reduced-motion:reduce\)\{[^@]*@starting-style\{\.faqp\[open\]\{opacity:0;transform:none\}\}/.test(cssText)
-      && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
+      && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
       && /display:none/.test(ruleAt(cssText, 'dialog.faqp[open]', 'print')) && /display:none/.test(ruleAt(cssText, '.faq-scrim.is-open', 'print')));
 }
 
@@ -8191,9 +8235,10 @@ section('FAQ text, twelve questions (Leon, 2026-11-09)');
 // labels must be the labels the page really shows in that language, so a
 // renamed button or badge fails here instead of leaving the FAQ wrong.
 {
-  const html = read('index.html'), footFaq = elementSource(html, /<div class="faq" id="faq">/);
+  // Since 2026-11-09 the questions are in the panel, not the footer.
+  const html = read('index.html'), footFaq = elementSource(html, /<div class="faqp-b faq">/);
   const email = 'ibuniversityfinder@gmail.com';
-  equal('FAQ footer has the twelve approved questions, in order, each with its answer',
+  equal('FAQ panel has the twelve approved questions, in order, each with its answer',
     [...footFaq.matchAll(/<summary><span data-i18n="([^"]+)">/g)].map((m) => m[1]), FAQ_KEYS);
   check('FAQ: every question and answer has nonempty EN and SK text, used once in index.html',
     FAQ_KEYS.flatMap((k) => [k, `${k}_a`]).every((k) => UI.en[k]?.trim() && UI.sk[k]?.trim() && UI.en[k] !== UI.sk[k]

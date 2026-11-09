@@ -1,5 +1,6 @@
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
+import { onFaqSlide } from './faq.js';
 import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
@@ -229,6 +230,8 @@ let windowWidth = 0;
 const rowObserver = new ResizeObserver(() => scheduleWindow());
 let sheetWarmScheduled = false;
 let sheetSlideTimer;
+// True while the FAQ panel slides (js/faq.js): rows wait, as for the sheet.
+let faqSliding = false;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
@@ -278,6 +281,7 @@ async function start() {
   crossBar();
   barQuery.addEventListener('change', crossBar);
   wireSheet();
+  onFaqSlide((on) => { faqSliding = on; if (on) cancelRows(); else scheduleWindow(); });
   wireStuck();
   wireDropdowns();
   applyUrlFields();
@@ -1333,7 +1337,7 @@ function rowAt(offset) {
 }
 
 function scheduleWindow() {
-  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined) {
+  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined && !faqSliding) {
     windowFrame = requestAnimationFrame(() => { windowFrame = 0; renderWindow(); });
   }
 }

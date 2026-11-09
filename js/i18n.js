@@ -630,6 +630,9 @@ export const UI = {
     "r6_faq": "FAQ",
     "r6_faq_h": "Frequently asked questions",
     "r6_faq_close": "Close the FAQ",
+    // Leon, 2026-11-09: the header's "?" also says "FAQ" from 1024 px, and the
+    // footer's button (the footer copy of the FAQ is gone) uses the same word.
+    "r6_faq_l": "FAQ",
     "r7_faq_what": "What is this site, and can I apply through it?",
     "r7_faq_what_a": "A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.",
     "r7_faq_rely": "Can I rely on what it says?",
@@ -1294,6 +1297,7 @@ export const UI = {
     "r6_faq": "Časté otázky",
     "r6_faq_h": "Časté otázky",
     "r6_faq_close": "Zavrieť časté otázky",
+    "r6_faq_l": "Časté otázky",
     "r7_faq_what": "Čo je táto stránka a môžem sa cez ňu prihlásiť?",
     "r7_faq_what_a": "Bezplatný nástroj, ktorý pomáha študentom IB nájsť bakalárske a iné prvé vysokoškolské štúdium (napríklad medicínu) v 11 európskych krajinách podľa IB bodov, predmetov, termínov a nákladov. Prihlásiť sa tu nedá: každý program odkazuje na svoju oficiálnu stránku a uvádza, kde sa podáva prihláška.",
     "r7_faq_rely": "Môžem sa spoľahnúť na to, čo tu je?",

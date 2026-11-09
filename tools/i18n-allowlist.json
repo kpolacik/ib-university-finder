@@ -334,7 +334,8 @@
       "best",
       "ArrowLeft",
       "ArrowRight",
-      "tabindex"
+      "tabindex",
+      "./faq.js"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -1189,7 +1190,15 @@
       "pointerdown",
       "true",
       "undefined",
-      "wheel"
+      "wheel",
+      "(prefers-reduced-motion: reduce)",
+      "complete",
+      "faq-foot",
+      "is-sliding",
+      "is-warm",
+      "load",
+      "transform",
+      "transitionend"
     ]
   },
   "hardExceptions": [
