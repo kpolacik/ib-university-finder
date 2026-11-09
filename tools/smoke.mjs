@@ -6,6 +6,7 @@
 //   node tools/smoke.mjs --sheet-list-only # list layout/scroll/print touched by the sheet fix
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
+//   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
 //   node tools/smoke.mjs --onboarding-only # just the non-modal Setup regressions
 //   node tools/smoke.mjs --require-chrome  # no Chrome is an error (exit 2), not a skip
@@ -4733,6 +4734,31 @@ async function runNonModalSetup(base, want) {
   }
 }
 
+async function runSmarterSort(base) {
+  for (const width of [1280, 390]) {
+    const page = await openPage(`${base}?ui=en`, width, 900);
+    try {
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'sort boot');
+      await check(width,'SORT','Setup points activate Best match and order the results',async()=>{
+        await page.ev(`localStorage.clear(); window.__oldPage=true; location.href=${JSON.stringify(base)}+'?ui=en'`);
+        await page.waitFor(`({ok:!window.__oldPage && document.querySelector('#loading')?.hidden && document.querySelector('#onboarding').open,why:'fresh Setup'})`,15000,'fresh Setup');
+        assert(await page.ev(`![...document.querySelector('#f-sort').options].some(o=>o.value==='best:asc')`),'Best match offered without points');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Start Setup');
+        await page.click(`document.querySelector('#ob-points')`,'My points'); await page.type('36');
+        for(let i=0;i<4;i++) await page.click(`document.querySelector('.ob-foot>.btn-p')`,'next Setup step');
+        assert(await page.ev(`Boolean(document.querySelector('.ob-done')) && document.querySelector('#f-sort').value==='best:asc' && document.querySelector('#sort-current').textContent==='Best match'`),'Setup did not activate Best match on done');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`,'Show my programmes');
+        await page.waitFor(`(async()=>{const {loadData}=await import('./js/data.js');const {createFilterState,applyFilters,sortRows}=await import('./js/filters.js');const rows=(await loadData()).programmes;const st={...createFilterState(),myIbPoints:36,sort:'best'};const expected=sortRows(applyFilters(rows,st,new Set()),'best','asc',st).slice(0,20).map(r=>r.id);const actual=[...document.querySelectorAll('#results li.item')].slice(0,20).map(n=>n.dataset.id);return {ok:JSON.stringify(actual)===JSON.stringify(expected),why:'Best match row order differs'}})()`,15000,'Best match rows');
+        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='cost:desc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='38';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='cost:desc' && new URLSearchParams(location.search).get('points')==='38',why:'explicit sort or points lost'})`,5000,'explicit sort retention');
+        await page.ev(`{const sort=document.querySelector('#f-sort');sort.value='best:asc';sort.dispatchEvent(new Event('change',{bubbles:true}));const points=document.querySelector('#f-points');points.value='';points.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='deadline:asc' && ![...document.querySelector('#f-sort').options].some(o=>o.value==='best:asc'),why:'clear did not restore deadline'})`,5000,'points clear fallback');
+      });
+      assert(!page.errors.length,JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -4750,7 +4776,9 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--sheet-pacing-only')) {
+  if (args.has('--sort-only')) {
+    await runSmarterSort(base);
+  } else if (args.has('--sheet-pacing-only')) {
     await runSheetPacing(base, want);
   } else if (args.has('--sheet-list-only')) {
     await runSheetListLayout(base, want);
@@ -4767,7 +4795,7 @@ async function main() {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
-    if (anyBooted) { await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    if (anyBooted) { await runSmarterSort(base); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
       await runBatch2A(base);
       await runBatch2B(base);
       await runBatch2C(base);

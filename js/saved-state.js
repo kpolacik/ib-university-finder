@@ -27,6 +27,9 @@ export function validateFilters(raw, facets = null) {
     const values = raw[key] instanceof Set ? [...raw[key]] : Array.isArray(raw[key]) ? raw[key] : [];
     out[key] = new Set(values.filter((v) => typeof v === 'string' && v && (!facets || (facets[key] || []).includes(v))));
   }
+  // Sort is never written to preferences, but validate older/incoming snapshots.
+  const order = paramsToState(new URLSearchParams({ sort: typeof raw.sort === 'string' ? raw.sort : '', dir: raw.dir === 'desc' ? 'desc' : '', points: out.myIbPoints ?? '' }));
+  out.sort = order.sort; out.dir = order.dir;
   return out;
 }
 

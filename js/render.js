@@ -1002,8 +1002,8 @@ export function renderAppliedChips(container, chips, onRemove) {
   container.hidden = chips.length === 0;
 }
 
-export function renderSortOptions(select, sorts, current, direction = 'asc') {
-  select.replaceChildren(...Object.entries(sorts).flatMap(([key, natural]) => ['asc', 'desc'].map((dir) => {
+export function renderSortOptions(select, sorts, current, direction = 'asc', state = {}) {
+  select.replaceChildren(...Object.entries(sorts).filter(([key]) => key !== 'best' || state.myIbPoints != null).flatMap(([key, natural]) => (key === 'best' ? ['asc'] : ['asc', 'desc']).map((dir) => {
     const value = `${key}:${dir}`;
     const label = dir === 'desc' ? REVERSE_SORTS[key] : natural;
     const option = document.createElement('option');
