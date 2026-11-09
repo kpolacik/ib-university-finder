@@ -202,6 +202,7 @@ const printQuery = matchMedia('print');
 // button. The same query as the CSS.
 const trayQuery = matchMedia('(max-width: 599.98px), (max-height: 500px)');
 let printing = false;
+let printFlushed = false;
 let updateAfterPrint = false;
 // Slot motion owned by each slot: its pending frame, transitionend listener and
 // 250 ms fallback. Kept per node so a late callback only ever touches its own
@@ -226,6 +227,7 @@ let rowHeights = [];
 let rowOffsets = [0];
 let windowFrame = 0;
 let windowWidth = 0;
+let scrollingHome = false;
 const rowObserver = new ResizeObserver(() => scheduleWindow());
 let sheetWarmScheduled = false;
 let sheetSlideTimer;
@@ -314,8 +316,19 @@ async function start() {
   motionQuery.addEventListener('change', () => { if (motionQuery.matches) { settleSlots(); resumeSheetRows(); } });
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
-  window.addEventListener('beforeprint', () => { printing = true; settleSlots(); flushRows(); syncTray(); });
+  window.addEventListener('beforeprint', () => {
+    printing = true;
+    settleSlots();
+    printFlushed = !compareOpen;
+    if (printFlushed) flushRows();
+    syncTray();
+  });
   window.addEventListener('afterprint', afterPrint);
+  // Input also releases Home on engines that do not send scrollend.
+  window.addEventListener('scrollend', (event) => { if (event.target === document) scrollingHome = false; });
+  for (const type of ['wheel', 'touchstart', 'keydown']) {
+    window.addEventListener(type, () => { scrollingHome = false; }, { capture: true, passive: true });
+  }
   wireTray();
   dom.results.setAttribute('aria-busy', 'true');
 
@@ -1183,6 +1196,7 @@ function canShow(node) {
 // pane's pick all stay. update() then drops list= from the address. The logo's
 // handler (wireCompactHeader) scrolls to the top and moves focus.
 function goHome() {
+  scrollingHome = true;
   closeCompare(false);
   shared = null;
   state.shortlistOnly = false;
@@ -1422,7 +1436,10 @@ function renderWindow(keepId, all = false) {
   // Native anchoring is disabled for this page: otherwise Chrome applies the
   // same correction twice, while Safari applies none. Never anchor above list.
   const correction = top > 0 ? rowOffsets[anchor] - oldOffset : 0;
-  if (correction) window.scrollTo(scrollX, scrollY + correction);
+  // A correction is an instant scroll, which cancels the logo's smooth trip
+  // home. Keep measuring the rows, then resume anchoring when it ends.
+  if (scrollingHome && scrollY === 0) scrollingHome = false;
+  if (correction && !scrollingHome) window.scrollTo(scrollX, scrollY + correction);
 }
 
 function mountRow(id) {
@@ -1886,7 +1903,17 @@ function isPrinting() {
 
 function afterPrint() {
   printing = false;
-  renderWindow();
+  // Drop the printed catalogue before reading screen geometry, retaining the
+  // measured offsets so the same programme stays in view.
+  if (printFlushed) {
+    printFlushed = false;
+    const focus = snapshotFocus();
+    dom.results.style.minHeight = `${rowOffsets.at(-1)}px`;
+    dom.results.replaceChildren();
+    renderWindow(focus?.id);
+    dom.results.style.minHeight = '';
+    restoreFocus(focus);
+  }
   syncTray();
   crossBar();
   crossWide();

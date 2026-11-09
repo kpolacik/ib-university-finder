@@ -4461,6 +4461,36 @@ appCheck('window: print includes every row and saved open slot, afterprint retur
   fireWindow('afterprint');
   return listIds(get).length < 40 && run('openIds.size') === 1;
 });
+appCheck('window: afterprint prunes the full catalogue before reading screen geometry', ({ run, get, fireWindow }) => {
+  l09(run);
+  fireWindow('beforeprint');
+  const list = get('results'), rect = list.getBoundingClientRect.bind(list);
+  let fullReads = 0;
+  list.getBoundingClientRect = () => {
+    if (list.querySelectorAll('li.item').length > 40) fullReads++;
+    return rect();
+  };
+  fireWindow('afterprint');
+  return fullReads === 0 && listIds(get).length < 40;
+});
+appCheck('window: print keeps the visible programme when measured heights differ from estimates', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  run('rowHeights = rowHeights.map((height, i) => i < 30 ? 220 : height); indexRowHeights();');
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('renderWindow();');
+  const before = run('windowRows[rowAt(window.scrollY)].id');
+  fireWindow('beforeprint'); fireWindow('afterprint');
+  return run('windowRows[rowAt(window.scrollY)].id') === before;
+});
+appCheck('window: printing Compare keeps the hidden list window and restores it on close', ({ run, get, fireWindow }) => {
+  const ids = l09(run), before = listIds(get);
+  run(`compareIds = ${JSON.stringify(ids.slice(0, 2))}; openCompare(null);`);
+  fireWindow('beforeprint'); fireWindow('afterprint');
+  if (!sameList(get, before)) return false;
+  run('closeCompare(true);');
+  return sameList(get, before);
+});
 appCheck('window: ArrowDown past mounted edge mounts the next row and selects it wide', ({ run, get, flip, context }) => {
   flip(true); const ids = l09(run);
   const items = get('results').querySelectorAll('li.item'), last = items.at(-1);
@@ -4486,6 +4516,40 @@ appCheck('window: measurements correct only heights above the visible anchor', (
   first.rect = { height: 220 };
   run('renderWindow();');
   return context.window.scrollY === 6040 && run('rowAt(6000)') === 33;
+});
+appCheck('window: Home reaches the top without height corrections cancelling its smooth scroll; scrollend restores anchoring', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  run('goHome();');
+  let corrections = 0;
+  context.window.scrollTo = () => { corrections++; };
+  get('results').querySelector('li.item').rect = { height: 220 };
+  run('renderWindow();');
+  if (corrections !== 0) return false;
+  fireWindow('scrollend', { target: get('pane') });
+  get('results').querySelector('li.item').rect = { height: 240 };
+  run('renderWindow();');
+  if (corrections !== 0) return false;
+  fireWindow('scrollend', { target: stubDocument });
+  get('results').querySelector('li.item').rect = { height: 260 };
+  run('renderWindow();');
+  return corrections === 1;
+});
+appCheck('window: interrupted Home restores anchoring on user input even without scrollend', ({ run, get, context, fireWindow }) => {
+  l09(run);
+  get('results').rect = { top: -6000, width: 0, height: 500000 };
+  context.window.scrollY = 6000;
+  for (const type of ['touchstart', 'wheel', 'keydown']) {
+    run('goHome();');
+    let corrections = 0;
+    context.window.scrollTo = () => { corrections++; };
+    fireWindow(type);
+    get('results').querySelector('li.item').rect = { height: 220 };
+    run('renderWindow();');
+    if (corrections !== 1) return false;
+  }
+  return true;
 });
 appCheck('window: a big jump keeps its scroll position through intermediate layout reads', ({ run, get, context }) => {
   l09(run);

@@ -619,14 +619,20 @@ and two screens on either side stay mounted. Spacers reserve the full list
 length, using measured heights for visited rows and breakpoint estimates for
 unseen ones. Expanded state and the wide selection survive eviction; a focused
 row stays mounted. Print temporarily mounts all results and then restores the
-window. Browser Find searches only mounted rows; the site's Search still
+window. Returning from print rebuilds only nearby rows before measuring
+the screen again and keeps the measured heights, so your place stays put. Browser Find
+searches only mounted rows; the site's Search still
 searches every programme (Leon's accepted tradeoff).
 
 WebKit clamps scrolling when a layout read sees the list with its spacers
 removed. Window updates now hold the list's height until the replacement gaps
 are sized. Corrections use the starting scroll position and run only when
 heights above the visible anchor change; changing rows below it does not call
-scrollTo. The old full-list slices, parked lists and near-row marking are gone.
+scrollTo. During the logo's scroll home, rows keep being measured but height
+corrections pause until scrolling ends or the student interrupts it with a
+touch, wheel or key: an instant correction used to cancel
+the smooth scroll partway up. Filters and the chosen sort stay unchanged.
+The old full-list slices, parked lists and near-row marking are gone.
 Focused WebKit 26 and Chrome 157 probes cover large jumps, expansion above the
 viewport, eviction, rebuild focus and print. Physical iPhone momentum and
 VoiceOver remain untested; these are local browser checks.
