@@ -131,7 +131,10 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       syncSlider(slider, draft.maxBudget); top.append(label, input); wrap.append(top, slider, error); section.append(wrap);
     }
     body.replaceChildren(label, section); body.scrollTop = 0;
-    const skip = el('div', 'skipwrap'); skip.append(button('r2_skip', 'btn btn-q', () => close()), el('small', '', t('r2_skip_sub')));
+    // The hint is part of Skip (its accessible name says the answers go), so
+    // the footer has no extra row under the button (Leon, 2026-11-09).
+    const skipButton = button('r2_skip', 'btn btn-q', () => close()); skipButton.append(el('small', '', t('r2_skip_sub')));
+    const skip = el('div', 'skipwrap'); skip.append(skipButton);
     const spacer = el('span', 'sp');
     const previous = button('r2_back', 'btn', () => { step--; draw(true); }); previous.hidden = step === 1;
     const next = button(step === 1 ? 'r2_start' : step === 5 ? 'r3_ob_finish' : 'r2_next', 'btn btn-p', () => {

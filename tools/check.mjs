@@ -7791,8 +7791,9 @@ check('AL-S1 setup: the step column never outgrows the dialog; the switch label 
 check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
-  // Leon, 2026-11-09: the hint starts at Skip's edge; Skip's ring is drawn inside the button so it still clears it.
-  && /margin-top:0/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-/.test(ruleAt(cssText, '.skipwrap small'))
+  // Leon, 2026-11-09 (option B): the hint is a second line inside Skip, which stacks its two lines.
+  && /flex-direction:column/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
+  && /skipButton\.append\(el\('small', '', t\('r2_skip_sub'\)\)\)/.test(read('js/onboarding.js'))
   && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
 // The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',

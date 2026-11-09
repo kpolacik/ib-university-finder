@@ -1334,14 +1334,15 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .ob-foot{display:flex;align-items:flex-start;gap:8px;padding:14px 28px 20px;flex:none;border-top:1px solid var(--hairline)}
 .ob-foot .sp{flex:1}
 /* 12 px = the Skip button's 11 px padding plus its 1 px border: the column
-   moves left by it and the hint is indented by it, so the Skip text, the hint
-   and the step text above all start on one line. Change all three together. */
+   moves left by it, so the Skip text, its hint and the step text above all
+   start on one line. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
-.skipwrap .btn.btn-q{padding-inline:11px}
-.skipwrap small{font-size:12px;line-height:16px;color:var(--ink-3);padding-left:12px;margin-top:0}
-/* Leon, 2026-11-09: the hint hung too far below Skip. It now starts at the
-   button's edge, and Skip's ring is drawn inside the button (as on SK/EN), so
-   the ring still never touches it. */
+/* Leon, 2026-11-09 (option B of three mock-ups): the hint is a second line
+   inside the Skip button, so the footer loses the row it had under the
+   44 px button. Skip's text sits a little above Back's; Leon chose that over
+   keeping it level ("B2 looks broken"). */
+.skipwrap .btn.btn-q{padding-inline:11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:18px}
+.skipwrap .btn small{font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3)}
 .skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
 
 

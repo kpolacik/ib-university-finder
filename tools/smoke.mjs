@@ -917,12 +917,14 @@ async function runRound2(base) {
       // sat above Back/Next and right of its "Discards" hint (button padding).
       // On phones Next has its own full-width row (alignment audit), so Skip
       // shares Back's centre line there.
-      await check(width,'R2J','setup stepper is centred; Skip text shares the Back/Next centre line and the hint edge',async()=>{
+      // Since 2026-11-09 (Leon, option B) the hint is a second line inside Skip,
+      // so Skip's label sits above Back's centre line by design; the two lines share an edge.
+      await check(width,'R2J','setup stepper is centred; Skip\'s label and its hint share an edge inside the button',async()=>{
         await edit(); await next();
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
-          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),skip=text(document.querySelector('.skipwrap button')),hint=text(document.querySelector('.skipwrap small')),next=box(document.querySelector(${JSON.stringify(width < 600 ? '.ob-foot>.btn:not(.btn-p)' : '.ob-foot>.btn-p')}));
-          return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,lift:(next.top+next.height/2)-(skip.top+skip.height/2),indent:skip.left-hint.left};})()`);
-        assert(Math.abs(m.offCentre)<=1 && Math.abs(m.lift)<=1 && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),sb=document.querySelector('.skipwrap button'),lr=document.createRange();lr.selectNode([...sb.childNodes].find(n=>n.nodeType===3));const skip=lr.getBoundingClientRect(),hint=text(sb.querySelector('small')),btn=box(sb);
+          return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,inside:hint.bottom<=btn.bottom+0.5&&skip.top>=btn.top-0.5,indent:skip.left-hint.left};})()`);
+        assert(Math.abs(m.offCentre)<=1 && m.inside && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
       });
       // Batch 3 C1: the FAQ link moved from step 1 to the done screen, and the
@@ -3969,13 +3971,13 @@ async function runAlignChromeSetup(base) {
   for (const width of [1280, 600, 390]) {
     const page = await open(width, width < 600 ? 844 : 900, 'en', { onboarding: null });
     try {
-      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring clears its hint', async () => {
+      await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring is visible and holds its hint', async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
         await settle(page);
         await page.key('Shift', 'ShiftLeft', 16);
         await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
-        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),s=getComputedStyle(b),r=document.createRange();r.selectNodeContents(document.querySelector('.skipwrap small'));return {vis:b.matches(':focus-visible'),clear:r.getBoundingClientRect().top-(b.getBoundingClientRect().bottom+parseFloat(s.outlineOffset)+parseFloat(s.outlineWidth))}})()`);
-        assert(ring.vis && ring.clear >= 0, `Skip's ring touches the hint: ${JSON.stringify(ring)}`);
+        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
+        assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
         const heights = [];
         for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
         await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
@@ -4002,11 +4004,12 @@ async function runAlignChromeSetup(base) {
         const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
           const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
           const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
-          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:tb(sm).top-sk.getBoundingClientRect().bottom,skipTextGap:tb(sm).top-tb(sk).bottom,
+          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:sk.getBoundingClientRect().bottom-tb(sm).bottom,skipTextGap:(()=>{const r=document.createRange();r.selectNode([...sk.childNodes].find(n=>n.nodeType===3));return tb(sm).top-r.getBoundingClientRect().bottom})(),
             labelLeft:lb.left,hintLeft:tb(hint).left,mathGap:tb(hint).top-lb.bottom,centre:Math.abs(r.top-(innerHeight-r.bottom))}})()`);
         await shoot(page, `lp-setup-hints-${width}-${lang}`);
         assert(Math.abs(m.skipLeft - m.skipHint) <= 1 && Math.abs(m.labelLeft - m.hintLeft) <= 1, `hints not aligned: ${JSON.stringify(m)}`);
-        assert(m.skipGap >= -0.5 && m.skipGap <= 2 && m.skipTextGap <= 16, `Skip hint gap: ${JSON.stringify(m)}`);
+        // The hint is inside Skip (option B): within the button, at most 4 px under the label.
+        assert(m.skipGap >= -0.5 && m.skipTextGap >= -0.5 && m.skipTextGap <= 4, `Skip hint gap: ${JSON.stringify(m)}`);
         assert(m.mathGap >= 2 && m.mathGap <= 8, `maths hint gap: ${JSON.stringify(m)}`);
         assert(m.centre <= 1, `dialog off centre by ${m.centre}`);
         for (let step = 2; step <= 5; step++) await next(page, `step ${step + 1}`);
