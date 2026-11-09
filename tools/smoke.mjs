@@ -4978,14 +4978,24 @@ async function runNonModalSetup(base, want) {
         const times=[], opened=[];
         for(const action of ['skip','finish','skip']) {
           await reload();
-          if(action==='finish')for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+          if(action==='finish'){
+            for(let i=0;i<5;i++){await tap('#onboarding .ob-foot>.btn-p');await page.waitFor(settled,5000,'next step');}
+            // At 390 px "Show my programmes" sits exactly where Finish was, and
+            // a tap there inside the double-tap window is the second click of a
+            // double-tap (detail 2), which Show ignores on purpose. GitHub's
+            // Linux Chrome counted it so (2026-11-09): Setup stayed open and the
+            // Filters tap hit its scrim, read as [true,false,true]. Wait it out.
+            await new Promise(r=>setTimeout(r,800));
+          }
           // Click timestamp includes handler work and the next paint. Counting
           // transitionend alone hid the old inert frame on WebKit.
-          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',()=>{const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
+          await page.ev(`window.__obFrame=null;document.querySelector('#onboarding').addEventListener('click',e=>{window.__obDetail=e.detail;const t=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>window.__obFrame=performance.now()-t))},{capture:true,once:true})`);
           await tap(action==='skip'?'#onboarding .skipwrap button':'#onboarding .ob-done-foot .btn-p');
           // Deliver the immediate tap even if the old exiting backdrop covers it.
           await tap('#f-more', true);
           await page.waitFor(`({ok:window.__obFrame!==null,why:'close frame pending'})`,5000,'frame after close');
+          // A double-tap is the test's mistake, not a blocked tap: say so.
+          assert(await page.ev('__obDetail')===1,`${action}: the close tap counted as click ${await page.ev('__obDetail')} of a double-tap, so Setup ignored it`);
           opened.push(await page.ev(`document.querySelector('#filter-sheet').open`));
           times.push(await page.ev('__obFrame'));
           await page.key('Escape','Escape',27);

@@ -1874,6 +1874,17 @@ named sections. On a Mac in Low Power Mode Chrome is held to 30 frames a
 second, so the "sheet pacing" frame-timing checks fail there; that is the Mac,
 not the site.
 
+The second run (PR #6) failed one check, "NMO timing": the Filters tap right
+after Setup's "Show my programmes" opened nothing at 390 px. Not a site bug
+either. Show sits exactly where Finish was, and the test tapped it soon enough
+after Finish for Chrome to count a double-tap; Show ignores the second tap of
+a double-tap on purpose (so a double-tap on Finish can't close the done screen
+unread), so Setup stayed open and the Filters tap landed on its scrim. The test
+now waits 0.8 s after Finish and says so if a close tap is ever counted as a
+double-tap. The closing Setup does not block taps: Chrome stops hitting its
+fading scrim the moment it closes, and the check still fails if a tap after
+close is swallowed.
+
 A failure that is just slowness shows up as
 "timed out in <step>": `smoke.mjs` has one 120 s watchdog, refreshed at the
 start of each section (`WATCHDOG_MS`), so a runner much slower than a Mac could

@@ -4767,6 +4767,11 @@ check('the print block has no .src-more rule: nothing renders that element, so t
     /'the slide\\'s transitionend'/.test(code));
   check('smoke --only=<section,…> runs just the named sections and rejects unknown names and an empty list (it passed with 0 checks)',
     /startsWith\('--only='\)/.test(code) && /if \(!only\.length\) throw/.test(code) && /--only: no section/.test(code) && /Object.hasOwn\(sections, name\)/.test(code));
+  // PR #6's second GitHub run: Show sits where Finish was, so a quick tap was
+  // the second click of a double-tap, which Show ignores on purpose.
+  check('smoke "NMO timing" waits out the double-tap window after Finish and fails by name if a Setup close tap counts as a double-tap (GitHub read it as a blocked Filters tap)',
+    /if\(action==='finish'\)\{\s*for\(let i=0;i<5;i\+\+\)\{[^\n]*\}\s*await new Promise\(r=>setTimeout\(r,800\)\);\s*\}/.test(code)
+    && /window\.__obDetail=e\.detail/.test(code) && /await page\.ev\('__obDetail'\)===1/.test(code));
 }
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
