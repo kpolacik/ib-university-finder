@@ -1338,7 +1338,11 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
    and the step text above all start on one line. Change all three together. */
 .skipwrap{display:flex;flex-direction:column;align-items:flex-start;margin-left:-12px}
 .skipwrap .btn.btn-q{padding-inline:11px}
-.skipwrap small{font-size:12px;color:var(--ink-3);padding-left:12px;margin-top:4px}
+.skipwrap small{font-size:12px;line-height:16px;color:var(--ink-3);padding-left:12px;margin-top:0}
+/* Leon, 2026-11-09: the hint hung too far below Skip. It now starts at the
+   button's edge, and Skip's ring is drawn inside the button (as on SK/EN), so
+   the ring still never touches it. */
+.skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
@@ -1350,7 +1354,12 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .ob .switch{padding-left:0}
 .ob .big-pts input{width:90px;height:60px;font-size:44px;font-weight:700;text-align:center;border:0;background:transparent;appearance:textfield}
 .ob .big-pts input::-webkit-inner-spin-button{appearance:none}
-.ob .ob-hint{font-size:13px;padding-left:44px;margin-top:-8px}
+/* The maths hint hangs under the switch's label text, closer than the step's
+   14 px gap (Leon, 2026-11-09): 4 px of air below the label's last line.
+   On touch the switch's 44 px comes from padding here, not min-height, so
+   the gap stays 4 px when the label wraps (320 px, Slovak at 390 px). */
+.ob .ob-hint{font-size:13px;line-height:18px;padding-left:44px;margin-top:-12px}
+@media (pointer:coarse),(max-width:599px){.ob .switch{min-height:0;padding-block:11px}.ob .ob-hint{margin-top:-21px}}
 .ob .rng{display:grid;gap:8px;margin-top:12px}
 .ob .rng-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ob .rng-top .inp{max-width:164px;text-align:right;height:24px;border:0;background:transparent;padding:0;font-size:15px;font-weight:600;color:var(--ink)}

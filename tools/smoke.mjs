@@ -2486,7 +2486,7 @@ async function runBatch3C(base) {
                   foot:(()=>{const f=box(d.querySelector('.ob-foot')),s=getComputedStyle(d.querySelector('.ob-foot'));return {left:f.left+parseFloat(s.paddingLeft),right:f.right-parseFloat(s.paddingRight)}})(),
                   bodyOver:body.scrollWidth>body.clientWidth,sw:document.documentElement.scrollWidth,w:innerWidth,h:innerHeight}})()`);
               await shoot(page, `done-${width}-${lang}${reduced ? '-reduced' : ''}`);
-              assert(m.heading === (lang === 'sk' ? 'V nastavení nie sú žiadne odpovede.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
+              assert(m.heading === (lang === 'sk' ? 'Nastavenie zostalo prázdne.' : "You haven't added any setup answers.") && m.focused && !m.step && m.bar === 'scaleX(1)', `screen ${JSON.stringify(m)}`);
               assert(m.btns.length === 2 && m.btns[0].primary, `buttons ${JSON.stringify(m.btns)}`);
               for (const b of m.btns) {
                 assert(b.h >= 44 && b.w >= 44 && !b.clipped, `button ${JSON.stringify(b)}`);
@@ -3942,6 +3942,37 @@ async function runAlignChromeSetup(base) {
         await shoot(page, `setup-done-${width}`);
         assert([...heights, ...done.heights].every((h) => Math.abs(h - 44) <= 0.5), `button heights differ: ${JSON.stringify([heights, done.heights])}`);
         assert(done.gap <= 24, `empty band above the done buttons: ${done.gap}`);
+      });
+    } finally { await page.close(); }
+  }
+
+  // Leon, 2026-11-09: the two Setup hints sat too far below what they explain.
+  // Each starts at its label's text edge and close under it (Skip: below the
+  // button's 44 px box; maths: 3-8 px under the label's last line, also when
+  // it wraps), the dialog stays centred, and the done screen's "?" line is
+  // one line at 390 px.
+  for (const [width, lang] of [[390, 'en'], [390, 'sk'], [320, 'en'], [320, 'sk'], [1280, 'en'], [1280, 'sk']]) {
+    const page = await open(width, width < 600 ? 844 : 800, lang, { onboarding: null });
+    try {
+      await check(width, 'LP-S5 setup hints', `(${lang}): Skip's and the maths hint sit close under their label text, aligned with it; the dialog stays centred`, async () => {
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await settle(page);
+        const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
+          const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
+          const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
+          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:tb(sm).top-sk.getBoundingClientRect().bottom,skipTextGap:tb(sm).top-tb(sk).bottom,
+            labelLeft:lb.left,hintLeft:tb(hint).left,mathGap:tb(hint).top-lb.bottom,centre:Math.abs(r.top-(innerHeight-r.bottom))}})()`);
+        await shoot(page, `lp-setup-hints-${width}-${lang}`);
+        assert(Math.abs(m.skipLeft - m.skipHint) <= 1 && Math.abs(m.labelLeft - m.hintLeft) <= 1, `hints not aligned: ${JSON.stringify(m)}`);
+        assert(m.skipGap >= -0.5 && m.skipGap <= 2 && m.skipTextGap <= 16, `Skip hint gap: ${JSON.stringify(m)}`);
+        assert(m.mathGap >= 2 && m.mathGap <= 8, `maths hint gap: ${JSON.stringify(m)}`);
+        assert(m.centre <= 1, `dialog off centre by ${m.centre}`);
+        for (let step = 2; step <= 5; step++) await next(page, `step ${step + 1}`);
+        await page.waitFor(`({ok:!!document.querySelector('.ob-done .ob-help-hint'),why:'done screen'})`, 5000, 'done screen');
+        await settle(page);
+        const h = await page.ev(`(()=>{const p=document.querySelector('.ob-help-hint');return {lines:Math.round(p.getBoundingClientRect().height/parseFloat(getComputedStyle(p).lineHeight)),icon:!!p.querySelector('svg use[href="#i-help"]'),name:p.querySelector('.visually-hidden').textContent}})()`);
+        assert(h.icon && h.name === (lang === 'sk' ? 'otáznik' : 'the question mark'), `"?" hint: ${JSON.stringify(h)}`);
+        if (width >= 390) assert(h.lines === 1, `"?" hint takes ${h.lines} lines`);
       });
     } finally { await page.close(); }
   }

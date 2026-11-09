@@ -7327,7 +7327,7 @@ section('Batch 3 · C');
     ['1 zobrazený program', 'Zobrazený je 1 program', '3 zobrazené programy', 'Zobrazené sú 3 programy',
       '312 zobrazených programov', 'Zobrazených je 312 programov', '0 zobrazených programov', 'Zobrazených je 0 programov']);
   equal('B3C1 done screen SK copy', ['r3_ob_finish', 'r3_ob_done_p', 'r3_ob_done_h_none', 'r3_ob_done_p_none', 'r3_ob_faq'].map((key) => UI.sk[key]),
-    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'V nastavení nie sú žiadne odpovede.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
+    ['Dokončiť', 'Tieto filtre môžeš kedykoľvek zmeniť vo Filtroch.', 'Nastavenie zostalo prázdne.', 'Tvoje doterajšie filtre stále platia. Kedykoľvek ich môžeš zmeniť vo Filtroch.', 'Prečítaj si časté otázky']);
   // Verification of PR 1: only the no-answers count ended with a full stop,
   // so the two done-screen counts read differently.
   check('done-screen counts never end with a full stop, EN and SK',
@@ -7727,7 +7727,9 @@ check('AL-S1 setup: the step column never outgrows the dialog; the switch label 
 check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-screen gap, the hint clear of Skip\'s ring',
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
-  && /margin-top:4px/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-4px/.test(ruleAt(cssText, '.skipwrap small')));
+  // Leon, 2026-11-09: the hint starts at Skip's edge; Skip's ring is drawn inside the button so it still clears it.
+  && /margin-top:0/.test(ruleAt(cssText, '.skipwrap small')) && !/margin-top:-/.test(ruleAt(cssText, '.skipwrap small'))
+  && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
 // The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',
   /margin-top:calc\(\.5lh - 8px\)/.test(ruleAt(cssText, '.faq summary>.ic')) && !ruleAt(cssText, '.foot h2', '(min-width:600px)'));
@@ -7848,9 +7850,15 @@ check('LR6 the language buttons: tapping the one already shown switches to the o
   /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
   && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
-  /toolsHint\(\)\);/.test(read('js/onboarding.js')) && /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\)\)/.test(read('js/onboarding.js'))
+  /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\), faqHint\(\)\)/.test(read('js/onboarding.js'))
   && ['r7_faq_list'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
   && (read('js/i18n.js').match(/"r4_ob_done_tools": "[^"]*\{bookmark\}[^"]*\{scales\}[^"]*"/g) ?? []).length === 2);
+// Leon, 2026-11-09: the done screen says the FAQ can be reopened from the
+// header's "?", with the icon itself in the sentence, in natural EN and SK.
+check('Setup done screen: one line says the "?" at the top reopens the FAQ, with the icon and a spoken name, EN and SK',
+  /const faqHint = \(\) => iconHint\('r6_ob_faq_later', 'ob-tools ob-help-hint', \{ '\{help\}': \['#i-help', 'r6_icon_help'\] \}\);/.test(read('js/onboarding.js'))
+  && UI.en.r6_ob_faq_later === 'Reopen the FAQ any time with {help} at the top.' && UI.sk.r6_ob_faq_later === 'Časté otázky otvoríš kedykoľvek cez {help} hore.'
+  && UI.en.r6_icon_help === 'the question mark' && UI.sk.r6_icon_help === 'otáznik');
 check('LR4 "Show the original" has the 8 px corners of the other outlined buttons',
   lastValue('.detail-originals', 'border-radius') === '8px');
 
@@ -7934,7 +7942,7 @@ section('Facts and copy, review of PR 1, 2026-11-07');
   equal('Slovak sort, setup and done-screen grammar',
     [inLang('sk', () => t('sorted_activate_to_sort', { value1: 'X', value2: t('r2_default_order') })), UI.sk.r2_ob2m, UI.sk.r3_ob_done_h_none,
       UI.sk.r4_ob_done_tools.replace('{bookmark}', UI.sk.r4_icon_bookmark).replace('{scales}', UI.sk.r4_icon_scales)],
-    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'V nastavení nie sú žiadne odpovede.',
+    [', zoradené: X. Aktivuj na zoradenie: predvolené poradie.', 'Mám HL matematiku a očakávam 4 alebo viac', 'Nastavenie zostalo prázdne.',
       'Tlačidlom so záložkou si programy uložíš do Môjho zoznamu a tlačidlom s váhami porovnáš až 4 vedľa seba.']);
   // WebKit and VoiceOver drop list semantics from a list with list-style:none
   // (the results) or display:grid items (the points lines).

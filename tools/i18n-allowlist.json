@@ -1156,7 +1156,10 @@
       "is-open",
       "onboarding-open",
       "onboarding-scrim",
-      "./faq.js"
+      "./faq.js",
+      "#i-help",
+      "ob-tools ob-help-hint",
+      "{help}"
     ],
     "js/compare-set.js": [
       "./compare.js",
