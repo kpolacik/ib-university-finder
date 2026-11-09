@@ -1,6 +1,7 @@
 // Opens the real page in a real, invisible Chrome and clicks through it.
 //
 //   node tools/smoke.mjs                   # must end "Smoke test passed"
+//   node tools/smoke.mjs --row-keyboard-only # Tab stops, arrows, toggle/rebuild focus
 //   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
@@ -4456,6 +4457,47 @@ async function runColdSheet(base, want) {
   }
 }
 
+async function runRowKeyboard(base) {
+  for (const width of [390, 1300]) for (const language of ['en', 'sk']) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=' + language });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`,15000,'keyboard ready');
+      await check(`${width}/${language}`, 'row keyboard', 'one summary Tab stop, arrows across windows, toggle/rebuild/crossing focus', async () => {
+        const single = `([...document.querySelectorAll('#results>.item')].every(r=>[...r.querySelectorAll('.row button')].filter(b=>b.tabIndex===0).length===1))`;
+        assert(await page.ev(single), 'more than one summary Tab stop');
+        const ids = await page.ev(`(()=>{const rows=[...document.querySelectorAll('#results>.item')];rows[0].querySelector('button.open').focus();return rows.slice(0,3).map(r=>r.dataset.id)})()`);
+        for (const id of ids.slice(1)) {
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.activeElement.matches('button.open')&&document.activeElement.closest('.item').dataset.id===${JSON.stringify(id)}`), 'Tab did not skip Compare and Save');
+        }
+        for (const selector of ['button.cmpi', 'button.star']) {
+          await page.key('ArrowRight', 'ArrowRight', 39);
+          assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.tabIndex===0`), 'Right did not reach '+selector);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.getAttribute('aria-pressed')==='true'`), 'toggle lost focus/state');
+          assert(await page.ev(single), 'toggle added a Tab stop');
+        }
+        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;document.querySelector('[data-language="${language === 'en' ? 'sk' : 'en'}"]').click()`);
+        assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&document.activeElement.tabIndex===0`), 'rebuild lost Save focus/Tab stop');
+        await page.send('Emulation.setDeviceMetricsOverride', { width: width === 390 ? 1300 : 390, height: 844, deviceScaleFactor: 1, mobile: false });
+        await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+        assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&${single}`), 'crossing lost focus/Tab stop');
+        // Focus the last drawn row without scrolling it first: Down must mount
+        // the next window on demand, retaining the Save column.
+        const position = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].at(-1);r.querySelector('button.star').focus({preventScroll:true});return Number(r.getAttribute('aria-posinset'))})()`);
+        await page.key('ArrowDown', 'ArrowDown', 40);
+        assert(await page.ev(`document.activeElement.matches('button.star')&&Number(document.activeElement.closest('.item').getAttribute('aria-posinset'))===${position + 1}&&document.querySelectorAll('#results>.item').length<100&&${single}`), 'Down lost column/window or unbounded DOM');
+        await page.key('ArrowLeft', 'ArrowLeft', 37);
+        assert(await page.ev(`document.activeElement.matches('button.cmpi')&&${single}`), 'Left did not return to Compare');
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
 async function runWindow(base, want) {
   for (const width of [390, 1300]) {
     const page = await openPage('about:blank', width, 844);
@@ -4783,7 +4825,9 @@ async function main() {
   console.log(`Chrome: ${chromePath}`);
   console.log(`Page:   ${base} — expecting ${want.total} programmes; search "${want.city}", country ${want.country}`);
 
-  if (args.has('--window-only')) {
+  if (args.has('--row-keyboard-only')) {
+    await runRowKeyboard(base);
+  } else if (args.has('--window-only')) {
     await runWindow(base, want);
     await runSheetListLayout(base, want);
   } else if (args.has('--sheet-pacing-only')) {
@@ -4803,7 +4847,7 @@ async function main() {
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
-    if (anyBooted) { await runWindow(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
+    if (anyBooted) { await runRowKeyboard(base); await runWindow(base, want); await runFallback(base, want); await runI18n(base); await runRound2(base); await runReview2(base);
       await runBatch2A(base);
       await runBatch2B(base);
       await runBatch2C(base);

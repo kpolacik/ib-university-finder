@@ -1624,18 +1624,35 @@ function selectRow(id) {
   restoreFocus(focus);
 }
 
+// Each summary has one Tab stop. Focus (including a mouse click or a restore)
+// moves that stop between its native controls; detail links keep normal Tab.
+const ROW_CONTROLS = 'button.open, button.cmpi, button.star';
+function rowTabStop(target) {
+  if (!target.matches(ROW_CONTROLS) || !dom.results.contains(target)) return;
+  const item = target.closest('li.item');
+  for (const control of item.querySelectorAll(ROW_CONTROLS)) {
+    control.setAttribute('tabindex', control === target ? '0' : '-1');
+  }
+}
+
 function rowKeydown(event) {
-  if (!wideQuery.matches || !event.target.matches('button.open') || event.isComposing
+  if (!event.target.matches(ROW_CONTROLS) || event.isComposing
     || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
-    || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   event.preventDefault();
   const item = event.target.closest('li.item');
+  const controls = [...item.querySelectorAll(ROW_CONTROLS)];
+  const column = controls.indexOf(event.target);
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    controls[column + (event.key === 'ArrowLeft' ? -1 : 1)]?.focus({ preventScroll: true });
+    return;
+  }
   const i = windowRows.findIndex((row) => row.id === item.dataset.id);
   const row = windowRows[i + (event.key === 'ArrowUp' ? -1 : 1)];
   const next = row && mountRow(row.id);
   if (!next) return;
-  next.querySelector('button.open').focus({ preventScroll: true });
-  selectRow(next.dataset.id);
+  next.querySelectorAll(ROW_CONTROLS)[column].focus({ preventScroll: true });
+  if (wideQuery.matches) selectRow(next.dataset.id);
   revealRow(next);
 }
 
@@ -1699,6 +1716,7 @@ function restoreFocus(focus) {
 // Chrome can clear focus when CSS hides the pane, before the change callback.
 // Real focus moves or a blur within the current layout invalidate this record.
 function rememberFocus() {
+  rowTabStop(document.activeElement);
   crossingFocus = snapshotFocus();
   listFocus = isListTool(document.activeElement) ? document.activeElement : null;
   filterFocus = isFilterControl(document.activeElement) ? document.activeElement : null;

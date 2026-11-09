@@ -603,6 +603,13 @@ plans/backlog/wording.md for the translation queue.
 
 ## The look of it
 
+**One Tab stop per programme (2026-11-09, backlog a):** Each programme
+summary has one Tab stop. Left/Right moves between its title, Compare and Save;
+Up/Down moves to the same control in the neighbouring programme, mounting it
+when needed. On wide screens it also selects that programme in the details
+pane; on narrow screens it leaves open details unchanged. Save, Compare,
+rebuilds and breakpoint changes keep focus. Detail links retain normal Tab.
+
 **Windowed results (2026-11-09, local `lp-window3`):** Only the viewport
 and two screens on either side stay mounted. Spacers reserve the full list
 length, using measured heights for visited rows and breakpoint estimates for

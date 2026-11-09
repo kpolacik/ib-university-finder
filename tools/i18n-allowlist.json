@@ -2,6 +2,7 @@
   "note": "Pinned technical literals, proper names and machine-read English source vocabulary. New visible wording belongs in js/i18n.js. Hard-token exceptions match exact field, en and sk; no blanket token exemptions.",
   "sources": {
     "js/app.js": [
+      "button.open, button.cmpi, button.star",
       "button.cmpi",
       "button.star",
       "--row-estimate",
@@ -328,7 +329,10 @@
       "Arrow",
       "Enter",
       "keyup",
-      "pointerdown"
+      "pointerdown",
+      "ArrowLeft",
+      "ArrowRight",
+      "tabindex"
     ],
     "js/compare.js": [
       "./cost.js",

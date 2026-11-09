@@ -3040,10 +3040,10 @@ check('sort header has all four SORTS keys, hidden direction text and one defaul
 check('sort sync runs before load, after options and from both sort controls',
   /applyUrlFields\(\);\s*syncSort\(\);/.test(appSrc) && /renderSortOptions\([^;]+;\s*syncSort\(\);/.test(appSrc)
     && /\[state.sort, state.dir\] = dom.sort.value.split\(':'\);\s*syncSort\(\);/.test(appSrc) && /state.sort = key;\s*}\s*syncSort\(\);/.test(appSrc));
-check('row toggle retains slots while arrows select only wide without roving tabindex',
+check('row toggle retains slots and native button/list semantics with roving controls',
   appSrc.includes("button.removeAttribute('aria-controls')") && appSrc.includes('openIds.delete(id)') && appSrc.includes('openIds.has(id)) openRow(item, shownRows.get(id))')
     && /ArrowUp/.test(appSrc) && /ArrowDown/.test(appSrc) && /isComposing/.test(appSrc)
-    && !/listbox|setAttribute\(['"]tabindex/.test(appSrc));
+    && !/listbox/.test(appSrc));
 check('six static skeleton rows, hidden trap guarded, no compass, no empty live region',
   (indexHtml.match(/class="sk-row"/g) ?? []).length === 6 && /id="loading" aria-hidden="true"/.test(indexHtml)
     && !/shimmer|@keyframes sk-/.test(css) && /\[hidden\] \{ display: none !important; \}/.test(css)
@@ -3495,14 +3495,14 @@ appCheck('actual handlers: filtered B remains the hidden pick when A is still op
   run("state.search = ''; update();");
   return item(b).classList.contains('is-sel') && body.querySelector('h2').id === `p-${b}`;
 });
-appCheck('actual arrows prevent ends without selecting them; narrow, modified and composing keys stay native', ({ run, flip, get, click, context, ids }) => {
+appCheck('actual arrows prevent ends without selecting them; narrow moves focus only and modified/composing keys stay native', ({ run, flip, get, click, context, ids }) => {
   const key = (button, key, extra = {}) => {
     const e = { target: button, key, preventDefault() { this.defaultPrevented = true; }, ...extra };
     context.keyEvent = e; run('rowKeydown(keyEvent);'); return !!e.defaultPrevented;
   };
   const first = get('results').children[0].querySelector('button.open'); first.focus();
-  if (key(first, 'ArrowDown')) return false;
-  flip(true); click(ids[1]);
+  if (!key(first, 'ArrowDown') || run('selectedId') !== null || run('openIds.size') !== 0) return false;
+  first.focus(); flip(true); click(ids[1]);
   if (!key(first, 'ArrowUp') || run('selectedId') !== ids[1] || stubDocument.activeElement !== first) return false;
   for (const prop of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) if (key(first, 'ArrowDown', { [prop]: true })) return false;
   if (!key(first, 'ArrowDown')) return false;
@@ -3510,6 +3510,24 @@ appCheck('actual arrows prevent ends without selecting them; narrow, modified an
   if (stubDocument.activeElement !== second || run('selectedId') !== second.closest('li.item').dataset.id) return false;
   const last = get('results').children.at(-1).querySelector('button.open'); last.focus();
   return key(last, 'ArrowDown') && stubDocument.activeElement === last && run('selectedId') === second.closest('li.item').dataset.id;
+});
+appCheck('row keyboard: one Tab stop follows title/Compare/Save focus and survives rebuild/crossing', ({ run, get, item, flip, context }) => {
+  const first = get('results').querySelector('li.item'), id = first.dataset.id;
+  const controls = () => item(id).querySelectorAll('button.open, button.cmpi, button.star');
+  const one = (at) => controls().every((b, i) => b.tabIndex === (i === at ? 0 : -1));
+  if (!one(0)) return false;
+  // The focus stub does not dispatch focusin; deliver that browser event.
+  controls()[0].focus(); run('rememberFocus();');
+  for (const index of [1, 2]) {
+    context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowRight', preventDefault() {} };
+    run('rowKeydown(keyEvent); rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+    run('update(); rememberFocus();'); flip(true); run('rememberFocus();'); flip(false); run('rememberFocus();');
+    if (stubDocument.activeElement !== controls()[index] || !one(index)) return false;
+  }
+  context.keyEvent = { target: stubDocument.activeElement, key: 'ArrowLeft', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === controls()[1] && one(1);
 });
 appCheck('actual Go to details preserves URL and modifiers and selection never enters address state', ({ run, flip, click, item, context, pane, ids: [a] }) => {
   flip(true); click(a); const goto = item(a).querySelector('a.goto');
@@ -4371,6 +4389,17 @@ const l09 = (run) => {
 };
 const listIds = (get) => get('results').querySelectorAll('li.item').map(n => n.dataset.id);
 const sameList = (get, want) => listIds(get).join() === want.join();
+appCheck('row keyboard: narrow arrows cross the window edge on Save without opening details', ({ run, get, item, context }) => {
+  const ids = l09(run), last = get('results').querySelectorAll('li.item').at(-1);
+  const nextId = ids[ids.indexOf(last.dataset.id) + 1];
+  const button = last.querySelector('button.star'); button.focus();
+  context.keyEvent = { target: button, key: 'ArrowDown', preventDefault() {} };
+  run('rowKeydown(keyEvent); rememberFocus();');
+  return stubDocument.activeElement === item(nextId).querySelector('button.star')
+    && item(nextId).querySelector('button.star').tabIndex === 0
+    && item(nextId).querySelector('button.open').tabIndex === -1
+    && run('openIds.size') === 0 && run('selectedId') === null && listIds(get).length < 40;
+});
 appCheck('window: full estimated length at once, bounded DOM after idle, correct list positions', ({ run, get, drain }) => {
   const ids = l09(run); drain();
   return listIds(get).length < 40 && run('rowOffsets.at(-1)') === ids.length * 180
