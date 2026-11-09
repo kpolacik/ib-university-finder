@@ -69,9 +69,11 @@ live for students.
   shows under "max €3,000", with a line saying why. My maths and Entrance exam
   hide only programmes that state they don't fit; one nobody has checked stays
   and says it was not filtered.
-- **Your IB points don't hide anything either.** With My IB points set, each
-  row says whether it is within your points, only with HL Maths 4+, or can't be
-  compared, and the count line adds them up.
+- **Your IB points hide only what is out of reach.** With My IB points set,
+  programmes that need more points than you have are hidden; for Irish courses
+  that counts the HL Maths bonus, so those stay. Every other row says whether it
+  is within your points, only with HL Maths 4+, or can't be compared, and the
+  count line adds them up. A programme with no points figure always stays.
 - **A minimum and a cutoff are said differently.** A published minimum is a
   floor ("36, minimum"). Irish courses show the IB equivalent of last year's
   CAO cutoff ("≈ 37, Round 1"), which moves every year; UCD publishes its own
