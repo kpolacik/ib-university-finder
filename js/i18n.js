@@ -633,6 +633,10 @@ export const UI = {
     "r4_faq_tools_a": "My list keeps every programme you save: you can group them, share them by link or export them as a CSV. Compare puts 2 to 4 programmes side by side. The two are separate, so saving a programme doesn't add it to Compare.",
     "r4_faq_stored": "Where is my list saved?",
     "r4_faq_stored_a": "Only in this browser on this device. To move it to another device or send it to someone, use Share in My list.",
+    // The header's "?" and the FAQ panel it opens (Leon, 2026-11-09).
+    "r6_faq": "FAQ",
+    "r6_faq_h": "Frequently asked questions",
+    "r6_faq_close": "Close the FAQ",
     "r3_home_label": "University Finder, all programmes",
     "ml_more": "More",
   },
@@ -1275,6 +1279,10 @@ export const UI = {
     "r4_faq_tools_a": "V Mojom zozname sú všetky programy, ktoré si uložíš: môžeš ich zoskupiť, poslať odkazom alebo stiahnuť ako CSV. Porovnanie ukáže 2 až 4 programy vedľa seba. Sú to dve oddelené veci, takže uložený program sa do porovnania sám nepridá.",
     "r4_faq_stored": "Kde je môj zoznam uložený?",
     "r4_faq_stored_a": "Len v tomto prehliadači na tomto zariadení. Ak ho chceš preniesť na iné zariadenie alebo niekomu poslať, použi Zdieľať v Mojom zozname.",
+    // The header's "?" and the FAQ panel it opens (Leon, 2026-11-09).
+    "r6_faq": "Časté otázky",
+    "r6_faq_h": "Časté otázky",
+    "r6_faq_close": "Zavrieť časté otázky",
     "r3_home_label": "University Finder, všetky programy",
     "ml_more": "Viac",
   }

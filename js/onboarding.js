@@ -2,6 +2,7 @@ import { t, facetLabel, formatCount } from './i18n.js';
 import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers } from './saved-state.js';
 import { dataValue } from './render.js';
 import { syncSlider } from './round2.js';
+import { openFaq } from './faq.js';
 
 export function readSaved() {
   try { return JSON.parse(localStorage.getItem(FILTER_KEY)); } catch { return null; }
@@ -64,33 +65,6 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   const close = (applied = false) => {
     if (!done) dismiss(applied ? 'completed' : 'dismissed');
     draft = null; done = false; appliedOnClose = applied; dialog.close(); finishClose();
-  };
-  const showFaq = () => {
-    const faq = document.getElementById('faq'), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // The FAQ sits below all 2,900 rows. Smooth-scrolling that far took
-    // seconds, and the rows drawn on the way and near the bottom change height
-    // (content-visibility placeholders, b14ff68), so the page stopped about
-    // 12,000 px short of the FAQ. Far away (or with reduced motion) it jumps,
-    // then keeps re-aiming for a moment while the rows there settle. Close by,
-    // it still glides, and aims once more if the list grew meanwhile.
-    const far = reduce || Math.abs(faq.getBoundingClientRect().top) > innerHeight * 2;
-    faq.scrollIntoView({ block: 'start', behavior: far ? 'auto' : 'smooth' });
-    focus(faq.querySelector('summary'));
-    const target = faq.getBoundingClientRect().top;
-    const list = document.getElementById('results');
-    const size = () => `${list.children.length}:${list.offsetHeight}`;
-    let last = size(), grew = false, still = 0, frames = 0, frame;
-    // The reader scrolling first cancels it.
-    const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
-    const stop = () => { cancelAnimationFrame(frame); for (const type of inputs) document.removeEventListener(type, stop, true); };
-    const watch = () => {
-      const now = size();
-      if (now !== last) { last = now; grew = true; still = 0; } else still++;
-      if (far && Math.abs(faq.getBoundingClientRect().top - target) > 1) faq.scrollIntoView({ block: 'start', behavior: 'auto' });
-      if (still >= 6 || ++frames > 300) { stop(); if (grew && !far) faq.scrollIntoView({ block: 'start', behavior: 'smooth' }); } else frame = requestAnimationFrame(watch);
-    };
-    for (const type of inputs) document.addEventListener(type, stop, true);
-    frame = requestAnimationFrame(watch);
   };
   const chips = (field, values, country = false) => {
     const box = el('div', 'chips');
@@ -170,7 +144,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
   // filters, so it says so, how many programmes that leaves, and offers the
-  // list or the FAQ, which sits at the very bottom where few people scroll.
+  // list or the FAQ (once only at the very bottom, where few people scroll).
   // It replaces the toast setup used to end with, and step 1's FAQ link.
   // The one moment every new student reads: say what the two row icons do,
   // with the icons themselves in the sentence (Leon, 2026-11-06).
@@ -225,7 +199,9 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     // detail > 1 is the second click of a double-click on Finish, which would
     // otherwise land on this button and close the screen before it is read.
     const show = button('r2_show_mine', 'btn btn-p', (event) => { if (event?.detail > 1) return; close(true); });
-    const faq = button('r3_ob_faq', 'btn', () => { close(true); showFaq(); });
+    // The FAQ opens in its panel over the list (Leon, 2026-11-09), as from the
+    // header's "?"; closing it returns to the list, where Setup has put focus.
+    const faq = button('r3_ob_faq', 'btn', () => { close(true); openFaq(results); });
     foot.classList.add('ob-done-foot'); foot.replaceChildren(show, faq, el('span', 'sp'));
     focus(heading);
   };

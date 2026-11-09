@@ -474,6 +474,51 @@ html.sheet-open{overflow:hidden}
 .sheet-f{flex:none;display:flex;gap:8px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--hairline)}
 .sheet-f .btn-p{flex:1}
 
+/* The FAQ panel behind the header's "?" (js/faq.js, Leon 2026-11-09). Built
+   like the Filters sheet above: show(), not the top layer, its own scrim, and
+   the same curve and timing (open 280 ms, close 220 ms). A sheet from the
+   bottom on phones, a side panel from the right from 600 px. Transform and
+   opacity only. Plain transitions reverse from wherever they are, so "?"
+   tapped mid-close glides back; the closing scrim lets that tap through.
+   Reduced motion gets a quick fade (below, and it out-ranks the global
+   "no transitions" rule at the end of this file). The page behind is locked
+   only on phones, as with Filters: from 600 px hiding a classic scrollbar
+   would re-lay out every row, so faq.js stops the wheel instead. */
+.faqp{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;box-shadow:var(--pop-shadow);contain:layout paint;transform:translateY(100%);transition:transform 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
+.faqp[open]{display:flex;flex-direction:column;transform:none;transition:transform 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+.faq-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;pointer-events:none;transition:opacity 220ms cubic-bezier(.32,.72,0,1),display 220ms allow-discrete}
+.faq-scrim.is-open{display:block;opacity:1;pointer-events:auto;transition:opacity 280ms cubic-bezier(.32,.72,0,1),display 280ms allow-discrete}
+@starting-style{.faqp[open]{transform:translateY(100%)}.faq-scrim.is-open{opacity:0}}
+.faqp-h{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline);touch-action:none}
+.faqp-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
+.faqp-h .btn{width:44px;height:44px;padding:0;justify-content:center}
+.faqp-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px calc(16px + env(safe-area-inset-bottom))}
+#faq-open{width:36px;padding:0;justify-content:center}
+@media (max-width:599.98px){
+ .faqp::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
+ html.faq-open{overflow:hidden}
+}
+@media (min-width:600px){
+ .faqp{inset:0 0 0 auto;width:min(440px,100%);max-height:none;border-radius:var(--r-panel) 0 0 var(--r-panel);transform:translateX(100%)}
+ @starting-style{.faqp[open]{transform:translateX(100%)}}
+}
+@media (pointer:coarse),(max-width:599px){#faq-open{width:44px}}
+/* A touch screen at 600-700 px makes every header button 44 px, and "?" left
+   Search 148 px wide (smoke F1 wants 160). The phone's 4 px between the
+   header buttons, and 12 px around Search, give it 168. */
+@media (pointer:coarse) and (min-width:600px) and (max-width:700px){.hd .hd-right{gap:4px}.hd .hd-in{gap:12px}}
+@media (prefers-reduced-motion:reduce){
+ .faqp,.faqp[open]{transform:none}
+ .faqp{opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete !important}
+ .faqp[open]{opacity:1}
+ @starting-style{.faqp[open]{opacity:0;transform:none}}
+ .faq-scrim{transition:opacity 120ms linear,display 120ms allow-discrete !important}
+}
+@media print{
+ dialog.faqp,dialog.faqp[open],.faq-scrim,.faq-scrim.is-open{display:none}
+ html.faq-open{overflow:visible}
+}
+
 /* Applied filters: one removable chip per value, on their own line under the
    controls. They wrap rather than squeeze (a long subject name measured 345 px
    in a 288 px phone sheet). 36 px targets, 44 px on touch and in the sheet. */
@@ -1270,10 +1315,6 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
 .ob .note{border:0}
-/* The FAQ link lands below the sticky bar: the count bar on phones, the
-   header from 600 px. */
-#faq{scroll-margin-top:calc(var(--count-height) + 8px)}
-@media (min-width: 600px){#faq{scroll-margin-top:calc(var(--header-visible) + 8px)}}
 .ob .btn{border-color:var(--hairline);border-radius:8px;font-size:15px;font-weight:400}
 .ob .btn-p{font-weight:600;border-color:var(--accent)}
 .ob .btn-q{border-color:transparent}
