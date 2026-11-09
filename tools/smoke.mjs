@@ -186,6 +186,13 @@ async function startChrome(path) {
     '--hide-scrollbars', '--mute-audio',
     '--disable-field-trial-config',
     '--disable-features=AnnotatedPageContentExtraction,AnnotatedPageContent,AnnotatedPageContentRequest,PageContentAnnotations,AIPageContentAgent,Glic,OptimizationGuideModelExecution',
+    // A computer with a mouse, on every system. Headless Chrome on Linux
+    // finds no mouse, so pages there match (pointer:none), not
+    // (pointer:fine): the facet lists never focused their search (smoke
+    // R3A on GitHub, 2026-11-09). macOS already says fine and hover, so this
+    // changes nothing there. Touch emulation still switches a page to
+    // coarse. Values: pointer fine = 4, hover = 2 (blink's enums).
+    '--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2',
     'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   chrome = child;

@@ -4754,6 +4754,8 @@ check('the print block has no .src-more rule: nothing renders that element, so t
 {
   const smoke = read('tools/smoke.mjs');
   const code = smoke.replace(/^\s*\/\/.*$/gm, '');
+  check('smoke Chrome says it has a mouse (pointer fine, hover) on every system: Linux headless says pointer:none, so the facet search never focused (R3A)',
+    /'--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'/.test(code));
   check('smoke "FAQ reduced motion" waits for the closed panel to rest at opacity 0 first (switching the media setting starts a hidden 120 ms fade; GitHub read opacity 1), then reads the fade start in the page',
     /'the closed panel at rest'/.test(code) && /!p\.open&&o==='0'&&!p\.getAnimations\(\)\.some\(a=>a\.playState==='running'\)/.test(code)
     && /addEventListener\('transitionrun'/.test(code) && /'the fade to start'/.test(code));
