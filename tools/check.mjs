@@ -2760,10 +2760,11 @@ check('render.js calls pointsNote once, in renderDetail, and the cell builder do
 // The save star came back on 2026-11-03 (Leon): the rows now take the saved
 // ids and the list view's group headings. Batch 3 · A: and the compare set,
 // for the compare toggle beside the star.
-check('renderRows keeps its call contract: saved ids for the star, compare ids for its toggle, group headings',
+// app.js draws rows with appendRows since the windowing; renderRows is left
+// for the test harness, so only its signature is pinned.
+check('renderRows (test helper) keeps its signature: saved ids for the star, compare ids for its toggle, group headings',
   /export function renderRows\(container, rows, \{ state, shortlist = new Set\(\), compare = new Set\(\), wide = false, headings = new Map\(\) \}\)/.test(renderSrc)
-    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc)
-    && appSrc.includes('windowRows = rows;'));
+    && /rows\.map\(\(row\) => renderRow\(row, state, wide, shortlist, headings, compare\)\)/.test(renderSrc));
 // L09: the rows after the first screen are built by the same renderRow, in the
 // list's applied mode.
 check('appendRows keeps its call contract: same renderRow, items returned, applied mode',
@@ -2783,9 +2784,6 @@ check('no display:contents, and no .card rule left', !/display\s*:\s*contents/.t
   && !/\.card(?![\w-])/.test(cssRules) && /\.sk-row/.test(cssRules));
 check('phone hit heights: .lnk uses --tap and .btn --ctl (44 px below 600)',
   /min-height:\s*var\(--tap\)/.test(ruleBody('.lnk')) && /height:\s*var\(--ctl\)/.test(ruleBody('.btn')));
-check('off-screen rows are skipped on screen and printed in full',
-  /contain:\s*layout style paint/.test(ruleBody('.item'))
-    && /@media print[\s\S]*\.item \{[^}]*content-visibility: visible/.test(cssRules));
 // Phone Filters sheet (2026-11-06): in Chrome, <li> rows left at the default
 // display:list-item that content-visibility has never drawn make every
 // inherited style change rebuild the whole list. showModal() makes the page
@@ -4708,9 +4706,17 @@ appCheck('while printing a 1024 or 600 change moves nothing and changes no open 
 // A08 print, as CSS: the list on screen, ink on white, open slots whole.
 const printRules = allCss.filter((r) => r.media.join() === '@media print');
 const printBody = (sel) => printRules.filter((r) => r.selector.split(',').map((x) => x.trim()).includes(sel)).map((r) => r.body).join(';');
-check('window estimates retain the measured phone/tablet/wide heights and print removes containment',
-  ['--row-estimate:180px', '--row-estimate:240px', '--row-estimate:152px', '--row-estimate:90px'].every(v => css.includes(v))
-    && /contain: none/.test(printBody('.item')) && /overflow-anchor:none/.test(css));
+// Each estimate belongs to the layout it was measured in: the base phone row,
+// a 320 px phone, the 600 px tablet list and the 800 px list container.
+check('window estimates are the measured heights, each on .results under its own media or container query; native anchoring is off',
+  JSON.stringify(allCss.filter((r) => /--row-estimate/.test(r.body)).map((r) => [r.selector, r.media.join(' '), r.body.trim()]))
+    === JSON.stringify([['.results', '', '--row-estimate:180px'], ['.results', '@media (max-width: 359.98px)', '--row-estimate:240px'],
+      ['.results', '@media (min-width: 600px)', '--row-estimate:152px'], ['.results', '@container (min-width: 800px)', '--row-estimate:90px']])
+    && /overflow-anchor:none/.test(ruleAt(cssText, 'html')));
+// Windowing replaced the old content skipping. Print mounts every row
+// (flushRows); the gaps that stand in for unmounted rows must not print.
+check('print shows every row: containment off, gaps hidden',
+  /contain: none/.test(printBody('.item')) && /display: none/.test(printBody('.row-space')));
 appCheck('window: scroll bursts schedule one frame and do not run under the Filters slide', ({ run, fireWindow, frames, flushFrame, fire, get }) => {
   l09(run); flushFrame(); flushFrame();
   fireWindow('scroll'); fireWindow('scroll'); fireWindow('scroll');
@@ -4762,7 +4768,9 @@ check('A08 print is ink on white: no row, cell, selected, open or banner fill or
     && /background: none; color: var\(--ink\)/.test(printBody('.cc[data-country]'))
     && /print-color-adjust: exact/.test(printBody('.m::before')) && /outline: none/.test(printBody(':focus-visible::after')));
 check('A08 print shows every row and open slot in full: no content skipping or intrinsic size, slots forced open and unclipped, a closing slot hidden, rows kept whole',
-  /content-visibility: visible; contain: none/.test(printBody('.item')) && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
+  /contain: none/.test(printBody('.item'))
+    && !allCss.some((r) => /(?:^|[\s,>])(?:li)?\.item(?![\w-])/.test(r.selector) && /content-visibility/.test(r.body))
+    && /grid-template-rows: 1fr; opacity: 1/.test(printBody('.expand'))
     && /overflow: visible/.test(printBody('.expand-inner')) && /display: none/.test(printBody('.expand[inert]'))
     && /break-inside: avoid/.test(printBody('.row')) && !/break-inside: avoid/.test(printBody('.item'))
     && /transition: none !important; animation: none !important/.test(printBody('*')));

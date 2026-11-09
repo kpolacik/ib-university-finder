@@ -2279,9 +2279,10 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
      verification of PR 1), hence !important. */
   :focus, :focus-visible, :focus-visible::after { outline: none !important; }
 
-  /* Undo the on-screen skipping, or off-screen rows print blank. A row stays
-     whole; a long open detail may run on to the next page. */
-  .item { content-visibility: visible; contain: none; }
+  /* Print mounts every row (flushRows); no containment, and the gaps that
+     stand in for unmounted rows go. A row stays whole; a long open detail
+     may run on to the next page. */
+  .item { contain: none; }
   .row-space { display: none; }
   .row { break-inside: avoid; page-break-inside: avoid; }
   /* An open slot prints open, mid-animation or not; one that is closing goes. */

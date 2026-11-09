@@ -4,6 +4,7 @@
 //   node tools/smoke.mjs --integration-fixes-only # sort, logo, row layout, resize, sheet/print
 //   node tools/smoke.mjs --row-keyboard-only # Tab stops, arrows, toggle/rebuild focus
 //   node tools/smoke.mjs --window-only # bounded DOM, full scroll length, focus, print
+//   node tools/smoke.mjs --round2-only # round 2 header, language and country-count checks
 //   node tools/smoke.mjs --window-fixes-only # Compare close, language switch and print anchoring
 //   node tools/smoke.mjs --sheet-pacing-only # only open/close frame pacing at Chrome 4x
 //   node tools/smoke.mjs --cold-sheet-only # only cold first-frame timing
@@ -1114,7 +1115,7 @@ async function runRound2(base) {
       });
       if(width>=600)await check(width,'R2E','country changes keep the full count with bounded rows',async()=>{
         await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
-        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && document.querySelectorAll('#results>li.item').length<2915 && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
+        const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
         await page.waitFor(settled(2915),10000,'all rows before country change');
         const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
         for(let i=0;i<2;i++){
@@ -5361,6 +5362,8 @@ async function main() {
     await runFaqPanel(base, want);
   } else if (args.has('--row-keyboard-only')) {
     await runRowKeyboard(base);
+  } else if (args.has('--round2-only')) {
+    await runRound2(base);
   } else if (args.has('--window-fixes-only')) {
     await runWindowFixes(base, want);
   } else if (args.has('--window-only')) {
