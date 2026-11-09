@@ -2094,7 +2094,8 @@ async function runBatch3A(base) {
           const f = await page.ev(`(()=>{const a=document.activeElement,r=a.getBoundingClientRect(),t=document.querySelector('#cmp-tray');
             return {what:a.tagName+'.'+a.className+'#'+a.id,inTray:t.contains(a),bottom:r.bottom,height:r.height,top:t.hidden?Infinity:t.getBoundingClientRect().top}})()`);
           seen.push(f.what);
-          if (f.inTray || !f.height) continue;
+          // Past the footer's last control, Tab leaves the page (focus on body).
+          if (f.inTray || !f.height || f.what.startsWith('BODY.')) continue;
           assert(f.bottom <= f.top + 0.5, `focus on ${f.what} is under the tray: ${JSON.stringify(f)}`);
         }
         await page.ev('window.scrollTo(0,document.documentElement.scrollHeight)');

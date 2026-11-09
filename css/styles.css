@@ -1790,6 +1790,10 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 }
 /* FAQ: the "+" sat 3 px above the first line's centre (it was top-aligned);
    now set with the panel's other question rules (.faq summary>.ic). */
+/* From 600 px the footer heading keeps the 12 px it had beside the old footer
+   FAQ: the gaps Leon approved under Compare (44 px) and the list are measured
+   to it (smoke CH2). */
+@media (min-width:600px){.foot h2{margin-top:12px}}
 
 /* Batch 3 · A: Compare */
 /* The row's compare toggle sits beside the save star, which keeps its outer
