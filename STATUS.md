@@ -882,6 +882,8 @@ students, and where each rule lives:
   Escape closes the toast and focus goes back to the next column's "x".
   The points line under the count now groups thousands like the count and the
   Setup done screen ("1,512" / "1 512").
+  The language buttons read "SK (slovenčina)" to screen readers again; the
+  hidden text lost its leading space whenever the page re-applied the language.
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,

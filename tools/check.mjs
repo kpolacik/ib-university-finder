@@ -737,7 +737,15 @@ check('language buttons expose both available choices, with their own language n
 check('each language button names its language in that language, in both UIs',
   /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
     && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
-    && UI.en.slovak === '(slovenčina)' && UI.sk.slovak === '(slovenčina)' && UI.en.english === '(English)' && UI.sk.english === '(English)');
+    && UI.en.slovak === ' (slovenčina)' && UI.sk.slovak === ' (slovenčina)' && UI.en.english === ' (English)' && UI.sk.english === ' (English)');
+// applyLanguage rewrites that hidden text; without the leading space a screen
+// reader said "SK(slovenčina)". Run it for real and read the button's text.
+check('applyLanguage keeps the space before the hidden language name ("SK (slovenčina)", "EN (English)"), in both UIs', (() => {
+  const spans = ['slovak', 'english'].map((key) => ({ getAttribute: (name) => (name === 'data-i18n' ? key : null), textContent: 'x' }));
+  const root = { documentElement: {}, querySelectorAll: (selector) => (selector === '[data-i18n]' ? spans : []) };
+  const read = (lang) => { i18n.setLanguage(lang, { setItem() {} }); i18n.applyLanguage(root); return `SK${spans[0].textContent} EN${spans[1].textContent}`; };
+  try { return read('sk') === 'SK (slovenčina) EN (English)' && read('en') === 'SK (slovenčina) EN (English)'; } finally { i18n.setLanguage('en', { setItem() {} }); }
+})());
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
     && appSrcEarly.includes('renderSourceLine(dom.sourceLine, allRows, meta)')
