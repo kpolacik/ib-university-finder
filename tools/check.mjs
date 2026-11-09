@@ -3407,7 +3407,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -6763,6 +6763,13 @@ appCheck('A3 three columns: "x" on the middle one leaves two with focus on the n
   toast.action();
   return cmpColIds(get).join() === [a, b, c].join() && stubDocument.activeElement === cmpX(get, b) && cmpStored(context).join() === [a, b, c].join();
 });
+appCheck('A3 a column "x" pressed from the keyboard (click detail 0) asks the toast to move focus to Undo; a pointer click does not', ({ run, get, fire, context, ids: [a, b, c] }) => {
+  run(`${cmpSet([a, b, c])} update(); openCompare(null);`);
+  fire(cmpX(get, b), 'click', { detail: 0 });
+  if (context.toasts.at(-1).options?.focusAction !== true) return false;
+  fire(cmpX(get, a), 'click', { detail: 1 });
+  return context.toasts.at(-1).options?.focusAction === false;
+});
 appCheck('A3 Undo after two removals puts the programme back before the ones that came after it', ({ run, get, fire, context, ids: [a, b, c] }) => {
   context.fixture.push(...context.live.slice(1, 2));
   const d = context.fixture[3].id;
@@ -6957,7 +6964,7 @@ appCheck('A5 desktop: opening Compare from the header retires the "Open compare"
   const ids = context.fixture.map((r) => r.id);
   run('allRows = fixture; update();');
   const toasts = [];
-  context.showToast = (message, label, action) => { const toast = { message, label, action, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
+  context.showToast = (message, label, action, options) => { const toast = { message, label, action, options, gone: false }; toasts.push(toast); return () => { toast.gone = true; }; };
   fire(cmpOf(get('results').children[0]), 'click');
   const added = toasts.at(-1);
   if (added?.label !== 'Open compare' || added.gone) return false;
@@ -7048,6 +7055,19 @@ appCheck('A5 phones: no toast, the status line says it once; rapid adds 1 to 4 l
     dispatchStub(buttonOf(third), { type: 'click' });
     advance(200);
     return done.join() === 'A,C' && region.children.length === 0;
+  }));
+  check('A5 toasts: asked to (a keyboard removal), the toast moves focus to its Undo, and Escape there closes it without anything else handling the key; otherwise focus stays put', toastPage(({ region, advance, show, buttonOf }) => {
+    stubDocument.activeElement = null;
+    show('Removed A', 'Undo', () => {});
+    if (stubDocument.activeElement !== null) return false;
+    show('Removed B', 'Undo', () => {}, { focusAction: true });
+    const toast = region.children[0];
+    if (region.children.length !== 1 || stubDocument.activeElement !== buttonOf(toast)) return false;
+    dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Enter' });
+    if (region.children.length !== 1) return false;
+    const stopped = !dispatchStub(buttonOf(toast), { type: 'keydown', key: 'Escape' });
+    advance(200);
+    return stopped && region.children.length === 0;
   }));
   check('A5 hovering during toast exit cancels removal until the pointer leaves', toastPage(({ region, advance, show }) => {
     show('Removed'); const toast = region.children[0];

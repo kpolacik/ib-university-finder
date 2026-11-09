@@ -876,8 +876,10 @@ students, and where each rule lives:
   At under 360 px the column labels count toward their tile's width, so a fee
   whose Slovak label is wider than the fee moves to its own line instead of
   overlapping "Termín". Held for the Supabase PR (`plans/backlog/supabase-pr-ui.md`):
-  one tab stop per row, a keyboard way to reach the toast's Undo, and the smoke
-  test on GitHub's checks.
+  one tab stop per row and the smoke test on GitHub's checks. Done in the
+  list-performance round (2026-11-09): removing a Compare column with the
+  keyboard moves focus to the toast's Undo, which waits while it holds focus;
+  Escape closes the toast and focus goes back to the next column's "x".
 
 Round 1 corrections cover subject translations in setup and the pane, draft
 application and dismissal focus, cross-tab saves and Undo, compact unknowns,
