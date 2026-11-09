@@ -4754,6 +4754,10 @@ check('the print block has no .src-more rule: nothing renders that element, so t
 {
   const smoke = read('tools/smoke.mjs');
   const code = smoke.replace(/^\s*\/\/.*$/gm, '');
+  check('smoke drags with Input.dispatchTouchEvent (touchSwipe), never Input.synthesizeScrollGesture: on GitHub\'s Linux Chrome that left every page unscrolled (B3A, R4B, CMP, ROW)',
+    !/synthesizeScrollGesture/.test(code) && /async function touchSwipe\(/.test(code)
+    && (code.match(/touchSwipe\(page, /g) ?? []).length >= 6
+    && /y: Math\.round\(yDistance < 0 \? height \* 0\.8 : height \* 0\.2\)/.test(code));
   check('smoke Chrome says it has a mouse (pointer fine, hover) on every system: Linux headless says pointer:none, so the facet search never focused (R3A)',
     /'--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2'/.test(code));
   check('smoke "FAQ reduced motion" waits for the closed panel to rest at opacity 0 first (switching the media setting starts a hidden 120 ms fade; GitHub read opacity 1), then reads the fade start in the page',

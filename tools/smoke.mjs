@@ -400,6 +400,30 @@ async function openPage(base, width, height, { block = [] } = {}) {
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
 }
 
+// A finger dragged from (x, y) by (xDistance, yDistance) at `speed` px/s:
+// one touchStart, a touchMove every 1/60 s, a touchEnd. With fling false the
+// finger rests 150 ms before it lifts, so the page does not glide on.
+// Same arguments as Input.synthesizeScrollGesture, which it replaces: on
+// GitHub's Linux Chrome every synthesizeScrollGesture left the page where it
+// was (2026-11-09; B3A, R4B, CMP and ROW), while dispatchTouchEvent taps
+// worked. synthesizeScrollGesture goes through the platform's own input
+// layer (Aura on Linux); dispatchTouchEvent goes through Chrome's touch
+// emulation on every platform. On macOS it scrolls with
+// Emulation.setTouchEmulationEnabled on or off (B3A runs with it off).
+async function touchSwipe(page, { x, y, xDistance = 0, yDistance = 0, speed = 800, fling = true }) {
+  const steps = Math.max(2, Math.ceil((Math.hypot(xDistance, yDistance) / speed) * 60));
+  const at = (k) => [{ x: Math.round(x + (xDistance * k) / steps), y: Math.round(y + (yDistance * k) / steps) }];
+  const pause = (ms) => new Promise((ok) => setTimeout(ok, Math.max(0, ms)));
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+  const start = Date.now();
+  for (let k = 1; k <= steps; k++) {
+    await pause(start + (k * 1000) / 60 - Date.now());
+    await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) });
+  }
+  if (!fling) await pause(150);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
 // Prepare a named programme through the row keyboard's own mount path. Search
 // can match many rows; a match need not be in the viewport's DOM window.
 async function mountProgramme(page, id) {
@@ -2261,7 +2285,7 @@ async function runBatch3A(base) {
         await page.waitFor(`({ok:${state}.range===${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'back at the start');
         // A finger dragged right to left across the table, inside the window.
         const box = await page.ev(`(()=>{const r=document.querySelector('.cmp-scroll').getBoundingClientRect();return {x:Math.round(Math.min(r.right,innerWidth)-30),y:Math.round(Math.min(Math.max(r.top+80,10),innerHeight-10))}})()`);
-        await page.send('Input.synthesizeScrollGesture', { x: box.x, y: box.y, xDistance: -150, yDistance: 0, gestureSourceType: 'touch', speed: 800 });
+        await touchSwipe(page, { x: box.x, y: box.y, xDistance: -150, speed: 800 });
         await page.waitFor(`({ok:${state}.range!==${JSON.stringify(range(1, 2))},why:${state}.range})`, 5000, 'a swipe moves the range');
         await page.ev(`document.querySelector('.cmp-scroll').scrollLeft=0`);
         await frames(page);
@@ -2743,7 +2767,10 @@ async function runBatch3C(base) {
               for(const s of [...Array(91).keys(),...[...Array(90).keys()].reverse()]){scrollTo(0,s);await raf();out.push(take());}return out;})()`);
           } else {
             await page.ev(`(()=>{${sample}window.__frames=[];window.__stopFrames=false;const tick=()=>{__frames.push(take());if(!__stopFrames)requestAnimationFrame(tick);};requestAnimationFrame(tick);})()`);
-            const swipe = (yDistance) => page.send('Input.synthesizeScrollGesture', { x: Math.round(width / 2), y: Math.round(height / 2), yDistance, speed, gestureSourceType: 'touch', repeatCount: 0, preventFling: true }, 20000);
+            // Start low for a swipe up and high for a swipe down, so the
+            // finger stays on the screen (from the middle, 400 px down would
+            // end at y 720 on a 640 px phone).
+            const swipe = (yDistance) => touchSwipe(page, { x: Math.round(width / 2), y: Math.round(yDistance < 0 ? height * 0.8 : height * 0.2), yDistance, speed, fling: false });
             await swipe(-300);
             await settle(page);
             await swipe(400);
@@ -4237,10 +4264,15 @@ async function runRowScroll(base) {
         await page.send('Page.reload');
         await page.waitFor(`(()=>{const n=document.querySelectorAll('#results > li.item').length,t=Number((document.querySelector('#result-count .count-lead')?.textContent??'').replace(/\\D/g,''));return {ok:document.querySelector('#loading')?.hidden&&t>0&&n>0&&n<100,why:n+' of '+t+' rows drawn'}})()`, 30000, 'every row');
         await page.ev(`new Promise(r=>setTimeout(r,300)).then(()=>{window.__shift=0;window.__frames=[];const f=()=>{let blank=0;for(let k=1;k<10;k++){const it=document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.item');if((it&&!it.firstElementChild.checkVisibility({contentVisibilityAuto:true}))||document.elementFromPoint(innerWidth/2,innerHeight*k/10)?.closest('.row-space'))blank++}window.__frames.push(blank);window.__raf=requestAnimationFrame(f)};window.__raf=requestAnimationFrame(f)})`);
-        for (let i = 0; i < 8; i++) {
-          await page.send('Input.synthesizeScrollGesture', { x: width / 2, y: height * 0.8, yDistance: -1500, speed: 4000, gestureSourceType: 'touch' }, 20000);
+        // Flicks inside the screen, from 90% to 10% of its height, each with
+        // the glide after it, until the list is well past 6000 px. The finger
+        // never leaves the screen.
+        for (let i = 0; i < 20 && await page.ev('scrollY') < 6500; i++) {
+          await touchSwipe(page, { x: Math.round(width / 2), y: Math.round(height * 0.9), yDistance: -Math.round(height * 0.8), speed: 4000 });
+          await page.ev('new Promise((r) => setTimeout(r, 250))');
         }
         const m = await page.ev(`(()=>{cancelAnimationFrame(window.__raf);const f=window.__frames;return {frames:f.length,blank:f.filter(Boolean).length,shift:+window.__shift.toFixed(4),y:Math.round(scrollY)}})()`);
+        console.log(`MEASURE ${width} ROW scroll ${m.y} px in ${m.frames} frames`);
         assert(m.frames > 20 && m.y > 6000, `the list did not scroll: ${JSON.stringify(m)}`);
         assert(m.blank === 0, `a blank row was on screen in ${m.blank} of ${m.frames} frames: ${JSON.stringify(m)}`);
         assert(m.shift < 0.05, `the rows moved while scrolling (layout shift ${m.shift}): ${JSON.stringify(m)}`);
@@ -4383,14 +4415,14 @@ async function runCompareTouchScroll(base) {
     for (const [where, spot] of Object.entries(spots)) {
       assert(spot, `${label}: no table cell in the middle of the screen`);
       await page.ev(`scrollTo({ top: 0, behavior: 'instant' }); document.querySelector('#compare .cmp-scroll').scrollTop = 0`);
-      await page.send('Input.synthesizeScrollGesture', { x: spot[0], y: spot[1], xDistance: 0, yDistance: -300, gestureSourceType: 'touch', speed: 1200 }, 30000);
+      await touchSwipe(page, { x: spot[0], y: spot[1], yDistance: -300, speed: 1200 });
       const m = await page.ev(`new Promise((r) => setTimeout(() => r({ y: Math.round(scrollY), box: document.querySelector('#compare .cmp-scroll').scrollTop,
         html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY }), 300))`);
       assert(m.y >= 100, `${label}, swipe over the ${where}: the page moved ${m.y} px (scroll box ${m.box} px, html ${m.html}, body ${m.body})`);
     }
     // The columns still swipe sideways.
     await page.ev(`scrollTo({ top: 0, behavior: 'instant' })`);
-    await page.send('Input.synthesizeScrollGesture', { x: spots.table[0], y: spots.table[1], xDistance: -200, yDistance: 0, gestureSourceType: 'touch', speed: 1200 }, 30000);
+    await touchSwipe(page, { x: spots.table[0], y: spots.table[1], xDistance: -200, speed: 1200 });
     const left = await page.ev(`new Promise((r) => setTimeout(() => r(document.querySelector('#compare .cmp-scroll').scrollLeft), 600))`);
     assert(left > 0, `${label}: a sideways swipe over the table did not move the columns`);
     await page.ev(`document.querySelector('#compare .cmp-scroll').scrollLeft = 0`);
@@ -4876,15 +4908,19 @@ async function runNonModalSheet(base, want) {
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'open sheet');
         const before = await page.ev('scrollY');
         await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: 40, deltaX: 0, deltaY: 450 });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: width / 2, y: 100 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: width / 2, y: 20 }] });
-        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        // A finger dragged up over the scrim, resting before it lifts. The
+        // old drag was one 80 px jump and a lift: a fling, and a fling
+        // swallows the next tap, which may be why the scrim tap below never
+        // closed the sheet at 390 on GitHub (2026-11-09).
+        await touchSwipe(page, { x: width / 2, y: 100, yDistance: -80, speed: 800, fling: false });
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         assert(await page.ev(`scrollY===${before}&&getComputedStyle(document.documentElement).overflow==='hidden'&&document.elementFromPoint(10,10).id==='sheet-scrim'`), 'background scrolled or scrim missed');
+        // What reached the scrim, for the failure message.
+        await page.ev(`window.__scrimLog=[];for(const t of ['pointerdown','pointerup','click'])document.querySelector('#sheet-scrim').addEventListener(t,()=>__scrimLog.push(t))`);
         assert(await page.ev(`(()=>{const s=document.querySelector('#filter-sheet'),z=e=>+getComputedStyle(e).zIndex;return z(s)>z(document.querySelector('#sheet-scrim'))&&z(document.querySelector('#sheet-scrim'))>Math.max(z(document.querySelector('.hd')),z(document.querySelector('#toasts')),z(document.querySelector('.cmp-tray'))||0)})()`), 'stack below tray/header/toasts');
         await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 10, y: 10 }] });
         await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await page.waitFor(settled(false), 5000, 'scrim close');
+        await page.waitFor(`(()=>{const r=${settled(false)};return {ok:r.ok,why:'sheet '+(document.querySelector('#filter-sheet').open?'open':'closed')+', scrim saw '+(__scrimLog.join(' ')||'nothing')}})()`, 5000, 'scrim close');
         assert(await page.ev(`document.activeElement.id==='f-more'&&!document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).outlineStyle==='none'&&scrollY===${before}&&!document.documentElement.classList.contains('sheet-open')`), 'tap return/scroll cleanup');
         await tap('#f-more'); await page.waitFor(settled(true), 5000, 'reopen');
         await page.send('Emulation.setDeviceMetricsOverride', { width: 800, height, deviceScaleFactor: 1, mobile: true });
