@@ -987,7 +987,9 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   seven surface-separation floors per theme. Never lower a minimum. The global
   `--edge-soft` token is a 1 px grey border only on the off switch and unset
   slider thumb: at least 3:1 on the active panel in either theme. No grey border
-  when on/set; the accent fill/ring takes over.
+  when on/set; the accent fill/ring takes over. The checker also rejects any
+  other `data-theme` selector and any `prefers-color-scheme` query, because a
+  rule keyed to the system setting would override a saved Light choice.
 - **Light and dark, following System by default.** The gear beside the current
   EN/SK code opens Settings, with native language and System / Light / Dark
   radios. Choices apply at once and the panel stays open; Escape closes it and

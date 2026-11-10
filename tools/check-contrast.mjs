@@ -358,7 +358,10 @@ export function colourPolicyErrors(text) {
   for (const range of [...roots, ...(wrapper ? [wrapper] : [])].sort((a, b) => b.start - a.start)) {
     outside = outside.slice(0, range.start) + outside.slice(range.end);
   }
-  if (/\[data-theme/i.test(outside)) errors.push('Theme selector outside approved dark wrapper');
+  // Verify review: "[ data-theme]" and "data\-theme" are the same selector to a
+  // browser, and a prefers-color-scheme query would beat a saved Light choice.
+  if (/\[\s*data(?:-|\\-|\\0{0,4}2d\s?)theme/i.test(outside)) errors.push('Theme selector outside approved dark wrapper');
+  if (/prefers-color-scheme/i.test(outside)) errors.push('Color-scheme media query outside approved dark wrapper');
   for (const [, property, rawValue] of outside.matchAll(/(?:^|[;{}])\s*([\w-]+)\s*:\s*([^;{}]*)(?=;|\})/g)) {
     const value = rawValue.replace(/url\([^)]*\)/gi, '');
     if (/#(?:[\da-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(/i.test(value)) errors.push(`Colour literal outside root in ${property}`);

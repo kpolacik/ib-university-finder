@@ -553,12 +553,14 @@ async function runTheme(base) {
         assert(await page.ev(`document.activeElement===document.querySelector('[data-language=sk]')`), 'open did not focus checked language');
         await page.key('ArrowRight', 'ArrowRight', 39); await page.ev(frames);
         assert(await page.ev(`document.documentElement.lang==='en' && document.querySelector('[data-language=en]').checked && !document.querySelector('#settings-panel').hidden && localStorage.getItem('ib-university-finder:language')==='en'`), 'arrow did not apply/save language and keep panel open');
+        // Verify review: an open panel alone does not prove the re-render kept keyboard focus.
+        assert(await page.ev(`document.activeElement===document.querySelector('[data-language=en]')`), 'language re-render moved focus off the radio');
         const aligned = `(()=>[...document.querySelectorAll('.settings-seg')].every(g=>{const r=g.querySelector('input:checked').closest('label').getBoundingClientRect(),t=g.querySelector('.segment-thumb').getBoundingClientRect();return Math.abs(r.left-t.left)<1&&Math.abs(r.width-t.width)<1}))()`;
         await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'translated thumbs');
         const appearance = `[data-theme-choice="${theme}"]`;
         await page.ev(`document.querySelector('${appearance}').focus()`);
         await page.key('ArrowLeft', 'ArrowLeft', 37); await page.ev(frames);
-        assert(await page.ev(`!document.querySelector('#settings-panel').hidden && document.querySelector('[data-theme-choice]:checked').dataset.themeChoice!=='${theme}'`), 'appearance arrow did not select');
+        assert(await page.ev(`!document.querySelector('#settings-panel').hidden && document.querySelector('[data-theme-choice]:checked').dataset.themeChoice!=='${theme}' && document.activeElement===document.querySelector('[data-theme-choice]:checked')`), 'appearance arrow did not select or lost focus');
         await page.click(`document.querySelector('[data-theme-choice="${theme}"]').closest('label')`, 'Restore appearance');
         await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'appearance thumbs');
         await page.screenshot(`/tmp/ib-dark/${width}-${theme}-settings.png`, { viewportOnly: true });

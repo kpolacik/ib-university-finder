@@ -8558,6 +8558,10 @@ section('FAQ text, twelve questions (Leon, 2026-11-09)');
     ['stray scheme', css + '.extra{color-scheme:light}', 'Color-scheme outside approved palettes'],
     ['uppercase stray scheme', css + '.extra{COLOR-SCHEME:light}', 'Color-scheme outside approved palettes'],
     ['stray hex', css + '.extra{color:#fff}', 'Colour literal outside root in color'],
+    // Verify review: these three passed the first version of the scan.
+    ['spaced theme attribute', css + '[ data-theme="dark"] .extra{color:var(--ink)}', 'Theme selector outside approved dark wrapper'],
+    ['escaped theme attribute', css + '[data\\-theme=dark] .extra{color:var(--ink)}', 'Theme selector outside approved dark wrapper'],
+    ['system dark query', css + '@media (prefers-color-scheme:dark){.extra{color:var(--ink)}}', 'Color-scheme media query outside approved dark wrapper'],
   ];
   for (const [name, text, reason] of mutations) check(`dark colour policy rejects ${name} for its intended reason`, colourPolicyErrors(text).includes(reason));
   equal('dark policy preserves an unrelated screen wrapper', colourPolicyErrors(css + '@media screen{.extra{color:var(--ink)}}'), []);
