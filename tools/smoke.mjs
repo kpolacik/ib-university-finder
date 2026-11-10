@@ -5704,7 +5704,15 @@ async function runPr7Polish(base) {
   const still = (sel) => `({ok:!document.querySelector(${JSON.stringify(sel)}).getAnimations({subtree:true}).some(a=>a.playState==='running'),why:${JSON.stringify(`${sel} moving`)}})`;
   const centre = (page, js) => page.ev(`(()=>{const r=(${js}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
   const touch = (page, type, at, timestamp) => page.send('Input.dispatchTouchEvent', { type, touchPoints: at ? [at] : [], ...(timestamp === undefined ? {} : { timestamp }) });
-  const tap = async (page, js) => { const at = await centre(page, js); await touch(page, 'touchStart', at); await touch(page, 'touchEnd'); };
+  // As for openPage.click: a scroll/layout update must reach a painted frame
+  // before touch hit testing. Fast CI can otherwise tap the previous position.
+  const tap = async (page, js) => {
+    const at = await page.waitFor(`(async()=>{const el=${js};if(!el)return {why:'missing touch target'};
+      const r=el.getBoundingClientRect();await ${frames};const next=el.getBoundingClientRect(),x=next.left+next.width/2,y=next.top+next.height/2,hit=document.elementFromPoint(x,y);
+      return {ok:next.width>0&&next.height>0&&r.left===next.left&&r.top===next.top&&el.contains(hit),x,y,why:'touch target moving or covered by '+(hit?.id||hit?.tagName)}})()`, 5000, 'touch target ready');
+    await touch(page, 'touchStart', { x: at.x, y: at.y });
+    await touch(page, 'touchEnd');
+  };
   // A finger from `from`, down by dy in `steps` moves `every` ms apart, then
   // still for `hold` ms; lift false leaves it down for the caller.
   const drag = async (page, from, { dy, steps = 10, every = 16, hold = 0, lift = true, timestamped = false }) => {
@@ -5733,7 +5741,8 @@ async function runPr7Polish(base) {
   };
   const opened = async (page, s) => {
     await s.open(page);
-    await page.waitFor(`({ok:document.querySelector('${s.sheet}').open,why:'not open'})`, 5000, `${s.sheet} open`);
+    await page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}'),b=document.querySelector('${s.opener}'),r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+      return {ok:d.open,why:JSON.stringify({open:d.open,scroll:scrollY,scale:visualViewport.scale,focus:document.activeElement.id,hit:hit?.id||hit?.tagName,rect:[r.x,r.y,r.width,r.height]})}})()`, 5000, `${s.sheet} open`);
     await page.waitFor(still(s.sheet), 5000, `${s.sheet} settled`);
   };
   const shut = (page, s) => page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}');return {ok:!d.open&&!d.getAnimations().some(a=>a.playState==='running')&&!d.style.transform,why:'open '+d.open+' transform '+d.style.transform}})()`, 5000, `${s.sheet} closed`);
