@@ -341,7 +341,14 @@
       "[data-language]:checked",
       "[data-theme-choice]",
       "settings-open",
-      "settings-panel"
+      "settings-panel",
+      "./sheet-drag.js",
+      ".grab,.sheet-h",
+      "cubic-bezier(.22,1,.36,1)",
+      "forwards",
+      "inert",
+      "none",
+      "translateY(-4px) scale(.97)"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -1208,7 +1215,25 @@
       "is-warm",
       "load",
       "transform",
-      "transitionend"
+      "transitionend",
+      "(max-width: 599.98px)",
+      "./sheet-drag.js",
+      ".a",
+      ".faqp-b details",
+      ".grab,.faqp-h",
+      "[inert]",
+      "aria-hidden",
+      "cubic-bezier(.22,1,.36,1)",
+      "forwards",
+      "function",
+      "hidden",
+      "inert",
+      "lang",
+      "overflow",
+      "px",
+      "resize",
+      "summary",
+      "toggle"
     ],
     "js/theme.js": [
       "(prefers-color-scheme: dark)",
@@ -1219,6 +1244,21 @@
       "light",
       "meta[name=\"color-scheme\"]",
       "system"
+    ],
+    "js/sheet-drag.js": [
+      "button,a[href],input,select,textarea,summary,label",
+      "function",
+      "lostpointercapture",
+      "none",
+      "pointercancel",
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "px)",
+      "resize",
+      "transform",
+      "transition",
+      "translateY("
     ]
   },
   "hardExceptions": [
