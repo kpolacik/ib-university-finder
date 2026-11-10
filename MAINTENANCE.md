@@ -34,7 +34,8 @@ Two tabs. Everything else follows from this.
 
 Charles faculty names come from the official SIS link; every Charles card shows the faculty; same-name cards elsewhere show, where the recorded facts do not distinguish entries, a catalogue-entry number to help readers compare official pages.
 
-Country badges use a named tint for each of the 11 data countries in `css/styles.css` (pairs checked by `tools/check-contrast.mjs`); any new country gets a neutral badge automatically, and its full name always stays visible.
+Row country badges are grey in both themes, with pairs checked by
+`tools/check-contrast.mjs`; the full country name always stays visible.
 
 A programme is linked to its university by putting the university's
 `university_id` in the programme row. Get that wrong and the row will not
@@ -435,7 +436,8 @@ text. Fix the format, re-enter the dates, and the warning goes away.
 
 ## Slovak and English
 
-The site starts in Slovak. The EN and SK buttons switch the page language;
+The site starts in English. Open the gear beside EN/SK and choose Slovenčina
+or English in Settings to switch the page language;
 this browser remembers your choice. A link with `?ui=en` or `?ui=sk`
 overrides that choice. `lang=` in the address is something else: it is the
 teaching-language filter (`?lang=English`), and switching the site language

@@ -242,67 +242,142 @@ const CANONICAL = {
   "--t-sheet-out": "220ms",
   "--t-answer": "260ms"
 };
+// Palette D, approved by Leon on 2026-11-10.
+const CANONICAL_DARK = {
+  "--ground": "#1b2027",
+  "--panel": "#232933",
+  "--hover": "#2b323d",
+  "--hairline": "#3b4350",
+  "--edge": "#8a94a1",
+  "--edge-soft": "#6c727a",
+  "--ink": "#e8edf3",
+  "--ink-2": "#b6bfca",
+  "--ink-3": "#a1abb7",
+  "--accent": "#8db4ff",
+  "--accent-press": "#b3ccff",
+  "--accent-tint": "#283c5e",
+  "--on-accent": "#0d1626",
+  "--fit-fill": "#1f3b2d",
+  "--fit-ink": "#a8e7c0",
+  "--fit-mark": "#5bc98e",
+  "--cond-fill": "#453a00",
+  "--cond-ink": "#f3d872",
+  "--cond-mark": "#d9ae38",
+  "--time-fill": "#55230f",
+  "--time-ink": "#ffc19d",
+  "--time-mark": "#f28f58",
+  "--alarm": "#ff8a8a",
+  "--alarm-ink": "#ffb0b0",
+  "--brand-fill": "#47345d",
+  "--brand-ink": "#ffffff",
+  "--brand-accent": "#c7b2ea",
+  "--cty-fill": "#2c333d",
+  "--cty-ink": "#c8d0da",
+  "--cty-dk-fill": "#2c333d",
+  "--cty-dk-ink": "#c8d0da",
+  "--cty-ie-fill": "#2c333d",
+  "--cty-ie-ink": "#c8d0da",
+  "--cty-it-fill": "#2c333d",
+  "--cty-it-ink": "#c8d0da",
+  "--cty-nl-fill": "#2c333d",
+  "--cty-nl-ink": "#c8d0da",
+  "--cty-cz-fill": "#2c333d",
+  "--cty-cz-ink": "#c8d0da",
+  "--cty-uk-fill": "#2c333d",
+  "--cty-uk-ink": "#c8d0da",
+  "--cty-de-fill": "#2c333d",
+  "--cty-de-ink": "#c8d0da",
+  "--cty-at-fill": "#2c333d",
+  "--cty-at-ink": "#c8d0da",
+  "--cty-se-fill": "#2c333d",
+  "--cty-se-ink": "#c8d0da",
+  "--cty-fi-fill": "#2c333d",
+  "--cty-fi-ink": "#c8d0da",
+  "--cty-no-fill": "#2c333d",
+  "--cty-no-ink": "#c8d0da",
+  "--scrim": "rgb(0 0 0 / .55)",
+  "--thumb-shadow": "0 1px 3px rgb(0 0 0 / .5)",
+  "--pop-shadow": "0 0 0 1px #3b4350,0 12px 32px -10px rgb(0 0 0 / .45)",
+  "--dialog-shadow": "0 0 0 1px #3b4350,0 24px 64px -16px rgb(0 0 0 / .6)",
+  "--shadow": "0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -8px rgb(0 0 0 / .45)"
+};
 const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 
+// Brace depth matters: a screen rule nested in print never paints on screen.
+function rules(text) {
+  const out = [];
+  let start = 0, depth = 0, open;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') { if (depth++ === 0) open = i; }
+    else if (text[i] === '}' && --depth === 0) {
+      out.push({ selector: text.slice(start, open).trim(), body: text.slice(open + 1, i), start, end: i + 1 });
+      start = i + 1;
+    }
+  }
+  return out;
+}
+function darkRule(clean) {
+  return rules(clean).find((rule) => rule.selector === '@media screen' && rule.body.includes('[data-theme'));
+}
+function paletteErrors(body, canonical, scheme, label) {
+  const errors = [], seen = new Set();
+  let schemes = 0;
+  for (const declaration of body.split(';').map((part) => part.trim()).filter(Boolean)) {
+    const match = declaration.match(/^([\w-]+)\s*:\s*([^{}]+)$/);
+    if (!match) { errors.push(`Unconsumed ${label} content`); continue; }
+    const [, name, raw] = match, value = raw.trim();
+    if (name === 'color-scheme') {
+      if (++schemes > 1) errors.push(`Duplicate ${label} color-scheme`);
+      if (value !== scheme) errors.push(`Changed ${label} color-scheme`);
+    } else {
+      if (seen.has(name)) errors.push(`Duplicate ${label} token ${name}`);
+      seen.add(name);
+      if (!Object.hasOwn(canonical, name)) errors.push(`Unapproved ${label} token ${name}`);
+      else if (value !== canonical[name]) errors.push(`Changed ${label} token ${name}`);
+    }
+  }
+  if (schemes !== 1) errors.push(`Expected one ${label} color-scheme`);
+  for (const name of Object.keys(canonical)) if (!seen.has(name)) errors.push(`Missing ${label} token ${name}`);
+  return errors;
+}
 // Check declaration values, not selectors (#issues) or URL fragments (#i-globe).
 export function colourPolicyErrors(text) {
   const errors = [];
   const clean = withoutComments(text);
-  const roots = [...text.matchAll(/:root\s*\{([^{}]*)\}/g)];
+  const roots = rules(clean).filter((rule) => rule.selector === ':root');
   if (roots.length !== 1) errors.push('Expected exactly one root block');
-  const block = roots[0]?.[1] ?? '';
-  const declarations = [...withoutComments(block).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)];
-  const seen = new Set();
-  for (const [, name, value] of declarations) {
-    if (seen.has(name)) errors.push(`Duplicate root token ${name}`);
-    seen.add(name);
-    if (Object.hasOwn(CANONICAL, name)) {
-      if (value.trim() !== CANONICAL[name]) errors.push(`Changed canonical token ${name}`);
-    } else {
-      errors.push(`Unapproved root token ${name}`);
-    }
+  errors.push(...paletteErrors(roots[0]?.body ?? '', CANONICAL, 'light', 'root'));
+  const wrapper = darkRule(clean);
+  const children = wrapper ? rules(wrapper.body) : [];
+  if (children.length !== 1 || children[0]?.selector !== ':root[data-theme="dark"]' || wrapper.body.slice(children[0]?.end).trim()) {
+    errors.push('Expected one dark rule in its own top-level screen wrapper');
   }
-  for (const name of Object.keys(CANONICAL)) {
-    if (!seen.has(name)) errors.push(`Missing canonical token ${name}`);
+  errors.push(...paletteErrors(children[0]?.body ?? '', CANONICAL_DARK, 'dark', 'dark'));
+  // Remove only those two ranges; other screen wrappers still get scanned.
+  let outside = clean;
+  for (const range of [...roots, ...(wrapper ? [wrapper] : [])].sort((a, b) => b.start - a.start)) {
+    outside = outside.slice(0, range.start) + outside.slice(range.end);
   }
-  const outside = clean.replace(/:root\s*\{[^{}]*\}/g, '');
+  if (/\[data-theme/i.test(outside)) errors.push('Theme selector outside approved dark wrapper');
   for (const [, property, rawValue] of outside.matchAll(/(?:^|[;{}])\s*([\w-]+)\s*:\s*([^;{}]*)(?=;|\})/g)) {
     const value = rawValue.replace(/url\([^)]*\)/gi, '');
-    if (/#(?:[\da-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(/i.test(value)) {
-      errors.push(`Colour literal outside root in ${property}`);
-    }
-    if (Object.hasOwn(CANONICAL, property)) {
-      errors.push(`Root token overridden outside root: ${property}`);
-    }
+    if (/#(?:[\da-f]{3,8})\b|\b(?:rgba?|hsla?)\s*\(/i.test(value)) errors.push(`Colour literal outside root in ${property}`);
+    if (Object.hasOwn(CANONICAL, property)) errors.push(`Root token overridden outside root: ${property}`);
+    if (property.toLowerCase() === 'color-scheme') errors.push('Color-scheme outside approved palettes');
   }
   for (const [, selectors, body] of outside.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     for (const selector of selectors.split(',').map((s) => s.trim())) {
-      if (/var\(\s*--alarm\s*\)/.test(body) && (!/^\.bn-(?:sample|fail)(?=[\s.:#[>]|$)/.test(selector) || /[+~]/.test(selector))) {
-        errors.push(`Alarm outside banner: ${selector}`);
-      }
-      if (/var\(\s*--alarm-ink\s*\)/.test(body) && (!/^\.bn-fail\s+(?:>\s*)?\S/.test(selector) || /[+~]/.test(selector))) {
-        errors.push(`Alarm ink outside failure descendants: ${selector}`);
-      }
+      if (/var\(\s*--alarm\s*\)/.test(body) && (!/^\.bn-(?:sample|fail)(?=[\s.:#[>]|$)/.test(selector) || /[+~]/.test(selector))) errors.push(`Alarm outside banner: ${selector}`);
+      if (/var\(\s*--alarm-ink\s*\)/.test(body) && (!/^\.bn-fail\s+(?:>\s*)?\S/.test(selector) || /[+~]/.test(selector))) errors.push(`Alarm ink outside failure descendants: ${selector}`);
     }
   }
   return errors;
 }
 
+// Score the CSS itself in both themes, never the approval maps above.
 const light = tokensFrom(withoutComments(rootBlock(css) ?? ''));
-
-// One palette. The dark one was dropped on 2026-10-24 — the site is light only,
-// and `color-scheme: light` in the stylesheet stops the browser dark-rendering
-// form controls and scrollbars underneath it. If a dark palette ever comes
-// back, add it to THEMES so its pairs get checked too; this guard makes sure
-// nobody can reintroduce one and quietly leave it unchecked.
-if (css.includes('prefers-color-scheme: dark')) {
-  throw new Error(
-    'css/styles.css has a dark-mode block again, but this checker only tests the '
-    + 'light palette. Add it to THEMES so its pairs are checked as well.',
-  );
-}
-
-const THEMES = [['light', light]];
+const dark = tokensFrom(rules(darkRule(withoutComments(css))?.body ?? '')[0]?.body ?? '');
+const THEMES = [['light', light], ['dark', { ...light, ...dark }]];
 
 // ------------------------------------------------------------------- contrast
 
@@ -373,6 +448,17 @@ function run() {
         `  ${ok ? 'ok  ' : 'FAIL'}  ${shown}:1  (needs ${min})  ${fgName} on ${bgName}`
         + `${ok ? '' : `\n          ${fg} on ${bg} — used by ${where}`}`,
       );
+    }
+    console.log(`  ${themeName} surface separation`);
+    for (const [a, b, floor] of [
+      ['panel', 'ground', 1.10], ['fit-fill', 'panel', 1.12], ['cond-fill', 'panel', 1.12],
+      ['time-fill', 'panel', 1.12], ['cond-fill', 'time-fill', 1.10], ['cty-fill', 'panel', 1.10],
+      ['accent-tint', 'panel', 1.15],
+    ]) {
+      const value = ratio(tokens[`--${a}`], tokens[`--${b}`]);
+      const ok = value !== null && value >= floor;
+      if (!ok) failures++;
+      console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${value?.toFixed(2)}:1  (separation ≥ ${floor})  --${a} / --${b}`);
     }
   }
 

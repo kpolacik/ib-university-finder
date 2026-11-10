@@ -290,12 +290,19 @@ function connect(url) {
 
 // A fresh tab per scenario, so nothing (the address bar's filters, an open
 // sheet) leaks from one width to the next.
-async function openPage(base, width, height, { block = [] } = {}) {
+async function openPage(base, width, height, { block = [], beforeNavigate, paused } = {}) {
   // Each scenario gets its own storage; ordinary tabs share saved filters.
   const { browserContextId } = await cdp.send('Target.createBrowserContext');
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  const send = (method, params, ms) => cdp.send(method, params, sessionId, ms);
+  let scheme = 'light';
+  const send = (method, params, ms) => {
+    if (method === 'Emulation.setEmulatedMedia') {
+      scheme = params.features?.find((f) => f.name === 'prefers-color-scheme')?.value ?? scheme;
+      params = { ...params, features: [...(params.features ?? []).filter((f) => f.name !== 'prefers-color-scheme'), { name: 'prefers-color-scheme', value: scheme }] };
+    }
+    return cdp.send(method, params, sessionId, ms);
+  };
   const errors = [];
   const exceptions = [];
   const off = cdp.on((msg) => {
@@ -310,18 +317,33 @@ async function openPage(base, width, height, { block = [] } = {}) {
     } else if (msg.method === 'Log.entryAdded' && p.entry.level === 'error') {
       errors.push({ text: `${p.entry.text}${p.entry.url ? ` (${p.entry.url})` : ''}`, url: p.entry.url || '' });
     } else if (msg.method === 'Fetch.requestPaused') {
-      send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' }).catch(() => {});
+      // Exactly one owner per paused request: the scenario or the default blocker.
+      Promise.resolve(paused?.(p, send)).then((owned) => {
+        if (!owned) return send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' });
+      }).catch((err) => exceptions.push(err.message));
     }
   });
-  await send('Runtime.enable');
-  await send('Log.enable');
-  await send('Page.enable');
-  if (block.length) await send('Fetch.enable', { patterns: block.map((urlPattern) => ({ urlPattern })) });
-  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-  // Headless tabs are never "focused", which would leave focus-dependent code
-  // (the sheet moving focus to its heading) untested.
-  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
-  await send('Page.navigate', { url: base });
+  try {
+    await send('Runtime.enable');
+    await send('Log.enable');
+    await send('Page.enable');
+    if (block.length) await send('Fetch.enable', { patterns: block.map((urlPattern) => ({ urlPattern })) });
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    // Headless tabs are never "focused", which would leave focus-dependent code
+    // (the sheet moving focus to its heading) untested.
+    await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__smokeLanguage = (language) => {
+      const radio = document.querySelector('[data-language=\"'+language+'\"]');
+      radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true }));
+    };` });
+    if (beforeNavigate) await beforeNavigate(send);
+    await send('Page.navigate', { url: base });
+  } catch (error) {
+    off();
+    await cdp.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
+    throw error;
+  }
 
   const ev = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
@@ -392,13 +414,208 @@ async function openPage(base, width, height, { block = [] } = {}) {
     await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
     await cdp.send('Target.disposeBrowserContext', { browserContextId }, undefined, 5000).catch(() => {});
   };
-  const screenshot = async (path) => {
+  const screenshot = async (path, { viewportOnly = false } = {}) => {
     const { cssContentSize } = await send('Page.getLayoutMetrics');
     const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true,
-      clip: { x: 0, y: 0, width, height: Math.min(6000, cssContentSize.height), scale: 1 } });
+      clip: { x: 0, y: 0, width, height: viewportOnly ? height : Math.min(6000, cssContentSize.height), scale: 1 } });
     await writeFile(path, Buffer.from(data, 'base64'));
   };
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
+}
+
+// Theme tests own their emulated scheme. Legacy scenarios always start in Light.
+async function runTheme(base) {
+  watchdog.refresh();
+  const themeKey = 'ib-university-finder:theme';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !!document.querySelector('#results .item'),why:'app not ready'})`;
+  const frames = `new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`;
+  const palette = `({theme:document.documentElement.dataset.theme,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),meta:document.querySelector('meta[name="color-scheme"]').content})`;
+  const media = (scheme) => ({ features: [{ name: 'prefers-color-scheme', value: scheme }] });
+  const seed = async (send, scheme, extra = '') => {
+    await send('Emulation.setEmulatedMedia', media(scheme));
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed');${extra}` });
+  };
+  const choose = async (page, choice) => {
+    await page.ev(`(()=>{const r=document.querySelector('[data-theme-choice="${choice}"]');r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+  };
+  await mkdir('/tmp/ib-dark', { recursive: true });
+  // Holding app.js proves first paint independently of module startup. The
+  // negative control removes only boot: a post-load test would miss that defect.
+  for (const [scheme, saved, negative] of [['dark', 'light', false], ['light', 'dark', false], ['light', 'dark', true]]) {
+    let release;
+    const page = await openPage(base, 375, 844, {
+      beforeNavigate: async (send) => {
+        await seed(send, scheme, `localStorage.setItem('${themeKey}','${saved}');
+          window.__themeChanges=[];
+          new MutationObserver(ms=>{for(const m of ms)if(m.attributeName==='data-theme'||m.attributeName==='content')__themeChanges.push({theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]')?.content})}).observe(document,{subtree:true,attributes:true});
+          const first=()=>{if(!document.body||!document.querySelector('link[rel="stylesheet"]')?.sheet){requestAnimationFrame(first);return}
+            window.__themeFrame={theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]').content,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),background:getComputedStyle(document.querySelector('.listp')).backgroundColor};};requestAnimationFrame(first);`);
+        await send('Fetch.enable', { patterns: [{ urlPattern: '*js/app.js' }, ...(negative ? [{ urlPattern: base, resourceType: 'Document' }] : [])] });
+      },
+      paused: async (p, send) => {
+        if (p.request.url.endsWith('/js/app.js')) {
+          release = () => send('Fetch.continueRequest', { requestId: p.requestId });
+          return true;
+        }
+        if (negative && p.resourceType === 'Document') {
+          const html = (await readFile(join(root, 'index.html'), 'utf8')).replace(/<script>[\s\S]*?<\/script>/, '');
+          await send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/html' }], body: Buffer.from(html).toString('base64') });
+          return true;
+        }
+        return false;
+      },
+    });
+    try {
+      await check(375, 'theme first frame', `${saved} saved on ${scheme} system${negative ? ' (negative control)' : ''}`, async () => {
+        await page.waitFor(`({ok:!!window.__themeFrame,why:'waiting for first CSS-ready frame'})`, 5000, 'first frame while app is held');
+        assert(release, 'app request was not held');
+        const frame = await page.ev('window.__themeFrame');
+        const expected = saved === 'dark' ? '#232933' : '#ffffff';
+        const matches = frame.theme === saved && frame.meta === saved && frame.panel === expected
+          && frame.background === (saved === 'dark' ? 'rgb(35, 41, 51)' : 'rgb(255, 255, 255)');
+        assert(negative ? !matches : matches, `first frame ${JSON.stringify(frame)}`);
+        assert(await page.ev(`!document.querySelector('#loading').hidden`), 'app ran before first frame');
+        await release(); release = null;
+        await page.waitFor(ready, 15000, 'app after releasing module');
+        assert((await page.ev(palette)).theme === saved, 'module theme drift');
+        if (!negative) assert(await page.ev(`__themeChanges.every(m=>!m.theme||m.theme==='${saved}')`), 'theme changed before/after first paint');
+      });
+    } finally { if (release) await release().catch(() => {}); await page.close(); }
+  }
+  for (const scheme of ['light', 'dark']) {
+    const page = await openPage(base, 375, 844, { beforeNavigate: (send) => seed(send, scheme) });
+    try {
+      await check(375, 'theme state', `System ${scheme}, live changes, choices, reload, Clear all and URLs`, async () => {
+        await page.waitFor(ready, 15000, 'theme app');
+        assert((await page.ev(palette)).theme === scheme, 'default is not System');
+        const other = scheme === 'dark' ? 'light' : 'dark';
+        await page.send('Emulation.setEmulatedMedia', media(other)); await page.ev(frames);
+        assert((await page.ev(palette)).theme === other, 'System did not update live');
+        const before = await page.ev(`({url:location.href,filters:localStorage.getItem('ibuf.filters.v1')})`);
+        await choose(page, 'light');
+        await page.send('Emulation.setEmulatedMedia', media('dark')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'explicit Light followed system');
+        const after = await page.ev(`({url:location.href,filters:localStorage.getItem('ibuf.filters.v1')})`);
+        assert(JSON.stringify(after) === JSON.stringify(before), 'theme changed URL/filter storage');
+        await choose(page, 'dark');
+        await page.send('Page.reload'); await page.waitFor(ready, 15000, 'reloaded theme');
+        assert((await page.ev(palette)).theme === 'dark', 'saved Dark did not survive reload');
+        await page.ev(`document.querySelector('#f-clear').click()`);
+        assert(await page.ev(`localStorage.getItem('${themeKey}')==='dark'`), 'Clear all removed theme');
+        await choose(page, 'system');
+        assert(await page.ev(`localStorage.getItem('${themeKey}')===null`), 'System did not remove key');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'return to System did not resume updates');
+        // Saved filters survive ?ui alone; recognised filter and list URLs use defaults.
+        const prefs = JSON.stringify({ version: 1, filters: { search: 'Delft', myIbPoints: 36 } });
+        await page.ev(`localStorage.setItem('ibuf.filters.v1',${JSON.stringify(prefs)});localStorage.setItem('${themeKey}','dark')`);
+        for (const [query, search, points] of [['?ui=sk', 'Delft', '36'], ['?country=Ireland&ui=sk', '', ''], ['?list=tud-cse&ui=sk', '', '']]) {
+          await page.send('Page.navigate', { url: base + query }); await page.waitFor(ready, 15000, query);
+          const state = await page.ev(`({search:document.querySelector('#f-search').value,points:document.querySelector('#f-points').value,stored:localStorage.getItem('ibuf.filters.v1'),theme:localStorage.getItem('${themeKey}'),code:document.querySelector('#settings-language').textContent,checked:document.querySelector('[data-language=sk]').checked})`);
+          assert(state.search === search && state.points === points && state.stored === prefs && state.theme === 'dark' && state.code === 'SK' && state.checked, JSON.stringify(state));
+        }
+        await page.send('Page.navigate', { url: base }); await page.waitFor(ready, 15000, 'stored filters');
+        await page.ev(`window.__copied='';navigator.clipboard.writeText=async text=>{window.__copied=text};document.querySelector('#f-copy').click()`);
+        await page.waitFor(`({ok:!!window.__copied,why:'link not copied'})`, 3000, 'copy');
+        assert(await page.ev(`!/[?&]theme=/.test(window.__copied)`), 'theme in Copy link');
+      });
+    } finally { await page.close(); }
+  }
+  for (const failure of ['getter', 'setItem', 'removeItem', 'invalid']) {
+    const override = failure === 'getter' ? `Object.defineProperty(window,'localStorage',{get(){throw Error('blocked')}});`
+      : failure === 'invalid' ? `localStorage.setItem('${themeKey}','invalid');`
+      : `Storage.prototype.${failure}=function(){throw Error('blocked')};`;
+    const page = await openPage(base, 375, 844, { beforeNavigate: (send) => seed(send, 'dark', override) });
+    try {
+      await check(375, 'theme storage', failure, async () => {
+        await page.waitFor(ready, 15000, 'storage failure app');
+        // If onboarding could not read the dismissal, close its non-modal surface.
+        await page.ev(`document.querySelector('#onboarding[open]')?.close()`);
+        assert((await page.ev(palette)).theme === 'dark', 'invalid/blocked read should use System');
+        await choose(page, 'light');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        await page.send('Emulation.setEmulatedMedia', media('dark')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'failed write lost in-memory choice');
+        await choose(page, 'dark'); await choose(page, 'system');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'failed removal did not restore System');
+      });
+    } finally { await page.close(); }
+  }
+  for (const width of [320, 375, 768, 1280]) for (const theme of ['light', 'dark']) {
+    const page = await openPage(base, width, 900, { beforeNavigate: (send) => seed(send, 'light', `localStorage.setItem('${themeKey}','${theme}');localStorage.setItem('ib-university-finder:language','sk');`) });
+    try {
+      await check(width, 'theme settings', `${theme}: disclosure, radios, focus, thumbs, print and screenshots`, async () => {
+        await page.waitFor(ready, 15000, 'screenshots app'); await page.ev(frames);
+        await page.ev(`document.fonts.ready`);
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-list.png`, { viewportOnly: true });
+        await page.click(`document.querySelector('#settings-open')`, 'Settings');
+        assert(await page.ev(`document.activeElement===document.querySelector('[data-language=sk]')`), 'open did not focus checked language');
+        await page.key('ArrowRight', 'ArrowRight', 39); await page.ev(frames);
+        assert(await page.ev(`document.documentElement.lang==='en' && document.querySelector('[data-language=en]').checked && !document.querySelector('#settings-panel').hidden && localStorage.getItem('ib-university-finder:language')==='en'`), 'arrow did not apply/save language and keep panel open');
+        const aligned = `(()=>[...document.querySelectorAll('.settings-seg')].every(g=>{const r=g.querySelector('input:checked').closest('label').getBoundingClientRect(),t=g.querySelector('.segment-thumb').getBoundingClientRect();return Math.abs(r.left-t.left)<1&&Math.abs(r.width-t.width)<1}))()`;
+        await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'translated thumbs');
+        const appearance = `[data-theme-choice="${theme}"]`;
+        await page.ev(`document.querySelector('${appearance}').focus()`);
+        await page.key('ArrowLeft', 'ArrowLeft', 37); await page.ev(frames);
+        assert(await page.ev(`!document.querySelector('#settings-panel').hidden && document.querySelector('[data-theme-choice]:checked').dataset.themeChoice!=='${theme}'`), 'appearance arrow did not select');
+        await page.click(`document.querySelector('[data-theme-choice="${theme}"]').closest('label')`, 'Restore appearance');
+        await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'appearance thumbs');
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-settings.png`, { viewportOnly: true });
+        const box = await page.ev(`(()=>{const r=document.querySelector('#settings-panel').getBoundingClientRect();return {l:r.left,r:r.right,w:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert(box.l >= 0 && box.r <= box.w && !box.overflow, JSON.stringify(box));
+        await page.send('Emulation.setDeviceMetricsOverride', { width: width + 16, height: 900, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:${aligned},why:'thumb after resize'})`, 3000, 'resized thumbs');
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:${aligned},why:'thumb after restoring width'})`, 3000, 'restored thumbs');
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`document.querySelector('#settings-panel').hidden && document.activeElement.id==='settings-open'`), 'Escape focus');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen');
+        await page.waitFor(`({ok:${aligned},why:'thumb after reopen'})`, 3000, 'reopened thumbs');
+        await page.click(`document.querySelector('#settings-open')`, 'toggle closed');
+        assert(await page.ev(`document.querySelector('#settings-panel').hidden`), 'button did not close');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen for outside');
+        await page.click(`document.querySelector('#f-search')`, 'outside settings');
+        assert(await page.ev(`document.querySelector('#settings-panel').hidden`), 'outside click');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen for tab');
+        await page.ev(`document.querySelector('[data-theme-choice=dark]').focus()`);
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(`document.querySelector('#settings-panel').hidden`), 'Tab out');
+        await page.click(`document.querySelector('#results .open')`, 'programme'); await page.ev(frames);
+        const selected = await page.ev(`document.querySelector('#results .item.is-open,.item.is-sel')?.dataset.id`);
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-detail.png`, { viewportOnly: true });
+        await page.ev('scrollTo(0,0)');
+        await page.click(`document.querySelector('#settings-open')`, 'settings above programme');
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!!document.querySelector('#results [data-id="${selected}"].is-open,#results [data-id="${selected}"].is-sel')`), 'Escape also closed programme');
+        await page.click(`document.querySelector('#faq-open')`, 'FAQ'); await page.ev(frames);
+        await page.waitFor(`({ok:!document.querySelector('#faq-panel').getAnimations().some(a=>a.playState==='running'),why:'FAQ moving'})`, 3000, 'FAQ');
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-faq.png`, { viewportOnly: true });
+        await page.key('Escape', 'Escape', 27);
+        if (width < 600) {
+          await page.click(`document.querySelector('#f-more')`, 'Filters');
+          await page.waitFor(`({ok:!document.querySelector('#filter-sheet').getAnimations().some(a=>a.playState==='running'),why:'Filters moving'})`, 3000, 'Filters');
+          await page.screenshot(`/tmp/ib-dark/${width}-${theme}-filters.png`, { viewportOnly: true });
+          await page.ev(`document.querySelector('[data-maths="AA SL"]').click()`);
+          assert(await page.ev(`document.querySelector('[data-maths="AA SL"]').getAttribute('aria-pressed')==='true'`), 'maths segment regressed');
+          await page.key('Escape', 'Escape', 27);
+        }
+        await choose(page, 'dark');
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        const print = await page.ev(`(()=>{const s=getComputedStyle(document.documentElement),b=getComputedStyle(document.body),row=getComputedStyle(document.querySelector('#results .open'));return {panel:s.getPropertyValue('--panel').trim(),ground:s.getPropertyValue('--ground').trim(),ink:s.getPropertyValue('--ink').trim(),scheme:s.colorScheme,image:b.backgroundImage,bg:b.backgroundColor,text:row.color,settings:getComputedStyle(document.querySelector('.settings')).display,header:getComputedStyle(document.querySelector('.hd')).display}})()`);
+        assert(print.panel==='#ffffff' && print.ground==='#e8edf3' && print.ink==='#16202c' && print.scheme==='light' && print.image==='none' && print.bg==='rgba(0, 0, 0, 0)' && print.text==='rgb(22, 32, 44)' && print.header==='none', JSON.stringify(print));
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        assert((await page.ev(palette)).panel === '#232933', 'print changed screen theme');
+        assert(page.errors.length === 0, page.errors.map(e=>e.text).join('; '));
+      });
+    } finally { await page.close(); }
+  }
+}
+
+async function chooseLanguage(page, language) {
+  await page.click(`document.querySelector('#settings-open')`, 'Settings');
+  await page.click(`document.querySelector('[data-language="${language}"]').closest('label')`, language);
+  await page.click(`document.querySelector('#settings-open')`, 'Close settings');
 }
 
 // A finger dragged from (x, y) by (xDistance, yDistance) at `speed` px/s:
@@ -859,7 +1076,7 @@ async function runI18n(base) {
         await page.waitFor(`({ ok: !!document.querySelector('${detail} .kv dd'), why: 'waiting for detail' })`, 5000, 'detail');
         const before = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-en.png`);
-        await page.click(`document.querySelector('[data-language="sk"]')`, 'Slovak');
+        await chooseLanguage(page, 'sk');
         assert(await page.ev(`document.documentElement.lang === 'sk'`), 'HTML language did not switch');
         const after = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
         assert(JSON.stringify(before) === JSON.stringify(after), 'switch changed search or results');
@@ -901,9 +1118,9 @@ async function runI18n(base) {
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'toggle did not hide every original after re-render');
         await page.ev(`document.querySelector('${button}').click()`);
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
+        await page.ev(`window.__smokeLanguage('en')`);
         assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .detail-originals, ${detail} .data-original, ${detail} .english-note')`), 'EN switch lost detail or retained Slovak controls');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'language change did not reset originals');
         assert(page.errors.length === 0, page.errors.map((error) => error.text).join(' | '));
@@ -1120,7 +1337,7 @@ async function runRound2(base) {
       if(width>=600)await check(width,'R2I','200% layout keeps long SK controls and facet panels inside the viewport; non-scrolling lists have no fade',async()=>{
         await page.send('Emulation.setDeviceMetricsOverride',{width:640,height:450,deviceScaleFactor:1,mobile:false});
         try {
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=sk]'));window.scrollTo(0,0)`);
+          await page.ev(`window.__smokeLanguage('sk');window.scrollTo(0,0)`);
           await page.waitFor(`(()=>{const w=innerWidth,sw=document.documentElement.scrollWidth,display=getComputedStyle(document.querySelector('#f-mymaths')).display;return {ok:w===640 && sw===w && display!=='none',why:JSON.stringify({w,sw,display,dialogs:[...document.querySelectorAll('dialog[open]')].map(n=>n.id)})}})()`,5000,'zoomed controls');
           await page.click(`document.querySelector('#dd-languages summary')`,'zoomed language panel');
           await page.waitFor(`(()=>{const box=document.querySelector('#f-languages');return {ok:box.classList.contains('at-end')===(box.scrollTop+box.clientHeight>=box.scrollHeight-4),why:'fade cue disagrees with scroll extent'}})()`,5000,'fade cue');
@@ -1129,7 +1346,7 @@ async function runRound2(base) {
           await page.key('Escape','Escape',27);
         } finally {
           await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=en]'))`);
+          await page.ev(`window.__smokeLanguage('en')`);
         }
       });
       if(width>=600)await check(width,'R2D','compact header keeps its slot, focused controls stay still and short viewports do not stick',async()=>{
@@ -1242,7 +1459,7 @@ async function runReview2(base) {
         // offsetHeight, the layout size: panels and the dialog scale in, which a rect would measure.
         const small = (selector) => page.ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].filter(n=>n.offsetWidth&&n.offsetHeight<44).map(n=>(n.id||n.className)+':'+n.offsetHeight)`);
         if (width < 600) await page.ev(`document.querySelector('#f-more').click()`);
-        const bar = await small('.chipbox,.seg button,.dropdown>summary,.info,.step,.maths-control>select,.hd .btn,.hd .lang button,.search .inp');
+        const bar = await small('.chipbox,.seg button,.dropdown>summary,.info,.step,.maths-control>select,.hd .btn,#settings-open,.search .inp');
         assert(bar.length === 0, `filter controls: ${bar}`);
         await page.ev(`document.querySelector('#dd-budget').open=true`);
         const budget = await small('.budget .inp,.budget input[type=range],.pop-f .btn');
@@ -1317,7 +1534,7 @@ async function runBatch2A(base) {
     await settle(page);
   };
   const language = async (page, lang) => {
-    await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+    await page.ev(`window.__smokeLanguage('${lang}')`);
     await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
     await settle(page);
   };
@@ -1769,7 +1986,7 @@ async function runBatch2C(base) {
         await page.key('Escape', 'Escape', 27);
         await page.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
         await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="${ui}"]'));window.scrollTo(0,0)`);
+        await page.ev(`window.__smokeLanguage('${ui}');window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
         // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
         // Compare are an equal pair under it, the pane included. Since the
@@ -1875,7 +2092,7 @@ async function runBatch2Followup(base) {
   try {
     await page.send('Accessibility.enable');
     for (const lang of ['sk', 'en']) {
-      await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+      await page.ev(`window.__smokeLanguage('${lang}')`);
       await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
       for (const coarse of [false, true]) {
         for (const width of [600, 650, 700]) {
@@ -2055,7 +2272,7 @@ async function runBatch3A(base) {
           await frames(page);
           const m = await page.ev(`(()=>{
             const r=(s)=>document.querySelector(s).getBoundingClientRect();
-            const hc=r('#header-compare'), hl=r('#header-list'), q=r('.hd .search'), lang=r('.hd .lang'), badge=r('#header-compare-count');
+            const hc=r('#header-compare'), hl=r('#header-list'), q=r('.hd .search'), lang=r('#settings-open'), badge=r('#header-compare-count');
             const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
             return {pairs:[overlap(hc,hl),overlap(hc,q),overlap(hc,lang),overlap(hl,q),overlap(hl,lang)],search:q.width,
               badge:badge.left>=hc.left-0.5&&badge.right<=hc.right+0.5&&badge.top>=hc.top-0.5&&badge.bottom<=hc.bottom+0.5&&badge.right<=innerWidth,
@@ -2251,9 +2468,9 @@ async function runBatch3A(base) {
         const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
         await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').focus();localStorage.setItem(${JSON.stringify(KEY)},${JSON.stringify(JSON.stringify(ids.slice(1)))});dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(KEY)}}))`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus on the next x');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]') && document.querySelector('#cmp-h').textContent===${JSON.stringify(say('sk', 'r3_cmp_heading', { count: ids.length - 1 }))},why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus kept in Slovak');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
+        await page.ev(`window.__smokeLanguage('en')`);
         assert(!page.errors.length && !page.exceptions.length, JSON.stringify([...page.errors, ...page.exceptions]));
       });
     } finally { await page.close(); }
@@ -2648,7 +2865,7 @@ async function runBatch3C(base) {
           watchdog.refresh();
           await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
           await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: coarse });
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+          await page.ev(`window.__smokeLanguage('${lang}')`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}'&&innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, 'language and width');
           await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
           await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'compact at top'})`, 3000, 'expanded');
@@ -3795,7 +4012,7 @@ async function runAlignChromeSetup(base) {
     try {
       for (const lang of ['en', 'sk', 'en']) {
         await check(width, 'AL-H1 search hint', `(${lang}${touch ? ', touch' : ''}): the hint fits its field; the long one shows whenever it fits`, async () => {
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+          await page.ev(`window.__smokeLanguage('${lang}')`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:'language'})`, 3000, 'language');
           await settle(page);
           const m = await page.ev(`(()=>{const i=document.querySelector('#f-search'),s=getComputedStyle(i),w=(text)=>{const n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;n.textContent=text;document.body.append(n);const x=n.getBoundingClientRect().width;n.remove();return x};
@@ -3865,8 +4082,10 @@ async function runAlignChromeSetup(base) {
           const m = await page.ev(`(()=>{const k=document.querySelector('.hd .mark'),h=(${textBox})(k.querySelector('h1'));return {vis:k.matches(':focus-visible'),gap:k.getBoundingClientRect().right-h.right}})()`);
           assert(m.vis && m.gap >= 4, `logo ring touches the wordmark: ${JSON.stringify(m)}`);
         }
+        await page.ev(`document.querySelector('#settings-open').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
         await page.ev(`document.querySelector('[data-language=sk]').focus()`);
-        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),s=getComputedStyle(b),r=b.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible'),offset:o,width:parseFloat(s.outlineWidth)}})()`);
+        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),label=b.closest('label'),s=getComputedStyle(label),r=label.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible') && r.width>0 && !document.querySelector('#settings-panel').hidden,offset:o,width:parseFloat(s.outlineWidth)}})()`);
         assert(l.vis && l.offset + l.width <= 0, `language ring outside its button: ${JSON.stringify(l)}`);
       });
     } finally { await page.close(); }
@@ -4621,7 +4840,7 @@ async function runRowKeyboard(base) {
           assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.getAttribute('aria-pressed')==='true'`), 'toggle lost focus/state');
           assert(await page.ev(single), 'toggle added a Tab stop');
         }
-        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;document.querySelector('[data-language="${language === 'en' ? 'sk' : 'en'}"]').click()`);
+        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;window.__smokeLanguage("${language === 'en' ? 'sk' : 'en'}")`);
         assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&document.activeElement.tabIndex===0`), 'rebuild lost Save focus/Tab stop');
         await page.send('Emulation.setDeviceMetricsOverride', { width: width === 390 ? 1300 : 390, height: 844, deviceScaleFactor: 1, mobile: false });
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
@@ -4702,7 +4921,7 @@ async function runWindowFixes(base, want) {
         const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>parseFloat(getComputedStyle(r).scrollMarginTop));return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,posinset:r.getAttribute('aria-posinset')}:null})()`);
         assert(anchor && anchor.posinset > 100, 'no row near 150: ' + JSON.stringify(anchor));
         for (const language of ['sk', 'en']) {
-          await page.ev(`document.querySelector('[data-language=${language}]').click()`);
+          await page.ev(`window.__smokeLanguage('${language}')`);
           await page.ev(frames); await page.ev(frames);
           const top = await page.ev(topOf(anchor.id));
           assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 2, `${language}: row moved ${JSON.stringify({ anchor, top })}`);
@@ -4718,7 +4937,7 @@ async function runWindowFixes(base, want) {
         const trigger = width < 600 ? 'cmp-tray-open' : 'header-compare';
         await page.ev(`document.getElementById('${trigger}').focus();document.getElementById('${trigger}').click()`);
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare open');
-        await page.ev(`document.querySelector('[data-language=sk]').click()`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         await page.ev(frames);
         await page.ev(`document.querySelector('#cmp-close').click()`);
         await page.ev(frames); await page.ev(frames);
@@ -4726,7 +4945,7 @@ async function runWindowFixes(base, want) {
         assert(after.n > 0 && after.n < 100 && after.at, 'list blank after Close: ' + JSON.stringify(after));
         assert(Math.abs(after.y - anchor.y) < 844, 'scroll not restored: ' + JSON.stringify({ anchor, after }));
         assert(after.focus === trigger, 'focus not on the trigger: ' + JSON.stringify(after));
-        await page.ev(`document.querySelector('[data-language=en]').click()`);
+        await page.ev(`window.__smokeLanguage('en')`);
       });
       await check(width, 'window fixes', 'print at the very bottom keeps the visible programme', async () => {
         await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
@@ -5178,7 +5397,7 @@ async function runFaqPanel(base, want) {
           const m = await page.ev(`(()=>{
             const box=(n)=>n&&n.getClientRects().length?n.getBoundingClientRect():null;
             const q=box(document.querySelector('#faq-open')),hd=box(document.querySelector('.hd'));
-            const others={list:document.querySelector('.hd #header-list'),compare:document.querySelector('#header-compare'),lang:document.querySelector('.hd .lang'),search:document.querySelector('.hd .search'),mark:document.querySelector('.hd .mark')};
+            const others={list:document.querySelector('.hd #header-list'),compare:document.querySelector('#header-compare'),lang:document.querySelector('#settings-open'),search:document.querySelector('.hd .search'),mark:document.querySelector('.hd .mark')};
             const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
             const hits=Object.entries(others).filter(([,n])=>box(n)&&overlap(q,box(n))).map(([k])=>k);
             const mid=(r)=>(r.top+r.bottom)/2, lang=box(others.lang);
@@ -5403,7 +5622,7 @@ async function runFaqPanel(base, want) {
       });
       await reset();
       await check(width, 'FAQ language', 'switching to SK translates the panel\'s questions, heading and close button; print hides it', async () => {
-        await page.click(`document.querySelector('.hd .lang [data-language="sk"]')`, 'SK');
+        await chooseLanguage(page, 'sk');
         await page.waitFor(`({ok:document.documentElement.lang==='sk',why:'still '+document.documentElement.lang})`, 5000, 'Slovak');
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
         const m = await page.ev(`({h:document.querySelector('#faq-h').textContent,q:document.querySelector('#faq-panel summary').textContent.trim(),x:document.querySelector('#faq-panel .faqp-x').getAttribute('aria-label')})`);
@@ -5415,7 +5634,7 @@ async function runFaqPanel(base, want) {
         } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
         await page.key('Escape', 'Escape', 27);
         await page.waitFor(settled(false), 5000, 'closed');
-        await page.click(`document.querySelector('.hd .lang [data-language="en"]')`, 'EN');
+        await chooseLanguage(page, 'en');
       });
       await check(width, 'FAQ setup', 'Setup\'s "Read the FAQ" opens the panel without scrolling; closing it lands on the list', async () => {
         await page.ev('window.scrollTo(0,0)');
@@ -5478,7 +5697,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -5520,6 +5739,7 @@ async function main() {
     await runColdSheet(base, want);
     await runSheetPacing(base, want);
   } else {
+    await runTheme(base);
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.

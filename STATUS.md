@@ -973,24 +973,29 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Blue only for interaction** (links, focus, the primary button, the
   selected row, active filters). **Red only** on the sample-data banner and
   the total-failure alert. Field errors and notes use ink and weight.
-- **Identity is not status.** The header is now white; country badges
-  keep their identity tints, and a badge always says the country's name in
-  words. Flags appear only inside the Country filter.
+- **Identity is not status.** The header uses the panel colour; row country badges
+  are grey and always say the country's name in words. Flags appear only inside
+  the Country filter. The logo keeps its plum identity in dark mode.
 - **One typeface: IBM Plex Sans,** self-hosted in `fonts/` (400, 600, 700;
   licence in `fonts/OFL.txt`). No Google Fonts request, so no visitor IPs go to
   Google and a slow font server can't block the page (L10). Tabular figures,
   no italics.
-- **Every colour is a token** in the one `:root` block of `css/styles.css`;
-  never put a hex value anywhere else. `node tools/check-contrast.mjs` checks
-  every text and mark pair. Never lower its minimum. The global `--edge-soft`
-  token is a 1 px grey border only on the off switch and unset slider thumb:
-  at least 3:1 on white (currently 3.04:1). No grey border when on/set; the
-  accent fill/ring takes over.
-- **Light only, no dark palette** (dropped 2026-10-24). `color-scheme: light`
-  is declared in `:root`, and it has to be: without it a browser on a dark OS
-  renders form controls, scrollbars and the canvas dark underneath a light page.
-  `tools/check-contrast.mjs` throws if a `prefers-color-scheme: dark` block
-  reappears.
+- **Every colour is a token** in the light `:root` block or the single approved
+  `:root[data-theme="dark"]` override inside its own `@media screen` wrapper in
+  `css/styles.css`; never put a colour literal anywhere else.
+  `node tools/check-contrast.mjs` checks all 74 text and mark pairs per theme and
+  seven surface-separation floors per theme. Never lower a minimum. The global
+  `--edge-soft` token is a 1 px grey border only on the off switch and unset
+  slider thumb: at least 3:1 on the active panel in either theme. No grey border
+  when on/set; the accent fill/ring takes over.
+- **Light and dark, following System by default.** The gear beside the current
+  EN/SK code opens Settings, with native language and System / Light / Dark
+  radios. Choices apply at once and the panel stays open; Escape closes it and
+  returns focus. Appearance is saved in this browser only, separately from
+  filters and language. System removes the saved override and follows changes
+  live. Clear all keeps it. Theme never enters a URL or shared link.
+  An inline head script resolves the palette and canvas before CSS first paint.
+  Print always uses the light tokens, even while the screen is dark.
 - **Motion** follows round 2's approved timings (for example 250 ms popovers
   and dialog, 280 ms step slides), with transform and opacity preferred.
   None at all under `prefers-reduced-motion`. No reordering animation.
@@ -1415,6 +1420,12 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
     unverified; a reader that ignores aria-modal may still browse the background.
 
 ## Decisions already made, so they are not relitigated
+
+- **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
+  PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and
+  EN/SK button, System default and per-browser choice. Settings radios replace
+  the language pill; tapping the shown language no longer flips it. Asking the
+  language in setup is backlog work, not part of this change.
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
   “Decided” and “Later changes vs mockup v4”):

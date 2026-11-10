@@ -6,7 +6,8 @@ A single-page site for finding European bachelor programmes by what IB students
 need: IB points and subjects, deadlines, EU tuition, living costs and language.
 It covers 11 countries: the Netherlands, Ireland, Czechia, Italy, Denmark,
 Sweden, Finland, Norway, Austria, Germany and the United Kingdom (counts are in
-STATUS.md). English by default, with Slovak one tap away.
+STATUS.md). English by default, with Slovak available in Settings (the gear
+beside EN/SK).
 
 Static files only: no build, no dependencies, no accounts, nothing paid.
 
@@ -111,16 +112,22 @@ filter, not the interface. `js/i18n.js` holds the interface text (`UI.en`,
 `data/i18n/sk.csv`. `node tools/i18n-missing.mjs` lists missing ones. Details
 are in MAINTENANCE.md.
 
+The gear beside EN/SK also offers System, Light and Dark. System follows the
+operating system, including changes while the page is open. Appearance is saved
+only in this browser; it stays out of URLs and filters, and Clear all keeps it.
+Print always uses the light palette.
+
 ## Files
 
 ```
 index.html          markup and filter controls
-css/styles.css      all styling, including print (light only)
+css/styles.css      all styling, including print (always light)
 js/data.js          fetch, join, validate; all parsing lives here
 js/filters.js       rows + filter state → rows, and sorting
 js/render.js        everything that touches the page
 js/app.js           wiring and event handlers
 js/i18n.js          English and Slovak interface text
+js/theme.js         per-browser System / Light / Dark choice
 data/               the CSVs, fallback.json and Slovak data translations
 tools/              checks, the dev server and data scripts
 ```

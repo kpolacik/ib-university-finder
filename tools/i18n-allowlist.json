@@ -133,7 +133,6 @@
       "data-direction",
       "data-i18n",
       "data-id",
-      "data-language",
       "data-save-id",
       "data-state",
       "dd-cities-count",
@@ -337,7 +336,12 @@
       "ArrowLeft",
       "ArrowRight",
       "tabindex",
-      "./faq.js"
+      "./faq.js",
+      "./theme.js",
+      "[data-language]:checked",
+      "[data-theme-choice]",
+      "settings-open",
+      "settings-panel"
     ],
     "js/compare.js": [
       "./cost.js",
@@ -905,7 +909,6 @@
       ".dropdown[open]:not(.closing),.ml-pop[open]",
       ".fslot",
       ".hd",
-      ".hd .lang,#maths-seg",
       ".info",
       ".info,.tip",
       ".mark",
@@ -1017,7 +1020,9 @@
       "transform",
       "undefined",
       "visibility",
-      "visible"
+      "visible",
+      ".settings-seg,#maths-seg",
+      "input:checked"
     ],
     "js/saved-state.js": [
       "./filters.js",
@@ -1204,6 +1209,16 @@
       "load",
       "transform",
       "transitionend"
+    ],
+    "js/theme.js": [
+      "(prefers-color-scheme: dark)",
+      "change",
+      "content",
+      "dark",
+      "ib-university-finder:theme",
+      "light",
+      "meta[name=\"color-scheme\"]",
+      "system"
     ]
   },
   "hardExceptions": [

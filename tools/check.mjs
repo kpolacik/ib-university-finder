@@ -94,7 +94,7 @@ class ChromeNode {
   }
   getAttribute(name) { return name === 'class' ? this.className : (this.attributes[name] ?? null); }
   removeAttribute(name) { delete this.attributes[name]; if (name === 'id') this.id = ''; }
-  get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5), v])); }
+  get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v])); }
   contains(node) { return node === this || this.children.some((c) => typeof c !== 'string' && c.contains(node)); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
   // Compound selectors (tag, #id, every .class, every [attr]) joined by
@@ -104,7 +104,7 @@ class ChromeNode {
       const tag = part.match(/^[a-z][a-z0-9-]*/)?.[0], id = part.match(/#([\w-]+)/)?.[1];
       const classes = [...part.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
       const attrs = [...part.matchAll(/\[([\w-]+)(?:="?([^"\]]+)"?)?\]/g)];
-      return (!tag || node.tagName === tag) && (!id || node.id === id) && classes.every((c) => node.classList.contains(c))
+      return (!part.includes(':checked') || node.checked === true) && (!tag || node.tagName === tag) && (!id || node.id === id) && classes.every((c) => node.classList.contains(c))
         && attrs.every((a) => node.getAttribute(a[1]) !== null && (!a[2] || node.getAttribute(a[1]) === a[2]));
     };
     return selector.split(',').some((one) => {
@@ -730,26 +730,23 @@ check('alarm guard accepts banners and rejects mixed selectors and root override
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:var(--ink-2);')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--ink:#16202c;')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--stray:1px;')).includes('Unapproved root token --stray'));
-check('language buttons expose both available choices, with their own language names',
-  /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
-    && /data-language="en" lang="en"/.test(foundationHtml)
-    && /data-language="sk" lang="sk"/.test(foundationHtml)
-    && !/aria-disabled="true"|sk-later/.test(foundationHtml)
-    && foundationHtml.includes('(English)') && foundationHtml.includes('(slovenčina)'));
-// Review of PR 1: the lang="sk" button's hidden text was English " (Slovak)"
-// in the English UI. Each button names its language in that language, so the
-// text matches the button's lang attribute whatever the UI language.
-check('each language button names its language in that language, in both UIs',
-  /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
-    && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
-    && UI.en.slovak === ' (slovenčina)' && UI.sk.slovak === ' (slovenčina)' && UI.en.english === ' (English)' && UI.sk.english === ' (English)');
-// applyLanguage rewrites that hidden text; without the leading space a screen
-// reader said "SK(slovenčina)". Run it for real and read the button's text.
-check('applyLanguage keeps the space before the hidden language name ("SK (slovenčina)", "EN (English)"), in both UIs', (() => {
-  const spans = ['slovak', 'english'].map((key) => ({ getAttribute: (name) => (name === 'data-i18n' ? key : null), textContent: 'x' }));
-  const root = { documentElement: {}, querySelectorAll: (selector) => (selector === '[data-i18n]' ? spans : []) };
-  const read = (lang) => { i18n.setLanguage(lang, { setItem() {} }); i18n.applyLanguage(root); return `SK${spans[0].textContent} EN${spans[1].textContent}`; };
-  try { return read('sk') === 'SK (slovenčina) EN (English)' && read('en') === 'SK (slovenčina) EN (English)'; } finally { i18n.setLanguage('en', { setItem() {} }); }
+// Settings radios replace the pill: checked state and button wording must follow ?ui and storage.
+check('settings exposes native language radios with their own language names and a bilingual legend',
+  ['en', 'sk'].every((lang) => foundationHtml.includes(`data-language="${lang}" lang="${lang}"`))
+    && /name="site-language"/.test(foundationHtml) && !/class="lang"/.test(foundationHtml)
+    && UI.en.settings_language === 'Language · Jazyk' && UI.sk.settings_language === UI.en.settings_language);
+check('applyLanguage synchronises checked language, button code and accessible name in both UIs', (() => {
+  const nodes = ['en', 'sk'].map((lang) => ({ checked: false, getAttribute: () => lang }));
+  const code = { setAttribute() {}, textContent: '' };
+  const button = { getAttribute: () => 'aria-label:settings_name', setAttribute(name, value) { this[name] = value; } };
+  const root = { documentElement: {}, querySelectorAll: (selector) => ({ '[data-language]': nodes, '#settings-language': [code], '[data-i18n-attr]': [button] }[selector] ?? []) };
+  try {
+    return ['sk', 'en'].every((lang) => {
+      i18n.initLanguage(`?ui=${lang}`, { getItem: () => lang === 'en' ? 'sk' : 'en' }); i18n.applyLanguage(root);
+      return nodes.every((node, i) => node.checked === (['en', 'sk'][i] === lang)) && code.textContent === lang.toUpperCase()
+        && button['aria-label'] === UI[lang].settings_name && root.documentElement.lang === lang;
+    });
+  } finally { i18n.initLanguage('', { getItem: () => 'en' }); }
 })());
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
@@ -3390,7 +3387,8 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
     const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     // Batch 3 · A: where the compare tray replaces the header button.
     const trayMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
-    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
+    const themeMedia = { matches: false, addEventListener() {}, removeEventListener() {} };
+    const queries = { '(prefers-color-scheme: dark)': themeMedia, '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
       '(max-width: 599.98px), (max-height: 500px)': trayMedia };
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
@@ -3429,7 +3427,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, onFaqSlide(fn) { context.faqSlide = fn; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, syncSegments() {}, onFaqSlide(fn) { context.faqSlide = fn; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -3458,7 +3456,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
-    runInNewContext(code, context);
+    runInNewContext(read('js/theme.js').replace(/^export /gm, '') + '\n' + code, context);
     const run = (code) => runInNewContext(code, context);
     context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
     context.media = media;
@@ -4727,7 +4725,7 @@ appCheck('window: scroll bursts schedule one frame and do not run under the Filt
 });
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
-  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
+  ['.fbar', '.status', '.hd', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
@@ -6265,7 +6263,7 @@ section('SK/EN interface and data translations');
     sourceLiterals("// 'comment'\nconst a = `New wording ${ok ? 'Nested wording' : 'Other wording'}`;").includes('New wording ')
       && sourceLiterals("/* 'comment' */ const a = 'A new label';").includes('A new label')
       && !sourceLiterals("// 'comment'\n").includes('comment'));
-  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   const htmlProblems = [];
   // Every fallback text in an attributed node must be the EN table's value.
   const decode = (text) => text.replaceAll('&euro;', '€').replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"');
@@ -7714,7 +7712,7 @@ check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 
 // fake page, with and without scroll-timeline support.
 {
   const round2Src = read('js/round2.js');
-  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('function syncSegments'));
+  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('export function syncSegments'));
   const run = ({ native, reduced = false, phone = true, statusShown = true }) => {
     const style = () => { const s = {}; return { s, setProperty(k, v) { s[k] = v; }, removeProperty(k) { delete s[k]; }, get opacity() { return s.opacity; }, set opacity(v) { s.opacity = v; }, get visibility() { return s.visibility; }, set visibility(v) { s.visibility = v; }, get transform() { return s.transform; }, set transform(v) { s.transform = v; } }; };
     const node = (props = {}) => ({ style: style(), offsetTop: 0, offsetHeight: 0, offsetParent: null, ...props });
@@ -7850,9 +7848,9 @@ section('Alignment · header, My list, setup');
     && /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /margin:0/.test(ruleAt(cssText, '.sheet-b .copy'))
     && !/margin-top:12px/.test(ruleAt(cssText, '.sheet-b .copy', '(max-width: 599.98px)'))
     && /flex:1 1 0;white-space:normal/.test(ruleAt(cssText, '.sheet-b .pts>label')) && /min-width:64px/.test(ruleAt(cssText, '.sheet-b .pts input.inp')));
-  check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
+  check('AL-H4 focus rings: the wordmark link has room after "Finder"; settings radios draw theirs inside the visible label',
     /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
-    && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+    && /outline-offset:-3px/.test(ruleAt(cssText, '.settings-seg label:has(input:focus-visible)')));
   // Review of PR 1: the -15 px margin puts the button 1 px from the sheet's
   // scrolling edge, which cut off the left of its 2 px ring at offset 2.
   check('AL-H4 Edit my answers in the sheet draws its focus ring inside the button, so the sheet does not clip it',
@@ -8028,9 +8026,8 @@ check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
   && /function syncSort\(\) \{[\s\S]*?dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
   && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
-check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
-  /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
-  && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
+check('LR6 Language filter options retain their flags, French included',
+  /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
   /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\), faqHint\(\)\)/.test(read('js/onboarding.js'))
   && ['r7_faq_list'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
@@ -8355,8 +8352,8 @@ function faqHarness(test) {
   const html = read('index.html'), faqSrc = read('js/faq.js').replace(/\/\/.*$/gm, '');
   const shut = ({ panel, html: root, scrim, opener }) => !panel.open && !root.classList.contains('faq-open') && !scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'false';
   // Leon, 2026-11-09: the panel is the FAQ's only home; the footer keeps a button to it.
-  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
-    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="lang"/.test(html)
+  check('FAQ "?" sits in the header between Compare and settings, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
+    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="settings"/.test(html)
       && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html)
       && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
       && /\.faq-l\{display:none\}/.test(cssText) && /display:inline/.test(ruleAt(cssText, '#faq-open .faq-l', '(min-width:1024px)')));
@@ -8541,6 +8538,114 @@ section('FAQ text, twelve questions (Leon, 2026-11-09)');
       return skipped && reached && stubDocument.activeElement === close;
     }) === true);
 }
+
+// A second palette must not create an unchecked escape hatch in the colour policy.
+{
+  const wrapper = css.match(/@media screen\{\s*:root\[data-theme="dark"\]\{[^}]*\}\s*\}/)[0];
+  const replaceDark = (change) => css.replace(wrapper, change(wrapper));
+  const mutations = [
+    ['wrong value', replaceDark((v) => v.replace('--ground:#1b2027;', '--ground:#000000;')), 'Changed dark token --ground'],
+    ['missing token', replaceDark((v) => v.replace('--ground:#1b2027;', '')), 'Missing dark token --ground'],
+    ['extra token', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;--extra:1px;')), 'Unapproved dark token --extra'],
+    ['duplicate token', replaceDark((v) => v.replace('--ground:#1b2027;', '--ground:#1b2027;--ground:#1b2027;')), 'Duplicate dark token --ground'],
+    ['non-token declaration', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;display:block;')), 'Unapproved dark token display'],
+    ['duplicate scheme', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;color-scheme:dark;')), 'Duplicate dark color-scheme'],
+    ['light scheme changed', css.replace('color-scheme:light;', 'color-scheme:dark;'), 'Changed root color-scheme'],
+    ['second rule', css + wrapper, 'Theme selector outside approved dark wrapper'],
+    ['bare rule', replaceDark((v) => v.replace('@media screen{', '').replace(/\}\s*$/, '')), 'Theme selector outside approved dark wrapper'],
+    ['nested in print', replaceDark((v) => '@media print{' + v + '}'), 'Expected one dark rule in its own top-level screen wrapper'],
+    ['sibling in wrapper', replaceDark((v) => v.replace(/\}\s*$/, '.extra{color:var(--ink)}}')), 'Expected one dark rule in its own top-level screen wrapper'],
+    ['stray scheme', css + '.extra{color-scheme:light}', 'Color-scheme outside approved palettes'],
+    ['uppercase stray scheme', css + '.extra{COLOR-SCHEME:light}', 'Color-scheme outside approved palettes'],
+    ['stray hex', css + '.extra{color:#fff}', 'Colour literal outside root in color'],
+  ];
+  for (const [name, text, reason] of mutations) check(`dark colour policy rejects ${name} for its intended reason`, colourPolicyErrors(text).includes(reason));
+  equal('dark policy preserves an unrelated screen wrapper', colourPolicyErrors(css + '@media screen{.extra{color:var(--ink)}}'), []);
+}
+// The new control must keep the licensed sprite and disclosure semantics.
+check('settings is a named disclosure with a licensed gear and native radio labels',
+  /Phosphor Regular gear, @phosphor-icons\/core 2\.1\.1, MIT\./.test(indexHtml)
+    && /<symbol id="i-gear"/.test(indexHtml)
+    && /id="settings-open"[^>]*aria-expanded="false" aria-controls="settings-panel"/.test(indexHtml)
+    && /<div id="settings-panel" hidden>/.test(indexHtml)
+    && !/<[^>]+\bpopover(?:[=>\s])/.test(indexHtml)
+    && ['settings_sk', 'settings_en'].every((key) => UI.en[key] === UI.sk[key]));
+// Boot and module share validity/default rules, including a throwing storage getter.
+{
+  const html = read('index.html');
+  const boot = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const themeSource = read('js/theme.js').replace(/^export /gm, '');
+  check('theme boot precedes CSS, shares the module key and sets the canvas meta', Boolean(boot)
+    && html.indexOf('<script>') < html.indexOf('<link rel="stylesheet"')
+    && html.includes('<meta name="color-scheme" content="light dark">')
+    && boot.includes('ib-university-finder:theme') && themeSource.includes('ib-university-finder:theme')
+    && boot.includes("setAttribute('content', theme)"));
+  const fixture = (stored, dark, failure) => {
+    const listeners = new Set(), writes = [], attrs = {};
+    const media = { matches: dark, addEventListener(type, fn) { listeners.add(fn); }, removeEventListener(type, fn) { listeners.delete(fn); } };
+    const env = { document: { documentElement: { dataset: {} }, querySelector: () => ({ setAttribute(k, v) { attrs[k] = v; } }) }, matchMedia: () => media };
+    const storage = { getItem() { if (failure === 'read') throw Error('blocked'); return stored; },
+      setItem(k, v) { if (failure === 'write') throw Error('full'); writes.push([k, v]); },
+      removeItem(k) { if (failure === 'remove') throw Error('blocked'); writes.push([k, null]); } };
+    Object.defineProperty(env, 'localStorage', { get() { if (failure === 'getter') throw Error('blocked'); return storage; } });
+    const flip = (value) => { media.matches = value; for (const fn of [...listeners]) fn(); };
+    const api = runInNewContext(themeSource + '\n({initTheme, setThemeChoice, getThemeChoice});', env);
+    return { env, api, listeners, writes, attrs, flip };
+  };
+  for (const dark of [false, true]) for (const stored of [undefined, 'junk', 'system', 'light', 'dark']) for (const failure of [null, 'getter', 'read']) {
+    const f = fixture(stored, dark, failure);
+    runInNewContext(boot, f.env);
+    const expected = !failure && ['light', 'dark'].includes(stored) ? stored : dark ? 'dark' : 'light';
+    const before = f.env.document.documentElement.dataset.theme;
+    f.api.initTheme();
+    check(`theme boot/module agree: system ${dark}, stored ${stored}, failure ${failure}`, before === expected
+      && f.env.document.documentElement.dataset.theme === expected && f.attrs.content === expected && f.writes.length === 0);
+  }
+  for (const failure of [null, 'getter', 'write', 'remove']) {
+    const f = fixture(undefined, false, failure), key = 'ib-university-finder:theme';
+    f.api.initTheme(); f.flip(true);
+    const system = f.env.document.documentElement.dataset.theme === 'dark' && f.listeners.size === 1;
+    f.api.setThemeChoice('light'); f.flip(false); f.flip(true);
+    const pinned = f.api.getThemeChoice() === 'light' && f.env.document.documentElement.dataset.theme === 'light' && f.listeners.size === 0;
+    f.api.setThemeChoice('system'); f.flip(false);
+    const resumed = f.api.getThemeChoice() === 'system' && f.env.document.documentElement.dataset.theme === 'light' && f.listeners.size === 1;
+    f.api.setThemeChoice('system'); f.api.setThemeChoice('invalid');
+    check(`theme memory survives ${failure ?? 'working storage'} and cleans up System listeners`, system && pinned && resumed && f.listeners.size === 1
+      && f.writes.every(([k]) => k === key));
+  }
+  // The text scan may ignore script bodies only, never visible unmarked HTML.
+  const scan = (text) => text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').split(/<[^>]*>/).filter((v) => /[A-Za-z]/.test(v));
+  equal('HTML scan ignores script bodies but retains visible unmarked text', scan('<script>const boot = true;</script><p>Untranslated wording</p>'), ['Untranslated wording']);
+  check('theme never enters saved filters or URL writers', !/theme/i.test(read('js/saved-state.js'))
+    && !/theme/i.test(appSrc.slice(appSrc.indexOf('function keepAddress('), appSrc.indexOf('\n}', appSrc.indexOf('function keepAddress('))))
+    && !/theme/i.test(appSrc.slice(appSrc.indexOf('function copyLink('), appSrc.indexOf('\n}', appSrc.indexOf('function copyLink(')))));
+}
+// Run the actual thumb measurement for both radio labels and the retained maths buttons.
+{
+  const round2 = read('js/round2.js').replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '');
+  const label = { offsetWidth: 72, offsetLeft: 4 }, maths = { offsetWidth: 44, offsetLeft: 80 };
+  const segment = (selected, radio) => ({ group: { offsetWidth: 160, querySelector: (s) => s === 'input:checked' ? (radio ? { closest: () => selected } : null) : selected }, thumb: { style: {} }, key: null });
+  const radio = segment(label, true), buttons = segment(maths, false), hidden = segment(label, true); hidden.group.offsetWidth = 0;
+  const env = { fixtures: [radio, buttons, hidden] };
+  runInNewContext(round2 + '\nsegments = fixtures; syncSegments();', env);
+  const measured = radio.thumb.style.width === '72px' && buttons.thumb.style.transform === 'translateX(80px)' && hidden.key === null;
+  label.offsetWidth = 92; hidden.group.offsetWidth = 160;
+  runInNewContext('syncSegments(true);', env);
+  check('segment thumbs measure the checked label, force remeasure after translation, and wait for hidden groups to open', measured && radio.thumb.style.width === '92px' && hidden.thumb.style.width === '92px');
+}
+appCheck('settings handlers keep the panel open after a choice; null focusout stays open, real focusout and outside pointer close it', ({ get, fire, run, context }) => {
+  const button = get('settings-open'), panel = get('settings-panel'), radio = panel.querySelector('[data-theme-choice="dark"]');
+  fire(button, 'click');
+  if (panel.hidden || button.getAttribute('aria-expanded') !== 'true') return false;
+  radio.checked = true; fire(radio, 'change');
+  if (panel.hidden || run('getThemeChoice()') !== 'dark') return false;
+  fire(button.parentElement, 'focusout', { relatedTarget: null });
+  if (panel.hidden) return false;
+  fire(button.parentElement, 'focusout', { relatedTarget: get('f-search') });
+  if (!panel.hidden) return false;
+  fire(button, 'click'); fire(get('f-search'), 'pointerdown');
+  return panel.hidden && button.getAttribute('aria-expanded') === 'false';
+});
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

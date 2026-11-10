@@ -1,6 +1,16 @@
 // Interface wording. Empty Slovak entries deliberately fall back to English.
 export const UI = {
   en: {
+    "settings_name": "Settings, language: English",
+    "settings_language": "Language · Jazyk",
+    "settings_sk": "Slovenčina",
+    "settings_en": "English",
+    "settings_appearance": "Appearance",
+    "theme_system": "System",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "settings_browser": "Saved in this browser only.",
+
     "r2_programme_asc": "Programme — A to Z",
     "r2_programme_desc": "Programme — Z to A",
     "r2_passed": "passed",
@@ -666,6 +676,16 @@ export const UI = {
     "ml_more": "More",
   },
   sk: {
+    "settings_name": "Nastavenia, jazyk: slovenčina",
+    "settings_language": "Language · Jazyk",
+    "settings_sk": "Slovenčina",
+    "settings_en": "English",
+    "settings_appearance": "Vzhľad",
+    "theme_system": "Systém",
+    "theme_light": "Svetlý",
+    "theme_dark": "Tmavý",
+    "settings_browser": "Uložené iba v tomto prehliadači.",
+
     "r2_programme_asc": "Program — od A po Z",
     "r2_programme_desc": "Program — od Z po A",
     "r2_passed": "uplynul",
@@ -1400,8 +1420,11 @@ export function applyLanguage(root = document) {
       node.setAttribute(attr, t(key));
     }
   }
+  for (const code of root.querySelectorAll('#settings-language')) {
+    code.setAttribute('data-i18n', language); code.textContent = t(language);
+  }
   for (const button of root.querySelectorAll('[data-language]')) {
-    button.setAttribute('aria-pressed', String(button.getAttribute('data-language') === language));
+    button.checked = button.getAttribute('data-language') === language;
   }
 }
 

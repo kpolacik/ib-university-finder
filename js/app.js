@@ -1,7 +1,8 @@
+import { initTheme, getThemeChoice, setThemeChoice } from './theme.js';
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
 import { onFaqSlide } from './faq.js';
-import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover, syncSegments } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
@@ -273,15 +274,8 @@ start();
 async function start() {
   initLanguage(location.search);
   applyLanguage();
-  for (const button of document.querySelectorAll('[data-language]')) {
-    // Tapping the language already shown flips to the other one (Leon,
-    // 2026-11-06): nobody taps SK to stay in Slovak.
-    button.addEventListener('click', () => {
-      const other = [...button.parentElement.querySelectorAll('[data-language]')].find((b) => b !== button);
-      const pick = button.getAttribute('aria-pressed') === 'true' && other ? other : button;
-      switchLanguage(pick.getAttribute('data-language'));
-    });
-  }
+  initTheme();
+  wireSettings();
   dom.banner.addEventListener('click', openIssuesFromLink);
   crossBar();
   barQuery.addEventListener('change', crossBar);
@@ -441,6 +435,44 @@ function applyUrlLists() {
   }
 }
 
+function wireSettings() {
+  const button = document.getElementById('settings-open');
+  const panel = document.getElementById('settings-panel');
+  const wrapper = button.parentElement;
+  const close = (focus = false) => {
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    if (focus) button.focus();
+  };
+  for (const radio of panel.querySelectorAll('[data-theme-choice]')) {
+    radio.checked = radio.dataset.themeChoice === getThemeChoice();
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      setThemeChoice(radio.dataset.themeChoice);
+      syncSegments(true);
+    });
+  }
+  for (const radio of panel.querySelectorAll('[data-language]')) radio.addEventListener('change', () => {
+    if (radio.checked) switchLanguage(radio.dataset.language);
+  });
+  button.addEventListener('click', () => {
+    if (!panel.hidden) { close(); return; }
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    syncSegments(true);
+    panel.querySelector('[data-language]:checked')?.focus();
+  });
+  document.addEventListener('pointerdown', (event) => { if (!wrapper.contains(event.target)) close(); });
+  wrapper.addEventListener('focusout', (event) => {
+    if (event.relatedTarget && !wrapper.contains(event.relatedTarget)) close();
+  });
+  // Capture first: one Escape must not also dismiss a selected programme.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || panel.hidden) return;
+    event.preventDefault(); event.stopImmediatePropagation(); close(true);
+  }, true);
+}
+
 // replaceState, not pushState: one history entry per keystroke would make the
 // Back button step through every letter typed.
 // A shared list's `list` stays in the address while its view is open, so a
@@ -455,6 +487,7 @@ function switchLanguage(language) {
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
   applyLanguage();
+  syncSegments(true);
   closeSheet();
   cancelAnimationFrame(dom.copyStatusFrame);
   dom.copyStatus.textContent = '';

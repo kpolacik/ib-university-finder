@@ -26,3 +26,5 @@ from are tracked in `plans/scan/`.
   for one wording pass (and a later Slovak pass).
 - `data-research.md`: rows and fields that need someone to read official pages,
   including the human sign-off (T02, Q7).
+
+- `language-in-setup.md`: ask the interface language during setup (Leon, 2026-11-10).
