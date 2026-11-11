@@ -1,7 +1,9 @@
+import { initTheme, getThemeChoice, setThemeChoice } from './theme.js';
 import { restoration, storedFilters, validateLoadedFacets, FACET_FIELDS } from './saved-state.js';
 import { readSaved, readDismissed, writeSaved, setupOnboarding } from './onboarding.js';
 import { onFaqSlide } from './faq.js';
-import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover } from './round2.js';
+import { wireSheetDrag } from './sheet-drag.js';
+import { wireRound2, syncRound2, showToast, wireCompactHeader, wireLogoHandover, syncSegments } from './round2.js';
 import { t, initLanguage, setLanguage, getLanguage, formatCount, languageQuery, applyLanguage, setDataTranslations } from './i18n.js';
 // Wires the data layer to the filter state to the DOM.
 
@@ -235,6 +237,9 @@ let scrollingHome = false;
 const rowObserver = new ResizeObserver(() => scheduleWindow());
 let sheetWarmScheduled = false;
 let sheetSlideTimer;
+// A12: a finger is dragging the sheet down. Rows wait, with no timer, until
+// it lets go; sheetDrag.reset() lets go on any other close or reopen.
+let sheetDragHold = false, sheetDrag = null;
 // True while the FAQ panel slides (js/faq.js): rows wait, as for the sheet.
 let faqSliding = false;
 // Flags only inside the Country options; any other country gets text only.
@@ -273,15 +278,8 @@ start();
 async function start() {
   initLanguage(location.search);
   applyLanguage();
-  for (const button of document.querySelectorAll('[data-language]')) {
-    // Tapping the language already shown flips to the other one (Leon,
-    // 2026-11-06): nobody taps SK to stay in Slovak.
-    button.addEventListener('click', () => {
-      const other = [...button.parentElement.querySelectorAll('[data-language]')].find((b) => b !== button);
-      const pick = button.getAttribute('aria-pressed') === 'true' && other ? other : button;
-      switchLanguage(pick.getAttribute('data-language'));
-    });
-  }
+  initTheme();
+  wireSettings();
   dom.banner.addEventListener('click', openIssuesFromLink);
   crossBar();
   barQuery.addEventListener('change', crossBar);
@@ -441,6 +439,78 @@ function applyUrlLists() {
   }
 }
 
+// A11: the panel fades and grows from the gear in 200 ms and shuts in 140 ms
+// (Reduce Motion: a short fade only). A Web Animation, not a transition, so
+// a reopen mid-exit starts from the opacity and scale on screen, and its end
+// is known even where the global reduced-motion rule removes transitions.
+// open is the logical state: the moment it is false, the panel is inert
+// (no Tab stop, no taps; styles.css lets taps through) while it fades, and
+// Escape, outside taps and focusout treat it as closed. Only the latest exit
+// may hide it.
+const SETTINGS_SHOWN = { opacity: 1, transform: 'none' };
+function wireSettings() {
+  const button = document.getElementById('settings-open');
+  const panel = document.getElementById('settings-panel');
+  const wrapper = button.parentElement;
+  let open = false, motion = null;
+  const play = (show) => {
+    const reduce = motionQuery.matches;
+    const hidden = { opacity: 0, transform: reduce ? 'none' : 'translateY(-4px) scale(.97)' };
+    const now = motion ? getComputedStyle(panel) : null;
+    const from = now ? { opacity: now.opacity, transform: now.transform } : show ? hidden : SETTINGS_SHOWN;
+    motion?.cancel();
+    const animation = motion = panel.animate([from, show ? SETTINGS_SHOWN : hidden],
+      { duration: reduce ? 100 : show ? 200 : 140, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' });
+    animation.onfinish = () => {
+      if (motion !== animation) return;
+      motion = null;
+      if (!open) { panel.hidden = true; panel.removeAttribute('inert'); }
+      animation.cancel();
+    };
+  };
+  const close = (focus = false) => {
+    if (!open) return;
+    open = false;
+    button.setAttribute('aria-expanded', 'false');
+    if (focus) button.focus();
+    panel.setAttribute('inert', '');
+    if (typeof panel.animate === 'function') play(false);
+    else { panel.hidden = true; panel.removeAttribute('inert'); }
+  };
+  for (const radio of panel.querySelectorAll('[data-theme-choice]')) {
+    radio.checked = radio.dataset.themeChoice === getThemeChoice();
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      setThemeChoice(radio.dataset.themeChoice);
+      syncSegments(true);
+    });
+  }
+  for (const radio of panel.querySelectorAll('[data-language]')) radio.addEventListener('change', () => {
+    if (radio.checked) switchLanguage(radio.dataset.language);
+  });
+  button.addEventListener('click', () => {
+    // Safari does not focus a clicked button: a focused radio would be lost.
+    if (open) { close(panel.contains(document.activeElement)); return; }
+    open = true;
+    panel.removeAttribute('inert');
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    syncSegments(true);
+    if (typeof panel.animate === 'function') play(true);
+    panel.querySelector('[data-language]:checked')?.focus();
+  });
+  document.addEventListener('pointerdown', (event) => { if (open && !wrapper.contains(event.target)) close(); });
+  wrapper.addEventListener('focusout', (event) => {
+    if (open && event.relatedTarget && !wrapper.contains(event.relatedTarget)) close();
+  });
+  // Capture first: one Escape must not also dismiss a selected programme.
+  // A panel that is already shutting has let Escape go.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !open) return;
+    event.preventDefault(); event.stopImmediatePropagation(); close(true);
+  }, true);
+}
+
 // replaceState, not pushState: one history entry per keystroke would make the
 // Back button step through every letter typed.
 // A shared list's `list` stays in the address while its view is open, so a
@@ -455,6 +525,7 @@ function switchLanguage(language) {
   if (language !== getLanguage()) state.englishOriginals = new Set();
   setLanguage(language);
   applyLanguage();
+  syncSegments(true);
   closeSheet();
   cancelAnimationFrame(dom.copyStatusFrame);
   dom.copyStatus.textContent = '';
@@ -1387,7 +1458,7 @@ function rowAt(offset) {
 }
 
 function scheduleWindow() {
-  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined && !faqSliding) {
+  if (loaded && !windowFrame && !isPrinting() && sheetSlideTimer === undefined && !sheetDragHold && !faqSliding) {
     windowFrame = requestAnimationFrame(() => { windowFrame = 0; renderWindow(); });
   }
 }
@@ -2004,6 +2075,9 @@ function wireSheet() {
   document.addEventListener('focusin', (event) => {
     if (dom.sheet.open && !dom.sheet.contains(event.target)) dom.sheetHeading.focus({ preventScroll: true, focusVisible: keyboardInput });
   });
+  // A12: the handle and header drag the sheet down; Done's close path ends it.
+  sheetDrag = wireSheetDrag(dom.sheet, { regions: '.grab,.sheet-h', enabled: () => dom.sheet.open && !barQuery.matches,
+    hold: holdSheetRows, release: releaseSheetRows, close: () => closeSheet() });
   dom.sheet.addEventListener('close', finishSheetClose);
   dom.sheet.addEventListener('transitionend', (event) => {
     if (event.target === dom.sheet && event.propertyName === 'transform') resumeSheetRows();
@@ -2020,6 +2094,27 @@ function pauseSheetRows() {
   dom.sheetScrim.classList.add('is-sliding');
   // Allow the 280 ms slide plus its first-frame work at 4x CPU.
   sheetSlideTimer = setTimeout(resumeSheetRows, 500);
+}
+
+// A finger holds the sheet: no time limit, and a stray transitionend or the
+// open slide's timer cannot resume rows under it.
+function holdSheetRows() {
+  sheetDragHold = true;
+  clearTimeout(sheetSlideTimer);
+  sheetSlideTimer = undefined;
+  cancelRows();
+  dom.sheet.classList.add('is-sliding');
+  dom.sheetScrim.classList.add('is-sliding');
+}
+
+// Let go: the settle or the close slides, so the bounded pause takes over.
+function releaseSheetRows() {
+  if (!sheetDragHold) return;
+  sheetDragHold = false;
+  if (!motionQuery.matches) { pauseSheetRows(); return; }
+  dom.sheet.classList.remove('is-sliding');
+  dom.sheetScrim.classList.remove('is-sliding');
+  scheduleWindow();
 }
 
 function resumeSheetRows() {
@@ -2046,6 +2141,7 @@ function warmSheet() {
 
 function openSheet() {
   if (dom.sheet.open || barQuery.matches) return;
+  sheetDrag?.reset();
   returnFocusOnClose = true;
   pauseSheetRows();
   dom.sheet.show();
@@ -2062,6 +2158,7 @@ function openSheet() {
 // returnFocus false: widening or total failure, where Filters is hidden.
 function closeSheet(returnFocus = true) {
   if (!dom.sheet.open) return;
+  sheetDrag?.reset();
   returnFocusOnClose = returnFocus;
   dom.sheet.close();
   finishSheetClose();
@@ -2070,6 +2167,7 @@ function closeSheet(returnFocus = true) {
 function finishSheetClose() {
   // close is queued: it must not undo a reopen or repeat synchronous cleanup.
   if (dom.sheet.open || !document.documentElement.classList.contains('sheet-open')) return;
+  sheetDrag?.reset();
   // Closing used to resume mounting immediately, stalling the downward slide.
   if (barQuery.matches || motionQuery.matches) resumeSheetRows();
   else pauseSheetRows();

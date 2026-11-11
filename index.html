@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="ib_university_finder_europe">IB University Finder — Europe</title>
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <meta name="description" content="Find European bachelor programmes by IB requirements, deadlines and EU fees." data-i18n-attr="content:find_european_bachelor_programmes_by_ib_requirements_deadlines_and_e">
 
 <link rel="preload" href="fonts/IBMPlexSans-Regular-Latin1.woff2" as="font" type="font/woff2" crossorigin>
@@ -13,6 +13,16 @@
      phone home screens use the solid plum PNG. Declaring both also stops a /favicon.ico 404. -->
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- Inline to resolve the canvas before first paint; keep the key in sync with js/theme.js. -->
+<script>
+(() => {
+  let choice;
+  try { choice = localStorage.getItem('ib-university-finder:theme'); } catch { /* Follow System. */ }
+  const theme = choice === 'light' || choice === 'dark' ? choice : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="color-scheme"]').setAttribute('content', theme);
+})();
+</script>
 <link rel="stylesheet" href="css/styles.css">
 <!-- Without these the browser discovers the modules in three waves — app.js,
      then what it imports, then what those import — and only asks for the CSVs
@@ -26,6 +36,7 @@
 <link rel="modulepreload" href="js/faq.js">
 <link rel="modulepreload" href="js/filters.js">
 <link rel="modulepreload" href="js/i18n.js">
+<link rel="modulepreload" href="js/theme.js">
 <!-- points.js was missing: found only after render.js and filters.js loaded, it
      held the CSV requests back by one round trip (measured 2026-10-28). -->
 <link rel="modulepreload" href="js/points.js">
@@ -34,6 +45,7 @@
 <link rel="modulepreload" href="js/saved-state.js">
 <link rel="modulepreload" href="js/onboarding.js">
 <link rel="modulepreload" href="js/shortlist.js">
+<link rel="modulepreload" href="js/sheet-drag.js">
 <link rel="modulepreload" href="js/subjects.js">
 </head>
 <body class="page">
@@ -139,6 +151,8 @@
   <symbol id="f-gb" viewBox="0 0 60 30" preserveAspectRatio="none"><rect width="60" height="30" style="fill:var(--flag-gb-blue)"/><path d="M0 0L60 30M60 0L0 30" style="fill:none;stroke:var(--flag-white);stroke-width:6"/><path d="M0 0L60 30M60 0L0 30" style="fill:none;stroke:var(--flag-gb-red);stroke-width:2"/><rect x="25" width="10" height="30" style="fill:var(--flag-white)"/><rect y="10" width="60" height="10" style="fill:var(--flag-white)"/><rect x="27" width="6" height="30" style="fill:var(--flag-gb-red)"/><rect y="12" width="60" height="6" style="fill:var(--flag-gb-red)"/></symbol>
   <symbol id="f-no" viewBox="0 0 22 16" preserveAspectRatio="none"><rect width="22" height="16" style="fill:var(--flag-no-red)"/><rect x="6" width="4" height="16" style="fill:var(--flag-white)"/><rect y="6" width="22" height="4" style="fill:var(--flag-white)"/><rect x="7" width="2" height="16" style="fill:var(--flag-no-blue)"/><rect y="7" width="22" height="2" style="fill:var(--flag-no-blue)"/></symbol>
   <symbol id="f-se" viewBox="0 0 16 10" preserveAspectRatio="none"><rect width="16" height="10" style="fill:var(--flag-se-blue)"/><rect x="5" width="2" height="10" style="fill:var(--flag-se-yellow)"/><rect y="4" width="16" height="2" style="fill:var(--flag-se-yellow)"/></symbol>
+  <!-- Phosphor Regular gear, @phosphor-icons/core 2.1.1, MIT. -->
+  <symbol id="i-gear" viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></symbol>
   <!-- Phosphor Regular globe, @phosphor-icons/core 2.1.1, MIT. -->
   <symbol id="i-globe" viewBox="0 0 256 256"><path d="M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z"/></symbol>
 </svg>
@@ -164,10 +178,24 @@
       </span>
     </div>
     <div class="hd-right"><button class="btn hb" id="header-list" type="button"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span class="hb-l" data-i18n="my_list">My list</span><span id="header-list-count" class="badge">0</span></button><button class="btn hb" id="header-compare" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-compare"/></svg><span class="hb-l" data-i18n="compare_2">Compare</span><span id="header-compare-count" class="badge">0</span></button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span class="faq-l" data-i18n="r6_faq_l">FAQ</span></button>
-      <div class="lang" role="group" aria-label="Site language" data-i18n-attr="aria-label:site_language">
-        <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
-        <button type="button" aria-pressed="false" data-language="sk" lang="sk"><span data-i18n="sk">SK</span><span class="visually-hidden" data-i18n="slovak"> (slovenčina)</span></button>
-        <button type="button" aria-pressed="true" data-language="en" lang="en"><span data-i18n="en">EN</span><span class="visually-hidden" data-i18n="english"> (English)</span></button>
+      <div class="settings">
+        <button class="btn hb" id="settings-open" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="Settings, language: English" data-i18n-attr="aria-label:settings_name"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg><span id="settings-language" data-i18n="en">EN</span></button>
+        <div id="settings-panel" hidden>
+          <fieldset><legend data-i18n="settings_language">Language · Jazyk</legend>
+            <div class="settings-seg">
+              <label lang="sk"><input type="radio" name="site-language" data-language="sk" lang="sk" value="sk"><span data-i18n="settings_sk">Slovenčina</span></label>
+              <label lang="en"><input type="radio" name="site-language" data-language="en" lang="en" value="en" checked><span data-i18n="settings_en">English</span></label>
+            </div>
+          </fieldset>
+          <fieldset><legend data-i18n="settings_appearance">Appearance</legend>
+            <div class="settings-seg">
+              <label><input type="radio" name="appearance" data-theme-choice="system" value="system" checked><span data-i18n="theme_system">System</span></label>
+              <label><input type="radio" name="appearance" data-theme-choice="light" value="light"><span data-i18n="theme_light">Light</span></label>
+              <label><input type="radio" name="appearance" data-theme-choice="dark" value="dark"><span data-i18n="theme_dark">Dark</span></label>
+            </div>
+          </fieldset>
+          <p data-i18n="settings_browser">Saved in this browser only.</p>
+        </div>
       </div></div>
   </div>
 </header>
@@ -434,6 +462,7 @@
      empty until app.js moves the controls in below 600 px. -->
 <div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"></div>
 <dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">
+  <div class="grab" aria-hidden="true"><span></span></div>
   <div class="sheet-h">
     <h2 id="sheet-h" tabindex="-1" data-i18n="filters_2">Filters</h2>
     <button type="button" id="sheet-done" class="btn btn-q" aria-label="Close filters" data-i18n-attr="aria-label:r2_close_filters"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
@@ -451,22 +480,23 @@
      key, so switching language translates them with the rest of the page. -->
 <div class="faq-scrim" id="faq-scrim" aria-hidden="true"></div>
 <dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">
+  <div class="grab" aria-hidden="true"><span></span></div>
   <div class="faqp-h">
     <h2 id="faq-h" tabindex="-1" data-i18n="r6_faq_h">Frequently asked questions</h2>
     <button type="button" class="btn btn-q faqp-x" aria-label="Close the FAQ" data-i18n-attr="aria-label:r6_faq_close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
-  <div class="faqp-b faq"><details><summary><span data-i18n="r7_faq_what">What is this site, and can I apply through it?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_what_a">A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.</span></div></details>
-<details><summary><span data-i18n="r7_faq_rely">Can I rely on what it says?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_rely_a">Use it to build a shortlist, then check everything on the official page before you apply. The data was collected automatically from official pages, and we’re checking it over time; a programme someone has checked says “Checked by …”.</span></div></details>
-<details><summary><span data-i18n="r7_faq_check">What should I check before I apply?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_check_a">The deadline and any earlier dates in “Deadline notes”, the IB subjects and grades, your maths course (AA or AI), the English requirement and any entrance exam. Some of these are on university-wide pages or the national application site, not the programme page.</span></div></details>
-<details><summary><span data-i18n="r7_faq_points">How do my IB points work here?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_points_a">With My IB points set, programmes whose points you can’t reach are hidden (for Irish courses, even counting the HL Maths bonus). The rest say whether they’re within your points, only with HL Maths 4+, or can’t be compared. Being within the points doesn’t guarantee a place: subjects, language and selection count too.</span></div></details>
-<details><summary><span data-i18n="r7_faq_no_points">Why do so many programmes show no IB points?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_no_points_a">About half have no IB points figure, including every one in Germany, Austria and Italy. Where we know why, the row says so (“Entrance exam”, “Test in cutoff”); otherwise no figure has been found. These programmes always stay in your results.</span></div></details>
-<details><summary><span data-i18n="r7_faq_unknown">What do “Not published” and “Not checked yet” mean?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_unknown_a">“Not published” means we haven’t found a figure, date or rule. “Not checked yet” means nobody has looked, never that there’s no requirement. Neither hides a programme: filters keep unknown values and say so on the row.</span></div></details>
-<details><summary><span data-i18n="r7_faq_cao">How are Irish CAO points turned into IB points?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_cao_a">Most Irish courses show last year’s CAO cutoff (≈), converted with the CAO’s IB table; cutoffs move every year. HL Maths at grade 4+ adds 25 CAO points, and a cutoff from 601 to 625 can only be reached with it. UCD shows its own IB minimum; HPAT Medicine shows the CAO minimum (480 points, 35 IB), then ranks places with the HPAT.</span></div></details>
-<details><summary><span data-i18n="r7_faq_fee">Which fee is shown?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_fee_a">The yearly fee for EU students. In the UK that’s the international fee, converted from pounds; EU students pay it since 2021, with some exceptions. In Ireland it’s the Free Fees student contribution plus levy, not the higher EU fee some pages print.</span></div></details>
-<details><summary><span data-i18n="r7_faq_cost">What does the yearly cost include?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_cost_a">The fee plus 12 months of estimated living costs. Where a row says “national minimum”, that’s the least a visa needs and real costs are usually higher. It doesn’t add one-off costs like deposits or travel. Set “My living costs” to use your own figure.</span></div></details>
-<details><summary><span data-i18n="r7_faq_setup">How do I change my Setup answers?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_setup_a">Press “Edit my answers” next to the programme count (in Filters on a phone). Your answers are just filters, so you can also change them directly.</span></div></details>
-<details><summary><span data-i18n="r7_faq_list">What’s the difference between My list and Compare, and what’s stored?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_list_a">My list keeps what you save: group it, export it or share it by link. Compare puts 2 to 4 programmes side by side and is separate. Both, your filters and your language stay only in this browser; no account, no tracking.</span></div></details>
-<details><summary><span data-i18n="r7_faq_who">Who makes this, and how do I report a mistake?</span><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="a"><span data-i18n="r7_faq_who_a">Jakub and Leon, IB students. The countries are the ones students at our school asked about most, and more are coming; the data is updated every few weeks. Found a mistake? Tell us at</span> <a href="mailto:ibuniversityfinder@gmail.com" data-i18n="r7_faq_email">ibuniversityfinder@gmail.com</a>.</div></details></div>
+  <div class="faqp-b faq"><details><summary><span data-i18n="r7_faq_what">What is this site, and can I apply through it?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_what_a">A free tool that helps IB students find bachelor’s and other first degrees (like medicine) in 11 European countries, by IB points, subjects, deadlines and cost. You can’t apply here: each programme links to its official page and says where to apply.</span></div></details>
+<details><summary><span data-i18n="r7_faq_rely">Can I rely on what it says?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_rely_a">Use it to build a shortlist, then check everything on the official page before you apply. The data was collected automatically from official pages, and we’re checking it over time; a programme someone has checked says “Checked by …”.</span></div></details>
+<details><summary><span data-i18n="r7_faq_check">What should I check before I apply?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_check_a">The deadline and any earlier dates in “Deadline notes”, the IB subjects and grades, your maths course (AA or AI), the English requirement and any entrance exam. Some of these are on university-wide pages or the national application site, not the programme page.</span></div></details>
+<details><summary><span data-i18n="r7_faq_points">How do my IB points work here?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_points_a">With My IB points set, programmes whose points you can’t reach are hidden (for Irish courses, even counting the HL Maths bonus). The rest say whether they’re within your points, only with HL Maths 4+, or can’t be compared. Being within the points doesn’t guarantee a place: subjects, language and selection count too.</span></div></details>
+<details><summary><span data-i18n="r7_faq_no_points">Why do so many programmes show no IB points?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_no_points_a">About half have no IB points figure, including every one in Germany, Austria and Italy. Where we know why, the row says so (“Entrance exam”, “Test in cutoff”); otherwise no figure has been found. These programmes always stay in your results.</span></div></details>
+<details><summary><span data-i18n="r7_faq_unknown">What do “Not published” and “Not checked yet” mean?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_unknown_a">“Not published” means we haven’t found a figure, date or rule. “Not checked yet” means nobody has looked, never that there’s no requirement. Neither hides a programme: filters keep unknown values and say so on the row.</span></div></details>
+<details><summary><span data-i18n="r7_faq_cao">How are Irish CAO points turned into IB points?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_cao_a">Most Irish courses show last year’s CAO cutoff (≈), converted with the CAO’s IB table; cutoffs move every year. HL Maths at grade 4+ adds 25 CAO points, and a cutoff from 601 to 625 can only be reached with it. UCD shows its own IB minimum; HPAT Medicine shows the CAO minimum (480 points, 35 IB), then ranks places with the HPAT.</span></div></details>
+<details><summary><span data-i18n="r7_faq_fee">Which fee is shown?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_fee_a">The yearly fee for EU students. In the UK that’s the international fee, converted from pounds; EU students pay it since 2021, with some exceptions. In Ireland it’s the Free Fees student contribution plus levy, not the higher EU fee some pages print.</span></div></details>
+<details><summary><span data-i18n="r7_faq_cost">What does the yearly cost include?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_cost_a">The fee plus 12 months of estimated living costs. Where a row says “national minimum”, that’s the least a visa needs and real costs are usually higher. It doesn’t add one-off costs like deposits or travel. Set “My living costs” to use your own figure.</span></div></details>
+<details><summary><span data-i18n="r7_faq_setup">How do I change my Setup answers?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_setup_a">Press “Edit my answers” next to the programme count (in Filters on a phone). Your answers are just filters, so you can also change them directly.</span></div></details>
+<details><summary><span data-i18n="r7_faq_list">What’s the difference between My list and Compare, and what’s stored?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_list_a">My list keeps what you save: group it, export it or share it by link. Compare puts 2 to 4 programmes side by side and is separate. Both, your filters and your language stay only in this browser; no account, no tracking.</span></div></details>
+<details><summary><span data-i18n="r7_faq_who">Who makes this, and how do I report a mistake?</span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary><div class="a"><span data-i18n="r7_faq_who_a">Jakub and Leon, IB students. The countries are the ones students at our school asked about most, and more are coming; the data is updated every few weeks. Found a mistake? Tell us at</span> <a href="mailto:ibuniversityfinder@gmail.com" data-i18n="r7_faq_email">ibuniversityfinder@gmail.com</a>.</div></details></div>
 </dialog>
 
 <p class="visually-hidden" id="cmp-status" role="status" aria-live="polite"></p>

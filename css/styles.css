@@ -141,6 +141,70 @@
 
 }
 
+/* Screen only: printing always uses the unchanged light tokens. */
+@media screen{
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#1b2027;
+  --panel:#232933;
+  --hover:#2b323d;
+  --hairline:#3b4350;
+  --edge:#8a94a1;
+  --edge-soft:#6c727a;
+  --ink:#e8edf3;
+  --ink-2:#b6bfca;
+  --ink-3:#a1abb7;
+  --accent:#8db4ff;
+  --accent-press:#b3ccff;
+  --accent-tint:#283c5e;
+  --on-accent:#0d1626;
+  --fit-fill:#1f3b2d;
+  --fit-ink:#a8e7c0;
+  --fit-mark:#5bc98e;
+  --cond-fill:#453a00;
+  --cond-ink:#f3d872;
+  --cond-mark:#d9ae38;
+  --time-fill:#55230f;
+  --time-ink:#ffc19d;
+  --time-mark:#f28f58;
+  --alarm:#ff8a8a;
+  --alarm-ink:#ffb0b0;
+  --brand-fill:#47345d;
+  --brand-ink:#ffffff;
+  --brand-accent:#c7b2ea;
+  --cty-fill:#2c333d;
+  --cty-ink:#c8d0da;
+  --cty-dk-fill:#2c333d;
+  --cty-dk-ink:#c8d0da;
+  --cty-ie-fill:#2c333d;
+  --cty-ie-ink:#c8d0da;
+  --cty-it-fill:#2c333d;
+  --cty-it-ink:#c8d0da;
+  --cty-nl-fill:#2c333d;
+  --cty-nl-ink:#c8d0da;
+  --cty-cz-fill:#2c333d;
+  --cty-cz-ink:#c8d0da;
+  --cty-uk-fill:#2c333d;
+  --cty-uk-ink:#c8d0da;
+  --cty-de-fill:#2c333d;
+  --cty-de-ink:#c8d0da;
+  --cty-at-fill:#2c333d;
+  --cty-at-ink:#c8d0da;
+  --cty-se-fill:#2c333d;
+  --cty-se-ink:#c8d0da;
+  --cty-fi-fill:#2c333d;
+  --cty-fi-ink:#c8d0da;
+  --cty-no-fill:#2c333d;
+  --cty-no-ink:#c8d0da;
+  --scrim:rgb(0 0 0 / .55);
+  --thumb-shadow:0 1px 3px rgb(0 0 0 / .5);
+  --pop-shadow:0 0 0 1px #3b4350,0 12px 32px -10px rgb(0 0 0 / .45);
+  --dialog-shadow:0 0 0 1px #3b4350,0 24px 64px -16px rgb(0 0 0 / .6);
+  --shadow:0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -8px rgb(0 0 0 / .45);
+}
+}
+
+
 
 /* IBM Plex Sans @ibm/plex-sans@1.1.0, latest stable checked 2026-10-26.
    https://github.com/IBM/plex/releases/tag/%40ibm/plex-sans%401.1.0 */
@@ -296,11 +360,6 @@ svg:not(.sprite) {
 .tagline{margin:0;display:none;font-size:15px;line-height:20px}
 .src{margin:4px 0 0;white-space:normal;font-size:12.5px;line-height:17px;color:var(--ink-2);max-width:100ch}
 .src b{color:var(--ink);font-weight:600}.stat,.src-more{display:none}
-.lang{display:flex;align-items:center;gap:2px;font-size:var(--fs-12);font-weight:600;color:var(--brand-ink)}
-.lang .ic{margin-right:4px}
-.lang button{min-width:32px;height:28px;padding:0 6px;border:1px solid var(--brand-ink);border-radius:var(--r-cell);background:transparent;cursor:pointer}
-.lang [aria-pressed=true]{background:var(--brand-ink);border-color:var(--brand-ink);color:var(--panel)}
-.lang [aria-disabled=true]{color:var(--ink-3);cursor:not-allowed}
 .bn{display:flex;gap:10px;align-items:flex-start;margin:12px var(--gut) 0;padding:10px 12px;border-radius:var(--r-panel);font-size:13.5px;line-height:19px}
 .bn-saved{background:var(--panel);border:1px solid var(--hairline);border-left:4px solid var(--ink-2)}
 .bn-sample{background:var(--alarm);color:var(--on-accent)}.bn-sample b{font-weight:700}
@@ -310,8 +369,6 @@ svg:not(.sprite) {
 .foot{padding:16px var(--gut) 24px;font-size:var(--fs-12);color:var(--ink-2)}
 
 .bn p,.foot p{margin:0}
-.lang button{font:inherit;color:inherit}
-.lang .ic{width:16px;height:16px;fill:currentColor}
 .stat{font-variant-numeric:tabular-nums}
 .bn-saved{color:var(--ink-2)}
 .bn-saved a{color:var(--accent);text-decoration:underline}
@@ -455,9 +512,11 @@ svg:not(.sprite) {
    Discrete display keeps the slide/fade on
    close; reduced motion is instant, and from 600 px neither transitions.
    Open 280 ms / close 220 ms: give the slide a visible settling tail.
-   Containment bounds the initial paint; promote only while moving. */
-.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
-.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+   Containment bounds the initial paint; promote only while moving. The first
+   transition declaration keeps the warmed slide on Safari 16.4, which rejects
+   the whole shorthand when it contains allow-discrete. */
+.sheet{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),visibility var(--t-sheet-out);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
+.sheet[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet);transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
 .sheet-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete}
 .sheet-scrim.is-open{display:block;opacity:1;transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
 .sheet.is-sliding{will-change:transform}
@@ -491,11 +550,13 @@ html.sheet-open{overflow:hidden}
    fade (below, and it out-ranks the global "no transitions" rule at the end
    of this file). The page behind is locked only on phones, as with Filters:
    from 600 px hiding a classic scrollbar would re-lay out every row, so
-   faq.js stops the wheel instead. */
-.faqp{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
-.faqp[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
-.faq-scrim{display:none;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;pointer-events:none;transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete}
-.faq-scrim.is-open{display:block;opacity:1;pointer-events:auto;transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+   faq.js stops the wheel instead. The scrim never changes display: Safari
+   before 18 cannot transition display, so it snapped in and out; a
+   visibility transition keeps it shown until its fade ends (A10). */
+.faqp{position:fixed;z-index:70;inset:auto 0 0;width:100%;max-width:none;height:auto;max-height:85dvh;margin:0;padding:0;border:0;overflow:hidden;background:var(--panel);color:var(--ink);border-radius:var(--r-panel) var(--r-panel) 0 0;contain:layout paint;transform:translateY(100%);transition:transform var(--t-sheet-out) var(--ease-sheet),visibility var(--t-sheet-out);transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)}
+.faqp[open]{display:flex;flex-direction:column;transform:none;transition:transform var(--t-sheet-in) var(--ease-sheet);transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete}
+.faq-scrim{display:block;visibility:hidden;position:fixed;z-index:69;inset:0;background:var(--scrim);opacity:0;touch-action:none;pointer-events:none;transition:opacity var(--t-sheet-out) var(--ease-sheet),visibility var(--t-sheet-out) linear}
+.faq-scrim.is-open{visibility:visible;opacity:1;pointer-events:auto;transition:opacity var(--t-sheet-in) var(--ease-sheet),visibility var(--t-sheet-in) linear}
 .faqp.is-sliding{will-change:transform}
 .faq-scrim.is-sliding{will-change:opacity}
 @starting-style{.faqp[open]{transform:translateY(100%)}.faq-scrim.is-open{opacity:0}}
@@ -505,37 +566,32 @@ html.sheet-open{overflow:hidden}
 .faqp.is-warm[open]{visibility:visible;pointer-events:auto}
 .sheet-h,.faqp-h{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px 4px 16px;border-bottom:1px solid var(--hairline)}
 .faqp-h h2{margin:0;font-size:var(--fs-16);font-weight:700;line-height:24px}
-.faqp-h .btn{width:44px;height:44px;padding:0;justify-content:center;text-decoration:none}
 .faqp-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px calc(16px + env(safe-area-inset-bottom))}
 /* The questions: 16 px, one 44 px tap row each; the answers a step smaller
    and quieter, so a list of questions reads at a glance. No line under the
    last one: the panel's edge ends the list. */
 .faq details{border-bottom:1px solid var(--hairline)}
 .faq details:last-child{border-bottom:0}
-.faq summary{list-style:none;cursor:pointer;min-height:44px;padding:10px 0;font-size:var(--fs-16);line-height:24px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.faq summary{list-style:none;cursor:pointer;min-height:44px;padding:12px 0;font-size:var(--fs-16);line-height:24px;font-weight:600;color:var(--ink);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .faq summary::-webkit-details-marker{display:none}
-/* The "+" turns into "×" in step with the answer opening. */
-.faq summary>.ic{width:16px;height:16px;flex:none;margin-top:calc(.5lh - 8px);color:var(--ink-2);transition:transform var(--t-answer) var(--ease-out)}
-.faq details[open] summary>.ic{transform:rotate(45deg)}
-.faq .a{padding:0 28px 16px 0;font-size:var(--fs-14);line-height:1.5;color:var(--ink-2)}
+/* The "+" becomes "−" (A10): two real strokes, and only the vertical one
+   turns, onto the horizontal one. No fade or bounce. It follows the
+   question's aria-expanded, which faq.js sets the moment the answer starts
+   to move, not the late [open] of an answer still shutting. */
+.faq summary>.ic{width:16px;height:16px;flex:none;margin-top:calc(.5lh - 8px);color:var(--ink-2)}
+.faq-v{transform-box:fill-box;transform-origin:center;transition:transform 240ms var(--ease-out)}
+.faq summary[aria-expanded=true] .faq-v{transform:rotate(90deg)}
+.faq .a{padding:0 28px 18px 0;font-size:var(--fs-14);line-height:1.5;color:var(--ink-2)}
 .faq .a a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;overflow-wrap:anywhere}
 .faq .a a:hover{color:var(--accent-press)}
-/* An answer grows open and shuts, and fades with it, where height:auto can
-   animate (Chrome); elsewhere it opens at once, as before. Closing keeps the
-   content shown until it has shrunk (content-visibility allow-discrete). */
-@supports (interpolate-size:allow-keywords){
- .faqp-b{interpolate-size:allow-keywords}
- .faq details::details-content{height:0;overflow:clip;transition:height var(--t-answer) var(--ease-out),content-visibility var(--t-answer) allow-discrete}
- .faq details[open]::details-content{height:auto}
- .faq .a{opacity:0;transition:opacity 200ms var(--ease-out)}
- .faq details[open] .a{opacity:1}
-}
+/* An answer grows open and shuts in faq.js (A10): a measured-height Web
+   Animation that runs in Safari 16.4 too and reverses mid-way. The old
+   height:auto transition ran only in Chrome. */
 #faq-open{width:36px;padding:0;justify-content:center}
 /* From 1024 px the header has room to say "FAQ" beside the "?" (Leon,
    2026-11-09), as My list and Compare show their labels; below, "?" alone. */
 .faq-l{display:none}
 @media (max-width:599.98px){
- .faqp::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
  html.faq-open{overflow:hidden}
 }
 @media (min-width:600px){
@@ -554,10 +610,10 @@ html.sheet-open{overflow:hidden}
 @media (pointer:coarse) and (min-width:600px) and (max-width:700px){.hd .hd-right{gap:4px}.hd .hd-in{gap:12px}}
 @media (prefers-reduced-motion:reduce){
  .faqp,.faqp[open]{transform:none}
- .faqp{opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important}
+ .faqp{opacity:0;transition:opacity 120ms linear,visibility 120ms !important;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important}
  .faqp[open]{opacity:1}
  @starting-style{.faqp[open]{opacity:0;transform:none}}
- .faq-scrim{transition:opacity 120ms linear,display 120ms allow-discrete !important}
+ .faq-scrim{transition:opacity 120ms linear,visibility 120ms linear !important}
 }
 @media print{
  dialog.faqp,dialog.faqp[open],.faq-scrim,.faq-scrim.is-open{display:none}
@@ -1068,10 +1124,6 @@ html{overflow-anchor:none}
 .search .affix>.ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
 .hd-right{display:flex;align-items:center;gap:8px;flex:none}
 .hd .btn{height:36px;border-color:var(--hairline);border-radius:8px}
-.hd .lang{display:flex;gap:0;padding:3px;border-radius:9px;background:var(--hover);border:1px solid var(--hairline);height:36px}
-.hd .lang>.ic{display:none}
-.hd .lang button{border:0;background:transparent;color:var(--ink-2);font-size:13px;padding:0 10px;border-radius:6px}
-.hd .lang button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--hairline)}
 .badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--ink);color:var(--panel);font-size:12px;font-weight:600;display:inline-grid;place-items:center}
 .fslot{background:var(--panel);border-bottom:1px solid var(--hairline)}
 .shell,.foot{max-width:1440px}
@@ -1353,7 +1405,9 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .ob .btn-q{border-color:transparent}
 .ob .big-pts .btn{font-size:22px}
 .ob .switch{padding-left:0}
-.ob .big-pts input{width:90px;height:60px;font-size:44px;font-weight:700;text-align:center;border:0;background:transparent;appearance:textfield}
+/* padding:0 (A09): iOS gives inputs side padding of its own, which left
+   "45" less room than its 44 px glyphs need inside the 90 px box. */
+.ob .big-pts input{width:90px;height:60px;padding:0;font-size:44px;font-weight:700;text-align:center;border:0;background:transparent;appearance:textfield}
 .ob .big-pts input::-webkit-inner-spin-button{appearance:none}
 /* The maths hint hangs under the switch's label text, closer than the step's
    14 px gap (Leon, 2026-11-09): 4 px of air below the label's last line.
@@ -1366,19 +1420,32 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .ob .rng-top .inp{max-width:164px;text-align:right;height:24px;border:0;background:transparent;padding:0;font-size:15px;font-weight:600;color:var(--ink)}
 .ob .rng-top .inp::placeholder{color:var(--ink)}
 .ob .chips .flag{width:20px;height:14px;border-radius:2px}
-.sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--hairline);margin:8px auto 0;flex:none}
-.sheet-h .btn{width:44px;height:44px;justify-content:center;text-decoration:none}
+/* A12: the handle is a real element, so a finger on it is a target. With
+   the header it is where the Filters sheet and the FAQ sheet are dragged
+   down (js/sheet-drag.js), on phones only; only there is touch-action off,
+   so the body still scrolls. Same 12 px as the old drawn handle. */
+.grab{display:none}
+@media (max-width:599.98px){
+ .grab{display:flex;flex:none;justify-content:center;height:12px;padding-top:8px}
+ .grab>span{width:36px;height:4px;border-radius:2px;background:var(--hairline)}
+ .grab,.sheet-h,.faqp-h{touch-action:none;-webkit-user-select:none;user-select:none}
+}
+/* Close in both sheet headers: a quiet 32 px circle around a centred icon,
+   inside the 44 px target. Flat: no border, shadow or glow. */
+.sheet-h .btn,.faqp-h .btn{width:44px;height:44px;padding:0;justify-content:center;text-decoration:none;border:0;border-radius:50%;color:var(--ink-2);background:radial-gradient(circle 16px,var(--hover) 15.5px,transparent 16px)}
+.sheet-h .btn:hover,.faqp-h .btn:hover{color:var(--ink);background:radial-gradient(circle 16px,var(--hover) 15.5px,transparent 16px)}
+.sheet-h .btn>.ic,.faqp-h .btn>.ic{display:block;flex:none;width:18px;height:18px}
 @media (max-width: 599.98px){
- .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}.hd .lang button{padding:0 8px}
+ .hd{height:56px;min-height:56px}.hd-in{flex-wrap:nowrap;padding:6px var(--gut);gap:6px}.slot{width:36px;flex:none}.mark{min-width:44px;height:44px;top:-4px}.search{order:0;flex-basis:auto}.hd .search input{padding-right:8px}.search kbd{display:none}.hd-right .btn{padding:0 6px}
  .ob-body{padding:20px 20px 8px}.ob-foot{padding:12px 20px 16px;flex-wrap:wrap}.ob-foot .skipwrap{flex:1 1 auto}.ob-foot .sp{display:none}.ob-foot>.btn-p{margin-left:auto}.ob-foot>.btn{height:44px}.toast button{min-height:44px}
 }
 @media (pointer: coarse),(max-width:599px){
- .switch{min-height:44px}.hd .btn,.hd .lang{height:44px}.hd .lang{padding:0}.hd .lang button{min-height:44px;min-width:44px;padding:0 8px}.hd .btn{min-width:44px}.seg{padding:0;height:44px}.seg button{min-height:44px;min-width:44px}
+ .switch{min-height:44px}.hd .btn{height:44px}.hd .btn{min-width:44px}.seg{padding:0;height:44px}.seg button{min-height:44px;min-width:44px}
 }
-.hd .lang,.seg{position:relative}
-.hd .lang button,.seg button{position:relative;z-index:1}
+.settings-seg,.seg{position:relative}
+.settings-seg label,.seg button{position:relative;z-index:1}
 .segment-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:6px;background:var(--panel);box-shadow:0 0 0 1px var(--hairline);transition:transform 280ms var(--spring-snappy);pointer-events:none}
-.hd .lang button[aria-pressed=true],.seg button[aria-pressed=true]{background:transparent;box-shadow:none}
+.seg button[aria-pressed=true]{background:transparent;box-shadow:none}
 @media (pointer: coarse),(max-width:599px){.segment-thumb{top:0;bottom:0}}
 .listp>.f-sort .inp{min-width:0;border-color:var(--hairline)}
 .maths-control>select{border-color:var(--hairline);font-size:15px}
@@ -1715,7 +1782,6 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
 @media (min-width:701px){body:not(.compact) .mark{padding-right:6px}}
 /* SK/EN: the ring drawn outside a 28 px button merged with the pill's border
    (and crossed the neighbour on touch), so it sits just inside the button. */
-.hd .lang button:focus-visible{outline-offset:-3px}
 /* At 360 px and under the My list count sat on the button's corner, over its
    border; it stays in the corner, inside. */
 @media (max-width:360px){#header-list .badge{top:3px;right:3px}}
@@ -2238,7 +2304,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   /* .listp>.f-sort, not .f-sort: the screen rule that shows the list's Sort
      select under 900 px has that weight, and paper is under 900 px, so a
      plain .f-sort lost and the select printed. */
-  .hd, .toasts, .fbar, .status, .shortlist-bar, .foot, .lang, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
+  .hd, .toasts, .fbar, .status, .shortlist-bar, .foot, .tagline, .stat, .save, .cmp-head .tick, #cmp-close,
   .cmp-tray, #header-compare, .cmpi, .cmpb, .cmp-acts, .cmp-nav,
   .issues, .skip-link, .star, .skeletons, .cols, .listp>.f-sort, .chev, .pane, .goto,
   .sheet, .sheet.is-warm, .cshort, .status .copy, .sheet .copy, .bn-saved, .bn-fail { display:none; }
@@ -2308,3 +2374,22 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .english-note{font-size:var(--fs-14);color:var(--ink-2);margin-top:12px}
 .data-original{display:block;font-size:var(--fs-14);font-weight:400;color:var(--ink-2)}
 .data-original[hidden]{display:none}
+
+/* Settings is a disclosure; native radios keep arrow-key selection on Safari. */
+.settings{position:relative;flex:none}
+#settings-open{gap:6px}
+#settings-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:248px;max-width:calc(100vw - 2 * var(--gut));padding:16px;border-radius:var(--r-panel);background:var(--panel);box-shadow:var(--pop-shadow);color:var(--ink);font-size:13px;transform-origin:top right}
+/* Shutting (app.js wireSettings, A11): already closed, so taps go through. */
+#settings-panel[inert]{pointer-events:none}
+#settings-panel fieldset{padding:0;margin:0 0 16px;border:0;min-width:0}
+#settings-panel legend{padding:0;margin:0 0 8px;font-weight:600}
+#settings-panel p{margin:0;color:var(--ink-2);font-size:12px;line-height:1.5}
+/* A11: a flat inset track; the selected thumb sits 3 px inside it with no
+   ring, shadow or glow, and every label keeps one weight. */
+.settings-seg{display:flex;padding:3px;background:var(--hover);border:0;border-radius:9px}
+.settings-seg .segment-thumb{top:3px;bottom:3px;box-shadow:none}
+.settings-seg label{display:flex;align-items:center;justify-content:center;flex:1;min-width:0;min-height:36px;padding:0 8px;border-radius:6px;cursor:pointer;color:var(--ink-2);font-weight:600;white-space:nowrap}
+.settings-seg input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.settings-seg label:has(input:checked){color:var(--ink)}
+.settings-seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-3px}
+@media (pointer:coarse),(max-width:599px){.settings-seg label{min-height:44px}}

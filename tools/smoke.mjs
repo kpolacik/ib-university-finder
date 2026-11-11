@@ -13,6 +13,7 @@
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
 //   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
+//   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
@@ -290,12 +291,19 @@ function connect(url) {
 
 // A fresh tab per scenario, so nothing (the address bar's filters, an open
 // sheet) leaks from one width to the next.
-async function openPage(base, width, height, { block = [] } = {}) {
+async function openPage(base, width, height, { block = [], beforeNavigate, paused } = {}) {
   // Each scenario gets its own storage; ordinary tabs share saved filters.
   const { browserContextId } = await cdp.send('Target.createBrowserContext');
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  const send = (method, params, ms) => cdp.send(method, params, sessionId, ms);
+  let scheme = 'light';
+  const send = (method, params, ms) => {
+    if (method === 'Emulation.setEmulatedMedia') {
+      scheme = params.features?.find((f) => f.name === 'prefers-color-scheme')?.value ?? scheme;
+      params = { ...params, features: [...(params.features ?? []).filter((f) => f.name !== 'prefers-color-scheme'), { name: 'prefers-color-scheme', value: scheme }] };
+    }
+    return cdp.send(method, params, sessionId, ms);
+  };
   const errors = [];
   const exceptions = [];
   const off = cdp.on((msg) => {
@@ -310,18 +318,33 @@ async function openPage(base, width, height, { block = [] } = {}) {
     } else if (msg.method === 'Log.entryAdded' && p.entry.level === 'error') {
       errors.push({ text: `${p.entry.text}${p.entry.url ? ` (${p.entry.url})` : ''}`, url: p.entry.url || '' });
     } else if (msg.method === 'Fetch.requestPaused') {
-      send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' }).catch(() => {});
+      // Exactly one owner per paused request: the scenario or the default blocker.
+      Promise.resolve(paused?.(p, send)).then((owned) => {
+        if (!owned) return send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' });
+      }).catch((err) => exceptions.push(err.message));
     }
   });
-  await send('Runtime.enable');
-  await send('Log.enable');
-  await send('Page.enable');
-  if (block.length) await send('Fetch.enable', { patterns: block.map((urlPattern) => ({ urlPattern })) });
-  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-  // Headless tabs are never "focused", which would leave focus-dependent code
-  // (the sheet moving focus to its heading) untested.
-  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
-  await send('Page.navigate', { url: base });
+  try {
+    await send('Runtime.enable');
+    await send('Log.enable');
+    await send('Page.enable');
+    if (block.length) await send('Fetch.enable', { patterns: block.map((urlPattern) => ({ urlPattern })) });
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    // Headless tabs are never "focused", which would leave focus-dependent code
+    // (the sheet moving focus to its heading) untested.
+    await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__smokeLanguage = (language) => {
+      const radio = document.querySelector('[data-language=\"'+language+'\"]');
+      radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true }));
+    };` });
+    if (beforeNavigate) await beforeNavigate(send);
+    await send('Page.navigate', { url: base });
+  } catch (error) {
+    off();
+    await cdp.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
+    throw error;
+  }
 
   const ev = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
@@ -392,13 +415,218 @@ async function openPage(base, width, height, { block = [] } = {}) {
     await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
     await cdp.send('Target.disposeBrowserContext', { browserContextId }, undefined, 5000).catch(() => {});
   };
-  const screenshot = async (path) => {
+  const screenshot = async (path, { viewportOnly = false } = {}) => {
     const { cssContentSize } = await send('Page.getLayoutMetrics');
     const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true,
-      clip: { x: 0, y: 0, width, height: Math.min(6000, cssContentSize.height), scale: 1 } });
+      clip: { x: 0, y: 0, width, height: viewportOnly ? height : Math.min(6000, cssContentSize.height), scale: 1 } });
     await writeFile(path, Buffer.from(data, 'base64'));
   };
   return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
+}
+
+// Theme tests own their emulated scheme. Legacy scenarios always start in Light.
+async function runTheme(base) {
+  watchdog.refresh();
+  const themeKey = 'ib-university-finder:theme';
+  const ready = `({ok:document.querySelector('#loading')?.hidden && !!document.querySelector('#results .item'),why:'app not ready'})`;
+  const frames = `new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`;
+  const palette = `({theme:document.documentElement.dataset.theme,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),meta:document.querySelector('meta[name="color-scheme"]').content})`;
+  const media = (scheme) => ({ features: [{ name: 'prefers-color-scheme', value: scheme }] });
+  const seed = async (send, scheme, extra = '') => {
+    await send('Emulation.setEmulatedMedia', media(scheme));
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed');${extra}` });
+  };
+  const choose = async (page, choice) => {
+    await page.ev(`(()=>{const r=document.querySelector('[data-theme-choice="${choice}"]');r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+  };
+  await mkdir('/tmp/ib-dark', { recursive: true });
+  // Holding app.js proves first paint independently of module startup. The
+  // negative control removes only boot: a post-load test would miss that defect.
+  for (const [scheme, saved, negative] of [['dark', 'light', false], ['light', 'dark', false], ['light', 'dark', true]]) {
+    let release;
+    const page = await openPage(base, 375, 844, {
+      beforeNavigate: async (send) => {
+        await seed(send, scheme, `localStorage.setItem('${themeKey}','${saved}');
+          window.__themeChanges=[];
+          new MutationObserver(ms=>{for(const m of ms)if(m.attributeName==='data-theme'||m.attributeName==='content')__themeChanges.push({theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]')?.content})}).observe(document,{subtree:true,attributes:true});
+          const first=()=>{if(!document.body||!document.querySelector('link[rel="stylesheet"]')?.sheet){requestAnimationFrame(first);return}
+            window.__themeFrame={theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]').content,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),background:getComputedStyle(document.querySelector('.listp')).backgroundColor};};requestAnimationFrame(first);`);
+        await send('Fetch.enable', { patterns: [{ urlPattern: '*js/app.js' }, ...(negative ? [{ urlPattern: base, resourceType: 'Document' }] : [])] });
+      },
+      paused: async (p, send) => {
+        if (p.request.url.endsWith('/js/app.js')) {
+          release = () => send('Fetch.continueRequest', { requestId: p.requestId });
+          return true;
+        }
+        if (negative && p.resourceType === 'Document') {
+          const html = (await readFile(join(root, 'index.html'), 'utf8')).replace(/<script>[\s\S]*?<\/script>/, '');
+          await send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/html' }], body: Buffer.from(html).toString('base64') });
+          return true;
+        }
+        return false;
+      },
+    });
+    try {
+      await check(375, 'theme first frame', `${saved} saved on ${scheme} system${negative ? ' (negative control)' : ''}`, async () => {
+        await page.waitFor(`({ok:!!window.__themeFrame,why:'waiting for first CSS-ready frame'})`, 5000, 'first frame while app is held');
+        assert(release, 'app request was not held');
+        const frame = await page.ev('window.__themeFrame');
+        const expected = saved === 'dark' ? '#232933' : '#ffffff';
+        const matches = frame.theme === saved && frame.meta === saved && frame.panel === expected
+          && frame.background === (saved === 'dark' ? 'rgb(35, 41, 51)' : 'rgb(255, 255, 255)');
+        assert(negative ? !matches : matches, `first frame ${JSON.stringify(frame)}`);
+        assert(await page.ev(`!document.querySelector('#loading').hidden`), 'app ran before first frame');
+        await release(); release = null;
+        await page.waitFor(ready, 15000, 'app after releasing module');
+        assert((await page.ev(palette)).theme === saved, 'module theme drift');
+        if (!negative) assert(await page.ev(`__themeChanges.every(m=>!m.theme||m.theme==='${saved}')`), 'theme changed before/after first paint');
+      });
+    } finally { if (release) await release().catch(() => {}); await page.close(); }
+  }
+  for (const scheme of ['light', 'dark']) {
+    const page = await openPage(base, 375, 844, { beforeNavigate: (send) => seed(send, scheme) });
+    try {
+      await check(375, 'theme state', `System ${scheme}, live changes, choices, reload, Clear all and URLs`, async () => {
+        await page.waitFor(ready, 15000, 'theme app');
+        assert((await page.ev(palette)).theme === scheme, 'default is not System');
+        const other = scheme === 'dark' ? 'light' : 'dark';
+        await page.send('Emulation.setEmulatedMedia', media(other)); await page.ev(frames);
+        assert((await page.ev(palette)).theme === other, 'System did not update live');
+        const before = await page.ev(`({url:location.href,filters:localStorage.getItem('ibuf.filters.v1')})`);
+        await choose(page, 'light');
+        await page.send('Emulation.setEmulatedMedia', media('dark')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'explicit Light followed system');
+        const after = await page.ev(`({url:location.href,filters:localStorage.getItem('ibuf.filters.v1')})`);
+        assert(JSON.stringify(after) === JSON.stringify(before), 'theme changed URL/filter storage');
+        await choose(page, 'dark');
+        await page.send('Page.reload'); await page.waitFor(ready, 15000, 'reloaded theme');
+        assert((await page.ev(palette)).theme === 'dark', 'saved Dark did not survive reload');
+        await page.ev(`document.querySelector('#f-clear').click()`);
+        assert(await page.ev(`localStorage.getItem('${themeKey}')==='dark'`), 'Clear all removed theme');
+        await choose(page, 'system');
+        assert(await page.ev(`localStorage.getItem('${themeKey}')===null`), 'System did not remove key');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'return to System did not resume updates');
+        // Saved filters survive ?ui alone; recognised filter and list URLs use defaults.
+        const prefs = JSON.stringify({ version: 1, filters: { search: 'Delft', myIbPoints: 36 } });
+        await page.ev(`localStorage.setItem('ibuf.filters.v1',${JSON.stringify(prefs)});localStorage.setItem('${themeKey}','dark')`);
+        for (const [query, search, points] of [['?ui=sk', 'Delft', '36'], ['?country=Ireland&ui=sk', '', ''], ['?list=tud-cse&ui=sk', '', '']]) {
+          await page.send('Page.navigate', { url: base + query }); await page.waitFor(ready, 15000, query);
+          const state = await page.ev(`({search:document.querySelector('#f-search').value,points:document.querySelector('#f-points').value,stored:localStorage.getItem('ibuf.filters.v1'),theme:localStorage.getItem('${themeKey}'),code:document.querySelector('#settings-language').textContent,checked:document.querySelector('[data-language=sk]').checked})`);
+          assert(state.search === search && state.points === points && state.stored === prefs && state.theme === 'dark' && state.code === 'SK' && state.checked, JSON.stringify(state));
+        }
+        await page.send('Page.navigate', { url: base }); await page.waitFor(ready, 15000, 'stored filters');
+        await page.ev(`window.__copied='';navigator.clipboard.writeText=async text=>{window.__copied=text};document.querySelector('#f-copy').click()`);
+        await page.waitFor(`({ok:!!window.__copied,why:'link not copied'})`, 3000, 'copy');
+        assert(await page.ev(`!/[?&]theme=/.test(window.__copied)`), 'theme in Copy link');
+      });
+    } finally { await page.close(); }
+  }
+  for (const failure of ['getter', 'setItem', 'removeItem', 'invalid']) {
+    const override = failure === 'getter' ? `Object.defineProperty(window,'localStorage',{get(){throw Error('blocked')}});`
+      : failure === 'invalid' ? `localStorage.setItem('${themeKey}','invalid');`
+      : `Storage.prototype.${failure}=function(){throw Error('blocked')};`;
+    const page = await openPage(base, 375, 844, { beforeNavigate: (send) => seed(send, 'dark', override) });
+    try {
+      await check(375, 'theme storage', failure, async () => {
+        await page.waitFor(ready, 15000, 'storage failure app');
+        // If onboarding could not read the dismissal, close its non-modal surface.
+        await page.ev(`document.querySelector('#onboarding[open]')?.close()`);
+        assert((await page.ev(palette)).theme === 'dark', 'invalid/blocked read should use System');
+        await choose(page, 'light');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        await page.send('Emulation.setEmulatedMedia', media('dark')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'failed write lost in-memory choice');
+        await choose(page, 'dark'); await choose(page, 'system');
+        await page.send('Emulation.setEmulatedMedia', media('light')); await page.ev(frames);
+        assert((await page.ev(palette)).theme === 'light', 'failed removal did not restore System');
+      });
+    } finally { await page.close(); }
+  }
+  for (const width of [320, 375, 768, 1280]) for (const theme of ['light', 'dark']) {
+    const page = await openPage(base, width, 900, { beforeNavigate: (send) => seed(send, 'light', `localStorage.setItem('${themeKey}','${theme}');localStorage.setItem('ib-university-finder:language','sk');`) });
+    try {
+      await check(width, 'theme settings', `${theme}: disclosure, radios, focus, thumbs, print and screenshots`, async () => {
+        await page.waitFor(ready, 15000, 'screenshots app'); await page.ev(frames);
+        await page.ev(`document.fonts.ready`);
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-list.png`, { viewportOnly: true });
+        await page.click(`document.querySelector('#settings-open')`, 'Settings');
+        assert(await page.ev(`document.activeElement===document.querySelector('[data-language=sk]')`), 'open did not focus checked language');
+        await page.key('ArrowRight', 'ArrowRight', 39); await page.ev(frames);
+        assert(await page.ev(`document.documentElement.lang==='en' && document.querySelector('[data-language=en]').checked && !document.querySelector('#settings-panel').hidden && localStorage.getItem('ib-university-finder:language')==='en'`), 'arrow did not apply/save language and keep panel open');
+        // Verify review: an open panel alone does not prove the re-render kept keyboard focus.
+        assert(await page.ev(`document.activeElement===document.querySelector('[data-language=en]')`), 'language re-render moved focus off the radio');
+        const aligned = `(()=>[...document.querySelectorAll('.settings-seg')].every(g=>{const r=g.querySelector('input:checked').closest('label').getBoundingClientRect(),t=g.querySelector('.segment-thumb').getBoundingClientRect();return Math.abs(r.left-t.left)<1&&Math.abs(r.width-t.width)<1}))()`;
+        await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'translated thumbs');
+        const appearance = `[data-theme-choice="${theme}"]`;
+        await page.ev(`document.querySelector('${appearance}').focus()`);
+        await page.key('ArrowLeft', 'ArrowLeft', 37); await page.ev(frames);
+        assert(await page.ev(`!document.querySelector('#settings-panel').hidden && document.querySelector('[data-theme-choice]:checked').dataset.themeChoice!=='${theme}' && document.activeElement===document.querySelector('[data-theme-choice]:checked')`), 'appearance arrow did not select or lost focus');
+        await page.click(`document.querySelector('[data-theme-choice="${theme}"]').closest('label')`, 'Restore appearance');
+        await page.waitFor(`({ok:${aligned},why:'thumb misaligned'})`, 3000, 'appearance thumbs');
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-settings.png`, { viewportOnly: true });
+        const box = await page.ev(`(()=>{const r=document.querySelector('#settings-panel').getBoundingClientRect();return {l:r.left,r:r.right,w:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert(box.l >= 0 && box.r <= box.w && !box.overflow, JSON.stringify(box));
+        await page.send('Emulation.setDeviceMetricsOverride', { width: width + 16, height: 900, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:${aligned},why:'thumb after resize'})`, 3000, 'resized thumbs');
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await page.waitFor(`({ok:${aligned},why:'thumb after restoring width'})`, 3000, 'restored thumbs');
+        // A11 (PR 7): a close is closed at once (collapsed, inert), then the
+        // panel fades for 140 ms before it is hidden.
+        const shut = `(()=>{const p=document.querySelector('#settings-panel');return document.querySelector('#settings-open').getAttribute('aria-expanded')==='false'&&(p.hidden||p.inert)})()`;
+        const hidden = (what) => page.waitFor(`({ok:document.querySelector('#settings-panel').hidden&&!document.querySelector('#settings-panel').inert,why:'still fading'})`, 2000, what);
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`${shut} && document.activeElement.id==='settings-open'`), 'Escape focus');
+        await hidden('Escape exit');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen');
+        await page.waitFor(`({ok:${aligned},why:'thumb after reopen'})`, 3000, 'reopened thumbs');
+        await page.click(`document.querySelector('#settings-open')`, 'toggle closed');
+        assert(await page.ev(shut), 'button did not close');
+        await hidden('button exit');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen for outside');
+        await page.click(`document.querySelector('#f-search')`, 'outside settings');
+        assert(await page.ev(shut), 'outside click');
+        await hidden('outside exit');
+        await page.click(`document.querySelector('#settings-open')`, 'reopen for tab');
+        await page.ev(`document.querySelector('[data-theme-choice=dark]').focus()`);
+        await page.key('Tab', 'Tab', 9);
+        assert(await page.ev(shut), 'Tab out');
+        await hidden('Tab exit');
+        await page.click(`document.querySelector('#results .open')`, 'programme'); await page.ev(frames);
+        const selected = await page.ev(`document.querySelector('#results .item.is-open,.item.is-sel')?.dataset.id`);
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-detail.png`, { viewportOnly: true });
+        await page.ev('scrollTo(0,0)');
+        await page.click(`document.querySelector('#settings-open')`, 'settings above programme');
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!!document.querySelector('#results [data-id="${selected}"].is-open,#results [data-id="${selected}"].is-sel')`), 'Escape also closed programme');
+        await page.click(`document.querySelector('#faq-open')`, 'FAQ'); await page.ev(frames);
+        await page.waitFor(`({ok:!document.querySelector('#faq-panel').getAnimations().some(a=>a.playState==='running'),why:'FAQ moving'})`, 3000, 'FAQ');
+        await page.screenshot(`/tmp/ib-dark/${width}-${theme}-faq.png`, { viewportOnly: true });
+        await page.key('Escape', 'Escape', 27);
+        if (width < 600) {
+          await page.click(`document.querySelector('#f-more')`, 'Filters');
+          await page.waitFor(`({ok:!document.querySelector('#filter-sheet').getAnimations().some(a=>a.playState==='running'),why:'Filters moving'})`, 3000, 'Filters');
+          await page.screenshot(`/tmp/ib-dark/${width}-${theme}-filters.png`, { viewportOnly: true });
+          await page.ev(`document.querySelector('[data-maths="AA SL"]').click()`);
+          assert(await page.ev(`document.querySelector('[data-maths="AA SL"]').getAttribute('aria-pressed')==='true'`), 'maths segment regressed');
+          await page.key('Escape', 'Escape', 27);
+        }
+        await choose(page, 'dark');
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        const print = await page.ev(`(()=>{const s=getComputedStyle(document.documentElement),b=getComputedStyle(document.body),row=getComputedStyle(document.querySelector('#results .open'));return {panel:s.getPropertyValue('--panel').trim(),ground:s.getPropertyValue('--ground').trim(),ink:s.getPropertyValue('--ink').trim(),scheme:s.colorScheme,image:b.backgroundImage,bg:b.backgroundColor,text:row.color,settings:getComputedStyle(document.querySelector('.settings')).display,header:getComputedStyle(document.querySelector('.hd')).display}})()`);
+        assert(print.panel==='#ffffff' && print.ground==='#e8edf3' && print.ink==='#16202c' && print.scheme==='light' && print.image==='none' && print.bg==='rgba(0, 0, 0, 0)' && print.text==='rgb(22, 32, 44)' && print.header==='none', JSON.stringify(print));
+        await page.send('Emulation.setEmulatedMedia', { media: '' });
+        assert((await page.ev(palette)).panel === '#232933', 'print changed screen theme');
+        assert(page.errors.length === 0, page.errors.map(e=>e.text).join('; '));
+      });
+    } finally { await page.close(); }
+  }
+}
+
+async function chooseLanguage(page, language) {
+  await page.click(`document.querySelector('#settings-open')`, 'Settings');
+  await page.click(`document.querySelector('[data-language="${language}"]').closest('label')`, language);
+  await page.click(`document.querySelector('#settings-open')`, 'Close settings');
 }
 
 // A finger dragged from (x, y) by (xDistance, yDistance) at `speed` px/s:
@@ -859,7 +1087,7 @@ async function runI18n(base) {
         await page.waitFor(`({ ok: !!document.querySelector('${detail} .kv dd'), why: 'waiting for detail' })`, 5000, 'detail');
         const before = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-en.png`);
-        await page.click(`document.querySelector('[data-language="sk"]')`, 'Slovak');
+        await chooseLanguage(page, 'sk');
         assert(await page.ev(`document.documentElement.lang === 'sk'`), 'HTML language did not switch');
         const after = await page.ev(`({ search: document.querySelector('#f-search').value, ids: [...document.querySelectorAll('#results > li')].map(n => n.dataset.id) })`);
         assert(JSON.stringify(before) === JSON.stringify(after), 'switch changed search or results');
@@ -901,9 +1129,9 @@ async function runI18n(base) {
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'toggle did not hide every original after re-render');
         await page.ev(`document.querySelector('${button}').click()`);
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
+        await page.ev(`window.__smokeLanguage('en')`);
         assert(await page.ev(`document.documentElement.lang === 'en' && !!document.querySelector('${detail} .kv dd') && !document.querySelector('${detail} .detail-originals, ${detail} .data-original, ${detail} .english-note')`), 'EN switch lost detail or retained Slovak controls');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         result = await page.ev(status);
         assert(result.pressed === 'false' && result.allOff, 'language change did not reset originals');
         assert(page.errors.length === 0, page.errors.map((error) => error.text).join(' | '));
@@ -1120,7 +1348,7 @@ async function runRound2(base) {
       if(width>=600)await check(width,'R2I','200% layout keeps long SK controls and facet panels inside the viewport; non-scrolling lists have no fade',async()=>{
         await page.send('Emulation.setDeviceMetricsOverride',{width:640,height:450,deviceScaleFactor:1,mobile:false});
         try {
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=sk]'));window.scrollTo(0,0)`);
+          await page.ev(`window.__smokeLanguage('sk');window.scrollTo(0,0)`);
           await page.waitFor(`(()=>{const w=innerWidth,sw=document.documentElement.scrollWidth,display=getComputedStyle(document.querySelector('#f-mymaths')).display;return {ok:w===640 && sw===w && display!=='none',why:JSON.stringify({w,sw,display,dialogs:[...document.querySelectorAll('dialog[open]')].map(n=>n.id)})}})()`,5000,'zoomed controls');
           await page.click(`document.querySelector('#dd-languages summary')`,'zoomed language panel');
           await page.waitFor(`(()=>{const box=document.querySelector('#f-languages');return {ok:box.classList.contains('at-end')===(box.scrollTop+box.clientHeight>=box.scrollHeight-4),why:'fade cue disagrees with scroll extent'}})()`,5000,'fade cue');
@@ -1129,7 +1357,7 @@ async function runRound2(base) {
           await page.key('Escape','Escape',27);
         } finally {
           await page.send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=en]'))`);
+          await page.ev(`window.__smokeLanguage('en')`);
         }
       });
       if(width>=600)await check(width,'R2D','compact header keeps its slot, focused controls stay still and short viewports do not stick',async()=>{
@@ -1242,7 +1470,7 @@ async function runReview2(base) {
         // offsetHeight, the layout size: panels and the dialog scale in, which a rect would measure.
         const small = (selector) => page.ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].filter(n=>n.offsetWidth&&n.offsetHeight<44).map(n=>(n.id||n.className)+':'+n.offsetHeight)`);
         if (width < 600) await page.ev(`document.querySelector('#f-more').click()`);
-        const bar = await small('.chipbox,.seg button,.dropdown>summary,.info,.step,.maths-control>select,.hd .btn,.hd .lang button,.search .inp');
+        const bar = await small('.chipbox,.seg button,.dropdown>summary,.info,.step,.maths-control>select,.hd .btn,#settings-open,.search .inp');
         assert(bar.length === 0, `filter controls: ${bar}`);
         await page.ev(`document.querySelector('#dd-budget').open=true`);
         const budget = await small('.budget .inp,.budget input[type=range],.pop-f .btn');
@@ -1317,7 +1545,7 @@ async function runBatch2A(base) {
     await settle(page);
   };
   const language = async (page, lang) => {
-    await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+    await page.ev(`window.__smokeLanguage('${lang}')`);
     await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
     await settle(page);
   };
@@ -1769,7 +1997,7 @@ async function runBatch2C(base) {
         await page.key('Escape', 'Escape', 27);
         await page.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
         await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="${ui}"]'));window.scrollTo(0,0)`);
+        await page.ev(`window.__smokeLanguage('${ui}');window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
         // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
         // Compare are an equal pair under it, the pane included. Since the
@@ -1875,7 +2103,7 @@ async function runBatch2Followup(base) {
   try {
     await page.send('Accessibility.enable');
     for (const lang of ['sk', 'en']) {
-      await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+      await page.ev(`window.__smokeLanguage('${lang}')`);
       await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:document.documentElement.lang})`, 3000, `language ${lang}`);
       for (const coarse of [false, true]) {
         for (const width of [600, 650, 700]) {
@@ -2055,7 +2283,7 @@ async function runBatch3A(base) {
           await frames(page);
           const m = await page.ev(`(()=>{
             const r=(s)=>document.querySelector(s).getBoundingClientRect();
-            const hc=r('#header-compare'), hl=r('#header-list'), q=r('.hd .search'), lang=r('.hd .lang'), badge=r('#header-compare-count');
+            const hc=r('#header-compare'), hl=r('#header-list'), q=r('.hd .search'), lang=r('#settings-open'), badge=r('#header-compare-count');
             const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
             return {pairs:[overlap(hc,hl),overlap(hc,q),overlap(hc,lang),overlap(hl,q),overlap(hl,lang)],search:q.width,
               badge:badge.left>=hc.left-0.5&&badge.right<=hc.right+0.5&&badge.top>=hc.top-0.5&&badge.bottom<=hc.bottom+0.5&&badge.right<=innerWidth,
@@ -2251,9 +2479,9 @@ async function runBatch3A(base) {
         const ids = await page.ev(`[...document.querySelectorAll('#cmp-body th[scope=col]')].map(th=>th.dataset.id)`);
         await page.ev(`document.querySelector('#cmp-body [data-compare-remove="${ids[0]}"]').focus();localStorage.setItem(${JSON.stringify(KEY)},${JSON.stringify(JSON.stringify(ids.slice(1)))});dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(KEY)}}))`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]'),why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus on the next x');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="sk"]'))`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         await page.waitFor(`({ok:document.activeElement===document.querySelector('#cmp-body [data-compare-remove="${ids[1]}"]') && document.querySelector('#cmp-h').textContent===${JSON.stringify(say('sk', 'r3_cmp_heading', { count: ids.length - 1 }))},why:document.activeElement.outerHTML.slice(0,60)})`, 5000, 'focus kept in Slovak');
-        await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language="en"]'))`);
+        await page.ev(`window.__smokeLanguage('en')`);
         assert(!page.errors.length && !page.exceptions.length, JSON.stringify([...page.errors, ...page.exceptions]));
       });
     } finally { await page.close(); }
@@ -2648,7 +2876,7 @@ async function runBatch3C(base) {
           watchdog.refresh();
           await page.send('Emulation.setTouchEmulationEnabled', { enabled: coarse });
           await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: coarse });
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+          await page.ev(`window.__smokeLanguage('${lang}')`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}'&&innerWidth===${width}&&matchMedia('(pointer:coarse)').matches===${coarse},why:innerWidth})`, 3000, 'language and width');
           await page.ev(`document.activeElement.blur();scrollTo({top:0,behavior:'instant'})`);
           await page.waitFor(`({ok:!document.body.classList.contains('compact'),why:'compact at top'})`, 3000, 'expanded');
@@ -3795,7 +4023,7 @@ async function runAlignChromeSetup(base) {
     try {
       for (const lang of ['en', 'sk', 'en']) {
         await check(width, 'AL-H1 search hint', `(${lang}${touch ? ', touch' : ''}): the hint fits its field; the long one shows whenever it fits`, async () => {
-          await page.ev(`(b=>b.getAttribute('aria-pressed')==='true'||b.click())(document.querySelector('[data-language=${lang}]'))`);
+          await page.ev(`window.__smokeLanguage('${lang}')`);
           await page.waitFor(`({ok:document.documentElement.lang==='${lang}',why:'language'})`, 3000, 'language');
           await settle(page);
           const m = await page.ev(`(()=>{const i=document.querySelector('#f-search'),s=getComputedStyle(i),w=(text)=>{const n=document.createElement('span');n.style.cssText='position:absolute;white-space:pre;font:'+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;n.textContent=text;document.body.append(n);const x=n.getBoundingClientRect().width;n.remove();return x};
@@ -3865,8 +4093,10 @@ async function runAlignChromeSetup(base) {
           const m = await page.ev(`(()=>{const k=document.querySelector('.hd .mark'),h=(${textBox})(k.querySelector('h1'));return {vis:k.matches(':focus-visible'),gap:k.getBoundingClientRect().right-h.right}})()`);
           assert(m.vis && m.gap >= 4, `logo ring touches the wordmark: ${JSON.stringify(m)}`);
         }
+        await page.ev(`document.querySelector('#settings-open').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
         await page.ev(`document.querySelector('[data-language=sk]').focus()`);
-        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),s=getComputedStyle(b),r=b.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible'),offset:o,width:parseFloat(s.outlineWidth)}})()`);
+        const l = await page.ev(`(()=>{const b=document.querySelector('[data-language=sk]'),label=b.closest('label'),s=getComputedStyle(label),r=label.getBoundingClientRect(),o=parseFloat(s.outlineOffset);return {vis:b.matches(':focus-visible') && r.width>0 && !document.querySelector('#settings-panel').hidden,offset:o,width:parseFloat(s.outlineWidth)}})()`);
         assert(l.vis && l.offset + l.width <= 0, `language ring outside its button: ${JSON.stringify(l)}`);
       });
     } finally { await page.close(); }
@@ -4621,7 +4851,7 @@ async function runRowKeyboard(base) {
           assert(await page.ev(`document.activeElement.matches(${JSON.stringify(selector)})&&document.activeElement.getAttribute('aria-pressed')==='true'`), 'toggle lost focus/state');
           assert(await page.ev(single), 'toggle added a Tab stop');
         }
-        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;document.querySelector('[data-language="${language === 'en' ? 'sk' : 'en'}"]').click()`);
+        await page.ev(`window.__keyboardId=document.activeElement.closest('.item').dataset.id;window.__smokeLanguage("${language === 'en' ? 'sk' : 'en'}")`);
         assert(await page.ev(`document.activeElement.matches('button.star')&&document.activeElement.closest('.item').dataset.id===__keyboardId&&document.activeElement.tabIndex===0`), 'rebuild lost Save focus/Tab stop');
         await page.send('Emulation.setDeviceMetricsOverride', { width: width === 390 ? 1300 : 390, height: 844, deviceScaleFactor: 1, mobile: false });
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
@@ -4702,7 +4932,7 @@ async function runWindowFixes(base, want) {
         const anchor = await page.ev(`(()=>{const r=[...document.querySelectorAll('#results>.item')].find(r=>r.getBoundingClientRect().bottom>parseFloat(getComputedStyle(r).scrollMarginTop));return r?{id:r.dataset.id,top:r.getBoundingClientRect().top,posinset:r.getAttribute('aria-posinset')}:null})()`);
         assert(anchor && anchor.posinset > 100, 'no row near 150: ' + JSON.stringify(anchor));
         for (const language of ['sk', 'en']) {
-          await page.ev(`document.querySelector('[data-language=${language}]').click()`);
+          await page.ev(`window.__smokeLanguage('${language}')`);
           await page.ev(frames); await page.ev(frames);
           const top = await page.ev(topOf(anchor.id));
           assert(typeof top === 'number' && Math.abs(top - anchor.top) <= 2, `${language}: row moved ${JSON.stringify({ anchor, top })}`);
@@ -4718,7 +4948,7 @@ async function runWindowFixes(base, want) {
         const trigger = width < 600 ? 'cmp-tray-open' : 'header-compare';
         await page.ev(`document.getElementById('${trigger}').focus();document.getElementById('${trigger}').click()`);
         await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare closed'})`, 5000, 'compare open');
-        await page.ev(`document.querySelector('[data-language=sk]').click()`);
+        await page.ev(`window.__smokeLanguage('sk')`);
         await page.ev(frames);
         await page.ev(`document.querySelector('#cmp-close').click()`);
         await page.ev(frames); await page.ev(frames);
@@ -4726,7 +4956,7 @@ async function runWindowFixes(base, want) {
         assert(after.n > 0 && after.n < 100 && after.at, 'list blank after Close: ' + JSON.stringify(after));
         assert(Math.abs(after.y - anchor.y) < 844, 'scroll not restored: ' + JSON.stringify({ anchor, after }));
         assert(after.focus === trigger, 'focus not on the trigger: ' + JSON.stringify(after));
-        await page.ev(`document.querySelector('[data-language=en]').click()`);
+        await page.ev(`window.__smokeLanguage('en')`);
       });
       await check(width, 'window fixes', 'print at the very bottom keeps the visible programme', async () => {
         await page.ev(`scrollTo(0,document.documentElement.scrollHeight)`);
@@ -5158,7 +5388,8 @@ async function runFaqPanel(base, want) {
   await mkdir(shots, { recursive: true });
   const ready = `({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'page loading'})`;
   const moving = `[...document.querySelector('#faq-panel').getAnimations(),...document.querySelector('#faq-scrim').getAnimations()].some(a=>a.playState==='running')`;
-  const settled = (open) => `({ok:document.querySelector('#faq-panel').open===${open}&&!(${moving})&&getComputedStyle(document.querySelector('#faq-scrim')).display==='${open ? 'block' : 'none'}',why:'panel moving'})`;
+  // A10 (PR 7): the scrim fades by visibility; its display never changes.
+  const settled = (open) => `({ok:document.querySelector('#faq-panel').open===${open}&&!(${moving})&&getComputedStyle(document.querySelector('#faq-scrim')).visibility==='${open ? 'visible' : 'hidden'}',why:'panel moving'})`;
   // Header: "?" fits beside My list, Compare, SK/EN, the logo and Search,
   // in both languages, with no overlap, no sideways scroll and one row.
   // A touch screen at 600 px gets 44 px header buttons: the tightest case.
@@ -5178,7 +5409,7 @@ async function runFaqPanel(base, want) {
           const m = await page.ev(`(()=>{
             const box=(n)=>n&&n.getClientRects().length?n.getBoundingClientRect():null;
             const q=box(document.querySelector('#faq-open')),hd=box(document.querySelector('.hd'));
-            const others={list:document.querySelector('.hd #header-list'),compare:document.querySelector('#header-compare'),lang:document.querySelector('.hd .lang'),search:document.querySelector('.hd .search'),mark:document.querySelector('.hd .mark')};
+            const others={list:document.querySelector('.hd #header-list'),compare:document.querySelector('#header-compare'),lang:document.querySelector('#settings-open'),search:document.querySelector('.hd .search'),mark:document.querySelector('.hd .mark')};
             const overlap=(a,b)=>a.left<b.right-0.5&&b.left<a.right-0.5&&a.top<b.bottom-0.5&&b.top<a.bottom-0.5;
             const hits=Object.entries(others).filter(([,n])=>box(n)&&overlap(q,box(n))).map(([k])=>k);
             const mid=(r)=>(r.top+r.bottom)/2, lang=box(others.lang);
@@ -5246,6 +5477,7 @@ async function runFaqPanel(base, want) {
       const reset = async () => {
         await page.ev(`document.querySelector('#faq-panel').open&&document.querySelector('#faq-panel .faqp-x').click()`);
         await page.waitFor(settled(false), 5000, 'the panel closed');
+        await page.ev(`document.querySelector('#faq-panel .faqp-b').scrollTop=0`);
       };
       await check(width, 'FAQ open', `"?" ${phone ? 'slides up a sheet' : 'slides in a side panel from the right'} in 280 ms (220 ms back) with the sheet's curve, the scrim and every question`, async () => {
         await page.ev(`window.__faqT=null;const p=document.querySelector('#faq-panel');document.querySelector('#faq-open').addEventListener('pointerdown',()=>{window.__faqT={start:performance.now()}});p.addEventListener('transitionend',(e)=>{if(e.target===p&&e.propertyName==='transform'&&window.__faqT)window.__faqT.end=performance.now()})`);
@@ -5339,13 +5571,13 @@ async function runFaqPanel(base, want) {
       // Leon, 2026-11-09: an answer grows open (and shuts) instead of
       // snapping, with the "+" turning in step; the focus trap still skips a
       // closed answer's link once it has shut.
-      await check(width, 'FAQ answer', 'an answer grows open over about 260 ms with the "+" turning; once the last one has shut again, Shift+Tab from Close lands on its question, not its link', async () => {
+      await check(width, 'FAQ answer', 'an answer grows open over about 260 ms with the "+" stroke turning; once the last one has shut again, Shift+Tab from Close lands on its question, not its link', async () => {
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
         const d = '[...document.querySelectorAll("#faq-panel details")]';
         const shut = await page.ev(`${d}[1].getBoundingClientRect().height`);
         await tap('#faq-panel details:nth-of-type(2) summary');
         await page.ev('new Promise(r=>setTimeout(r,90))');
-        const mid = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,open:x.open,turn:getComputedStyle(x.querySelector('summary .ic')).transform}})()`);
+        const mid = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,open:x.open,turn:getComputedStyle(x.querySelector('summary .faq-v')).transform}})()`);
         await page.ev('new Promise(r=>setTimeout(r,400))');
         const full = await page.ev(`(()=>{const x=${d}[1];return {h:x.getBoundingClientRect().height,a:getComputedStyle(x.querySelector('.a')).opacity}})()`);
         assert(mid.open && mid.h > shut + 4 && mid.h < full.h - 4 && mid.turn !== 'none', `not growing: shut ${shut}, mid ${JSON.stringify(mid)}, full ${JSON.stringify(full)}`);
@@ -5403,7 +5635,7 @@ async function runFaqPanel(base, want) {
       });
       await reset();
       await check(width, 'FAQ language', 'switching to SK translates the panel\'s questions, heading and close button; print hides it', async () => {
-        await page.click(`document.querySelector('.hd .lang [data-language="sk"]')`, 'SK');
+        await chooseLanguage(page, 'sk');
         await page.waitFor(`({ok:document.documentElement.lang==='sk',why:'still '+document.documentElement.lang})`, 5000, 'Slovak');
         await tap('#faq-open'); await page.waitFor(settled(true), 5000, 'open');
         const m = await page.ev(`({h:document.querySelector('#faq-h').textContent,q:document.querySelector('#faq-panel summary').textContent.trim(),x:document.querySelector('#faq-panel .faqp-x').getAttribute('aria-label')})`);
@@ -5415,7 +5647,7 @@ async function runFaqPanel(base, want) {
         } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
         await page.key('Escape', 'Escape', 27);
         await page.waitFor(settled(false), 5000, 'closed');
-        await page.click(`document.querySelector('.hd .lang [data-language="en"]')`, 'EN');
+        await chooseLanguage(page, 'en');
       });
       await check(width, 'FAQ setup', 'Setup\'s "Read the FAQ" opens the panel without scrolling; closing it lands on the list', async () => {
         await page.ev('window.scrollTo(0,0)');
@@ -5452,6 +5684,362 @@ async function runFaqPanel(base, want) {
   }
 }
 
+// PR 7 UI polish (A09-A12), on touch phones at 320, 375 and 390 px, in EN
+// and SK, light and dark, and with Reduce Motion. Each combination checks the
+// points box, the FAQ answers and close button, the settings alignment and a
+// drag-to-close of both sheets; two combinations also run the lifecycle cases
+// (reversal, language and close mid-animation, rapid toggles, hold, cancel,
+// lost capture, outside close, resize, reopen). Emulated widths and padding
+// are not an iPhone: Safari 16.4 and real fingers still need a person.
+async function runPr7Polish(base) {
+  const caseCheck = async (...args) => {
+    await check(...args);
+    if (results.at(-1)?.status === 'FAIL') throw new Error('PR 7 case failed; stop before cascading through shared page state');
+  };
+  const shots = join(tmpdir(), 'ib-pr7');
+  await mkdir(shots, { recursive: true });
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))';
+  const ready = `({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'page loading'})`;
+  const still = (sel) => `({ok:!document.querySelector(${JSON.stringify(sel)}).getAnimations({subtree:true}).some(a=>a.playState==='running'),why:${JSON.stringify(`${sel} moving`)}})`;
+  const centre = (page, js) => page.ev(`(()=>{const r=(${js}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
+  const touch = (page, type, at, timestamp) => page.send('Input.dispatchTouchEvent', { type, touchPoints: at ? [at] : [], ...(timestamp === undefined ? {} : { timestamp }) });
+  // As for openPage.click: a scroll/layout update must reach a painted frame
+  // before touch hit testing. Fast CI can otherwise tap the previous position.
+  const tap = async (page, js) => {
+    const at = await page.waitFor(`(async()=>{const el=${js};if(!el)return {why:'missing touch target'};
+      const r=el.getBoundingClientRect();await ${frames};const next=el.getBoundingClientRect(),x=next.left+next.width/2,y=next.top+next.height/2,hit=document.elementFromPoint(x,y);
+      return {ok:next.width>0&&next.height>0&&r.left===next.left&&r.top===next.top&&el.contains(hit),x,y,why:'touch target moving or covered by '+(hit?.id||hit?.tagName)}})()`, 5000, 'touch target ready');
+    await touch(page, 'touchStart', { x: at.x, y: at.y });
+    await touch(page, 'touchEnd');
+  };
+  // A finger from `from`, down by dy in `steps` moves `every` ms apart, then
+  // still for `hold` ms; lift false leaves it down for the caller.
+  const drag = async (page, from, { dy, steps = 10, every = 16, hold = 0, lift = true, timestamped = false }) => {
+    // Explicit event times make a simulated flick independent of CDP round-trip latency.
+    const began = Date.now() / 1000, time = (k) => timestamped ? began + (k * every + (k > steps ? hold : 0)) / 1000 : undefined;
+    await touch(page, 'touchStart', from, time(0));
+    for (let k = 1; k <= steps; k++) { await wait(every); await touch(page, 'touchMove', { x: from.x, y: Math.round(from.y + (dy * k) / steps) }, time(k)); }
+    if (hold) await wait(hold);
+    if (lift) await touch(page, 'touchEnd', undefined, time(steps + 1));
+  };
+  const open = async (width, ui, scheme, reduce) => {
+    const page = await openPage(`${base}?ui=${ui}`, width, 844);
+    await page.waitFor(ready, 15000, 'page');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }, { name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] });
+    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
+    await page.waitFor(ready, 15000, 'reload');
+    await page.waitFor(`({ok:document.documentElement.dataset.theme===${JSON.stringify(scheme)}&&document.documentElement.lang===${JSON.stringify(ui)},why:document.documentElement.dataset.theme+'/'+document.documentElement.lang})`, 5000, 'theme and language');
+    await page.ev('document.fonts.ready');
+    // The last input events as the page saw them, for opened()'s failure
+    // message: on CI a tap can arrive as touch and pointer events and still
+    // never become a click, and only this shows it (2026-11-11).
+    await page.ev(`(()=>{window.__tr=[];for(const t of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','mousedown','click','keydown'])
+      document.addEventListener(t,e=>{__tr.push([t,e.target.id||e.target.tagName||'doc',Math.round(e.timeStamp)]);if(__tr.length>40)__tr.shift()},true)})()`);
+    return page;
+  };
+  const sheets = {
+    filters: { sheet: '#filter-sheet', opener: '#f-more', header: '#sheet-h', body: '.sheet-b', open: (page) => page.click(`document.querySelector('#f-more')`, 'Filters') },
+    faq: { sheet: '#faq-panel', opener: '#faq-open', header: '#faq-h', body: '.faqp-b', open: (page) => tap(page, `document.querySelector('#faq-open')`) },
+  };
+  const opened = async (page, s) => {
+    await s.open(page);
+    await page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}'),b=document.querySelector('${s.opener}'),r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+      return {ok:d.open,why:JSON.stringify({open:d.open,scroll:scrollY,scale:visualViewport.scale,focus:document.activeElement.id,hit:hit?.id||hit?.tagName,rect:[r.x,r.y,r.width,r.height],now:Math.round(performance.now()),events:(window.__tr||[]).slice(-16)})}})()`, 5000, `${s.sheet} open`);
+    await page.waitFor(still(s.sheet), 5000, `${s.sheet} settled`);
+  };
+  const shut = (page, s) => page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}');return {ok:!d.open&&!d.getAnimations().some(a=>a.playState==='running')&&!d.style.transform,why:'open '+d.open+' transform '+d.style.transform}})()`, 5000, `${s.sheet} closed`);
+  const offset = (s) => `new DOMMatrixReadOnly(getComputedStyle(document.querySelector('${s.sheet}')).transform).m42`;
+
+  const combos = [];
+  for (const width of [320, 375, 390]) for (const ui of ['en', 'sk']) for (const scheme of ['light', 'dark']) combos.push({ width, ui, scheme, reduce: false });
+  combos.push({ width: 375, ui: 'en', scheme: 'dark', reduce: true }, { width: 320, ui: 'sk', scheme: 'light', reduce: true });
+  const lifecycle = (c) => !c.reduce && ((c.width === 390 && c.ui === 'en' && c.scheme === 'light') || (c.width === 320 && c.ui === 'sk' && c.scheme === 'dark'));
+  for (const c of combos) {
+    watchdog.refresh();
+    const where = `${c.width}/${c.ui}/${c.scheme}${c.reduce ? '/rm' : ''}`;
+    const page = await open(c.width, c.ui, c.scheme, c.reduce);
+    try {
+      await caseCheck(where, 'P7 points', 'A09: Setup\'s points box fits "—", 24-45 typed and stepped with iOS-like padding underneath; the fixture overflows without padding:0', async () => {
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'Setup');
+        await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Next');
+        await page.waitFor(`({ok:!!document.querySelector('#ob-points'),why:'step 2'})`, 3000, 'points step');
+        await page.waitFor(still('#onboarding'), 3000, 'points step settled');
+        // Wide enough that "45" cannot fit inside it: the stand-in for the
+        // browser's own input padding, under the production stylesheet.
+        const pad = await page.ev(`(()=>{const i=document.querySelector('#ob-points'),c=getComputedStyle(i),x=document.createElement('canvas').getContext('2d');x.font=c.fontWeight+' '+c.fontSize+' '+c.fontFamily;
+          const p=Math.ceil((90-x.measureText('45').width)/2)+2;const s=document.createElement('style');s.id='ua-pad';s.textContent='input{padding:1px '+p+'px}';document.head.prepend(s);return p})()`);
+        const fit = `(()=>{const i=document.querySelector('#ob-points'),c=getComputedStyle(i),x=document.createElement('canvas').getContext('2d');x.font=c.fontWeight+' '+c.fontSize+' '+c.fontFamily;
+          const text=i.value||i.placeholder,room=i.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight);
+          return {v:i.value,text,w:Math.round(x.measureText(text).width),room,pad:c.paddingLeft,sw:i.scrollWidth,cw:i.clientWidth,sl:i.scrollLeft,box:Math.round(i.getBoundingClientRect().width)}})()`;
+        const ok = (m) => m.pad === '0px' && m.w <= m.room + 0.5 && m.sw <= m.cw && m.sl === 0 && m.box === 90;
+        const seen = [await page.ev(fit)];
+        await page.click(`document.querySelector('#ob-points')`, 'points box');
+        for (const v of ['24', '36', '45', '38']) { await page.clearField(); await page.type(v); seen.push(await page.ev(fit)); }
+        for (let i = 0; i < 9; i++) await page.click(`document.querySelector('.big-pts>.btn:last-child')`, 'more');
+        seen.push(await page.ev(fit));
+        for (let i = 0; i < 22; i++) { await page.ev(`document.querySelector('.big-pts>.btn:first-child').click()`); seen.push(await page.ev(fit)); }
+        seen.push(await page.ev(fit));
+        assert(seen.every(ok) && seen.some((m) => m.v === '45') && seen.at(-1).v === '24', `padding ${pad}: ${JSON.stringify(seen.filter((m) => !ok(m)).concat(seen.slice(-2)))}`);
+        const control = await page.ev(`(async()=>{const rule=[...document.styleSheets].flatMap(s=>{try{return [...s.cssRules]}catch{return []}}).find(r=>r.selectorText==='.ob .big-pts input');
+          const i=document.querySelector('#ob-points');i.value='45';rule.style.removeProperty('padding');await ${frames};const c=getComputedStyle(i),room=i.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight);
+          rule.style.setProperty('padding','0');return room})()`);
+        const glyph = (await page.ev(fit)).w;
+        assert(control < glyph, `the fixture is not meaningful: without padding:0 there is ${control} px for a ${glyph} px "45"`);
+        await page.ev(`document.querySelector('#ua-pad').remove()`);
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#onboarding').open,why:'setup open'})`, 3000, 'Setup closed');
+      });
+
+      await caseCheck(where, 'P7 settings', `A11: settings opens ${c.reduce ? 'with a short fade only' : 'from the gear'}; flat inset thumbs sit on the checked labels (EN/SK, after a resize); one label weight; no ring or shadow`, async () => {
+        await page.ev('window.scrollTo(0,0)');
+        const motion = await page.ev(`(()=>{document.querySelector('#settings-open').click();const a=document.querySelector('#settings-panel').getAnimations()[0];return a&&{d:a.effect.getTiming().duration,t:a.effect.getKeyframes().map(k=>k.transform)}})()`);
+        if (c.reduce) assert(motion && motion.d === 100 && motion.t.every((t) => t === 'none'), `reduced: ${JSON.stringify(motion)}`);
+        else assert(motion && motion.d === 200 && motion.t[0] !== 'none', `open motion: ${JSON.stringify(motion)}`);
+        await page.waitFor(still('#settings-panel'), 3000, 'settings settled');
+        const aligned = `(()=>[...document.querySelectorAll('.settings-seg')].map(g=>{const box=(n)=>n.getBoundingClientRect(),gr=box(g),r=box(g.querySelector('input:checked').closest('label')),t=box(g.querySelector('.segment-thumb')),ts=getComputedStyle(g.querySelector('.segment-thumb'));
+          return {dl:Math.abs(r.left-t.left),dw:Math.abs(r.width-t.width),top:t.top-gr.top,bottom:gr.bottom-t.bottom,shadow:ts.boxShadow,border:getComputedStyle(g).borderTopWidth,weights:[...new Set([...g.querySelectorAll('label')].map(l=>getComputedStyle(l).fontWeight))],h:Math.min(...[...g.querySelectorAll('label')].map(l=>box(l).height))}}))()`;
+        const good = (m) => m.every((g) => g.dl < 1 && g.dw < 1 && Math.abs(g.top - 3) <= 1 && Math.abs(g.bottom - 3) <= 1 && g.shadow === 'none' && g.border === '0px' && g.weights.length === 1 && g.h >= 44);
+        assert(good(await page.ev(aligned)), `after open: ${JSON.stringify(await page.ev(aligned))}`);
+        const box = await page.ev(`(()=>{const r=document.querySelector('#settings-panel').getBoundingClientRect();return {l:r.left,r:r.right,w:innerWidth,o:getComputedStyle(document.querySelector('#settings-panel')).opacity}})()`);
+        assert(box.l >= 0 && box.r <= box.w && box.o === '1', JSON.stringify(box));
+        await page.send('Emulation.setDeviceMetricsOverride', { width: c.width + 12, height: 844, deviceScaleFactor: 1, mobile: true });
+        await page.waitFor(`({ok:(${good.toString()})(${aligned}),why:'thumb after resize'})`, 3000, 'resized thumbs');
+        await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 844, deviceScaleFactor: 1, mobile: true });
+        await page.waitFor(`({ok:(${good.toString()})(${aligned}),why:'thumb after restoring'})`, 3000, 'restored thumbs');
+        await page.screenshot(join(shots, `settings-${c.width}-${c.ui}-${c.scheme}${c.reduce ? '-rm' : ''}.png`), { viewportOnly: true });
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`document.activeElement.id==='settings-open'&&document.querySelector('#settings-open').getAttribute('aria-expanded')==='false'`), 'Escape focus');
+        await page.waitFor(`({ok:document.querySelector('#settings-panel').hidden&&!document.querySelector('#settings-panel').inert,why:'still shown'})`, 2000, 'settings hidden');
+      });
+
+      await caseCheck(where, 'P7 FAQ', 'A10: one answer at a time, the first shutting in the same tap; "+" turns to an aligned "−"; quiet centred close circle; scrim fades by visibility', async () => {
+        await page.ev('window.scrollTo(0,0)');
+        await opened(page, sheets.faq);
+        const d = `[...document.querySelectorAll('#faq-panel details')]`;
+        const m0 = await page.ev(`(()=>{const s=getComputedStyle(document.querySelector('#faq-scrim'));return {d:s.display,v:s.visibility}})()`);
+        assert(m0.d === 'block' && m0.v === 'visible', `open scrim ${JSON.stringify(m0)}`);
+        await tap(page, `${d}[0].querySelector('summary')`);
+        await page.waitFor(still('#faq-panel'), 3000, 'first answer');
+        const swap = await page.ev(`(()=>{const q=${d};q[1].querySelector('summary').click();const a=q[0].querySelector('.a');
+          return {first:[q[0].open,q[0].querySelector('summary').getAttribute('aria-expanded'),a.inert,a.getAttribute('aria-hidden')],second:[q[1].open,q[1].querySelector('summary').getAttribute('aria-expanded')],
+            logical:q.filter(x=>x.querySelector('summary').getAttribute('aria-expanded')==='true').length,moving:q[0].getAnimations().length>0&&(${c.reduce}||q[1].getAnimations().length>0)}})()`);
+        if (c.reduce) assert(!swap.first[0] && swap.first[1] === 'false' && swap.second[0] && swap.logical === 1, `reduced swap ${JSON.stringify(swap)}`);
+        else assert(swap.first[0] && JSON.stringify(swap.first.slice(1)) === '["false",true,"true"]' && swap.second.join() === 'true,true' && swap.logical === 1 && swap.moving, `swap ${JSON.stringify(swap)}`);
+        await page.waitFor(still('#faq-panel'), 3000, 'answers settled');
+        const end = await page.ev(`(()=>{const q=${d},h=q[0].querySelector('path:not(.faq-v)').getBoundingClientRect(),v=q[1].querySelector('.faq-v').getBoundingClientRect();
+          return {open:q.map(x=>x.open).join(''),inert:q[0].querySelector('.a').inert,turned:getComputedStyle(q[1].querySelector('.faq-v')).transform,shut:getComputedStyle(q[0].querySelector('.faq-v')).transform,
+            minus:[v.width-q[1].querySelector('path:not(.faq-v)').getBoundingClientRect().width,v.top-q[1].querySelector('path:not(.faq-v)').getBoundingClientRect().top].map(n=>Math.abs(Math.round(n*10)/10)),
+            natural:q[1].style.overflow===''&&!q[1].getAnimations().length}})()`);
+        assert(end.open === 'falsetrue' + 'false'.repeat(10) && !end.inert && end.turned !== 'none' && end.shut === 'none' && end.minus.every((n) => n <= 0.6) && end.natural, `after ${JSON.stringify(end)}`);
+        const x = await page.ev(`(()=>{const b=document.querySelector('#faq-panel .faqp-x'),r=b.getBoundingClientRect(),i=b.querySelector('svg').getBoundingClientRect(),s=getComputedStyle(b);
+          return {w:r.width,h:r.height,dx:Math.abs(r.left+r.width/2-(i.left+i.width/2)),dy:Math.abs(r.top+r.height/2-(i.top+i.height/2)),bg:s.backgroundImage,shadow:s.boxShadow,border:s.borderTopWidth}})()`);
+        assert(x.w === 44 && x.h === 44 && x.dx <= 0.5 && x.dy <= 0.5 && /radial-gradient/.test(x.bg) && x.shadow === 'none' && x.border === '0px', `close ${JSON.stringify(x)}`);
+        const grab = await page.ev(`(()=>{const g=document.querySelector('#faq-panel .grab'),r=g.getBoundingClientRect(),p=document.querySelector('#faq-panel').getBoundingClientRect(),h=document.querySelector('#faq-panel .faqp-h').getBoundingClientRect();
+          return {h:r.height,top:r.top-p.top,head:h.height,touch:[getComputedStyle(g).touchAction,getComputedStyle(document.querySelector('#faq-panel .faqp-h')).touchAction,getComputedStyle(document.querySelector('#faq-panel .faqp-b')).touchAction]}})()`);
+        assert(grab.h === 12 && Math.abs(grab.top) < 0.5 && grab.head >= 52 && grab.touch.join() === 'none,none,auto', `handle ${JSON.stringify(grab)}`);
+        await page.screenshot(join(shots, `faq-${c.width}-${c.ui}-${c.scheme}${c.reduce ? '-rm' : ''}.png`), { viewportOnly: true });
+        await tap(page, `document.querySelector('#faq-panel .faqp-x')`);
+        await shut(page, sheets.faq);
+        const m1 = await page.ev(`(()=>{const s=getComputedStyle(document.querySelector('#faq-scrim'));return {d:s.display,v:s.visibility,f:document.activeElement.id}})()`);
+        assert(m1.d === 'block' && m1.v === 'hidden' && m1.f === 'faq-open', `closed scrim ${JSON.stringify(m1)}`);
+      });
+
+      for (const [name, s] of Object.entries(sheets)) {
+        await caseCheck(where, `P7 drag ${name}`, `A12: the ${name} sheet follows a finger on its handle; ${c.reduce ? 'Reduce Motion still tracks and settles at once;' : ''} a short drag settles back, a long one and a flick close it with focus back on its button`, async () => {
+          await page.ev('window.scrollTo(0,0)');
+          await opened(page, s);
+          const grab = await centre(page, `document.querySelector('${s.sheet} .grab')`);
+          await drag(page, grab, { dy: 70, steps: 10, every: 30, lift: false });
+          await page.ev(frames);
+          const mid = await page.ev(offset(s));
+          await touch(page, 'touchEnd');
+          await page.ev(frames);
+          if (c.reduce) assert(await page.ev(`${offset(s)}===0`), 'Reduce Motion did not settle at once');
+          await page.waitFor(still(s.sheet), 3000, 'settled back');
+          const back = await page.ev(`({open:document.querySelector('${s.sheet}').open,y:${offset(s)},inline:document.querySelector('${s.sheet}').style.cssText})`);
+          assert(Math.abs(mid - 70) <= 2 && back.open && back.y === 0 && back.inline === '', `short drag: mid ${mid}, then ${JSON.stringify(back)}`);
+          const head = await centre(page, `document.querySelector('${s.header}')`);
+          await page.ev(`(()=>{const d=document.querySelector('${s.sheet}');window.__afterUp=null;document.addEventListener('pointerup',()=>requestAnimationFrame(()=>{window.__afterUp=${offset(s)}}),{once:true,capture:true})})()`);
+          await drag(page, head, { dy: 170, steps: 17, every: 30 });
+          await shut(page, s);
+          const after = await page.ev('window.__afterUp');
+          const m = await page.ev(`({focus:document.activeElement.id,lock:document.documentElement.className,expanded:document.querySelector('${s.opener}').getAttribute('aria-expanded')})`);
+          assert(m.focus === s.opener.slice(1) && !/sheet-open|faq-open/.test(m.lock) && m.expanded === 'false', `drag close ${JSON.stringify(m)}`);
+          // The closing slide starts where the finger let go, not from the top.
+          if (!c.reduce) assert(after > 120, `first frame after release at ${after} px`);
+          await opened(page, s);
+          await page.ev(`(()=>{window.__dragSamples=[];const d=document.querySelector('${s.sheet}');for(const t of ['pointerdown','pointermove','pointerup'])d.addEventListener(t,e=>window.__dragSamples.push([t,e.timeStamp,e.clientY]),{passive:true})})()`);
+          // Linux Chrome flings after a flick this fast and spends the next tap
+          // on stopping it, so the FAQ never opened on CI (2026-11-11). The
+          // sheet cancels touchmove while it is dragged; macOS Chrome never
+          // flings here, so this is the only sign of the fix on a Mac.
+          await page.ev(`(()=>{window.__moves=[];window.__onMove??=document.addEventListener('touchmove',e=>window.__moves.push(e.defaultPrevented))||true})()`);
+          await drag(page, await centre(page, `document.querySelector('${s.header}')`), { dy: 90, steps: 5, every: 16, timestamped: true });
+          try { await shut(page, s); } catch (e) { throw new Error(e.message+' flick samples '+JSON.stringify(await page.ev('window.__dragSamples'))); }
+          const moves = await page.ev('window.__moves');
+          assert(moves.length > 0 && moves.every(Boolean), `touchmove not cancelled during the flick: ${JSON.stringify(moves)}`);
+          await page.waitFor(`({ok:!document.querySelector('${s.sheet}').classList.contains('is-sliding'),why:'rows still paused'})`, 3000, 'rows resumed');
+        });
+      }
+
+      if (lifecycle(c)) {
+        await caseCheck(where, 'P7 FAQ life', 'A10: a tap mid-way reverses from the height on screen; a resize or a language switch mid-way, or closing the panel, ends at the logical state; tapped questions stay in view without scrolling the page; a shutting link is out of Tab', async () => {
+          await opened(page, sheets.faq);
+          const d = `[...document.querySelectorAll('#faq-panel details')]`;
+          await page.ev(`${d}[2].querySelector('summary').click()`);
+          await page.ev('new Promise(r=>setTimeout(r,90))');
+          const rev = await page.ev(`(async()=>{const q=${d}[2];const before=q.getBoundingClientRect().height;q.querySelector('summary').click();const now=q.getBoundingClientRect().height;await ${frames};
+            return {before,now,later:q.getBoundingClientRect().height,open:q.open,aria:q.querySelector('summary').getAttribute('aria-expanded')}})()`);
+          assert(Math.abs(rev.before - rev.now) <= 1 && rev.later < rev.before && rev.aria === 'false', `reverse ${JSON.stringify(rev)}`);
+          await page.waitFor(still('#faq-panel'), 3000, 'reversed shut');
+          assert(await page.ev(`!${d}[2].open`), 'did not shut');
+          // Language mid-way: the answer ends open at its natural height.
+          await page.ev(`${d}[3].querySelector('summary').click()`);
+          await page.ev(`window.__smokeLanguage('${c.ui === 'en' ? 'sk' : 'en'}')`);
+          await page.ev(frames);
+          const lang = await page.ev(`(()=>{const q=${d}[3];return {open:q.open,moving:q.getAnimations().length,overflow:q.style.overflow,aria:q.querySelector('summary').getAttribute('aria-expanded')}})()`);
+          await page.ev(`window.__smokeLanguage('${c.ui}')`);
+          assert(lang.open && lang.moving === 0 && lang.overflow === '' && lang.aria === 'true', `language ${JSON.stringify(lang)}`);
+          // Resize mid-way.
+          await page.ev(`${d}[4].querySelector('summary').click()`);
+          await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 800, deviceScaleFactor: 1, mobile: true });
+          await page.waitFor(`({ok:!${d}.some(q=>q.getAnimations().length)&&!${d}[3].open&&${d}[4].open,why:'still moving'})`, 2000, 'resize ends the motion');
+          await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 844, deviceScaleFactor: 1, mobile: true });
+          // Kept in view: q1 open above, q3 just under the body's top, then tap q3.
+          await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 600, deviceScaleFactor: 1, mobile: true });
+          await page.ev(`${d}[0].querySelector('summary').click()`);
+          await page.waitFor(still('#faq-panel'), 3000, 'q1');
+          const view = await page.ev(`(async()=>{const b=document.querySelector('#faq-panel .faqp-b'),s=${d}[2].querySelector('summary'),y=scrollY;
+            b.style.overflowAnchor='none';const a0=${d}[0].querySelector('.a').getBoundingClientRect().height;
+            b.scrollTop+=s.getBoundingClientRect().top-b.getBoundingClientRect().top-20;await ${frames};const start=s.getBoundingClientRect().top-b.getBoundingClientRect().top;s.click();
+            await new Promise(r=>setTimeout(r,450));const br=b.getBoundingClientRect(),sr=s.getBoundingClientRect();return {start,a0,top:sr.top-br.top,bottom:br.bottom-sr.bottom,page:scrollY-y}})()`);
+          assert(view.start <= 30 && view.a0 > view.start + 20 && Math.abs(view.top) <= 1 && view.bottom >= -1 && view.page === 0, `kept in view ${JSON.stringify(view)}`);
+          const calm = await page.ev(`(async()=>{const b=document.querySelector('#faq-panel .faqp-b');b.scrollTop=0;await ${frames};const s=${d}[1].querySelector('summary'),before=b.scrollTop;s.click();await new Promise(r=>setTimeout(r,450));return {before,after:b.scrollTop}})()`);
+          assert(calm.before === calm.after, `a visible question scrolled the body: ${JSON.stringify(calm)}`);
+          await page.ev(`document.querySelector('#faq-panel .faqp-b').style.removeProperty('overflow-anchor')`);
+          await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 844, deviceScaleFactor: 1, mobile: true });
+          // The last answer shutting: its link is inert at once; Shift+Tab from Close skips it.
+          await page.ev(`(()=>{const b=document.querySelector('#faq-panel .faqp-b');b.scrollTop=b.scrollHeight})()`);
+          await page.ev(`${d}.at(-1).querySelector('summary').click()`);
+          await page.waitFor(still('#faq-panel'), 3000, 'last open');
+          await page.ev(`${d}.at(-1).querySelector('summary').click();document.querySelector('#faq-panel .faqp-x').focus()`);
+          await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+          await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+          const link = await page.ev(`({inert:!!document.querySelector('#faq-panel a[href^="mailto:"]').closest('[inert]'),stillOpen:${d}.at(-1).open,focus:document.activeElement===${d}.at(-1).querySelector('summary')})`);
+          assert(link.inert && link.stillOpen && link.focus, `shutting link ${JSON.stringify(link)}`);
+          // Close the panel mid-way, then reopen: the logical answer, at rest.
+          await page.ev(`${d}[6].querySelector('summary').click();document.querySelector('#faq-panel .faqp-x').click()`);
+          await shut(page, sheets.faq);
+          await opened(page, sheets.faq);
+          const re = await page.ev(`(()=>{const q=${d};return {open:q.map((x,i)=>x.open?i:-1).filter(i=>i>=0),aria:q.map((x,i)=>x.querySelector('summary').getAttribute('aria-expanded')==='true'?i:-1).filter(i=>i>=0),inert:q.some(x=>x.querySelector('.a').inert),moving:q.some(x=>x.getAnimations().length)}})()`);
+          assert(JSON.stringify(re) === '{"open":[6],"aria":[6],"inert":false,"moving":false}', `reopen ${JSON.stringify(re)}`);
+          await page.key('Escape', 'Escape', 27);
+          await shut(page, sheets.faq);
+        });
+
+        await caseCheck(where, 'P7 settings life', 'A11: three quick taps leave it open and aligned; a shutting panel takes no taps; Tab out closes; focus returns on Escape', async () => {
+          await page.ev(`(()=>{const b=document.querySelector('#settings-open');b.click();b.click();b.click()})()`);
+          await page.waitFor(still('#settings-panel'), 3000, 'settings after taps');
+          const m = await page.ev(`(()=>{const p=document.querySelector('#settings-panel');return {hidden:p.hidden,inert:p.inert,o:getComputedStyle(p).opacity,t:getComputedStyle(p).transform,aria:document.querySelector('#settings-open').getAttribute('aria-expanded')}})()`);
+          assert(!m.hidden && !m.inert && m.o === '1' && m.t === 'none' && m.aria === 'true', `after three taps ${JSON.stringify(m)}`);
+          const hit = await page.ev(`(()=>{const p=document.querySelector('#settings-panel'),r=p.getBoundingClientRect();document.querySelector('#settings-open').click();const e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {inPanel:p.contains(e),inert:p.inert,hidden:p.hidden}})()`);
+          assert(!hit.inPanel && hit.inert && !hit.hidden, `shutting panel ${JSON.stringify(hit)}`);
+          await page.waitFor(`({ok:document.querySelector('#settings-panel').hidden,why:'not hidden'})`, 2000, 'hidden');
+          await page.ev(`(()=>{const b=document.querySelector('#settings-open');b.click();b.click()})()`);
+          await page.waitFor(`({ok:document.querySelector('#settings-panel').hidden&&!document.querySelector('#settings-panel').inert,why:'two taps'})`, 2000, 'two taps closed');
+          await tap(page, `document.querySelector('#settings-open')`);
+          await page.waitFor(still('#settings-panel'), 3000, 'open');
+          await page.ev(`document.querySelector('[data-theme-choice]:checked').focus()`);
+          await page.key('Tab', 'Tab', 9);
+          assert(await page.ev(`document.querySelector('#settings-open').getAttribute('aria-expanded')==='false'`), 'Tab out did not close');
+          await page.waitFor(`({ok:document.querySelector('#settings-panel').hidden,why:'not hidden'})`, 2000, 'hidden after Tab');
+        });
+
+        for (const [name, s] of Object.entries(sheets)) {
+          await caseCheck(where, `P7 opening tap ${name}`, 'A12: catching the opening slide without moving settles open; its existing offset is not finger travel', async () => {
+            await page.ev('window.scrollTo(0,0)');
+            await page.ev(`document.querySelector('${s.opener}').click()`);
+            await page.waitFor(`({ok:document.querySelector('${s.sheet}').getAnimations().some(a=>a.transitionProperty==='transform'),why:'no opening slide'})`, 3000, 'opening transition');
+            const base = await page.ev(`(()=>{const p=document.querySelector('${s.sheet}'),a=p.getAnimations().find(a=>a.transitionProperty==='transform');a.pause();a.currentTime=40;return {offset:${offset(s)},threshold:Math.min(120,p.getBoundingClientRect().height*.25)}})()`);
+            assert(base.offset >= base.threshold, `opening fixture below dismissal threshold: ${JSON.stringify(base)}`);
+            const head = await centre(page, `document.querySelector('${s.header}')`);
+            await touch(page, 'touchStart', head);
+            await page.ev(frames);
+            await touch(page, 'touchEnd');
+            await page.waitFor(`({ok:document.querySelector('${s.sheet}').open&&${offset(s)}===0&&!document.querySelector('${s.sheet}').style.cssText,why:'sheet dismissed or not settled'})`, 3000, 'tap settles open');
+            await page.key('Escape', 'Escape', 27);
+            await shut(page, s);
+          });
+          await caseCheck(where, `P7 drag life ${name}`, `A12: ${name} held still keeps rows paused past the fallback and does not flick; cancel, lost capture, Escape and a resize mid-drag settle cleanly; the body scrolls without dragging; the close button never drags`, async () => {
+            await page.ev('window.scrollTo(0,0)');
+            await opened(page, s);
+            const head = await centre(page, `document.querySelector('${s.header}')`);
+            const settledOpen = (what) => page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}');return {ok:d.open&&!d.style.cssText&&!d.getAnimations().some(a=>a.playState==='running')&&${offset(s)}===0,why:'open '+d.open+' '+d.style.cssText}})()`, 3000, what);
+            // A fast 90 px, then held still 700 ms (past the 500 ms fallback).
+            await drag(page, head, { dy: 90, steps: 4, every: 8, hold: 700, lift: false });
+            const held = await page.ev(`document.querySelector('${s.sheet}').classList.contains('is-sliding')`);
+            await touch(page, 'touchEnd');
+            await settledOpen('after a hold');
+            assert(held, 'rows resumed under a held finger');
+            await drag(page, head, { dy: 80, steps: 5, every: 16, lift: false });
+            await touch(page, 'touchCancel');
+            await settledOpen('after a cancel');
+            await page.ev(`document.querySelector('${s.sheet}').addEventListener('pointerdown',e=>{window.__pid=e.pointerId},{once:true})`);
+            await drag(page, head, { dy: 80, steps: 5, every: 16, lift: false });
+            await page.ev(`document.querySelector('${s.sheet}').releasePointerCapture(window.__pid)`);
+            await touch(page, 'touchMove', { x: head.x, y: head.y + 300 });
+            await touch(page, 'touchEnd');
+            await settledOpen('after a lost capture');
+            await drag(page, head, { dy: 80, steps: 5, every: 16, lift: false });
+            await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 800, deviceScaleFactor: 1, mobile: true });
+            await page.ev(frames);
+            await touch(page, 'touchEnd');
+            await page.send('Emulation.setDeviceMetricsOverride', { width: c.width, height: 844, deviceScaleFactor: 1, mobile: true });
+            await settledOpen('after a resize');
+            // The body scrolls; the sheet stays.
+            const body = await centre(page, `document.querySelector('${s.sheet} ${s.body}')`);
+            await touchSwipe(page, { x: body.x, y: body.y + 100, yDistance: -200, speed: 600, fling: false });
+            await page.ev(frames);
+            assert(await page.ev(`document.querySelector('${s.sheet}').open&&${offset(s)}===0`), 'the body dragged the sheet');
+            const x = await centre(page, `document.querySelector('${s.sheet} ${name === 'faq' ? '.faqp-x' : '#sheet-done'}')`);
+            await drag(page, x, { dy: 200, steps: 5, every: 16, lift: false });
+            const fromClose = await page.ev(offset(s));
+            await touch(page, 'touchCancel');
+            assert(fromClose === 0, `the close button dragged the sheet ${fromClose} px`);
+            await settledOpen('after the close button');
+            // Escape mid-drag closes normally; the lifted finger changes nothing.
+            // Its last move is still cancelled: the drag is over but the finger
+            // is down, and on Linux Chrome that move and the lift flung and ate
+            // the reopening tap below (CI, 2026-11-11).
+            await page.ev(`(()=>{window.__moves=[];window.__onMove??=document.addEventListener('touchmove',e=>window.__moves.push(e.defaultPrevented))||true})()`);
+            await drag(page, head, { dy: 60, steps: 4, every: 16, lift: false });
+            await page.key('Escape', 'Escape', 27);
+            await page.ev(`window.__moves.push('escape')`);
+            await touch(page, 'touchMove', { x: head.x, y: head.y + 200 });
+            await touch(page, 'touchEnd');
+            const moves = await page.ev('window.__moves');
+            // Chrome delivers one touchmove a frame, so only the order is fixed.
+            assert(moves.at(-1) === true && moves.indexOf('escape') > 0 && moves.every(Boolean), `touchmove not cancelled through Escape mid-drag: ${JSON.stringify(moves)}`);
+            await shut(page, s);
+            assert(await page.ev(`document.activeElement.id==='${s.opener.slice(1)}'`), 'focus after Escape mid-drag');
+            await opened(page, s);
+            await settledOpen('reopened');
+            await drag(page, head, { dy: 170, steps: 17, every: 30 });
+            await shut(page, s);
+            await page.waitFor(`({ok:!document.querySelector('${s.sheet}').classList.contains('is-sliding'),why:'rows still paused'})`, 3000, 'rows resumed');
+          });
+        }
+      }
+      assert(!page.errors.length, page.errors.map((e) => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -5478,7 +6066,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -5520,6 +6108,7 @@ async function main() {
     await runColdSheet(base, want);
     await runSheetPacing(base, want);
   } else {
+    await runTheme(base);
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
     // A page that never started at any width would only spend another 30 s
     // failing the same way here.
@@ -5547,7 +6136,8 @@ async function main() {
       await runBadgeFlush(base);
       await runCompareTouchScroll(base);
       await runRowScroll(base);
-      await runFaqPanel(base, want); }
+      await runFaqPanel(base, want);
+      await runPr7Polish(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

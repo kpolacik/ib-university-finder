@@ -94,7 +94,7 @@ class ChromeNode {
   }
   getAttribute(name) { return name === 'class' ? this.className : (this.attributes[name] ?? null); }
   removeAttribute(name) { delete this.attributes[name]; if (name === 'id') this.id = ''; }
-  get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5), v])); }
+  get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v])); }
   contains(node) { return node === this || this.children.some((c) => typeof c !== 'string' && c.contains(node)); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
   // Compound selectors (tag, #id, every .class, every [attr]) joined by
@@ -104,7 +104,7 @@ class ChromeNode {
       const tag = part.match(/^[a-z][a-z0-9-]*/)?.[0], id = part.match(/#([\w-]+)/)?.[1];
       const classes = [...part.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
       const attrs = [...part.matchAll(/\[([\w-]+)(?:="?([^"\]]+)"?)?\]/g)];
-      return (!tag || node.tagName === tag) && (!id || node.id === id) && classes.every((c) => node.classList.contains(c))
+      return (!part.includes(':checked') || node.checked === true) && (!tag || node.tagName === tag) && (!id || node.id === id) && classes.every((c) => node.classList.contains(c))
         && attrs.every((a) => node.getAttribute(a[1]) !== null && (!a[2] || node.getAttribute(a[1]) === a[2]));
     };
     return selector.split(',').some((one) => {
@@ -200,6 +200,8 @@ const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url)
 const compareMod = await import(new URL('../js/compare.js', import.meta.url));
 // Batch 3 · A: the compare set, its own list apart from the saves.
 const compareSetMod = await import(new URL('../js/compare-set.js', import.meta.url));
+// PR 7 A12: the shared sheet drag, run for real against the stand-in nodes.
+const sheetDragMod = await import(new URL('../js/sheet-drag.js', import.meta.url));
 // A stand-in localStorage for the compare set: blocked throws on any access,
 // full throws on writes only (a quota or a private-browsing write).
 function fakeStorage(entries = {}) {
@@ -730,26 +732,23 @@ check('alarm guard accepts banners and rejects mixed selectors and root override
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:var(--ink-2);')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--ink:#16202c;')).length > 0
     && colourPolicyErrors(css.replace('--ink:#16202c;', '--ink:#16202c;--stray:1px;')).includes('Unapproved root token --stray'));
-check('language buttons expose both available choices, with their own language names',
-  /class="lang" role="group" aria-label="Site language"/.test(foundationHtml)
-    && /data-language="en" lang="en"/.test(foundationHtml)
-    && /data-language="sk" lang="sk"/.test(foundationHtml)
-    && !/aria-disabled="true"|sk-later/.test(foundationHtml)
-    && foundationHtml.includes('(English)') && foundationHtml.includes('(slovenčina)'));
-// Review of PR 1: the lang="sk" button's hidden text was English " (Slovak)"
-// in the English UI. Each button names its language in that language, so the
-// text matches the button's lang attribute whatever the UI language.
-check('each language button names its language in that language, in both UIs',
-  /data-language="sk" lang="sk"><span data-i18n="sk">SK<\/span><span class="visually-hidden" data-i18n="slovak"> \(slovenčina\)</.test(read('index.html'))
-    && /data-language="en" lang="en"><span data-i18n="en">EN<\/span><span class="visually-hidden" data-i18n="english"> \(English\)</.test(read('index.html'))
-    && UI.en.slovak === ' (slovenčina)' && UI.sk.slovak === ' (slovenčina)' && UI.en.english === ' (English)' && UI.sk.english === ' (English)');
-// applyLanguage rewrites that hidden text; without the leading space a screen
-// reader said "SK(slovenčina)". Run it for real and read the button's text.
-check('applyLanguage keeps the space before the hidden language name ("SK (slovenčina)", "EN (English)"), in both UIs', (() => {
-  const spans = ['slovak', 'english'].map((key) => ({ getAttribute: (name) => (name === 'data-i18n' ? key : null), textContent: 'x' }));
-  const root = { documentElement: {}, querySelectorAll: (selector) => (selector === '[data-i18n]' ? spans : []) };
-  const read = (lang) => { i18n.setLanguage(lang, { setItem() {} }); i18n.applyLanguage(root); return `SK${spans[0].textContent} EN${spans[1].textContent}`; };
-  try { return read('sk') === 'SK (slovenčina) EN (English)' && read('en') === 'SK (slovenčina) EN (English)'; } finally { i18n.setLanguage('en', { setItem() {} }); }
+// Settings radios replace the pill: checked state and button wording must follow ?ui and storage.
+check('settings exposes native language radios with their own language names and a bilingual legend',
+  ['en', 'sk'].every((lang) => foundationHtml.includes(`data-language="${lang}" lang="${lang}"`))
+    && /name="site-language"/.test(foundationHtml) && !/class="lang"/.test(foundationHtml)
+    && UI.en.settings_language === 'Language · Jazyk' && UI.sk.settings_language === UI.en.settings_language);
+check('applyLanguage synchronises checked language, button code and accessible name in both UIs', (() => {
+  const nodes = ['en', 'sk'].map((lang) => ({ checked: false, getAttribute: () => lang }));
+  const code = { setAttribute() {}, textContent: '' };
+  const button = { getAttribute: () => 'aria-label:settings_name', setAttribute(name, value) { this[name] = value; } };
+  const root = { documentElement: {}, querySelectorAll: (selector) => ({ '[data-language]': nodes, '#settings-language': [code], '[data-i18n-attr]': [button] }[selector] ?? []) };
+  try {
+    return ['sk', 'en'].every((lang) => {
+      i18n.initLanguage(`?ui=${lang}`, { getItem: () => lang === 'en' ? 'sk' : 'en' }); i18n.applyLanguage(root);
+      return nodes.every((node, i) => node.checked === (['en', 'sk'][i] === lang)) && code.textContent === lang.toUpperCase()
+        && button['aria-label'] === UI[lang].settings_name && root.documentElement.lang === lang;
+    });
+  } finally { i18n.initLanguage('', { getItem: () => 'en' }); }
 })());
 check('source line starts hidden without a live region and uses allRows after load and on a language switch',
   /<p class="src" id="source-line" hidden><\/p>/.test(foundationHtml)
@@ -1172,7 +1171,7 @@ check('round 2 sheet, help, popover origin, FAQ and toast exits match the approv
     && text.includes('transition:opacity 180ms var(--ease-out),transform 180ms')
     && text.includes('.dropdown>.dropdown-panel.right{transform-origin:top right}')
     && text.includes('.tip{display:none;') && text.includes('display 180ms allow-discrete')
-    && text.includes('transition:transform var(--t-answer) var(--ease-out)') && text.includes('animation:toast-out 160ms')
+    && text.includes('.faq-v{transform-box:fill-box;transform-origin:center;transition:transform 240ms var(--ease-out)}') && text.includes('animation:toast-out 160ms')
     && text.includes('@keyframes toast-out{to{opacity:0;transform:translateY(6px)}}');
   return valid(css) && !valid(css.replaceAll('max-height:85dvh', 'max-height:90dvh'))
     && !valid(css.replace('animation:toast-out 160ms', 'animation:none'))
@@ -3390,7 +3389,8 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
     const printMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
     // Batch 3 · A: where the compare tray replaces the header button.
     const trayMedia = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
-    const queries = { '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
+    const themeMedia = { matches: false, addEventListener() {}, removeEventListener() {} };
+    const queries = { '(prefers-color-scheme: dark)': themeMedia, '(min-width: 1200px)': media, '(min-width: 600px)': media600, '(prefers-reduced-motion: reduce)': motionMedia, print: printMedia,
       '(max-width: 599.98px), (max-height: 500px)': trayMedia };
     // Animation frames run only when a test flushes one; a frame queued while
     // flushing waits for the next.
@@ -3429,7 +3429,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       if (this.mode === 'reject') return Promise.reject(new Error('NotAllowedError'));
       this.written.push(text); return Promise.resolve();
     } };
-    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, onFaqSlide(fn) { context.faqSlide = fn; }, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
+    const context = { ...savedState, readSaved() { return context.savedPrefs ?? null; }, readDismissed() { return true; }, writeSaved(value) { (context.prefWrites ??= []).push(value); }, setupOnboarding(config) { context.onboardingConfig = config; }, syncSegments() {}, onFaqSlide(fn) { context.faqSlide = fn; }, wireSheetDrag: sheetDragMod.wireSheetDrag, wireRound2() {}, syncRound2() {}, showToast(message, label, action, options) { context.toastAction = action; (context.toasts ??= []).push({ message, label, action, options }); }, wireCompactHeader() {}, wireLogoHandover() {}, ...i18n, URLSearchParams, initLanguage: () => i18n.initLanguage('', { getItem: () => 'en' }), document: stubDocument, matchMedia: (q) => { if (!queries[q]) throw new Error(`unexpected media query ${q}`); return queries[q]; },
       requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => { frames.delete(id); },
       window: { scrollX: 0, scrollY: 0, scrollTo(x, y) { this.scrollX = x; this.scrollY = y; }, addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); } },
       location: { search: '', pathname: '/', hash: '', href: 'http://localhost:8765/?country=Ireland' },
@@ -3458,7 +3458,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
-    runInNewContext(code, context);
+    runInNewContext(read('js/theme.js').replace(/^export /gm, '') + '\n' + code, context);
     const run = (code) => runInNewContext(code, context);
     context.fixture = [live[0], live.find((r) => r.id === 'sdu-mma'), live.find((r) => r.id.startsWith('tcd-'))];
     context.media = media;
@@ -4139,11 +4139,10 @@ const transitions = allCss.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body)
 // surfaces, never shown); every other transition must be one listed here.
 const motionAllowed = {
   '.btn': 'transition:transform 120ms ease-out,background-color 120ms ease-out',
-  // The FAQ's "+" turns in step with its answer opening (2026-11-09).
-  '.faq summary>.ic': 'transition:transform var(--t-answer) var(--ease-out)',
-  // Where height:auto can animate, an FAQ answer grows open and fades in.
-  '.faq details::details-content': 'transition:height var(--t-answer) var(--ease-out),content-visibility var(--t-answer) allow-discrete',
-  '.faq .a': 'transition:opacity 200ms var(--ease-out)',
+  // A10 (PR 7): only the vertical stroke of the FAQ's "+" turns, onto the
+  // horizontal one. The answers' height is a Web Animation in faq.js now:
+  // the old height:auto transition ran only in Chrome.
+  '.faq-v': 'transition:transform 240ms var(--ease-out)',
   '.segment-thumb': 'transition:transform 280ms var(--spring-snappy)',
   // Setup now owns the scrim, since show() has no native ::backdrop.
   'dialog.ob': 'transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out),display 140ms allow-discrete',
@@ -4187,15 +4186,17 @@ const motionAllowed = {
   // the sheet does; visibility waits for the closing slide once it is warm.
   '.faqp': 'transition:transform var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete,visibility var(--t-sheet-out)',
   '.faqp[open]': 'transition:transform var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
-  '.faq-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),display var(--t-sheet-out) allow-discrete',
-  '.faq-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),display var(--t-sheet-in) allow-discrete',
+  // A10: its scrim fades with visibility, not display, which Safari before
+  // 18 cannot transition (it snapped in and out).
+  '.faq-scrim': 'transition:opacity var(--t-sheet-out) var(--ease-sheet),visibility var(--t-sheet-out) linear',
+  '.faq-scrim.is-open': 'transition:opacity var(--t-sheet-in) var(--ease-sheet),visibility var(--t-sheet-in) linear',
 };
 // The one exception to "reduced motion stops everything": the FAQ panel and
 // its scrim fade in 120 ms instead of sliding (Leon, 2026-11-09), so the panel
 // does not blink into place. No transform; only here.
 const reducedFade = {
   '.faqp': 'transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important',
-  '.faq-scrim': 'transition:opacity 120ms linear,display 120ms allow-discrete !important',
+  '.faq-scrim': 'transition:opacity 120ms linear,visibility 120ms linear !important',
 };
 const legacyMotion = ['.button', '.button svg', '.chip', '.star'];
 const motionProblems = (rules) => rules.filter((r) => /(?:^|;)\s*transition\s*:/.test(r.body) && !/transition\s*:\s*none/.test(r.body)).filter((r) => {
@@ -4727,7 +4728,7 @@ appCheck('window: scroll bursts schedule one frame and do not run under the Filt
 });
 // Batch 3 · A: and the compare tray, the header Compare button and every compare control.
 check('A08 print hides controls, count, sort header and the list Sort select, pane, chevrons, skip/goto, sheet, shortlist, skeletons, issues, saved-copy and failure banners, compare controls and tray, but never the sample warning',
-  ['.fbar', '.status', '.lang', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
+  ['.fbar', '.status', '.hd', '.cols', '.listp>.f-sort', '.pane', '.chev', '.goto', '.skip-link', '.sheet', '.shortlist-bar', '.skeletons', '.issues', '.bn-saved', '.bn-fail',
     '.cmp-tray', '#header-compare', '.cmpi', '.cmpb', '.cmp-acts', '.cmp-nav']
     .every((sel) => /display:none/.test(printBody(sel).replace(/\s/g, '')))
     && !/display:\s*none/.test(printBody('.bn-sample') + printBody('#source-banner') + printBody('.bn')));
@@ -6265,7 +6266,7 @@ section('SK/EN interface and data translations');
     sourceLiterals("// 'comment'\nconst a = `New wording ${ok ? 'Nested wording' : 'Other wording'}`;").includes('New wording ')
       && sourceLiterals("/* 'comment' */ const a = 'A new label';").includes('A new label')
       && !sourceLiterals("// 'comment'\n").includes('comment'));
-  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   const htmlProblems = [];
   // Every fallback text in an attributed node must be the EN table's value.
   const decode = (text) => text.replaceAll('&euro;', '€').replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"');
@@ -7714,7 +7715,7 @@ check('B3C2 from 600 px the tile stays and only the wordmark fades; the slot is 
 // fake page, with and without scroll-timeline support.
 {
   const round2Src = read('js/round2.js');
-  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('function syncSegments'));
+  const handoverSrc = round2Src.slice(round2Src.indexOf('export function wireLogoHandover'), round2Src.indexOf('export function syncSegments'));
   const run = ({ native, reduced = false, phone = true, statusShown = true }) => {
     const style = () => { const s = {}; return { s, setProperty(k, v) { s[k] = v; }, removeProperty(k) { delete s[k]; }, get opacity() { return s.opacity; }, set opacity(v) { s.opacity = v; }, get visibility() { return s.visibility; }, set visibility(v) { s.visibility = v; }, get transform() { return s.transform; }, set transform(v) { s.transform = v; } }; };
     const node = (props = {}) => ({ style: style(), offsetTop: 0, offsetHeight: 0, offsetParent: null, ...props });
@@ -7850,9 +7851,9 @@ section('Alignment · header, My list, setup');
     && /margin-left:-15px/.test(ruleAt(cssText, '.sheet-b .sheet-edit')) && /margin:0/.test(ruleAt(cssText, '.sheet-b .copy'))
     && !/margin-top:12px/.test(ruleAt(cssText, '.sheet-b .copy', '(max-width: 599.98px)'))
     && /flex:1 1 0;white-space:normal/.test(ruleAt(cssText, '.sheet-b .pts>label')) && /min-width:64px/.test(ruleAt(cssText, '.sheet-b .pts input.inp')));
-  check('AL-H4 focus rings: the wordmark link has room after "Finder"; SK/EN draw theirs inside the button',
+  check('AL-H4 focus rings: the wordmark link has room after "Finder"; settings radios draw theirs inside the visible label',
     /padding-right:6px/.test(ruleAt(cssText, 'body:not(.compact) .mark', '(min-width:701px)'))
-    && /outline-offset:-3px/.test(ruleAt(cssText, '.hd .lang button:focus-visible')));
+    && /outline-offset:-3px/.test(ruleAt(cssText, '.settings-seg label:has(input:focus-visible)')));
   // Review of PR 1: the -15 px margin puts the button 1 px from the sheet's
   // scrolling edge, which cut off the left of its 2 px ring at offset 2.
   check('AL-H4 Edit my answers in the sheet draws its focus ring inside the button, so the sheet does not clip it',
@@ -8028,9 +8029,8 @@ check('LR5 Sort is the filters\' pick-list: its radios set the hidden select and
   && /dom\.sort\.value = input\.value;\s*dom\.sort\.dispatchEvent\(new Event\('change'\)\);/.test(appSrc)
   && /function syncSort\(\) \{[\s\S]*?dom\.sort\.value = [^;]+;\s*sortPick\(\);/.test(appSrc)
   && /if \(d\.id !== 'dd-sort'\) \{ footer\.append/.test(read('js/round2.js')));
-check('LR6 the language buttons: tapping the one already shown switches to the other; Language options show flags, French included',
-  /button\.getAttribute\('aria-pressed'\) === 'true' && other \? other : button;\s*switchLanguage\(pick\.getAttribute\('data-language'\)\)/.test(appSrc)
-  && /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
+check('LR6 Language filter options retain their flags, French included',
+  /renderChips\(dom\.languages,[^;]*flags: LANGUAGE_FLAGS/.test(appSrc) && /French: 'f-fr'/.test(appSrc) && indexHtml.includes('<symbol id="f-fr"'));
 check('LR7 setup\'s done screen names the bookmark and scales icons in both versions, and the FAQ explains My list vs Compare and where the list is kept',
   /el\('p', 'ob-count', count\), doneNote\.node, toolsHint\(\), faqHint\(\)\)/.test(read('js/onboarding.js'))
   && ['r7_faq_list'].every((k) => read("index.html").includes(`data-i18n="${k}"`) && read("index.html").includes(`data-i18n="${k}_a"`))
@@ -8314,7 +8314,7 @@ section('FAQ panel behind the header\'s "?" (Leon, 2026-11-09)');
 // Runs the real module against the real index.html as stand-in nodes.
 // The twelve questions approved by Leon on 2026-11-09, in order.
 const FAQ_KEYS = ['what', 'rely', 'check', 'points', 'no_points', 'unknown', 'cao', 'fee', 'cost', 'setup', 'list', 'who'].map((k) => `r7_faq_${k}`);
-function faqHarness(test) {
+function faqHarness(test, env = {}) {
   const keys = ['getElementById', 'querySelector', 'querySelectorAll', 'body', 'documentElement', 'activeElement', 'listeners', 'canFocus', 'queueTask', 'scrolls', 'focusLog', 'focusOptions'];
   const saved = Object.fromEntries(keys.map((k) => [k, stubDocument[k]]));
   const original = globalThis.document;
@@ -8331,7 +8331,7 @@ function faqHarness(test) {
       // last answer is out of the Tab order until that question is open.
       canFocus: (node) => {
         for (let n = node, c = null; n; c = n, n = n.parent) {
-          if (n.hidden || hidden.has(n) || (n.tagName === 'dialog' && !n.open) || (n.tagName === 'details' && !n.open && c && c.tagName !== 'summary')) return false;
+          if (n.hidden || hidden.has(n) || n.getAttribute('inert') !== null || (n.tagName === 'dialog' && !n.open) || (n.tagName === 'details' && !n.open && c && c.tagName !== 'summary')) return false;
         }
         return true;
       },
@@ -8339,8 +8339,10 @@ function faqHarness(test) {
     // The module wires itself when there is a document, as in the browser.
     // Timers and frames only queue: a test runs them when it means to.
     const timers = [], slides = [];
-    const api = runInNewContext(read('js/faq.js').replace(/^export /gm, '') + '\n({ wireFaq, openFaq, closeFaq, onFaqSlide });', { document: stubDocument,
-      setTimeout: (fn) => timers.push(fn), clearTimeout() {}, requestAnimationFrame: (fn) => timers.push(fn) });
+    // faq.js imports the shared sheet drag (A12): both run here, unbundled.
+    const source = read('js/sheet-drag.js').replace(/^export /gm, '') + read('js/faq.js').replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '');
+    const api = runInNewContext(source + '\n({ wireFaq, openFaq, closeFaq, onFaqSlide });', { document: stubDocument, ...env,
+      setTimeout: (fn) => timers.push(fn), clearTimeout() {}, requestAnimationFrame: (fn) => timers.push(fn), cancelAnimationFrame() {} });
     api.onFaqSlide((on) => slides.push(on));
     api.wireFaq(); // a second call changes nothing
     const fire = (node, type, init = {}) => dispatchStub(node, { type, ...init });
@@ -8355,8 +8357,8 @@ function faqHarness(test) {
   const html = read('index.html'), faqSrc = read('js/faq.js').replace(/\/\/.*$/gm, '');
   const shut = ({ panel, html: root, scrim, opener }) => !panel.open && !root.classList.contains('faq-open') && !scrim.classList.contains('is-open') && opener.getAttribute('aria-expanded') === 'false';
   // Leon, 2026-11-09: the panel is the FAQ's only home; the footer keeps a button to it.
-  check('FAQ "?" sits in the header between Compare and the language switch, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
-    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="lang"/.test(html)
+  check('FAQ "?" sits in the header between Compare and settings, names the panel it opens, and says "FAQ" beside it (shown from 1024 px)',
+    /id="header-compare"[\s\S]*?<\/button><button class="btn hb" id="faq-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="faq-panel" aria-label="FAQ" data-i18n-attr="aria-label:r6_faq"><svg class="ic" aria-hidden="true"><use href="#i-help"\/><\/svg><span class="faq-l" data-i18n="r6_faq_l">FAQ<\/span><\/button>\s*<div class="settings"/.test(html)
       && /<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">/.test(html)
       && /<div class="faq-scrim" id="faq-scrim" aria-hidden="true"><\/div>/.test(html) && html.includes('<symbol id="i-help"')
       && /\.faq-l\{display:none\}/.test(cssText) && /display:inline/.test(ruleAt(cssText, '#faq-open .faq-l', '(min-width:1024px)')));
@@ -8373,8 +8375,15 @@ function faqHarness(test) {
     FAQ_KEYS.every((k) => [k, `${k}_a`].every((key) => UI.en[key]?.trim() && UI.sk[key]?.trim() && UI.sk[key] !== UI.en[key])));
   equal('FAQ panel strings in EN and SK', ['r6_faq', 'r6_faq_h', 'r6_faq_close', 'r6_faq_l'].flatMap((k) => [UI.en[k], UI.sk[k]]),
     ['FAQ', 'Časté otázky', 'Frequently asked questions', 'Časté otázky', 'Close the FAQ', 'Zavrieť časté otázky', 'FAQ', 'Časté otázky']);
+  // A10 (PR 7): a shutting answer's own subtree is inert and aria-hidden;
+  // that is the only place either may appear, never the page behind.
   check('FAQ panel opens with show(): no showModal, inert or background aria-hidden (WebKit restyles every row for those)',
-    faqSrc.includes('panel.show();') && !/showModal\(|\binert\b|aria-hidden/.test(faqSrc));
+    (() => {
+      const at = faqSrc.indexOf('function expose('), end = faqSrc.indexOf('\n}', at);
+      const outside = faqSrc.slice(0, at) + faqSrc.slice(end);
+      return faqSrc.includes('panel.show();') && at > 0 && !/showModal\(/.test(faqSrc) && !/\binert\b|aria-hidden/.test(outside.replace("node.closest('[inert]')", ''))
+        && /answer\.setAttribute\('inert', ''\); answer\.setAttribute\('aria-hidden', 'true'\);/.test(faqSrc.slice(at, end));
+    })());
   check('FAQ panel starts with its twelve questions closed, in the approved order; the footer\'s "FAQ" opens it and gets focus back',
     faqHarness(({ fire, panel, footer, heading, opener, get }) => {
       const qs = panel.querySelectorAll('details');
@@ -8486,7 +8495,7 @@ check('FAQ "?" on a 600-700 px touch screen: the header tightens its gaps so Sea
   check('FAQ panel CSS: reduced motion fades it in 120 ms with no slide; print hides the panel and scrim',
     /transform:none/.test(ruleAt(cssText, '.faqp[open]', '(prefers-reduced-motion:reduce)'))
       && /@media \(prefers-reduced-motion:reduce\)\{[^@]*@starting-style\{\.faqp\[open\]\{opacity:0;transform:none\}\}/.test(cssText)
-      && /opacity:0;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
+      && /opacity:0;transition:opacity 120ms linear,visibility 120ms !important;transition:opacity 120ms linear,display 120ms allow-discrete,visibility 120ms !important/.test(ruleAt(cssText, '.faqp', '(prefers-reduced-motion:reduce)'))
       && /display:none/.test(ruleAt(cssText, 'dialog.faqp[open]', 'print')) && /display:none/.test(ruleAt(cssText, '.faq-scrim.is-open', 'print')));
 }
 
@@ -8541,6 +8550,449 @@ section('FAQ text, twelve questions (Leon, 2026-11-09)');
       return skipped && reached && stubDocument.activeElement === close;
     }) === true);
 }
+
+// A second palette must not create an unchecked escape hatch in the colour policy.
+{
+  const wrapper = css.match(/@media screen\{\s*:root\[data-theme="dark"\]\{[^}]*\}\s*\}/)[0];
+  const replaceDark = (change) => css.replace(wrapper, change(wrapper));
+  const mutations = [
+    ['wrong value', replaceDark((v) => v.replace('--ground:#1b2027;', '--ground:#000000;')), 'Changed dark token --ground'],
+    ['missing token', replaceDark((v) => v.replace('--ground:#1b2027;', '')), 'Missing dark token --ground'],
+    ['extra token', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;--extra:1px;')), 'Unapproved dark token --extra'],
+    ['duplicate token', replaceDark((v) => v.replace('--ground:#1b2027;', '--ground:#1b2027;--ground:#1b2027;')), 'Duplicate dark token --ground'],
+    ['non-token declaration', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;display:block;')), 'Unapproved dark token display'],
+    ['duplicate scheme', replaceDark((v) => v.replace('color-scheme:dark;', 'color-scheme:dark;color-scheme:dark;')), 'Duplicate dark color-scheme'],
+    ['light scheme changed', css.replace('color-scheme:light;', 'color-scheme:dark;'), 'Changed root color-scheme'],
+    ['second rule', css + wrapper, 'Theme selector outside approved dark wrapper'],
+    ['bare rule', replaceDark((v) => v.replace('@media screen{', '').replace(/\}\s*$/, '')), 'Theme selector outside approved dark wrapper'],
+    ['nested in print', replaceDark((v) => '@media print{' + v + '}'), 'Expected one dark rule in its own top-level screen wrapper'],
+    ['sibling in wrapper', replaceDark((v) => v.replace(/\}\s*$/, '.extra{color:var(--ink)}}')), 'Expected one dark rule in its own top-level screen wrapper'],
+    ['stray scheme', css + '.extra{color-scheme:light}', 'Color-scheme outside approved palettes'],
+    ['uppercase stray scheme', css + '.extra{COLOR-SCHEME:light}', 'Color-scheme outside approved palettes'],
+    ['stray hex', css + '.extra{color:#fff}', 'Colour literal outside root in color'],
+    // Verify review: these three passed the first version of the scan.
+    ['spaced theme attribute', css + '[ data-theme="dark"] .extra{color:var(--ink)}', 'Theme selector outside approved dark wrapper'],
+    ['escaped theme attribute', css + '[data\\-theme=dark] .extra{color:var(--ink)}', 'Theme selector outside approved dark wrapper'],
+    ['system dark query', css + '@media (prefers-color-scheme:dark){.extra{color:var(--ink)}}', 'Color-scheme media query outside approved dark wrapper'],
+  ];
+  for (const [name, text, reason] of mutations) check(`dark colour policy rejects ${name} for its intended reason`, colourPolicyErrors(text).includes(reason));
+  equal('dark policy preserves an unrelated screen wrapper', colourPolicyErrors(css + '@media screen{.extra{color:var(--ink)}}'), []);
+}
+// The new control must keep the licensed sprite and disclosure semantics.
+check('settings is a named disclosure with a licensed gear and native radio labels',
+  /Phosphor Regular gear, @phosphor-icons\/core 2\.1\.1, MIT\./.test(indexHtml)
+    && /<symbol id="i-gear"/.test(indexHtml)
+    && /id="settings-open"[^>]*aria-expanded="false" aria-controls="settings-panel"/.test(indexHtml)
+    && /<div id="settings-panel" hidden>/.test(indexHtml)
+    && !/<[^>]+\bpopover(?:[=>\s])/.test(indexHtml)
+    && ['settings_sk', 'settings_en'].every((key) => UI.en[key] === UI.sk[key]));
+// Boot and module share validity/default rules, including a throwing storage getter.
+{
+  const html = read('index.html');
+  const boot = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const themeSource = read('js/theme.js').replace(/^export /gm, '');
+  check('theme boot precedes CSS, shares the module key and sets the canvas meta', Boolean(boot)
+    && html.indexOf('<script>') < html.indexOf('<link rel="stylesheet"')
+    && html.includes('<meta name="color-scheme" content="light dark">')
+    && boot.includes('ib-university-finder:theme') && themeSource.includes('ib-university-finder:theme')
+    && boot.includes("setAttribute('content', theme)"));
+  const fixture = (stored, dark, failure) => {
+    const listeners = new Set(), writes = [], attrs = {};
+    const media = { matches: dark, addEventListener(type, fn) { listeners.add(fn); }, removeEventListener(type, fn) { listeners.delete(fn); } };
+    const env = { document: { documentElement: { dataset: {} }, querySelector: () => ({ setAttribute(k, v) { attrs[k] = v; } }) }, matchMedia: () => media };
+    const storage = { getItem() { if (failure === 'read') throw Error('blocked'); return stored; },
+      setItem(k, v) { if (failure === 'write') throw Error('full'); writes.push([k, v]); },
+      removeItem(k) { if (failure === 'remove') throw Error('blocked'); writes.push([k, null]); } };
+    Object.defineProperty(env, 'localStorage', { get() { if (failure === 'getter') throw Error('blocked'); return storage; } });
+    const flip = (value) => { media.matches = value; for (const fn of [...listeners]) fn(); };
+    const api = runInNewContext(themeSource + '\n({initTheme, setThemeChoice, getThemeChoice});', env);
+    return { env, api, listeners, writes, attrs, flip };
+  };
+  for (const dark of [false, true]) for (const stored of [undefined, 'junk', 'system', 'light', 'dark']) for (const failure of [null, 'getter', 'read']) {
+    const f = fixture(stored, dark, failure);
+    runInNewContext(boot, f.env);
+    const expected = !failure && ['light', 'dark'].includes(stored) ? stored : dark ? 'dark' : 'light';
+    const before = f.env.document.documentElement.dataset.theme;
+    f.api.initTheme();
+    check(`theme boot/module agree: system ${dark}, stored ${stored}, failure ${failure}`, before === expected
+      && f.env.document.documentElement.dataset.theme === expected && f.attrs.content === expected && f.writes.length === 0);
+  }
+  for (const failure of [null, 'getter', 'write', 'remove']) {
+    const f = fixture(undefined, false, failure), key = 'ib-university-finder:theme';
+    f.api.initTheme(); f.flip(true);
+    const system = f.env.document.documentElement.dataset.theme === 'dark' && f.listeners.size === 1;
+    f.api.setThemeChoice('light'); f.flip(false); f.flip(true);
+    const pinned = f.api.getThemeChoice() === 'light' && f.env.document.documentElement.dataset.theme === 'light' && f.listeners.size === 0;
+    f.api.setThemeChoice('system'); f.flip(false);
+    const resumed = f.api.getThemeChoice() === 'system' && f.env.document.documentElement.dataset.theme === 'light' && f.listeners.size === 1;
+    f.api.setThemeChoice('system'); f.api.setThemeChoice('invalid');
+    check(`theme memory survives ${failure ?? 'working storage'} and cleans up System listeners`, system && pinned && resumed && f.listeners.size === 1
+      && f.writes.every(([k]) => k === key));
+  }
+  // The text scan may ignore script bodies only, never visible unmarked HTML.
+  const scan = (text) => text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').split(/<[^>]*>/).filter((v) => /[A-Za-z]/.test(v));
+  equal('HTML scan ignores script bodies but retains visible unmarked text', scan('<script>const boot = true;</script><p>Untranslated wording</p>'), ['Untranslated wording']);
+  check('theme never enters saved filters or URL writers', !/theme/i.test(read('js/saved-state.js'))
+    && !/theme/i.test(appSrc.slice(appSrc.indexOf('function keepAddress('), appSrc.indexOf('\n}', appSrc.indexOf('function keepAddress('))))
+    && !/theme/i.test(appSrc.slice(appSrc.indexOf('function copyLink('), appSrc.indexOf('\n}', appSrc.indexOf('function copyLink(')))));
+}
+// Run the actual thumb measurement for both radio labels and the retained maths buttons.
+{
+  const round2 = read('js/round2.js').replace(/^import[^;]+;\n/gm, '').replace(/^export /gm, '');
+  const label = { offsetWidth: 72, offsetLeft: 4 }, maths = { offsetWidth: 44, offsetLeft: 80 };
+  const segment = (selected, radio) => ({ group: { offsetWidth: 160, querySelector: (s) => s === 'input:checked' ? (radio ? { closest: () => selected } : null) : selected }, thumb: { style: {} }, key: null });
+  const radio = segment(label, true), buttons = segment(maths, false), hidden = segment(label, true); hidden.group.offsetWidth = 0;
+  const env = { fixtures: [radio, buttons, hidden] };
+  runInNewContext(round2 + '\nsegments = fixtures; syncSegments();', env);
+  const measured = radio.thumb.style.width === '72px' && buttons.thumb.style.transform === 'translateX(80px)' && hidden.key === null;
+  label.offsetWidth = 92; hidden.group.offsetWidth = 160;
+  runInNewContext('syncSegments(true);', env);
+  check('segment thumbs measure the checked label, force remeasure after translation, and wait for hidden groups to open', measured && radio.thumb.style.width === '92px' && hidden.thumb.style.width === '92px');
+}
+appCheck('settings handlers keep the panel open after a choice; null focusout stays open, real focusout and outside pointer close it', ({ get, fire, run, context }) => {
+  const button = get('settings-open'), panel = get('settings-panel'), radio = panel.querySelector('[data-theme-choice="dark"]');
+  fire(button, 'click');
+  if (panel.hidden || button.getAttribute('aria-expanded') !== 'true') return false;
+  radio.checked = true; fire(radio, 'change');
+  if (panel.hidden || run('getThemeChoice()') !== 'dark') return false;
+  fire(button.parentElement, 'focusout', { relatedTarget: null });
+  if (panel.hidden) return false;
+  fire(button.parentElement, 'focusout', { relatedTarget: get('f-search') });
+  if (!panel.hidden) return false;
+  fire(button, 'click'); fire(get('f-search'), 'pointerdown');
+  return panel.hidden && button.getAttribute('aria-expanded') === 'false';
+});
+
+// ---------------------------------------------------------------- PR 7 polish
+section('PR 7 UI polish: points box, FAQ answers, settings, sheet drag (A09-A12)');
+// A09: iOS gives an <input> side padding of its own, so "45" in 44 px bold
+// ran wider than the 90 px box's content area and scrolled sideways.
+{
+  const big = ruleAt(cssText, '.ob .big-pts input');
+  check('A09 Setup\'s points box resets the browser\'s own padding and keeps its 90 px, 44 px bold, centred, numeric look',
+    /width:90px;height:60px;padding:0;font-size:44px;font-weight:700;text-align:center;/.test(big) && /appearance:textfield/.test(big)
+      && !/padding:0/.test(ruleAt(cssText.replace('width:90px;height:60px;padding:0;', 'width:90px;height:60px;'), '.ob .big-pts input')));
+}
+check('A10/A12 warmed sheet slides retain a Safari 16.4 transition before the newer allow-discrete shorthand',
+  ['.sheet', '.faqp'].every((sel) => ruleAt(cssText, sel).includes('transition:transform var(--t-sheet-out) var(--ease-sheet),visibility var(--t-sheet-out);transition:'))
+    && ['.sheet[open]', '.faqp[open]'].every((sel) => ruleAt(cssText, sel).includes('transition:transform var(--t-sheet-in) var(--ease-sheet);transition:')));
+// A12's gesture rules, as pure functions.
+check('A12 catching an opening sheet counts only finger travel towards dismissal',
+  /shouldDismiss\(drag\.offset - drag\.base, drag\.height, dragVelocity\(drag\.samples\)\)/.test(read('js/sheet-drag.js')));
+{
+  const { dragVelocity, shouldDismiss } = sheetDragMod;
+  const line = (speed, from = 0, n = 6, step = 16) => Array.from({ length: n }, (_, i) => ({ t: from + i * step, y: speed * i * step }));
+  check('A12 drag speed is read over the last 80 ms: a steady flick reads its speed; a hold before lifting reads 0',
+    Math.abs(dragVelocity(line(0.8)) - 0.8) < 1e-9
+      && dragVelocity([...line(1.2), { t: 80 + 200, y: 96 }]) === 0);
+  check('A12 one noisy sample cannot invent a flick, and two samples or under 20 ms are not enough to call one',
+    dragVelocity([...line(0.05), { t: 88, y: 4 + 40 }]) < 0.5 && dragVelocity([...line(0.05)].map((s, i, a) => (i === a.length - 4 ? { ...s, y: s.y - 30 } : s))) < 0.5
+      && dragVelocity([{ t: 0, y: 0 }, { t: 40, y: 40 }]) === 0 && dragVelocity([{ t: 0, y: 0 }, { t: 6, y: 20 }, { t: 12, y: 40 }]) === 0);
+  check('A12 dismiss at min(120 px, a quarter of the sheet) or a 0.5 px/ms flick that moved 24 px; a fast upward finger always settles back',
+    shouldDismiss(120, 900, 0) && !shouldDismiss(119, 900, 0) && shouldDismiss(100, 400, 0) && !shouldDismiss(99, 400, 0)
+      && shouldDismiss(24, 900, 0.5) && !shouldDismiss(23, 900, 0.9) && !shouldDismiss(60, 900, 0.49)
+      && !shouldDismiss(300, 900, -0.5) && shouldDismiss(300, 900, -0.2) && shouldDismiss(120, 0, 0));
+}
+// A12 on the real Filters sheet: the stand-in page, the real app.js and helper.
+const pointer = (y, t, extra = {}) => ({ pointerId: 1, isPrimary: true, button: 0, clientY: y, timeStamp: t, ...extra });
+const dragSheet = (fire, region, steps) => {
+  let t = 1000, y = 100;
+  fire(region, 'pointerdown', pointer(y, t));
+  for (const [dy, dt] of steps.slice(0, -1)) { y += dy; t += dt; fire(region, 'pointermove', pointer(y, t)); }
+  const [dy, dt] = steps.at(-1); y += dy; t += dt;
+  return pointer(y, t);
+};
+appCheck('A12 Filters: a drag from the handle follows the finger, holds rows with no timer, and past 120 px closes through Done\'s path from where it was', ({ get, fire, run, advance }) => {
+  const sheet = get('filter-sheet'), grab = sheet.querySelector('.grab'), more = get('f-more');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  fire(more, 'click'); advance(600);
+  if (!sheet.open || !grab) return false;
+  const atClose = [];
+  const close = sheet.close; sheet.close = function () { atClose.push([this.style.transform, this.style.transition]); return close.call(this); };
+  const up = dragSheet(fire, grab, [[30, 100], [30, 100], [30, 100], [30, 100]]);
+  const tracking = sheet.style.transform === 'translateY(90px)' && sheet.style.transition === 'none' && run('sheetDragHold') === true && run('sheetSlideTimer') === undefined;
+  advance(2000);
+  const heldRows = run('sheetDragHold') === true && run('windowFrame') === 0 && sheet.classList.contains('is-sliding');
+  fire(grab, 'pointerup', up);
+  return tracking && heldRows && !sheet.open && JSON.stringify(atClose) === JSON.stringify([[undefined, undefined]])
+    && run('sheetDragHold') === false && run('sheetSlideTimer') !== undefined && more.getAttribute('aria-expanded') === 'false';
+});
+appCheck('A12 Filters: a short drag, a hold before lifting, a cancel and a lost capture all settle back open and hand rows to the bounded pause', ({ get, fire, run, advance }) => {
+  const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  fire(get('f-more'), 'click'); advance(600);
+  const settled = () => sheet.open && sheet.style.transform === undefined && sheet.style.transition === undefined && run('sheetDragHold') === false;
+  const results = [];
+  fire(header, 'pointerup', dragSheet(fire, header, [[20, 100], [20, 100], [20, 100]])); results.push(settled());
+  // 0.9 px/ms and 75 px, then 200 ms still: no speed left, not far enough.
+  fire(header, 'pointerup', dragSheet(fire, header, [[15, 16], [15, 16], [15, 16], [15, 16], [15, 16], [0, 200]])); results.push(settled());
+  dragSheet(fire, header, [[50, 16], [50, 16]]); fire(sheet, 'pointercancel', pointer(200, 2000)); results.push(settled());
+  dragSheet(fire, header, [[50, 16], [50, 16]]); fire(sheet, 'lostpointercapture', pointer(200, 2000)); results.push(settled());
+  // A late pointerup of the ended gesture finds nothing to do.
+  fire(sheet, 'pointerup', pointer(900, 3000)); results.push(settled());
+  advance(600);
+  return results.every(Boolean) && run('sheetSlideTimer') === undefined && !sheet.classList.contains('is-sliding');
+});
+appCheck('A12 Filters: a quick downward flick closes; the close button, the body, a second finger and a wide screen never drag', ({ get, fire, run, advance, flip600 }) => {
+  const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h'), done = get('sheet-done'), body = sheet.querySelector('.sheet-b');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  fire(get('f-more'), 'click'); advance(600);
+  for (const [node, extra] of [[done, {}], [body, {}], [header, { isPrimary: false }], [header, { button: 2 }]]) {
+    fire(node, 'pointerdown', pointer(100, 0, extra)); fire(node, 'pointermove', pointer(400, 50, extra));
+    if (sheet.style.transform !== undefined || run('sheetDragHold')) return false;
+  }
+  fire(header, 'pointerup', dragSheet(fire, header, [[10, 16], [10, 16], [10, 16], [12, 16]]));
+  const flicked = !sheet.open;
+  fire(get('f-more'), 'click'); advance(600);
+  flip600(true);
+  fire(header, 'pointerdown', pointer(100, 0)); fire(header, 'pointermove', pointer(400, 50));
+  return flicked && !sheet.open && sheet.style.transform === undefined && run('sheetDragHold') === false;
+});
+// Linux Chrome 156 turned a fast flick on the header into a fling and spent the
+// next tap on stopping it: touch and pointer events arrived, no click
+// (PR 7 CI, 2026-11-11). A cancelled touchmove leaves no gesture to fling.
+appCheck('A12 Filters: touchmove on the handle and header is cancelled while a drag is on, and never before it, after it, on Done or in the body', ({ get, fire, advance }) => {
+  const sheet = get('filter-sheet'), grab = sheet.querySelector('.grab'), header = sheet.querySelector('.sheet-h h2'), done = get('sheet-done'), body = sheet.querySelector('.sheet-b');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  fire(get('f-more'), 'click'); advance(600);
+  const cancelled = (node, cancelable = true) => !fire(node, 'touchmove', { cancelable });
+  const before = [grab, header, done, body].some((node) => cancelled(node));
+  const during = [];
+  for (const region of [grab, header]) {
+    dragSheet(fire, region, [[10, 100], [10, 100]]);
+    during.push(cancelled(region), !cancelled(region, false), !cancelled(body));
+    fire(region, 'pointerup', pointer(120, 1300));
+    during.push(sheet.open && !cancelled(region));
+  }
+  fire(done, 'pointerdown', pointer(100, 0)); fire(done, 'pointermove', pointer(400, 50));
+  return !before && during.every(Boolean) && !cancelled(done);
+});
+// The same fling by another road (PR 7 CI, 2026-11-11): Escape ended the drag
+// with the finger still down, and its next move was no longer cancelled.
+appCheck('A12 Filters: a touch that began a drag keeps its touchmove cancelled after Escape or a lost capture, until the finger lifts', ({ get, fire, advance }) => {
+  const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2'), touching = { pointerType: 'touch' };
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  const cancelled = (node) => !fire(node, 'touchmove', { cancelable: true });
+  const results = [];
+  for (const [how, lift] of [['escape', 'touchend'], ['lost', 'touchcancel']]) {
+    fire(get('f-more'), 'click'); advance(600);
+    fire(header, 'pointerdown', pointer(100, 1000, touching)); fire(header, 'pointermove', pointer(140, 1016, touching));
+    if (how === 'escape') fire(get('sheet-h'), 'keydown', { key: 'Escape' }); else fire(sheet, 'lostpointercapture', pointer(140, 1020, touching));
+    results.push(sheet.open === (how === 'lost') && sheet.style.transform === undefined, cancelled(header), cancelled(header));
+    fire(header, lift);
+    results.push(!cancelled(header));
+    if (sheet.open) fire(get('sheet-done'), 'click');
+    advance(600);
+  }
+  return results.every(Boolean);
+});
+appCheck('A12 Filters: Done, Escape or a reopen during a drag let go of the finger, release the row hold, and a late move does nothing', ({ get, fire, run, advance }) => {
+  const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  const results = [];
+  for (const how of ['done', 'escape']) {
+    fire(get('f-more'), 'click'); advance(600);
+    dragSheet(fire, header, [[40, 16], [40, 16]]);
+    if (how === 'done') fire(get('sheet-done'), 'click'); else fire(get('sheet-h'), 'keydown', { key: 'Escape' });
+    fire(sheet, 'pointermove', pointer(700, 2000));
+    results.push(!sheet.open && sheet.style.transform === undefined && sheet.style.transition === undefined && run('sheetDragHold') === false && run('sheetSlideTimer') !== undefined);
+    advance(600);
+  }
+  fire(get('f-more'), 'click'); advance(600);
+  fire(header, 'pointerup', dragSheet(fire, header, [[10, 100], [10, 100]]));
+  return results.every(Boolean) && sheet.open && sheet.style.transform === undefined;
+});
+// A11: the settings popover's logical state and its exit.
+const fakeAnimate = (log) => function (frames, options) {
+  const animation = { frames, options, cancelled: false, onfinish: null, cancel() { this.cancelled = true; } };
+  log.push(animation); return animation;
+};
+appCheck('A11 settings: grows in 200 ms; a close is closed at once (inert, Escape passes, outside taps ignored); a reopen mid-exit starts from the screen; only the latest exit hides it', ({ get, fire }) => {
+  const button = get('settings-open'), panel = get('settings-panel'), anims = [];
+  panel.animate = fakeAnimate(anims);
+  fire(button, 'click');
+  const opened = !panel.hidden && panel.getAttribute('inert') === null && button.getAttribute('aria-expanded') === 'true' && anims.length === 1
+    && anims[0].frames[0].opacity === 0 && /scale\(\.97\)/.test(anims[0].frames[0].transform) && anims[0].frames[1].transform === 'none' && anims[0].options.duration === 200
+    && stubDocument.activeElement === panel.querySelector('[data-language="en"]');
+  anims[0].onfinish();
+  const shown = !panel.hidden && anims[0].cancelled;
+  fire(button, 'click');
+  const closing = button.getAttribute('aria-expanded') === 'false' && panel.getAttribute('inert') === '' && !panel.hidden && anims.length === 2
+    && anims[1].options.duration === 140 && anims[1].frames[0].opacity === 1 && anims[1].frames[1].opacity === 0 && stubDocument.activeElement === button;
+  const escapePasses = fire(get('f-search'), 'keydown', { key: 'Escape' });
+  fire(get('f-search'), 'pointerdown');
+  const noSecondExit = anims.length === 2;
+  panel.computed = { opacity: '0.4', transform: 'matrix(0.98, 0, 0, 0.98, 0, -2)' };
+  fire(button, 'click');
+  const reversed = anims[1].cancelled && anims.length === 3 && anims[2].frames[0].opacity === '0.4' && anims[2].frames[0].transform === 'matrix(0.98, 0, 0, 0.98, 0, -2)'
+    && panel.getAttribute('inert') === null && !panel.hidden && button.getAttribute('aria-expanded') === 'true';
+  anims[1].onfinish();
+  const staleIgnored = !panel.hidden && panel.getAttribute('inert') === null;
+  delete panel.computed;
+  fire(get('f-search'), 'pointerdown');
+  anims.at(-1).onfinish();
+  return opened && shown && closing && escapePasses && noSecondExit && reversed && staleIgnored
+    && panel.hidden && panel.getAttribute('inert') === null && anims.at(-1).cancelled;
+});
+appCheck('A11 settings: Escape closes and returns to the gear; focusout closes; Reduce Motion fades only, in 100 ms, and still hides at its end', ({ get, fire, motionMedia }) => {
+  const button = get('settings-open'), panel = get('settings-panel'), anims = [];
+  panel.animate = fakeAnimate(anims);
+  fire(button, 'click'); anims[0].onfinish();
+  const esc = !fire(get('f-search'), 'keydown', { key: 'Escape', stopImmediatePropagation() { this.stopped = true; } }) && button.getAttribute('aria-expanded') === 'false' && stubDocument.activeElement === button;
+  anims[1].onfinish();
+  fire(button, 'click'); anims[2].onfinish();
+  fire(button.parentElement, 'focusout', { relatedTarget: get('f-search') });
+  const out = button.getAttribute('aria-expanded') === 'false' && panel.getAttribute('inert') === '';
+  anims[3].onfinish();
+  motionMedia.matches = true;
+  try {
+    fire(button, 'click');
+    const reducedIn = anims[4].frames[0].transform === 'none' && anims[4].frames[1].transform === 'none' && anims[4].options.duration === 100;
+    anims[4].onfinish(); fire(button, 'click');
+    const reducedOut = anims[5].frames[1].transform === 'none' && anims[5].options.duration === 100;
+    anims[5].onfinish();
+    return esc && out && reducedIn && reducedOut && panel.hidden && panel.getAttribute('inert') === null;
+  } finally { motionMedia.matches = false; }
+});
+check('A11 settings CSS: flat inset track and thumb, no ring, shadow or glow; one label weight; taps pass through a shutting panel; maths segments untouched',
+  /padding:3px;background:var\(--hover\);border:0;/.test(ruleAt(cssText, '.settings-seg')) && /top:3px;bottom:3px;box-shadow:none/.test(ruleAt(cssText, '.settings-seg .segment-thumb'))
+    && /font-weight:600/.test(ruleAt(cssText, '.settings-seg label')) && !/font-weight/.test(ruleAt(cssText, '.settings-seg label:has(input:checked)'))
+    && /pointer-events:none/.test(ruleAt(cssText, '#settings-panel[inert]')) && /transform-origin:top right/.test(ruleAt(cssText, '#settings-panel'))
+    && !/padding:0/.test(ruleAt(cssText, '.settings-seg', '(pointer:coarse),(max-width:599px)'))
+    && /box-shadow:0 0 0 1px var\(--hairline\)/.test(ruleAt(cssText, '.segment-thumb')) && /top:0;bottom:0/.test(ruleAt(cssText, '.segment-thumb', '(pointer: coarse),(max-width:599px)')));
+// A10: the FAQ answers, run for real with a stand-in Web Animation.
+const answerRig = (panel) => {
+  const anims = [];
+  for (const details of panel.querySelectorAll('details')) {
+    details.animate = fakeAnimate(anims);
+    // screen: the height on screen mid-animation, read once before the answer lets go of it.
+    const height = () => { const h = details.screen ?? (details.open ? 144 : 44); delete details.screen; return h; };
+    Object.defineProperty(details, 'rect', { configurable: true, get: () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: height() }) });
+    details.querySelector('.a').rect = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 100 };
+  }
+  return anims;
+};
+check('A10 FAQ: one answer open at a time; opening another shuts the first in the same tap, which says collapsed and leaves Tab and the reader at once while it shuts',
+  faqHarness(({ fire, opener, panel }) => {
+    fire(opener, 'click');
+    const anims = answerRig(panel), qs = panel.querySelectorAll('details'), s = (i) => qs[i].querySelector('summary');
+    const before = qs.every((d) => d.querySelector('summary').getAttribute('aria-expanded') === 'false');
+    const prevented = !fire(s(0), 'click');
+    const first = qs[0].open && s(0).getAttribute('aria-expanded') === 'true' && anims.length === 1 && anims[0].frames[0].height === '44px' && anims[0].frames[1].height === '144px'
+      && anims[0].options.duration === 260;
+    anims[0].onfinish();
+    fire(s(1), 'click');
+    const a0 = qs[0].querySelector('.a');
+    const swap = s(0).getAttribute('aria-expanded') === 'false' && a0.getAttribute('inert') === '' && a0.getAttribute('aria-hidden') === 'true' && qs[0].open
+      && s(1).getAttribute('aria-expanded') === 'true' && qs[1].open && anims.length === 3 && anims[1].frames[1].height === '44px'
+      && qs.filter((d) => d.querySelector('summary').getAttribute('aria-expanded') === 'true').length === 1;
+    anims[1].onfinish();
+    const shut = !qs[0].open && a0.getAttribute('inert') === null && a0.getAttribute('aria-hidden') === null && qs[0].style.overflow === undefined;
+    return before && prevented && first && swap && shut;
+  }) === true);
+check('A10 FAQ: a tap mid-way reverses from the height on screen, and the older animation\'s late finish changes nothing',
+  faqHarness(({ fire, opener, panel }) => {
+    fire(opener, 'click');
+    const anims = answerRig(panel), d = panel.querySelectorAll('details')[2], s = d.querySelector('summary');
+    fire(s, 'click'); anims[0].onfinish();
+    fire(s, 'click');
+    d.screen = 90;
+    fire(s, 'click');
+    const reversed = anims[1].cancelled && anims[2].frames[0].height === '90px' && anims[2].frames[1].height === '144px' && s.getAttribute('aria-expanded') === 'true';
+    anims[1].onfinish();
+    return reversed && d.open && d.querySelector('.a').getAttribute('inert') === null;
+  }) === true);
+check('A10 FAQ: while the last answer shuts, its mailto link is out of the Tab trap even though its <details> is still open',
+  faqHarness(({ fire, opener, panel }) => {
+    fire(opener, 'click');
+    const anims = answerRig(panel), last = panel.querySelectorAll('details').at(-1), close = panel.querySelector('.faqp-x');
+    fire(last.querySelector('summary'), 'click'); anims[0].onfinish();
+    fire(last.querySelector('summary'), 'click');
+    close.focus();
+    fire(close, 'keydown', { key: 'Tab', shiftKey: true });
+    return last.open && stubDocument.activeElement === last.querySelector('summary');
+  }) === true);
+check('A10 FAQ: closing the panel, a resize or a new language mid-animation stops it and shows the logical state at its natural size',
+  faqHarness(({ fire, opener, panel }) => {
+    const resize = [];
+    fire(opener, 'click');
+    const anims = answerRig(panel), qs = panel.querySelectorAll('details'), s = (i) => qs[i].querySelector('summary');
+    fire(s(0), 'click'); anims[0].onfinish(); fire(s(1), 'click');
+    fire(panel.querySelector('.faqp-x'), 'click');
+    const closed = anims[1].cancelled && anims[2].cancelled && !qs[0].open && qs[1].open && qs[0].querySelector('.a').getAttribute('inert') === null;
+    fire(opener, 'click');
+    fire(s(2), 'click');
+    globalThis.__faqResize?.forEach((fn) => fn());
+    return closed && resize.length === 0 && anims[3].cancelled && anims[4].cancelled && !qs[1].open && qs[2].open && s(2).getAttribute('aria-expanded') === 'true';
+  }, { addEventListener(type, fn) { if (type === 'resize') (globalThis.__faqResize ??= []).push(fn); } }) === true);
+delete globalThis.__faqResize;
+check('A10 FAQ: a <details> opened or shut by the browser (find in page) becomes the logical state; without Web Animations or under Reduce Motion answers switch at once',
+  faqHarness(({ fire, opener, panel }) => {
+    fire(opener, 'click');
+    const qs = panel.querySelectorAll('details'), s = (i) => qs[i].querySelector('summary');
+    fire(s(0), 'click');
+    const instant = qs[0].open && s(0).getAttribute('aria-expanded') === 'true';
+    qs[3].open = true; fire(qs[3], 'toggle', { bubbles: false });
+    const adopted = !qs[0].open && s(0).getAttribute('aria-expanded') === 'false' && s(3).getAttribute('aria-expanded') === 'true';
+    qs[3].open = false; fire(qs[3], 'toggle', { bubbles: false });
+    fire(s(5), 'click');
+    return instant && adopted && s(3).getAttribute('aria-expanded') === 'false' && qs[5].open && qs.filter((d) => d.open).length === 1;
+  }) === true);
+check('A10 FAQ markup and CSS: two real strokes per question, only the vertical one turns (240 ms) by aria-expanded; no height:auto answer transition; the scrim fades by visibility, never display',
+  (() => {
+    const html = read('index.html'), panelSrc = elementSource(html, /<div class="faqp-b faq">/);
+    const icon = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h16"/><path class="faq-v" d="M12 4v16"/></svg></summary>';
+    return panelSrc.split(icon).length === 13 && !panelSrc.includes('#i-plus')
+      && /transform-box:fill-box;transform-origin:center;transition:transform 240ms var\(--ease-out\)/.test(ruleAt(cssText, '.faq-v'))
+      && /transform:rotate\(90deg\)/.test(ruleAt(cssText, '.faq summary[aria-expanded=true] .faq-v'))
+      && !/\.faq details(?:\[open\])?::details-content|\.faqp-b\{interpolate-size|\.faq details\[open\] summary/.test(cssText) && !/transition/.test(ruleAt(cssText, '.faq .a'))
+      && /display:block;visibility:hidden;/.test(ruleAt(cssText, '.faq-scrim')) && /visibility:visible/.test(ruleAt(cssText, '.faq-scrim.is-open'))
+      && !/display/.test(ruleAt(cssText, '.faq-scrim.is-open'));
+  })());
+check('A10 FAQ answer timing in faq.js is --t-answer and --ease-out from styles.css',
+  (() => {
+    const src = read('js/faq.js'), ms = Number(src.match(/const ANSWER_MS = (\d+);/)?.[1]), ease = src.match(/const ANSWER_EASE = '([^']+)';/)?.[1];
+    return ms === parseInt(css.match(/--t-answer:(\d+)ms/)?.[1], 10) && ease === css.match(/--ease-out:([^;]+);/)?.[1];
+  })());
+check('A10/A12 close buttons in both sheet headers: a quiet 32 px circle inside the 44 px target, centred icon, no border, shadow or glow',
+  ['.sheet-h .btn', '.faqp-h .btn'].every((sel) => {
+    const rule = ruleAt(cssText, sel);
+    return /width:44px;height:44px;padding:0;justify-content:center;/.test(rule) && /border:0;border-radius:50%/.test(rule)
+      && /radial-gradient\(circle 16px,var\(--hover\) 15\.5px,transparent 16px\)/.test(rule) && !/shadow/.test(rule);
+  }) && ['.sheet-h .btn>.ic', '.faqp-h .btn>.ic'].every((sel) => /display:block;flex:none;width:18px;height:18px/.test(ruleAt(cssText, sel))));
+check('A12 handle markup and CSS: a real element first in both sheets, phone only, 12 px like the old drawn one; touch-action off only on handle and header',
+  (() => {
+    const html = read('index.html');
+    const grab = '<div class="grab" aria-hidden="true"><span></span></div>';
+    return html.includes(`<dialog class="sheet" id="filter-sheet" aria-labelledby="sheet-h" aria-modal="true">\n  ${grab}\n  <div class="sheet-h">`)
+      && html.includes(`<dialog class="faqp" id="faq-panel" aria-labelledby="faq-h" aria-modal="true">\n  ${grab}\n  <div class="faqp-h">`)
+      && /display:none/.test(ruleAt(cssText, '.grab')) && /height:12px;padding-top:8px/.test(ruleAt(cssText, '.grab', '(max-width:599.98px)'))
+      && /width:36px;height:4px;border-radius:2px;background:var\(--hairline\)/.test(ruleAt(cssText, '.grab>span', '(max-width:599.98px)'))
+      && !/\.(?:sheet|faqp)::before/.test(cssText)
+      && cssTree(cssText).filter((r) => /touch-action\s*:\s*none/.test(r.body)).map((r) => r.selector.replace(/\s+/g, '')).sort().join('|') === ['.faq-scrim', '.grab,.sheet-h,.faqp-h', '.ob-scrim', '.sheet-scrim'].sort().join('|');
+  })());
+check('A12 FAQ: on a phone the header drags the sheet down to close it through closeFaq (focus back on "?"); rows are held without a timer; wide screens never drag',
+  (() => {
+    const run = (phoneWide) => faqHarness(({ fire, opener, panel, heading, slides, timers }) => {
+      panel.rect = { top: 100, bottom: 844, left: 0, right: 390, width: 390, height: 744 };
+      fire(opener, 'click');
+      fire(panel, 'transitionend', { propertyName: 'transform' });
+      const before = slides.join();
+      const up = dragSheet(fire, heading, [[40, 100], [40, 100], [40, 100], [40, 100]]);
+      if (!phoneWide) return panel.style.transform === undefined && before === slides.join();
+      const tracking = panel.style.transform === 'translateY(120px)' && slides.join() === `${before},true` && panel.classList.contains('is-sliding');
+      fire(panel, 'transitionend', { propertyName: 'transform' });
+      const held = slides.at(-1) === true;
+      fire(heading, 'pointerup', up);
+      while (timers.length) timers.shift()();
+      return tracking && held && !panel.open && panel.style.transform === undefined && stubDocument.activeElement === opener && slides.at(-1) === false;
+    }, { matchMedia: (q) => ({ matches: phoneWide && q === '(max-width: 599.98px)' }) });
+    return run(true) === true && run(false) === true;
+  })());
+check('A12 the gesture helper is shared and owns no spring: both sheets call wireSheetDrag, and app.js closes the drag on every close and open',
+  /wireSheetDrag\(dom\.sheet, \{ regions: '\.grab,\.sheet-h'/.test(appSrc) && /wireSheetDrag\(panel, \{ regions: '\.grab,\.faqp-h'/.test(read('js/faq.js'))
+    && (appSrc.match(/sheetDrag\?\.reset\(\);/g) ?? []).length === 3 && !/spring|requestAnimationFrame/.test(read('js/sheet-drag.js').replace(/\/\/.*$/gm, ''))
+    && indexHtml.includes('<link rel="modulepreload" href="js/sheet-drag.js">'));
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

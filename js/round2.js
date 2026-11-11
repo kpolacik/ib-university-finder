@@ -26,7 +26,7 @@ function longHintFits(input) {
 }
 export function wireRound2(dom) {
   controls = { maths: [...document.querySelectorAll('[data-maths]')], sliders: [...document.querySelectorAll('[data-number]')] };
-  segments = [...document.querySelectorAll('.hd .lang,#maths-seg')].map((group) => {
+  segments = [...document.querySelectorAll('.settings-seg,#maths-seg')].map((group) => {
     const thumb = document.createElement('span'); thumb.className = 'segment-thumb'; thumb.setAttribute('aria-hidden', 'true'); group.prepend(thumb);
     return { group, thumb, key: null };
   });
@@ -440,9 +440,10 @@ export function wireLogoHandover(dom) {
   frame();
 }
 
-function syncSegments() {
+export function syncSegments(force = false) {
   for (const segment of segments) {
-    const selected = segment.group.querySelector('button[aria-pressed=true]');
+    if (force) segment.key = null;
+    const selected = segment.group.querySelector('input:checked')?.closest('label') || segment.group.querySelector('button[aria-pressed=true]');
     if (!selected || segment.key === selected || !segment.group.offsetWidth) continue;
     segment.key = selected;
     segment.thumb.style.width = `${selected.offsetWidth}px`;

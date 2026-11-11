@@ -134,20 +134,21 @@ reopen any of them unless the user asks. The most load-bearing:
 - The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (its own set of up to 4) and `?list=` share links; non-EU tuition not collected
 
 The visual direction (one summary row per programme, colour only for
-verdicts, IBM Plex Sans, light only) is under STATUS.md "The look of it"; the
-round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
+verdicts, IBM Plex Sans, light and dark, following the system by default) is
+under STATUS.md "The look of it"; the round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
 in `plans/design-round2/proposal.md`, with mockup v4 in
 `plans/design-round2/mockup.html`; its later Leon decisions override the mockup.
 Most of `plans/` is local only (excluded in this clone's `.git/info/exclude`);
 only `plans/scan/` and `plans/backlog/` are in git, so on another machine
 STATUS.md is the record for the rest.
 
-- Colours belong only in the `:root` tokens in `css/styles.css`. Colour is
-  only for verdicts; blue is only for interaction (see STATUS.md for the
+- Colours belong only in the light `:root` tokens in `css/styles.css` and the one
+  approved screen-only dark override. `check-contrast.mjs` scores both themes.
+  Colour is only for verdicts; blue is only for interaction (see STATUS.md for the
   country-identity exception).
 - Keep one global soft-outline rule: `--edge-soft` must reach at least 3:1
-  on white, used only on the off switch and unset slider thumb. No grey
-  outline when on/set: the accent fill/ring supplies contrast. Never lower
+  on the active panel in either theme, used only on the off switch and unset
+  slider thumb. No grey outline when on/set: the accent fill/ring supplies contrast. Never lower
   `check-contrast.mjs`'s minimum.
 - Saved-state precedence is proposal §11 (`js/saved-state.js`): any recognised
   filter/sort parameter or `?list=` means URL state plus defaults, never merged
