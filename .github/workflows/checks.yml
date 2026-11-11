@@ -3,7 +3,7 @@
 # reaches main is the live site (audit L08).
 #
 # Job "checks" (check.mjs and check-contrast.mjs) runs for every push and pull
-# request. Job "smoke" (tools/smoke.mjs, real Chrome, about 9 minutes locally)
+# request. Job "smoke" (tools/smoke.mjs, real Chrome, about 17 minutes locally)
 # runs for pull requests only, so a push to main or to a branch without a PR
 # doesn't spend the time twice. Both read the repository and nothing else: no
 # secrets and no network after setup. See STATUS.md, "Running it".
