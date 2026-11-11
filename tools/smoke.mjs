@@ -5733,36 +5733,18 @@ async function runPr7Diag(base) {
   };
   const head = (page) => centre(page, `document.querySelector('#sheet-h')`);
   const flick = async (page, timestamped, how) => { await sheetOpen(page, how); await page.ev('__tr.length=0'); await drag(page, await head(page), { dy: 90, steps: 5, every: 16, timestamped }); };
+  // Second round: is the swallowed tap the fling's, and does cancelling
+  // touchmove while dragging (so Chrome never starts a scroll or a fling) cure it?
+  const inject = (page, js) => page.ev(`(()=>{window.__moves=[];document.addEventListener('touchmove',e=>__moves.push(e.defaultPrevented?1:0));${js}})()`);
+  const cancel = `e=>{if(e.cancelable)e.preventDefault()}`;
+  const flicked = async (page) => { await flick(page, true); const closed = await sheetShut(page); return { closed, moves: await page.ev('window.__moves&&__moves.join("")') }; };
   const probes = {
-    'A replay of the failing case': async (page) => {
-      await tap(page, `document.querySelector('#faq-open')`);
-      await page.waitFor(`({ok:document.querySelector('#faq-panel').open,why:'faq'})`, 5000, 'faq first');
-      await wait(500);
-      await tap(page, `document.querySelector('#faq-panel .faqp-x')`);
-      await wait(800);
-      await page.ev('window.scrollTo(0,0)');
-      await sheetOpen(page);
-      await drag(page, await centre(page, `document.querySelector('#filter-sheet .grab')`), { dy: 70, steps: 10, every: 30, lift: false });
-      await page.ev(frames); await touch(page, 'touchEnd'); await wait(600);
-      await drag(page, await head(page), { dy: 170, steps: 17, every: 30 });
-      await sheetShut(page);
-      await flick(page, true);
-      const closed = await sheetShut(page);
-      await page.ev('window.scrollTo(0,0)');
-      return { closed };
-    },
-    'B timestamped flick': async (page) => { await flick(page, true); return { closed: await sheetShut(page) }; },
-    'C plain flick, no timestamps': async (page) => { await flick(page, false); return { closed: await sheetShut(page) }; },
-    'D1 timestamped flick, then 0.6 s': async (page) => { await flick(page, true); const closed = await sheetShut(page); await wait(600); return { closed }; },
-    'D2 timestamped flick, then 1.2 s': async (page) => { await flick(page, true); const closed = await sheetShut(page); await wait(1200); return { closed }; },
-    'D timestamped flick, then 2 s': async (page) => { await flick(page, true); const closed = await sheetShut(page); await wait(2000); return { closed }; },
-    'J timestamped flick, then a touch on the bare header corner': async (page) => { await flick(page, true); const closed = await sheetShut(page); await touch(page, 'touchStart', { x: 3, y: 3 }); await touch(page, 'touchEnd'); await page.ev(frames); return { closed }; },
-    'K timestamped slow drag': async (page) => { await sheetOpen(page); await page.ev('__tr.length=0'); await drag(page, await head(page), { dy: 170, steps: 17, every: 30, timestamped: true }); return { closed: await sheetShut(page) }; },
-    'E slow plain drag': async (page) => { await sheetOpen(page); await page.ev('__tr.length=0'); await drag(page, await head(page), { dy: 170, steps: 17, every: 30 }); return { closed: await sheetShut(page) }; },
-    'F timestamped drag held still before lifting': async (page) => { await sheetOpen(page); await page.ev('__tr.length=0'); await drag(page, await head(page), { dy: 170, steps: 10, every: 16, hold: 200, timestamped: true }); return { closed: await sheetShut(page) }; },
-    'G sheet opened by touch, timestamped flick': async (page) => { await flick(page, true, 'touch'); return { closed: await sheetShut(page) }; },
-    'H timestamped flick, tap at once': async (page) => { await flick(page, true); return {}; },
-    'I timestamped flick, mouse click': async (page) => { await flick(page, true); return { closed: await sheetShut(page), mouse: true }; },
+    'B timestamped flick (control)': async (page) => { await inject(page, ''); return flicked(page); },
+    'D0 timestamped flick, then 0.3 s': async (page) => { const r = await flicked(page); await wait(300); return r; },
+    'L touchmove cancelled on the header and handle': async (page) => { await inject(page, `for(const n of document.querySelectorAll('#filter-sheet .grab,#filter-sheet .sheet-h'))n.addEventListener('touchmove',${cancel},{passive:false})`); return flicked(page); },
+    'L2 touchmove listener added at pointerdown': async (page) => { await inject(page, `document.querySelector('#filter-sheet').addEventListener('pointerdown',d=>d.target.addEventListener('touchmove',${cancel},{passive:false}),true)`); return flicked(page); },
+    'L3 touchmove cancelled on the whole sheet': async (page) => { await inject(page, `document.querySelector('#filter-sheet').addEventListener('touchmove',${cancel},{passive:false})`); return flicked(page); },
+    'L4 touchstart cancelled on the header': async (page) => { await inject(page, `document.querySelector('#sheet-h').addEventListener('touchstart',${cancel},{passive:false})`); return flicked(page); },
   };
   console.log(`DIAG browser ${JSON.stringify(await cdp.send('Browser.getVersion'))}`);
   for (const [label, prepare] of Object.entries(probes)) {
