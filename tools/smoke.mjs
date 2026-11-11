@@ -5684,77 +5684,6 @@ async function runFaqPanel(base, want) {
   }
 }
 
-// TEMPORARY (PR 7 CI diagnosis, round 3, 2026-11-11): on the Linux runner the
-// FAQ tap after a plain tap on the FAQ sheet's header and Escape opens nothing.
-async function runPr7Diag(base) {
-  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
-  const frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))';
-  const ready = `({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'page loading'})`;
-  const centre = (page, js) => page.ev(`(()=>{const r=(${js}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
-  const touch = (page, type, at) => page.send('Input.dispatchTouchEvent', { type, touchPoints: at ? [at] : [] });
-  const tap = async (page, js) => {
-    const at = await page.waitFor(`(async()=>{const el=${js};if(!el)return {why:'missing touch target'};
-      const r=el.getBoundingClientRect();await ${frames};const next=el.getBoundingClientRect(),x=next.left+next.width/2,y=next.top+next.height/2,hit=document.elementFromPoint(x,y);
-      return {ok:next.width>0&&next.height>0&&r.left===next.left&&r.top===next.top&&el.contains(hit),x,y,why:'touch target moving or covered by '+(hit?.id||hit?.tagName)}})()`, 5000, 'touch target ready');
-    await touch(page, 'touchStart', { x: at.x, y: at.y });
-    await touch(page, 'touchEnd');
-  };
-  const open = async () => {
-    const page = await openPage(`${base}?ui=sk`, 320, 844);
-    await page.waitFor(ready, 15000, 'page');
-    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'no-preference' }] });
-    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
-    await page.waitFor(ready, 15000, 'reload');
-    await page.ev('document.fonts.ready');
-    await page.ev(`(()=>{window.__tr=[];for(const t of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','mousedown','mouseup','click','dblclick','focusin','keydown','contextmenu'])
-      document.addEventListener(t,e=>__tr.push([t,e.target.id||e.target.tagName||'doc',Math.round(e.timeStamp),Math.round(performance.now()),e.defaultPrevented?1:0,e.detail||0]),true)})()`);
-    return page;
-  };
-  const settled = (page, sel, want) => page.waitFor(`(()=>{const d=document.querySelector('${sel}');return {ok:d.open===${want}&&!d.getAnimations().some(a=>a.playState==='running')&&!d.style.transform,why:'open '+d.open}})()`, 5000, `${sel} ${want}`);
-  const faqByScript = async (page) => { await page.ev(`document.querySelector('#faq-open').click()`); await settled(page, '#faq-panel', true); };
-  const headerTap = async (page, sel = '#faq-h') => { const at = await centre(page, `document.querySelector('${sel}')`); await touch(page, 'touchStart', at); await page.ev(frames); await touch(page, 'touchEnd'); };
-  const escape = async (page, sel = '#faq-panel') => { await page.key('Escape', 'Escape', 27); await settled(page, sel, false); };
-  const cancel = `e=>{if(e.cancelable)e.preventDefault()}`;
-  const probes = {
-    'A replay: header touched during the paused opening slide, Escape': async (page) => {
-      await page.ev(`document.querySelector('#faq-open').click()`);
-      await page.waitFor(`({ok:document.querySelector('#faq-panel').getAnimations().some(a=>a.transitionProperty==='transform'),why:'no opening slide'})`, 3000, 'opening transition');
-      await page.ev(`(()=>{const a=document.querySelector('#faq-panel').getAnimations().find(a=>a.transitionProperty==='transform');a.pause();a.currentTime=40})()`);
-      await headerTap(page); await settled(page, '#faq-panel', true); await escape(page); return {};
-    },
-    'B header tap on the open sheet, Escape': async (page) => { await faqByScript(page); await headerTap(page); await escape(page); return {}; },
-    'C no header tap, Escape (control)': async (page) => { await faqByScript(page); await escape(page); return {}; },
-    'D header tap, Escape, then 0.6 s': async (page) => { await faqByScript(page); await headerTap(page); await escape(page); await wait(600); return {}; },
-    'E tap on a question in the body, Escape': async (page) => { await faqByScript(page); await tap(page, `document.querySelector('#faq-panel summary')`); await wait(400); await escape(page); return {}; },
-    'F header tap with touchstart cancelled, Escape': async (page) => { await page.ev(`for(const n of document.querySelectorAll('#faq-panel .grab,#faq-panel .faqp-h'))n.addEventListener('touchstart',${cancel},{passive:false})`); await faqByScript(page); await headerTap(page); await escape(page); return {}; },
-    'G header tap with touchend cancelled, Escape': async (page) => { await page.ev(`for(const n of document.querySelectorAll('#faq-panel .grab,#faq-panel .faqp-h'))n.addEventListener('touchend',${cancel},{passive:false})`); await faqByScript(page); await headerTap(page); await escape(page); return {}; },
-    'H Filters header tap, Escape': async (page) => { await page.ev(`document.querySelector('#f-more').click()`); await settled(page, '#filter-sheet', true); await headerTap(page, '#sheet-h'); await escape(page, '#filter-sheet'); return {}; },
-    'I header tap, Escape, mouse click': async (page) => { await faqByScript(page); await headerTap(page); await escape(page); return { mouse: true }; },
-  };
-  console.log(`DIAG browser ${(await cdp.send('Browser.getVersion')).product}`);
-  for (const [label, prepare] of Object.entries(probes)) {
-    watchdog.refresh();
-    let page;
-    try {
-      page = await open();
-      const info = await prepare(page);
-      await page.ev(`__tr.push(['MARK','before tap',0,Math.round(performance.now())])`);
-      const taps = [];
-      for (let n = 0; n < 3; n++) {
-        if (info.mouse) await page.click(`document.querySelector('#faq-open')`, 'FAQ'); else await tap(page, `document.querySelector('#faq-open')`);
-        let ok = true;
-        try { await page.waitFor(`({ok:document.querySelector('#faq-panel').open,why:'closed'})`, 1500, 'open'); } catch { ok = false; }
-        taps.push(ok);
-        await page.ev(`__tr.push(['MARK',${JSON.stringify(`tap ${n + 1} `)}+${ok ? "'opened'" : "'did nothing'"},0,Math.round(performance.now())])`);
-        if (ok) break;
-      }
-      console.log(`DIAG ${label}: taps ${JSON.stringify(taps)} errors ${JSON.stringify(page.errors.map((e) => e.text))} trace ${JSON.stringify(await page.ev('__tr.slice(-60)'))}`);
-    } catch (e) { console.log(`DIAG ${label}: ERROR ${e.message}`); } finally { await page?.close(); }
-  }
-}
-
 // PR 7 UI polish (A09-A12), on touch phones at 320, 375 and 390 px, in EN
 // and SK, light and dark, and with Reduce Motion. Each combination checks the
 // points box, the FAQ answers and close button, the settings alignment and a
@@ -6137,7 +6066,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runPr7Diag };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6178,11 +6107,6 @@ async function main() {
     await runNonModalSheet(base, want);
     await runColdSheet(base, want);
     await runSheetPacing(base, want);
-  } else if (process.env.GITHUB_ACTIONS) {
-    // TEMPORARY: one short diagnostic run on the Linux runner, never a pass.
-    await runPr7Diag(base);
-    await runPr7Polish(base).catch((e) => console.log(`DIAG real section: ${e.message}`));
-    throw new Error('diagnostic-only run (PR 7 CI diagnosis); the full smoke test did not run');
   } else {
     await runTheme(base);
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);
