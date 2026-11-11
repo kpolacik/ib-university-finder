@@ -6084,10 +6084,18 @@ async function runPr7Polish(base) {
             assert(fromClose === 0, `the close button dragged the sheet ${fromClose} px`);
             await settledOpen('after the close button');
             // Escape mid-drag closes normally; the lifted finger changes nothing.
+            // Its last move is still cancelled: the drag is over but the finger
+            // is down, and on Linux Chrome that move and the lift flung and ate
+            // the reopening tap below (CI, 2026-11-11).
+            await page.ev(`(()=>{window.__moves=[];window.__onMove??=document.addEventListener('touchmove',e=>window.__moves.push(e.defaultPrevented))||true})()`);
             await drag(page, head, { dy: 60, steps: 4, every: 16, lift: false });
             await page.key('Escape', 'Escape', 27);
+            await page.ev(`window.__moves.push('escape')`);
             await touch(page, 'touchMove', { x: head.x, y: head.y + 200 });
             await touch(page, 'touchEnd');
+            const moves = await page.ev('window.__moves');
+            // Chrome delivers one touchmove a frame, so only the order is fixed.
+            assert(moves.at(-1) === true && moves.indexOf('escape') > 0 && moves.every(Boolean), `touchmove not cancelled through Escape mid-drag: ${JSON.stringify(moves)}`);
             await shut(page, s);
             assert(await page.ev(`document.activeElement.id==='${s.opener.slice(1)}'`), 'focus after Escape mid-drag');
             await opened(page, s);

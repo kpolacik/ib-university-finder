@@ -9,6 +9,9 @@
 // page as touch and pointer events but never became a click (seen on Linux
 // Chrome 156, 2026-11-11, for about 0.3 s after the release). So the regions
 // also cancel touchmove while a drag is on, which leaves no gesture to fling.
+// A drag can end with the finger still down (Escape, a rotation, a lost
+// capture); one more move and a lift then flung just the same, so the
+// cancelling lasts until that finger is up.
 //
 // While the finger is down the sheet follows it directly (an inline
 // transform, its CSS transition off). On release it either closes through the
@@ -69,6 +72,8 @@ function currentOffset(sheet) {
 // owner's own transition, and a late pointer event finds nothing to do.
 export function wireSheetDrag(sheet, { regions, enabled, hold, release, close }) {
   let drag = null;
+  // The touch that began the last drag is still down; it can outlive the drag.
+  let finger = false;
 
   // Each frame's pointermove may stand for several finger positions; the
   // coalesced ones, where the browser has them, make the speed steadier.
@@ -99,6 +104,7 @@ export function wireSheetDrag(sheet, { regions, enabled, hold, release, close })
     if (!region || !sheet.contains(region) || event.target.closest(DRAG_INTERACTIVE)) return;
     drag = { id: event.pointerId, y: event.clientY, base: currentOffset(sheet), offset: 0, samples: [],
       height: sheet.getBoundingClientRect().height };
+    finger = event.pointerType === 'touch';
     try { sheet.setPointerCapture?.(event.pointerId); } catch { /* the pointer is already gone */ }
     sheet.style.transition = 'none';
     hold();
@@ -117,9 +123,11 @@ export function wireSheetDrag(sheet, { regions, enabled, hold, release, close })
   }
   // No scroll gesture, so no fling to eat the next tap (see the top of this
   // file). Only on the drag regions, so the body's own scrolling never waits
-  // for a listener, and only while a drag is on, so their buttons keep taps.
+  // for a listener, and only for a touch that began a drag, so their buttons
+  // keep taps. Touch events keep going to the element the finger landed on.
   for (const region of sheet.querySelectorAll?.(regions) ?? []) {
-    region.addEventListener('touchmove', (event) => { if (drag && event.cancelable) event.preventDefault(); }, { passive: false });
+    region.addEventListener('touchmove', (event) => { if ((drag || finger) && event.cancelable) event.preventDefault(); }, { passive: false });
+    for (const type of ['touchend', 'touchcancel']) region.addEventListener(type, () => { finger = false; });
   }
   // A rotation or a breakpoint change mid-drag: let go and settle back.
   globalThis.addEventListener?.('resize', () => { if (drag) end(false); });

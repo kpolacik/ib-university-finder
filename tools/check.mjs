@@ -8767,6 +8767,25 @@ appCheck('A12 Filters: touchmove on the handle and header is cancelled while a d
   fire(done, 'pointerdown', pointer(100, 0)); fire(done, 'pointermove', pointer(400, 50));
   return !before && during.every(Boolean) && !cancelled(done);
 });
+// The same fling by another road (PR 7 CI, 2026-11-11): Escape ended the drag
+// with the finger still down, and its next move was no longer cancelled.
+appCheck('A12 Filters: a touch that began a drag keeps its touchmove cancelled after Escape or a lost capture, until the finger lifts', ({ get, fire, advance }) => {
+  const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2'), touching = { pointerType: 'touch' };
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  const cancelled = (node) => !fire(node, 'touchmove', { cancelable: true });
+  const results = [];
+  for (const [how, lift] of [['escape', 'touchend'], ['lost', 'touchcancel']]) {
+    fire(get('f-more'), 'click'); advance(600);
+    fire(header, 'pointerdown', pointer(100, 1000, touching)); fire(header, 'pointermove', pointer(140, 1016, touching));
+    if (how === 'escape') fire(get('sheet-h'), 'keydown', { key: 'Escape' }); else fire(sheet, 'lostpointercapture', pointer(140, 1020, touching));
+    results.push(sheet.open === (how === 'lost') && sheet.style.transform === undefined, cancelled(header), cancelled(header));
+    fire(header, lift);
+    results.push(!cancelled(header));
+    if (sheet.open) fire(get('sheet-done'), 'click');
+    advance(600);
+  }
+  return results.every(Boolean);
+});
 appCheck('A12 Filters: Done, Escape or a reopen during a drag let go of the finger, release the row hold, and a late move does nothing', ({ get, fire, run, advance }) => {
   const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2');
   sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
