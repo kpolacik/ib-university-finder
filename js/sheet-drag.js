@@ -4,6 +4,11 @@
 // phone: the body scrolls, its controls take taps, and a side panel from
 // 600 px never moves. touch-action:none on those two regions only
 // (styles.css) stops the browser from turning the finger into a scroll.
+// Chrome still read a fast flick there as a scroll gesture that ends in a
+// fling, and spent the next tap on stopping that fling: the tap reached the
+// page as touch and pointer events but never became a click (seen on Linux
+// Chrome 156, 2026-11-11, for about 0.3 s after the release). So the regions
+// also cancel touchmove while a drag is on, which leaves no gesture to fling.
 //
 // While the finger is down the sheet follows it directly (an inline
 // transform, its CSS transition off). On release it either closes through the
@@ -109,6 +114,12 @@ export function wireSheetDrag(sheet, { regions, enabled, hold, release, close })
   });
   for (const type of ['pointercancel', 'lostpointercapture']) {
     sheet.addEventListener(type, (event) => { if (drag && event.pointerId === drag.id) end(false); });
+  }
+  // No scroll gesture, so no fling to eat the next tap (see the top of this
+  // file). Only on the drag regions, so the body's own scrolling never waits
+  // for a listener, and only while a drag is on, so their buttons keep taps.
+  for (const region of sheet.querySelectorAll?.(regions) ?? []) {
+    region.addEventListener('touchmove', (event) => { if (drag && event.cancelable) event.preventDefault(); }, { passive: false });
   }
   // A rotation or a breakpoint change mid-drag: let go and settle back.
   globalThis.addEventListener?.('resize', () => { if (drag) end(false); });

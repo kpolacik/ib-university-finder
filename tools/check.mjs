@@ -8748,6 +8748,25 @@ appCheck('A12 Filters: a quick downward flick closes; the close button, the body
   fire(header, 'pointerdown', pointer(100, 0)); fire(header, 'pointermove', pointer(400, 50));
   return flicked && !sheet.open && sheet.style.transform === undefined && run('sheetDragHold') === false;
 });
+// Linux Chrome 156 turned a fast flick on the header into a fling and spent the
+// next tap on stopping it: touch and pointer events arrived, no click
+// (PR 7 CI, 2026-11-11). A cancelled touchmove leaves no gesture to fling.
+appCheck('A12 Filters: touchmove on the handle and header is cancelled while a drag is on, and never before it, after it, on Done or in the body', ({ get, fire, advance }) => {
+  const sheet = get('filter-sheet'), grab = sheet.querySelector('.grab'), header = sheet.querySelector('.sheet-h h2'), done = get('sheet-done'), body = sheet.querySelector('.sheet-b');
+  sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };
+  fire(get('f-more'), 'click'); advance(600);
+  const cancelled = (node, cancelable = true) => !fire(node, 'touchmove', { cancelable });
+  const before = [grab, header, done, body].some((node) => cancelled(node));
+  const during = [];
+  for (const region of [grab, header]) {
+    dragSheet(fire, region, [[10, 100], [10, 100]]);
+    during.push(cancelled(region), !cancelled(region, false), !cancelled(body));
+    fire(region, 'pointerup', pointer(120, 1300));
+    during.push(sheet.open && !cancelled(region));
+  }
+  fire(done, 'pointerdown', pointer(100, 0)); fire(done, 'pointermove', pointer(400, 50));
+  return !before && during.every(Boolean) && !cancelled(done);
+});
 appCheck('A12 Filters: Done, Escape or a reopen during a drag let go of the finger, release the row hold, and a late move does nothing', ({ get, fire, run, advance }) => {
   const sheet = get('filter-sheet'), header = sheet.querySelector('.sheet-h h2');
   sheet.rect = { top: 200, bottom: 844, left: 0, right: 390, width: 390, height: 644 };

@@ -5684,90 +5684,6 @@ async function runFaqPanel(base, want) {
   }
 }
 
-// TEMPORARY (PR 7 CI diagnosis, 2026-11-11): why does the first FAQ tap after
-// the Filters flick open nothing on the Linux runner? Each probe replays one
-// variant of what precedes that tap and prints the page's own event trace.
-async function runPr7Diag(base) {
-  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
-  const frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))';
-  const ready = `({ok:document.querySelector('#loading')?.hidden&&!window.__oldPage,why:'page loading'})`;
-  const centre = (page, js) => page.ev(`(()=>{const r=(${js}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
-  const touch = (page, type, at, timestamp) => page.send('Input.dispatchTouchEvent', { type, touchPoints: at ? [at] : [], ...(timestamp === undefined ? {} : { timestamp }) });
-  const tap = async (page, js) => {
-    const at = await page.waitFor(`(async()=>{const el=${js};if(!el)return {why:'missing touch target'};
-      const r=el.getBoundingClientRect();await ${frames};const next=el.getBoundingClientRect(),x=next.left+next.width/2,y=next.top+next.height/2,hit=document.elementFromPoint(x,y);
-      return {ok:next.width>0&&next.height>0&&r.left===next.left&&r.top===next.top&&el.contains(hit),x,y,why:'touch target moving or covered by '+(hit?.id||hit?.tagName)}})()`, 5000, 'touch target ready');
-    await touch(page, 'touchStart', { x: at.x, y: at.y });
-    await touch(page, 'touchEnd');
-  };
-  const drag = async (page, from, { dy, steps = 10, every = 16, hold = 0, lift = true, timestamped = false }) => {
-    const began = Date.now() / 1000, time = (k) => timestamped ? began + (k * every + (k > steps ? hold : 0)) / 1000 : undefined;
-    await touch(page, 'touchStart', from, time(0));
-    for (let k = 1; k <= steps; k++) { await wait(every); await touch(page, 'touchMove', { x: from.x, y: Math.round(from.y + (dy * k) / steps) }, time(k)); }
-    if (hold) await wait(hold);
-    if (lift) await touch(page, 'touchEnd', undefined, time(steps + 1));
-  };
-  const open = async () => {
-    const page = await openPage(`${base}?ui=en`, 320, 844);
-    await page.waitFor(ready, 15000, 'page');
-    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
-    await page.waitFor(ready, 15000, 'reload');
-    await page.ev('document.fonts.ready');
-    await page.ev(`(()=>{window.__tr=[];for(const t of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','gotpointercapture','lostpointercapture','mousedown','mouseup','click','focusin','contextmenu','scroll'])
-      document.addEventListener(t,e=>__tr.push([t,e.target.id||e.target.tagName||'doc',Math.round(e.timeStamp),Math.round(performance.now())]),true)})()`);
-    return page;
-  };
-  const mark = (page, what) => page.ev(`__tr.push(['MARK',${JSON.stringify(what)},0,Math.round(performance.now())])`);
-  const sheetOpen = async (page, how = 'mouse') => {
-    if (how === 'mouse') await page.click(`document.querySelector('#f-more')`, 'Filters'); else await tap(page, `document.querySelector('#f-more')`);
-    await page.waitFor(`({ok:document.querySelector('#filter-sheet').open&&!document.querySelector('#filter-sheet').getAnimations({subtree:true}).some(a=>a.playState==='running'),why:'sheet'})`, 5000, 'sheet open');
-  };
-  const sheetShut = async (page) => {
-    let closed = true;
-    try { await page.waitFor(`(()=>{const d=document.querySelector('#filter-sheet');return {ok:!d.open&&!d.getAnimations().some(a=>a.playState==='running')&&!d.style.transform,why:'open'}})()`, 3000, 'shut'); } catch { closed = false; }
-    if (!closed) { await page.key('Escape', 'Escape', 27); await wait(600); }
-    await page.waitFor(`({ok:!document.querySelector('#filter-sheet').classList.contains('is-sliding'),why:'rows still paused'})`, 3000, 'rows resumed');
-    return closed;
-  };
-  const head = (page) => centre(page, `document.querySelector('#sheet-h')`);
-  const flick = async (page, timestamped, how) => { await sheetOpen(page, how); await page.ev('__tr.length=0'); await drag(page, await head(page), { dy: 90, steps: 5, every: 16, timestamped }); };
-  // Second round: is the swallowed tap the fling's, and does cancelling
-  // touchmove while dragging (so Chrome never starts a scroll or a fling) cure it?
-  const inject = (page, js) => page.ev(`(()=>{window.__moves=[];document.addEventListener('touchmove',e=>__moves.push(e.defaultPrevented?1:0));${js}})()`);
-  const cancel = `e=>{if(e.cancelable)e.preventDefault()}`;
-  const flicked = async (page) => { await flick(page, true); const closed = await sheetShut(page); return { closed, moves: await page.ev('window.__moves&&__moves.join("")') }; };
-  const probes = {
-    'B timestamped flick (control)': async (page) => { await inject(page, ''); return flicked(page); },
-    'D0 timestamped flick, then 0.3 s': async (page) => { const r = await flicked(page); await wait(300); return r; },
-    'L touchmove cancelled on the header and handle': async (page) => { await inject(page, `for(const n of document.querySelectorAll('#filter-sheet .grab,#filter-sheet .sheet-h'))n.addEventListener('touchmove',${cancel},{passive:false})`); return flicked(page); },
-    'L2 touchmove listener added at pointerdown': async (page) => { await inject(page, `document.querySelector('#filter-sheet').addEventListener('pointerdown',d=>d.target.addEventListener('touchmove',${cancel},{passive:false}),true)`); return flicked(page); },
-    'L3 touchmove cancelled on the whole sheet': async (page) => { await inject(page, `document.querySelector('#filter-sheet').addEventListener('touchmove',${cancel},{passive:false})`); return flicked(page); },
-    'L4 touchstart cancelled on the header': async (page) => { await inject(page, `document.querySelector('#sheet-h').addEventListener('touchstart',${cancel},{passive:false})`); return flicked(page); },
-  };
-  console.log(`DIAG browser ${JSON.stringify(await cdp.send('Browser.getVersion'))}`);
-  for (const [label, prepare] of Object.entries(probes)) {
-    watchdog.refresh();
-    let page;
-    try {
-      page = await open();
-      const info = await prepare(page);
-      await mark(page, 'before tap');
-      const taps = [];
-      for (let n = 0; n < 3; n++) {
-        if (info.mouse) await page.click(`document.querySelector('#faq-open')`, 'FAQ'); else await tap(page, `document.querySelector('#faq-open')`);
-        let ok = true;
-        try { await page.waitFor(`({ok:document.querySelector('#faq-panel').open,why:'closed'})`, 1500, 'open'); } catch { ok = false; }
-        taps.push(ok);
-        await mark(page, `tap ${n + 1} ${ok ? 'opened' : 'did nothing'}`);
-        if (ok) break;
-      }
-      console.log(`DIAG ${label}: taps ${JSON.stringify(taps)} ${JSON.stringify(info)} errors ${JSON.stringify(page.errors.map((e) => e.text))} trace ${JSON.stringify(await page.ev('__tr.slice(-70)'))}`);
-    } catch (e) { console.log(`DIAG ${label}: ERROR ${e.message}`); } finally { await page?.close(); }
-  }
-}
-
 // PR 7 UI polish (A09-A12), on touch phones at 320, 375 and 390 px, in EN
 // and SK, light and dark, and with Reduce Motion. Each combination checks the
 // points box, the FAQ answers and close button, the settings alignment and a
@@ -5817,8 +5733,6 @@ async function runPr7Polish(base) {
     await page.waitFor(ready, 15000, 'reload');
     await page.waitFor(`({ok:document.documentElement.dataset.theme===${JSON.stringify(scheme)}&&document.documentElement.lang===${JSON.stringify(ui)},why:document.documentElement.dataset.theme+'/'+document.documentElement.lang})`, 5000, 'theme and language');
     await page.ev('document.fonts.ready');
-    await page.ev(`(()=>{window.__tr=[];for(const t of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','gotpointercapture','lostpointercapture','mousedown','mouseup','click','focusin','contextmenu','scroll'])
-      document.addEventListener(t,e=>__tr.push([t,e.target.id||e.target.tagName||'doc',Math.round(e.timeStamp),Math.round(performance.now())]),true)})()`);
     return page;
   };
   const sheets = {
@@ -5828,7 +5742,7 @@ async function runPr7Polish(base) {
   const opened = async (page, s) => {
     await s.open(page);
     await page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}'),b=document.querySelector('${s.opener}'),r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
-      return {ok:d.open,why:JSON.stringify({open:d.open,scroll:scrollY,scale:visualViewport.scale,focus:document.activeElement.id,hit:hit?.id||hit?.tagName,rect:[r.x,r.y,r.width,r.height],now:Math.round(performance.now()),trace:(window.__tr||[]).slice(-24)})}})()`, 5000, `${s.sheet} open`);
+      return {ok:d.open,why:JSON.stringify({open:d.open,scroll:scrollY,scale:visualViewport.scale,focus:document.activeElement.id,hit:hit?.id||hit?.tagName,rect:[r.x,r.y,r.width,r.height]})}})()`, 5000, `${s.sheet} open`);
     await page.waitFor(still(s.sheet), 5000, `${s.sheet} settled`);
   };
   const shut = (page, s) => page.waitFor(`(()=>{const d=document.querySelector('${s.sheet}');return {ok:!d.open&&!d.getAnimations().some(a=>a.playState==='running')&&!d.style.transform,why:'open '+d.open+' transform '+d.style.transform}})()`, 5000, `${s.sheet} closed`);
@@ -5955,8 +5869,15 @@ async function runPr7Polish(base) {
           if (!c.reduce) assert(after > 120, `first frame after release at ${after} px`);
           await opened(page, s);
           await page.ev(`(()=>{window.__dragSamples=[];const d=document.querySelector('${s.sheet}');for(const t of ['pointerdown','pointermove','pointerup'])d.addEventListener(t,e=>window.__dragSamples.push([t,e.timeStamp,e.clientY]),{passive:true})})()`);
+          // Linux Chrome flings after a flick this fast and spends the next tap
+          // on stopping it, so the FAQ never opened on CI (2026-11-11). The
+          // sheet cancels touchmove while it is dragged; macOS Chrome never
+          // flings here, so this is the only sign of the fix on a Mac.
+          await page.ev(`(()=>{window.__moves=[];window.__onMove??=document.addEventListener('touchmove',e=>window.__moves.push(e.defaultPrevented))||true})()`);
           await drag(page, await centre(page, `document.querySelector('${s.header}')`), { dy: 90, steps: 5, every: 16, timestamped: true });
           try { await shut(page, s); } catch (e) { throw new Error(e.message+' flick samples '+JSON.stringify(await page.ev('window.__dragSamples'))); }
+          const moves = await page.ev('window.__moves');
+          assert(moves.length > 0 && moves.every(Boolean), `touchmove not cancelled during the flick: ${JSON.stringify(moves)}`);
           await page.waitFor(`({ok:!document.querySelector('${s.sheet}').classList.contains('is-sliding'),why:'rows still paused'})`, 3000, 'rows resumed');
         });
       }
@@ -6132,7 +6053,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runPr7Diag };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6173,11 +6094,6 @@ async function main() {
     await runNonModalSheet(base, want);
     await runColdSheet(base, want);
     await runSheetPacing(base, want);
-  } else if (process.env.GITHUB_ACTIONS) {
-    // TEMPORARY: one short diagnostic run on the Linux runner, never a pass.
-    await runPr7Diag(base);
-    await runPr7Polish(base).catch((e) => console.log(`DIAG real section: ${e.message}`));
-    throw new Error('diagnostic-only run (PR 7 CI diagnosis); the full smoke test did not run');
   } else {
     await runTheme(base);
     for (const [width, height] of WIDTHS) await runWidth(base, width, height, want);

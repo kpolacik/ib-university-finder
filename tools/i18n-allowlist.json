@@ -1256,6 +1256,7 @@
       "pointerup",
       "px)",
       "resize",
+      "touchmove",
       "transform",
       "transition",
       "translateY("
