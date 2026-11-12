@@ -104,7 +104,7 @@ async function expectations() {
     if (uni.country) countries.set(uni.country, (countries.get(uni.country) || 0) + 1);
   }
   const top = (m) => [...m].sort((a, b) => b[1] - a[1])[0]?.[0];
-  return { total: programmes.length, fallbackTotal, city: top(cities), country: top(countries) };
+  return { total: programmes.length, fallbackTotal, city: top(cities), country: top(countries), countryCount: countries.size };
 }
 
 // --- Finding Chrome -----------------------------------------------------------
@@ -1141,6 +1141,8 @@ async function runI18n(base) {
 }
 
 async function runRound2(base) {
+  // The data's own totals, so adding universities never needs an edit here.
+  const { total: dataTotal, countryCount } = await expectations();
   for (const width of [1280, 390]) {
     const page = await openPage(`${base}?ui=en&sort=deadline`, width, width === 390 ? 844 : 900);
     const ready = `({ok:document.querySelector('#loading')?.hidden && !window.__oldPage,why:'navigation or loading pending'})`;
@@ -1222,7 +1224,7 @@ async function runRound2(base) {
         await page.ev(`document.querySelector('.ob-body').scrollTop=100000`);
         await next();
         assert(await page.ev(`document.querySelector('.ob-body').scrollTop===0 && document.activeElement.id==='ob-title'`),'new step heading scrolled out of view');
-        assert(await page.ev(`document.querySelector('.ob-bar i').style.transform==='scaleX(0.75)' && document.querySelectorAll('#onboarding .flag').length===11`),'countries or progress incorrect');
+        assert(await page.ev(`document.querySelector('.ob-bar i').style.transform==='scaleX(0.75)' && document.querySelectorAll('#onboarding .flag').length===${countryCount}`),'countries or progress incorrect');
         await page.click(`[...document.querySelectorAll('#onboarding .chip')].find(n=>n.textContent==='Ireland')`,'Ireland');
         await next();
         assert(await page.ev(`document.querySelector('#ob-budget').value==='' && document.querySelector('.ob-bar i').style.transform==='scaleX(1)'`),'budget not blank or progress not 100%');
@@ -1378,13 +1380,13 @@ async function runRound2(base) {
       if(width>=600)await check(width,'R2E','country changes keep the full count with bounded rows',async()=>{
         await page.ev(`document.querySelector('#f-clear').click();document.activeElement.blur();window.scrollTo(0,0)`);
         const settled = (count) => `({ok:document.querySelector('#results>li.item')?.getAttribute('aria-setsize')==='${count}' && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'rows or retired list still pending'})`;
-        await page.waitFor(settled(2915),10000,'all rows before country change');
+        await page.waitFor(settled(dataTotal),10000,'all rows before country change');
         const ireland = `[...document.querySelectorAll('#f-countries input')].find(n=>n.value==='Ireland')`;
         for(let i=0;i<2;i++){
           await page.ev(`${ireland}.click()`);
           await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length>0 && Number(document.querySelector('#results>li.item').getAttribute('aria-setsize'))===Number(document.querySelector('#result-count b').textContent.replace(/[^0-9]/g,'')) && document.querySelectorAll('#results>li.item').length<100 && !document.querySelector('.results[aria-hidden=true]'),why:'narrowed rows still pending'})`,10000,'settled Ireland rows');
           await page.ev(`${ireland}.click()`);
-          await page.waitFor(settled(2915),10000,'settled full catalogue');
+          await page.waitFor(settled(dataTotal),10000,'settled full catalogue');
         }
         // L09 timing is a separate paired run: AC power, quiet machine, 4x CPU.
       });
@@ -3080,7 +3082,7 @@ async function runAlignListCompare(base) {
   // places where a word continues on the next line: "porovnani|a". A break after
   // a hyphen or slash is a real break opportunity, not a split word.
   const TEXT = `window.__lines=(el)=>{const tops=new Set();const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while((n=w.nextNode())){if(n.parentElement.closest('.visually-hidden'))continue;const r=document.createRange();r.selectNodeContents(n);for(const b of r.getClientRects())if(b.width>0.5)tops.add(Math.round(b.top))}return tops.size};
-    window.__splits=(el)=>{const out=[];const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while((n=w.nextNode())){if(n.parentElement.closest('.visually-hidden'))continue;const s=n.textContent;let prev=null;for(let i=0;i<s.length;i++){if(/[\\s\\u2060]/.test(s[i])){prev=null;continue}const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);const b=r.getClientRects()[0];if(!b)continue;if(prev!==null&&b.top>prev+2&&!/[-\\/–]/.test(s[i-1])){let a=i,z=i;while(a>0&&!/\\s/.test(s[a-1]))a--;while(z<s.length&&!/\\s/.test(s[z]))z++;out.push({word:s.slice(a,z),at:i-a,node:n,el})}prev=b.top}}return out};
+    window.__splits=(el)=>{const out=[];const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while((n=w.nextNode())){if(n.parentElement.closest('.visually-hidden'))continue;const s=n.textContent;let prev=null;for(let i=0;i<s.length;i++){if(/[\\s\\u2060]/.test(s[i])){prev=null;continue}const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);const b=r.getClientRects()[0];if(!b)continue;if(prev!==null&&b.top>prev+2&&!/[-\\/–]/.test(s[i-1])){let a=i,z=i;while(a>0&&!/\\s/.test(s[a-1]))a--;while(z<s.length&&!/\\s/.test(s[z]))z++;out.push({word:s.slice(a,z),at:i-a,node:n,el,top:b.top})}prev=b.top}}return out};
     window.__wordWidth=(el,word)=>{const c=document.createElement('span');const s=getComputedStyle(el);c.style.cssText='position:absolute;visibility:hidden;white-space:nowrap;font:'+s.font+';letter-spacing:'+s.letterSpacing;c.textContent=word;document.body.append(c);const w=c.getBoundingClientRect().width;c.remove();return w};true`;
   const { readSheets } = await import('../js/data.js');
   const data = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
@@ -3280,7 +3282,7 @@ async function runAlignListCompare(base) {
         const measure = `(()=>{const box=document.querySelector('.cmp-scroll'),bx=box.getBoundingClientRect();const ths=[...document.querySelectorAll('th.cmp-p')];
           const cols=ths.map(th=>{const t=th.getBoundingClientRect(),s=th.querySelector('.cmp-save'),r=s.getBoundingClientRect(),x=th.querySelector('.cmp-x .ic').getBoundingClientRect(),cs=getComputedStyle(th);
             const content=th.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
-            const needless=[...__splits(th.querySelector('.cmp-n')),...__splits(th.querySelector('.cmp-u'))].filter(p=>__wordWidth(p.el,p.word)<=content-0.5).map(p=>p.word);
+            const needless=[...__splits(th.querySelector('.cmp-n')),...__splits(th.querySelector('.cmp-u'))].filter(p=>__wordWidth(p.el,p.word)<=content-(p.top<th.getBoundingClientRect().top+parseFloat(cs.paddingTop)+34?36:0)-0.5).map(p=>p.word);
             const textRects=[th.querySelector('.cmp-n'),th.querySelector('.cmp-u')].flatMap(e=>{const g=document.createRange();g.selectNodeContents(e);return [...g.getClientRects()]});
             const xOverText=textRects.some(q=>q.left<x.right&&x.left<q.right&&q.top<x.bottom&&x.top<q.bottom);
             return {nameGap:Math.round(r.top-th.querySelector('.cmp-u').getBoundingClientRect().bottom),rad:[getComputedStyle(s).borderTopLeftRadius,getComputedStyle(th.querySelector('.cmp-x')).borderTopLeftRadius],top:Math.round(r.top*2)/2,below:Math.round(t.bottom-r.bottom),w:Math.round(r.width*10)/10,inside:r.left>=t.left-0.5&&r.right<=t.right+0.5,clip:s.scrollWidth>s.clientWidth+1,h:r.height,needless,xOverText}});
@@ -3294,7 +3296,10 @@ async function runAlignListCompare(base) {
         await settle(page);
         // Dictionary hyphenation ("Überset-zen") is a real break; with it off,
         // a word that still splits was split by the layout, which is only
-        // allowed when the word is wider than its column.
+        // allowed when the word is wider than its column. The first lines of a name
+        // share the column with the "x" corner (a 36 x 34 px float in styles.css),
+        // so there the room is 36 px less: Chrome does not break "Electrical/Electronic"
+        // after its slash, so it splits at 124 px when the word is 136.
         const m = await page.ev(`(()=>{const s=document.createElement('style');s.id='al-nohyph';s.textContent='.cmp-t th.cmp-p :is(.cmp-n,.cmp-u){hyphens:manual!important}';document.head.append(s);try{return ${measure}}finally{s.remove()}})()`);
         const tops = new Set(m.cols.map((c) => c.top)), belows = new Set(m.cols.map((c) => c.below)), widths = new Set(m.cols.map((c) => c.w));
         // Every Save stays on one line at the foot of the header (Leon, 2026-11-07:
@@ -5667,7 +5672,10 @@ async function runFaqPanel(base, want) {
       });
       // Last: scrolling to the footer mounts rows there, which would crowd the timing checks above.
       await check(width, 'FAQ footer', 'the footer has no questions, only a "FAQ" button that opens the panel without scrolling and gets focus back on close', async () => {
-        await page.ev(`document.querySelector('.foot').scrollIntoView({block:'end',behavior:'instant'})`);
+        // The list's height keeps changing as rows near the end mount, longer with a
+        // bigger catalogue, so scroll again until the footer is really in view, with
+        // the page height unchanged for half a second.
+        await page.waitFor(`(()=>{const f=document.querySelector('.foot');f.scrollIntoView({block:'end',behavior:'instant'});const r=f.getBoundingClientRect(),h=document.documentElement.scrollHeight,inView=r.top>=0&&r.bottom<=innerHeight+1,now=performance.now();if(!inView||window.__footH!==h||!window.__footSince)window.__footSince=now;window.__footH=h;return {ok:inView&&now-window.__footSince>=500,why:'the footer is not settled in view yet'}})()`, 15000, 'the footer');
         await page.ev('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         const y = await page.ev('scrollY');
         assert(await page.ev(`!document.querySelector('.foot details')&&!document.querySelector('#faq')&&document.querySelector('#faq-foot').textContent==='FAQ'`), 'footer still holds questions or lacks its button');

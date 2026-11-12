@@ -1482,7 +1482,13 @@ check('T05 report groups, caps and counts errors', cappedReport.includes('marker
 check('T05 --all report shows every finding', !formatReport(reportRows, [], { all: true }).includes('more (add --all)'));
 const lintScript = join(root, 'tools/lint-data.mjs');
 const runLint = (args, options = {}) => spawnSync(process.execPath, [lintScript, ...args], { encoding: 'utf8', cwd: tmpdir(), ...options });
-const cliGood = runLint(['--no-git', '--today', '2026-11-02']);
+// "Today" is the newest last_verified in the real data, so a data batch dated after a
+// hard-coded day can never read as "in the future" here (the 2026-11-12 batch did).
+const lintDataDay = ['universities', 'programmes'].flatMap((kind) => {
+  const [head, ...rows] = parseCsv(read(`data/${kind}.csv`));
+  return rows.map((r) => r[head.indexOf('last_verified')]);
+}).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().pop();
+const cliGood = runLint(['--no-git', '--today', lintDataDay]);
 check('T05 CLI works away from root without git', cliGood.status === 0 && cliGood.stdout.trimEnd().endsWith('OK to commit.') && !cliGood.stderr, cliGood.stderr || cliGood.stdout);
 for (const args of [['--bogus'], ['--against'], ['--today'], ['--against', '--all'], ['--today', '--all'], ['--today', '2026-02-31'], ['--today', '2026-13-01'], ['--today', 'tomorrow'], ['--today', '2026-2-1']]) {
   const result = runLint(args);
@@ -1526,7 +1532,8 @@ check('every real subject is canonical or Unclassified',
   live.every((row) => row.subjectAreas.every((area) => SUBJECT_AREAS.includes(area) || area === UNCLASSIFIED)));
 const liveSubjects = filtersMod.buildFacets(live).subjectAreas;
 check('live facet stays within the closed vocabulary', liveSubjects.length <= SUBJECT_AREAS.length + 1);
-equal('the current dataset has 23 subject facets', liveSubjects.length, 23);
+// Every word of the closed vocabulary is used by some programme (Unclassified would be the extra facet).
+equal('the current dataset uses every subject in the vocabulary', liveSubjects.filter((s) => s !== UNCLASSIFIED).length, SUBJECT_AREAS.length);
 check('no current programme becomes Unclassified', live.every((row) => !row.subjectAreas.includes(UNCLASSIFIED)));
 check('bocconi-fin maps Finance to Business & Management', liveRow('bocconi-fin').subjectAreas.includes('Business & Management'));
 equal('sdu-mech maps to Engineering', liveRow('sdu-mech').subjectAreas, ['Engineering']);
@@ -1676,11 +1683,11 @@ check('the UvA housing sentence is on the open-entry rows (at least 15)', housin
 const baselineOf = new Map(csvToObjects(read('data/universities.csv'), 'Universities').rows
   .map((u) => [u.name.trim(), (u.baseline_requirement || '').trim()]));
 const lostBaseline = live.filter((p) => p.baselineRequirement !== baselineOf.get(p.university));
-// The count guards against a whole column going blank. It was 29 on the fork;
-// upstream filled baselines for the countries it added, so it is 144 since the
-// merge (all 29 fork baselines survived unchanged).
-check('every programme carries its university\'s baseline (144 universities have one)',
-  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length === 144,
+// The share guards against a whole column going blank. It was 29 on the fork and
+// 144 of 159 after the upstream merge; 266 of 283 after the 2026-11-12 batch. Most
+// universities have one, so the guard is a share of the universities, not a count.
+check('every programme carries its university\'s baseline (most universities have one)',
+  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length >= 0.8 * baselineOf.size,
   `${lostBaseline.length} rows differ; ${[...baselineOf.values()].filter(Boolean).length} baselines`);
 check('the one "?" city on the real data is flagged', liveRow('cvut-aplikace-informatiky-v-prirodnich-vedac')?.cityUnknown === true);
 
@@ -1854,7 +1861,7 @@ check('T03 update-cao-points.mjs never writes last_verified or verified_by',
   !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/update-cao-points.mjs')));
 check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Maths|625',
   !read('tools/update-cao-points.mjs').includes('Maths|625'));
-const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);
+const isIrish = (p) => p.country === 'Ireland';
 const cutoffOf = (p) => latestOf(p)?.points ?? null;
 const ucdConverted = live.filter((p) => p.id.startsWith('ucd-')
   && [ie.BONUS_ONLY, D28_SENTENCE, ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true)]
@@ -2216,9 +2223,14 @@ equal('D27 My points never hides them (unknown bucket)',
   ['ie-added', 'ie-unver'].map((id) => d27Filters.pointsBucket(d27Of(id), { myIbPoints: 24, hlMaths: false })), ['unknown', 'unknown']);
 const d27Live = live.filter((p) => p.pointsTestUnverified || (p.pointsPlusTest && !(cutoffOf(p) > 625)))
   .map((p) => [p.id, p.pointsPlusTest ? 'added' : 'unverified']).sort();
-equal('D27 real data: exactly the 11 chosen rows lose their figure', d27Live, [
+// The three MTU rows (MT823 Visual Communications, MT936 Music, MT811 Animation) come with the
+// 2026-11-12 batch, so they are expected only once they are in the data.
+const d27Mtu = [['mtu-animation-visual-storytelling', 'unverified'], ['mtu-music', 'added'], ['mtu-visual-communications', 'added']]
+  .filter(([id]) => live.some((p) => p.id === id));
+equal('D27 real data: exactly the 11 chosen rows (plus the MTU ones, once present) lose their figure', d27Live, [
   ['dcu-jazz-and-contemporary-music-performance', 'added'],
   ['galway-bachelor-of-business-studies-internat', 'added'],
+  ...d27Mtu,
   ['ucc-theatre-and-performative-practices', 'added'],
   ['ucc-youth-and-community-work', 'unverified'],
   ['ul-architecture-barch', 'unverified'],
@@ -2228,7 +2240,7 @@ equal('D27 real data: exactly the 11 chosen rows lose their figure', d27Live, [
   ['ul-music-ba', 'unverified'],
   ['ul-product-design-and-technology-bsc', 'unverified'],
   ['ul-voice-ba', 'unverified'],
-]);
+].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
 equal('D27 real data: the separate-requirement "#" rows keep their figure',
   ['tcd-drama-and-theatre-studies', 'tcd-nursing---general-nursing-adel', 'ucd-veterinary-medicine', 'ucc-arts-music', 'ul-paramedic-studies-bsc']
     .map((id) => typeof live.find((p) => p.id === id)?.ibPointsMin), ['number', 'number', 'number', 'number', 'number']);
@@ -5389,8 +5401,8 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
       'university\'s estimate', 'estimate from VŠE, same city', 'university\'s estimate (weekly totals × 52 / 12), £741–£2,019 a month', '', null]
       .map(livingIsFloor), [true, true, true, true, false, false, false, false, false, false, false]);
   const realFloors = [...new Set(live.filter((r) => livingIsFloor(r.livingCostSource)).map((r) => r.livingCostSource))].sort();
-  check('real data: every floor source names a visa, UDI or the Migration Agency, and all four kinds are found',
-    realFloors.every((s) => /visa|UDI|Migration Agency/.test(s))
+  check('real data: every floor source names a visa, UDI, the Migration Agency or an immigration service, and all four kinds are found',
+    realFloors.every((s) => /visa|UDI|Migration Agency|Immigration Service/.test(s))
       && ['German student visa', 'UDI', 'Migration Agency', 'UK student visa'].every((k) => realFloors.some((s) => s.includes(k))), realFloors.join(' | '));
   check('real data: no university\'s own estimate or national portal is read as a floor',
     live.every((r) => !livingIsFloor(r.livingCostSource) || !/university's|Study in|same city/.test(r.livingCostSource)));
