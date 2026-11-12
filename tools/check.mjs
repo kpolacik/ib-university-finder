@@ -2135,10 +2135,16 @@ section('"#" cutoffs whose test marks are added, or not confirmed (D27)');
 // 2026-11-02: 3 confirmed-added codes say "Cutoff includes a test score", 8
 // unconfirmed say "Assessment required; IB equivalent unverified", and the
 // separate pass/fail ones keep their figure. plans/d27-test-marked-cutoffs.md.
-equal('D27 TEST_IN_CUTOFF holds the three confirmed codes',
-  [...(pts.TEST_IN_CUTOFF ?? [])].sort(), ['CK112', 'DC014', 'GY261']);
-equal('D27 TEST_UNVERIFIED holds CK114 and the seven UL codes',
-  [...(pts.TEST_UNVERIFIED ?? [])].sort(), ['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135']);
+// 2026-11-12: MTU's MT823/MT936 (offers on the portfolio/test result) and
+// MT811 (portfolio, scoring not stated) added for the proposed MTU rows, so a
+// low "#240" portfolio score never shows as "IB 24".
+equal('D27 TEST_IN_CUTOFF holds the five confirmed codes',
+  [...(pts.TEST_IN_CUTOFF ?? [])].sort(), ['CK112', 'DC014', 'GY261', 'MT823', 'MT936']);
+equal('D27 TEST_UNVERIFIED holds CK114, the seven UL codes and MT811',
+  [...(pts.TEST_UNVERIFIED ?? [])].sort(), ['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135', 'MT811']);
+equal('D27 MTU portfolio cutoffs get no IB figure (MT823 #240 would otherwise read as 24)',
+  [pts.ibForCutoff(240, { test: true, code: 'MT823' }).ib, pts.ibForCutoff(372, { test: true, code: 'MT936' }).ib,
+    pts.ibForCutoff(400, { test: true, code: 'MT811' }).ib], [null, null, null]);
 check('D27 the separate-requirement codes and HPAT codes are in neither list',
   ['TR025', 'TR093', 'DN300', 'CK104', 'LM103', ...ie.HPAT_CODES]
     .every((c) => !pts.TEST_IN_CUTOFF?.has(c) && !pts.TEST_UNVERIFIED?.has(c)));

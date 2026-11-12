@@ -47,8 +47,14 @@ export const caoPointsFor = (ib) => {
 // The other "#" courses (TCD Drama and Nursing, UCC Music, UL Paramedic, UCD
 // Veterinary) have a separate pass/fail step, so their cutoff stays a points
 // total and keeps its figure.
-export const TEST_IN_CUTOFF = new Set(['CK112', 'GY261', 'DC014']);
-export const TEST_UNVERIFIED = new Set(['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135']);
+// MTU (proposed rows, Leon 2026-11-12): MT823 Visual Communications and MT936
+// Music say "Offers are made based on the portfolio assessment results" /
+// "the entrance test results" (mtu.ie/courses/mt823/, /mt936/; both marked out
+// of 600), so their cutoffs (#240, #372) are assessment scores. MT811
+// Animation is "[Portfolio] #400" on the CAO list, but its course page says
+// nothing about a portfolio or how it is scored (read 2026-11-12).
+export const TEST_IN_CUTOFF = new Set(['CK112', 'GY261', 'DC014', 'MT823', 'MT936']);
+export const TEST_UNVERIFIED = new Set(['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135', 'MT811']);
 
 /** 'included', 'unverified' or null for a CAO code, only when the course carries the "#" marker. */
 export const testScoring = (code, test) => (!test || !code ? null
