@@ -4,10 +4,10 @@
 
 A single-page site for finding European bachelor programmes by what IB students
 need: IB points and subjects, deadlines, EU tuition, living costs and language.
-It covers 11 countries: the Netherlands, Ireland, Czechia, Italy, Denmark,
-Sweden, Finland, Norway, Austria, Germany and the United Kingdom (counts are in
-STATUS.md). English by default, with Slovak available in Settings (the gear
-beside EN/SK).
+It covers 12 countries: the Netherlands, Ireland, Czechia, Slovakia, Italy,
+Denmark, Sweden, Finland, Norway, Austria, Germany and the United Kingdom
+(counts are in STATUS.md). English by default, with Slovak available in
+Settings (the gear beside EN/SK).
 
 Static files only: no build, no dependencies, no accounts, nothing paid.
 

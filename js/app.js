@@ -245,11 +245,11 @@ let faqSliding = false;
 // Flags only inside the Country options; any other country gets text only.
 const COUNTRY_FLAGS = {
   Austria: 'f-at', Czechia: 'f-cz', Denmark: 'f-dk', Finland: 'f-fi', Germany: 'f-de', Ireland: 'f-ie',
-  Italy: 'f-it', Netherlands: 'f-nl', Norway: 'f-no', Sweden: 'f-se', 'United Kingdom': 'f-gb',
+  Italy: 'f-it', Netherlands: 'f-nl', Norway: 'f-no', Slovakia: 'f-sk', Sweden: 'f-se', 'United Kingdom': 'f-gb',
 };
 // Language pick-list flags (Leon, 2026-11-06): the flag of the country most
 // associated with the language, only as a visual cue beside its name.
-const LANGUAGE_FLAGS = { English: 'f-gb', Czech: 'f-cz', German: 'f-de', French: 'f-fr', Italian: 'f-it' };
+const LANGUAGE_FLAGS = { English: 'f-gb', Czech: 'f-cz', German: 'f-de', French: 'f-fr', Italian: 'f-it', Slovak: 'f-sk' };
 let selectedId = null;
 let shownRows = new Map();
 let appliedWide = null;

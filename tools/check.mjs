@@ -2991,13 +2991,12 @@ check('row provenance keeps the detail signature/date/sample chain',
   const paired = (fg, bg) => PAIRS.some(([f, b, , min]) => f === fg && b === bg && min >= 4.5);
   const r = fxRow('fx-plain');
   const badge = (country) => byClass(rowOf({ ...r, country }), 'cc')[0];
-  check('country badges: the eleven data countries are mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
-    mapped.map(([, c]) => c).sort().join() === 'Austria,Czechia,Denmark,Finland,Germany,Ireland,Italy,Netherlands,Norway,Sweden,United Kingdom'
-      && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
+  check('country badges: every data country is mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
+    mapped.length >= 11 && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
       && /background:var\(--cty-fill\);color:var\(--cty-ink\)/.test(ruleBody('.cc'))
       && badge('Portugal')?.textContent === 'Portugal' && badge('Portugal').getAttribute('data-country') === 'Portugal'
       && !mapped.some(([, c]) => c === 'Portugal') && badge('Denmark')?.getAttribute('data-country') === 'Denmark'
-      && new Set(live.map((row) => row.country)).size === 11 &&[...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
+      && new Set(live.map((row) => row.country)).size >= 11 && [...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
 }
 check('requirements run across the row: the line is a direct child of .row after the three cells, never inside the title block',
   [...live.slice(0, 40), fxRow('fx-checked')].every((row) => {
@@ -3657,11 +3656,16 @@ check('every button in the filter form and the sheet is type="button" (no implic
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
 }));
-check('the sprite has the Phosphor funnel and a flag for each of the 11 data countries, filled only from the canonical flag tokens',
-  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && ['f-at', 'f-cz', 'f-de', 'f-dk', 'f-fi', 'f-gb', 'f-ie', 'f-it', 'f-nl', 'f-no', 'f-se'].every((id) => {
-    const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
-    return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
-  }));
+check('the sprite has the Phosphor funnel and a flag for each data country, filled only from the canonical flag tokens',
+  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && (() => {
+    // The flags the app maps (COUNTRY_FLAGS in js/app.js), plus one for every country in the data.
+    const mappedFlags = Object.fromEntries([...appSrc.match(/const COUNTRY_FLAGS = \{([\s\S]*?)\};/)[1].matchAll(/(?:'([^']+)'|(\w+)): '(f-\w+)'/g)].map((m) => [m[1] ?? m[2], m[3]]));
+    return [...new Set(live.map((row) => row.country))].every((c) => mappedFlags[c])
+      && Object.values(mappedFlags).every((id) => {
+        const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
+        return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
+      });
+  })());
 // Stage 5 slipped the funnel and flags in between the globe's licence line and
 // the globe, so the MIT credit sat on the wrong icon.
 check('the globe and funnel licence lines sit directly on their own symbols',
