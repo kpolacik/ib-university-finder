@@ -84,7 +84,15 @@ importer. The THE table link follows its edition, historical intake wording
 is no longer repeated, the places-year documentation permits historic years,
 and the browser assertion checks the actual official link. Rankings remain off.
 Code-only rows retain the approved official-page fallback; no portal is invented.
-Final acceptance of this review repair and refreshed captures is pending.
+The review-repair full smoke ran on `cb9a9a3`: 830 of 846 passed and 16 failed
+because its stricter official-link selector required a class that exists only
+when there is also an Apply action. The correction selects the non-Apply
+anchor and compares its exact URL, including the shared-destination case;
+regressions cover primary, secondary and shared official/apply layouts.
+All other gates and 31 refreshed captures passed; CEU and Reading now each
+have four additional phone/desktop, light/dark captures with full titles.
+One corrected full smoke retry remains pending. Logs:
+`plans/pr2-review-final-gates-20261113/`.
 The PR and merge follow passing checks and resolved material findings; no
 Verify Implementation handoff is required.
 

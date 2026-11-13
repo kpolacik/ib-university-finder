@@ -389,6 +389,13 @@ section('PR2 detail UI');
   const action = byClass(draw(applied),'btn-apply')[0];
   check('PR2 apply uses actual URL, code, primary style and accessible identity', action.href === applied.applyUrl && action.classList.contains('btn-p') && action.textContent.includes('Apply via CAO · TR028') && action.textContent.includes(applied.programme) && action.target === '_blank' && action.rel === 'noopener noreferrer');
   check('PR2 code alone creates no application action', !byClass(draw({...applied,applyUrl:null}),'btn-apply').length && byTag(byClass(draw({...applied,applyUrl:null}),'d-actions')[0],'a').length === 1);
+  for (const applyUrl of [null, applied.applyUrl, applied.officialUrl]) {
+    const actions = byClass(draw({ ...applied, applyUrl }), 'd-actions')[0];
+    const official = byTag(actions, 'a').filter(a => !a.classList.contains('btn-apply'));
+    check(`PR2 official destination survives primary, secondary and shared-link layouts ${applyUrl}`,
+      applyUrl === applied.officialUrl ? official.length === 0 && byClass(actions, 'btn-apply')[0]?.href === applied.officialUrl
+        : official.length === 1 && official[0].href === applied.officialUrl);
+  }
   const closed = byClass(draw({...applied,deadlinePassed:true}),'btn-apply')[0];
   check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
   for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
