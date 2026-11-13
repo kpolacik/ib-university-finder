@@ -359,6 +359,17 @@ section('PR2 detail UI');
       && credit.textContent.includes('A long author name intact') && credit.textContent.includes('Campus ž photo') && credit.textContent.endsWith('cropped')
       && byTag(credit,'a').length === 2);
   }
+  for (const [imageSourceUrl, title] of [
+    ['https://www.flickr.com/photos/ssomkuti/48578075597/', 'Central European University, Vienna'],
+    ['https://www.geograph.org.uk/photo/7929879', 'Foxhill House'],
+  ]) for (const slot of [false, true]) {
+    const credit = byClass(draw({ ...photo, imageSourceUrl }, { slot }), 'd-src')[0];
+    const links = byTag(credit, 'a');
+    check(`PR2 non-Commons title and complete credit ${imageSourceUrl} slot=${slot}`,
+      links.length === 2 && links[1].children.filter(n => typeof n === 'string').join('') === title && links[1].href === imageSourceUrl
+      && credit.textContent.includes(photo.imageAuthor) && credit.textContent.includes(photo.imageLicence)
+      && credit.textContent.endsWith('cropped') && !credit.textContent.includes('undefined'));
+  }
   check('PR2 public-domain credit preserves title with fallback author', byClass(draw({...photo,imageAuthor:'',imageLicence:'CC0'}),'d-src')[0].textContent.startsWith('Photo: author not recorded'));
   check('PR2 absent image has no photo or credit', !byClass(draw(pr2Blank),'d-photo').length && !byClass(draw(pr2Blank),'d-src').length);
   check('PR2 ranks forced off have no DOM', !byClass(draw(photo,{showRankings:false}),'d-rank').length);
@@ -368,6 +379,11 @@ section('PR2 detail UI');
     && byClass(ranks,'d-rank')[0].textContent.includes(UI.en.rank_note)
     && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
     && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
+  const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
+  check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
+  const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
+  const invalidRanks = byClass(draw(zeroRank, { showRankings: true }), 'd-rank')[0];
+  check('PR2 zero ranks render unknown instead of a published figure', !byClass(invalidRanks, 'fig').length && byClass(invalidRanks, 'rk-none').every(n => n.textContent === 'Not published'));
   check('PR2 no rankings year omits block even with flag on', !byClass(draw({...photo,rankingsYear:''},{showRankings:true}),'d-rank').length);
   const applied = {...pr2Blank, applyUrl:'https://www.cao.ie/apply', applyCode:'CAO:TR028', applyLinkKind:'cao'};
   const action = byClass(draw(applied),'btn-apply')[0];
@@ -377,7 +393,7 @@ section('PR2 detail UI');
   check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
   for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
   const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
-  check('PR2 historical places says past intake and year', historical['past intake']?.textContent === '42 · past intake · 2026');
+  check('PR2 historical places says past intake and year', historical['past intake']?.textContent === '42 · 2026');
   check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
     && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 · EU quota · year not published');
   i18n.setLanguage('sk',{setItem(){}});
@@ -433,7 +449,7 @@ for (const rank of ['62', '=218', '201–250', '1201+']) {
   const parsed = await pr2Fixture({ rankings_year: '2027', qs_rank: rank, the_rank: rank });
   equal(`PR2 valid rank ${rank}`, [parsed.programmes[0].qsRank, parsed.programmes[0].theRank, parsed.meta.issues], [rank, rank, []]);
 }
-for (const u of [{ qs_rank: '?' }, { qs_rank: 'Reporter' }, { the_rank: '201-250' }, { qs_rank: '62', rankings_year: '' }, { qs_rank: '62', rankings_year: '2027/28' }]) {
+for (const u of [{ rankings_year: '2027', qs_rank: '0' }, { rankings_year: '2027', qs_rank: '=0' }, { rankings_year: '2027', qs_rank: '0+' }, { rankings_year: '2027', qs_rank: '0–10' }, { rankings_year: '2027', the_rank: '10–0' }, { qs_rank: '?' }, { qs_rank: 'Reporter' }, { the_rank: '201-250' }, { qs_rank: '62', rankings_year: '' }, { qs_rank: '62', rankings_year: '2027/28' }]) {
   const parsed = await pr2Fixture(u);
   check(`PR2 invalid rank ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && (u.the_rank ? parsed.programmes[0].theRank : parsed.programmes[0].qsRank) === null);
 }
@@ -1994,7 +2010,20 @@ section('PR2 real-data acceptance');
   const referenced = new Set(photos.map(u => u.image_file));
   const orphans = readdirSync(join(root, 'img/universities')).filter(f => !referenced.has(`img/universities/${f}`));
   check('PR2 photo folder has no orphan files', !orphans.length, orphans.join(', '));
-  equal('PR2 281 photos; only Humak and UCN deliberately absent', [photos.length, universities.filter(u => !u.image_file).map(u => u.university_id).sort()], [281, ['humak', 'ucn']]);
+  // Catch a lost photo column while allowing new universities to arrive without a photo.
+  const enoughPhotos = rows => rows.filter(u => u.image_file).length >= 0.8 * rows.length;
+  check('PR2 most universities retain photos', enoughPhotos(universities), `${photos.length} of ${universities.length}`);
+  check('PR2 a newly added university may have no photo', enoughPhotos([...universities, { university_id: 'new-university', image_file: '' }]));
+  check('PR2 photo coverage still catches a lost column', !enoughPhotos(universities.map(u => ({ ...u, image_file: '' }))));
+  check('PR2 Humak and UCN deliberately have no photo', ['humak', 'ucn'].every(id => universities.some(u => u.university_id === id && !u.image_file)));
+  const badTitles = photos.filter(u => {
+    const row = live.find(p => p.universityId === u.university_id);
+    if (!row) return true;
+    const credit = withStubDocument(() => byClass(renderDetail(row, noFilters()), 'd-src')[0]);
+    const title = credit && byTag(credit, 'a')[1]?.children.filter(n => typeof n === 'string').join('');
+    return !title || title === 'undefined';
+  });
+  check('PR2 every real photo renders a non-empty work title', !badTitles.length, badTitles.map(u => u.university_id).join(', '));
 }
 
 // ---------------------------------------------------------------- importers

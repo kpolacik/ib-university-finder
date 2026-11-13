@@ -8,7 +8,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-**PR 2 / Wave 6 (2026-11-13, local and provisional).** The shared
+**PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
 `filter-selected-first` worktree contains the detail-only facts, application
 actions, credited campus photos and Slovak translations from Waves 2–4.
 Rankings remain behind `SHOW_RANKINGS = false`. PR 2 follows the CSV path,
@@ -65,10 +65,28 @@ words. `tools/check.mjs` has a regression for each (C3 and A2). Repair gates
 (ignored `plans/pr2-smoke-repair-20261113/`): check.mjs passes; targeted
 `--only=runBatch2C,runAlignListCompare,runPr2` passed 182 checks in 150.4 s.
 
-Pending: the owner commits this repair, then runs one full smoke retry against the
-committed state. Independent reviews, commit and PR remain pending; these fast
-gates and screenshots are not final release acceptance. The owner proceeds with the PR and merge only after passing
-checks and reviews; no new Verify Implementation handoff is needed.
+The smoke repair is committed as `e4e5550`. Its full corrective run passed
+846 checks in 1138.6 s, exit 0 (Node 26.1.0, Chrome 157.0.8103.51), on a clean
+committed tree. Check, lint (0 errors / 215 warnings), all 150 contrast pairs,
+importer self-tests and the four-field translation inventory passed too.
+Logs: `plans/pr2-full-retry-20261113/`. Two earlier importer/snapshot passes
+were byte-identical to the committed data; evidence is in
+`plans/pr2-final-gates-20261113/`.
+
+Independent Opus xhigh (claude2) and Astra xhigh (codex2) reviews found the
+same non-Commons credit bug. The CEU Flickr and Reading Geograph picks are
+approved; the renderer now preserves their recorded work titles instead of
+showing "undefined". Pane/slot regressions and a check over every real credit
+cover it. The photo coverage gate now permits newly added universities without
+photos while retaining a majority guard, deliberate Humak/UCN omissions, and
+all per-file and orphan checks. Zero ranks are rejected by the parser and
+importer. The THE table link follows its edition, historical intake wording
+is no longer repeated, the places-year documentation permits historic years,
+and the browser assertion checks the actual official link. Rankings remain off.
+Code-only rows retain the approved official-page fallback; no portal is invented.
+Final acceptance of this review repair and refreshed captures is pending.
+The PR and merge follow passing checks and resolved material findings; no
+Verify Implementation handoff is required.
 
 Known research residue remains, without a data fix in this wave: VŠE
 `vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
@@ -79,7 +97,12 @@ inferred from one programme. Roughly 1–2% of unsampled integrated-master
 been hand-reviewed; a blank rank with an edition may still be a missed match,
 so the flag stays off. Cattolica's English recognition text was corrected
 through the importer to May 2027 exams / July 2027 results. The 287 new Slovak
-translations are covered; 993 unrelated missing strings remain.
+translations are covered; 993 unrelated missing strings remain. Review also
+identified fee-note limitations to revisit against sources: two OTH programmes
+inherit EUR 75 but their own non-EU fee note hides the university's uni-assist
+explanation; `unipd-tmps` has its own EUR 60 fee and does not inherit the
+university CISIA test-fee note. The documented fee-note inheritance rule is
+unchanged; these source/data follow-ups were not repaired in the UI wave.
 
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px

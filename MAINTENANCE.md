@@ -395,7 +395,8 @@ universal. Extra or later fees also belong in the note, not a new fee column.
 **Places belong to a programme.** `places` is a whole number of at least 1,
 blank, or `?`. A number requires `places_kind`: `capacity` (available places),
 `eu_quota` (EU places) or `past_intake` (previous enrolment, not a current cap).
-`places_year` is `2027` or `2027/28`; if absent, the page says "year not published".
+`places_year` is a year (`YYYY`) or academic year (`YYYY/YY`), such as
+`2025` or `2026/27`; if absent, the page says "year not published".
 Use `places_kind=open` with blank `places` only when a programme or faculty
 source positively says there is no fixed limit. A national generalisation is
 not enough. Blank alone never means unlimited. These columns do not inherit.
@@ -430,7 +431,10 @@ file page, normally Commons), using safe http(s) URLs. Keep a short credit name
 in `image_author`, without an email address or mail annotation (at most 160
 characters). CC BY and BY-SA require an author. Only Public domain and CC0
 allow a blank author, shown as "author not recorded". Keep the file title in
-the source URL: the last line links the licence and title and says "cropped".
+the Commons source URL. The two approved non-Commons sources (CEU on Flickr
+and Reading on Geograph) have recorded titles in `photoCredit` in `js/render.js`;
+record the work title there when adding a source whose URL has no title.
+The last line links the licence and title and says "cropped".
 The photo and credit also print. Incomplete credits suppress the photo.
 
 **Rankings stay off until enabled.** `qs_rank` and `the_rank` hold the published

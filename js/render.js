@@ -194,7 +194,13 @@ function photoBlock(row) {
 
 function photoCredit(row) {
   const credit = el('p', 'd-src');
-  let file = new URL(row.imageSourceUrl).pathname.split('/wiki/')[1];
+  // These approved non-Commons picks have numeric source URLs; retain their recorded work titles.
+  const source = new URL(row.imageSourceUrl);
+  const recordedTitles = {
+    'https://www.flickr.com/photos/ssomkuti/48578075597/': 'Central European University, Vienna',
+    'https://www.geograph.org.uk/photo/7929879': 'Foxhill House',
+  };
+  let file = recordedTitles[row.imageSourceUrl] || source.pathname.split('/wiki/')[1] || source.hostname;
   try { file = decodeURIComponent(file); } catch { /* A literal percent in a valid URL is still a file title. */ }
   const title = file.replace(/^File:/, '').replace(/\.[^.]+$/, '').replaceAll('_', ' ');
   credit.append(t('photo_credit'), ' ', row.imageAuthor || t('photo_author_not_recorded'), ' · ',
@@ -208,7 +214,7 @@ function rankBlock(row) {
   section.append(el('h3', '', t('rankings')));
   for (const [source, rank, url] of [
     ['QS', row.qsRank, 'https://www.topuniversities.com/world-university-rankings'],
-    ['THE', row.theRank, 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking'],
+    ['THE', row.theRank, `https://www.timeshighereducation.com/world-university-rankings/${row.rankingsYear}/world-ranking`],
   ]) {
     const item = el('div', 'rk');
     item.append(el('span', 'lab', `${source} ${row.rankingsYear}`),
@@ -645,7 +651,7 @@ function applyingSection(row, state) {
   fee.append(el('span', 'dd-note', t('app_fee_profile')));
   reqRow(list, t('app_fee'), [fee]);
   const places = row.placesKind === 'open' ? t('places_no_fixed_limit')
-    : row.places != null ? `${formatCount(row.places)} · ${t(`places_kind_${row.placesKind}`)} · ${row.placesYear || t('places_year_not_published')}`
+    : row.places != null ? `${formatCount(row.places)}${row.placesKind === 'past_intake' ? '' : ` · ${t(`places_kind_${row.placesKind}`)}`} · ${row.placesYear || t('places_year_not_published')}`
     : newUnknown(row.placesUnknown);
   reqRow(list, t(row.placesKind === 'past_intake' ? 'places_kind_past_intake' : 'places'), [places]);
   const months = row.intakeMonths || [];

@@ -618,7 +618,7 @@ function parseNewUniversity(row, issues, where) {
   }
   const rankingsYear = checked('rankings_year', v => /^\d{4}$/.test(v));
   const rank = name => {
-    const result = checked(name, v => /^(?:=?\d+|\d+–\d+|\d+\+)$/.test(v));
+    const result = checked(name, v => /^(?:=?\d+|\d+–\d+|\d+\+)$/.test(v) && v.match(/\d+/g).every(n => Number(n) > 0));
     if (result.value && !rankingsYear.value) {
       newFieldIssue(name, result.value, issues, where);
       result.unknown = true;

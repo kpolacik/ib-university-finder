@@ -6263,7 +6263,7 @@ async function runPr2(base) {
             slot:!!d.querySelector('.d-pts'), ranks:!!d.querySelector('.d-rank'),flag:SHOW_RANKINGS,
             apply:d.querySelector('.btn-apply')?.getAttribute('href')||null,
             primary:!!d.querySelector('.btn-apply.btn-p'), action:d.querySelector('.btn-apply')?.textContent,
-            official:!!d.querySelector('.d-actions a'),creditLinks:d.querySelectorAll('.d-src a').length};
+            official:d.querySelector('.d-actions .btn-official')?.getAttribute('href')||null,creditLinks:d.querySelectorAll('.d-src a').length};
         })()`);
         assert(facts.slot === (width === 390), 'wrong slot/pane layout');
         assert(!facts.overflow, 'horizontal overflow');
@@ -6272,7 +6272,7 @@ async function runPr2(base) {
         if (row.imageFile) assert(facts.first === 'd-photo' && facts.last === 'd-src' && facts.creditLinks === 2, 'photo first / linked credit last');
         else assert(facts.last !== 'd-src', 'credit without photo');
         for (const label of ['IB recognition', 'Application fee', 'Intake', 'Offer timing']) assert(facts.text.includes(label), `missing ${label}`);
-        assert(facts.apply === row.applyUrl && facts.official, 'apply URL / official fallback mismatch');
+        assert(facts.apply === row.applyUrl && facts.official === row.officialUrl, 'apply URL / official fallback mismatch');
         if (row.applyUrl) assert(facts.primary === !row.deadlinePassed, 'expired action emphasis');
         if (row.deadlinePassed && row.applyUrl) assert(facts.action.startsWith('This cycle has closed'), 'expired action wording');
         if (id === 'polito-arch') assert(facts.text.includes('Not checked yet') && facts.text.includes(row.appFeeNote), 'note-only fee lost');

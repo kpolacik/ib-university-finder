@@ -36,6 +36,7 @@ const UNICATT_NEW = UNICATT_OLD.replace('Final scores go from IBO to Cattolica b
 const recognition = (id, field, value) => id === 'unicatt' && field === 'ib_recognition_default' && value === UNICATT_OLD ? UNICATT_NEW : value;
 const writeTodo = (args) => !args.includes('--no-todo');
 const RANK = /^(?:=?\d+|\d+–\d+|\d+\+)$/;
+const validRank = value => RANK.test(value) && value.match(/\d+/g).every(n => Number(n) > 0);
 const COMPARISON = /(?:^|\.)(?:studyportals\.com|bachelorsportal\.com|mastersportal\.com|educations\.com|topuniversities\.com|timeshighereducation\.com|wikipedia\.org|unipage\.net)$/i;
 const safe = (s) => { try { return /^https?:$/.test(new URL(s).protocol); } catch { return false; } };
 const official = (s) => safe(s) && !COMPARISON.test(new URL(s).hostname);
@@ -111,6 +112,8 @@ function selfTest() {
   assert.equal(yearReason({ column: 'ib_offer', year_label: '2026/27' }), 'year has no permitted label field');
   assert.equal(yearReason({ column: 'app_fee', year_label: '2026/27' }), '');
   assert.equal(yearReason({ column: 'places', year_label: '2025/26' }), '');
+  for (const value of ['0', '=0', '0+', '0–10', '10–0']) assert(!validRank(value), `Invalid zero rank: ${value}`);
+  for (const value of ['1', '=218', '201–250', '1201+']) assert(validRank(value), `Valid positive rank: ${value}`);
   assert.equal(rank('1001-1200'), '1001–1200'); assert.equal(rank('Reporter'), '');
   assert.equal(degree('Bachelor of Science (Honours)'), 'BSc (Hons)');
   assert.equal(degree('B.Sc. (Cur.)'), 'B.Sc. (Cur.)');
@@ -317,7 +320,7 @@ for (const r of read(join(rankings, rankFile)).rows) {
   const hold = Boolean(r.needs_leon?.trim()) || rankFile !== 'matches.clean.csv' && (Object.values(r).some((v) => /\bCHECK\b/.test(v)) || Boolean(qs) !== Boolean(the));
   Object.assign(row, { qs_rank: '', the_rank: '', rankings_year: '' });
   if (hold) { report.rankings.held.push(p.id); continue; }
-  assert((!qs || RANK.test(qs)) && (!the || RANK.test(the)), `Invalid rank: ${p.id}`);
+  assert((!qs || validRank(qs)) && (!the || validRank(the)), `Invalid rank: ${p.id}`);
   Object.assign(row, { qs_rank: qs, the_rank: the, rankings_year: '2027' });
   report.rankings[qs || the ? 'ranked' : 'checkedAbsent'].push(p.id);
 }
