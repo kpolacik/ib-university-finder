@@ -1912,7 +1912,7 @@ input[type=range]::-moz-range-thumb{box-shadow:var(--thumb-shadow)}
    tray at the bottom where it does not (the same query as app.js). From 600
    to 1023 px both header buttons are icon and count only; the label stays in
    their names. */
-#header-compare{font-size:15px;font-weight:400}
+#header-compare,#settings-open{font-size:15px;font-weight:400}
 .hb .ic{width:16px;height:16px;flex:none}
 @media (max-width:599.98px),(max-height:500px){#header-compare{display:none}}
 @media (min-width:600px) and (max-width:1023.98px){

@@ -3234,6 +3234,12 @@ check('headings and rows share one track template, gap and inset at the 900 px l
     && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
     && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
     && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
+check('the header Settings button is regular 15 px like My list, Compare and FAQ, not the 600 button weight; dropping it from the rule fails',
+  (() => {
+    const same = (source) => /#header-compare,#settings-open\{font-size:15px;font-weight:400\}/.test(source.replace(/\s+/g, ''));
+    return same(cssRules) && !same(cssRules.replace('#header-compare,#settings-open{', '#header-compare{')) && /font-weight:600/.test(ruleAt(cssRules, '.btn'))
+      && /id="settings-open"/.test(indexHtml) && /class="btn hb" id="header-compare"/.test(indexHtml);
+  })());
 check('sort marks: one fixed 14x14 SVG box, the active heading changes colour not weight, right columns put the mark first; facet and row chevrons are 16 px SVG boxes that turn whole',
   /width:14px;height:14px;margin-top:1px;flex:none/.test(paneRule('.cols .sm', '(min-width: 600px)'))
     && !/font-weight/.test(paneRule('.cols [aria-pressed=true]', '(min-width: 600px)'))
