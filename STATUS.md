@@ -472,7 +472,8 @@ plans/backlog/wording.md for the translation queue.
    English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
    if the IB was taken through English) — the same rule UCD, UCC and Trinity
    carry. DCU's IELTS line (6.5, no component below 6.0) is added alongside.
-   The guide is the 2026-entry edition and DCU says it is under review.
+   The guide was the 2026-entry edition and DCU says it is under review; the
+   2027-entry edition (November 2026) gives the same IB English grades.
 
    UCD's fees are no longer a hole, though its page is still broken: the "EU
    Undergraduate Fees 2026/27" page says *"Fees published for the Colleges
@@ -494,9 +495,20 @@ plans/backlog/wording.md for the translation queue.
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
    than re-running the importers; notes rewritten 2026-10-26 to quote both
    rounds, figures unchanged). Re-run it each August when the CAO
-   replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
-   600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
-   the 2027 table is not out yet.
+   replaces the table. The IB→points conversion is the CAO's **2027** table
+   (since 2026-11-13): 45/44 → 600, 43 → 594, 42 → 577, 41 → 566 … 36 → 502,
+   35 → 486 … 24 → 360, +25 for HL Maths 4+. It is Table 2 on page 92 of the
+   CAO's *Entry requirements criteria for EU/EFTA/UK Applicants … for 2027
+   entry* (November 2026, linked from www.cao.ie/euefta). The 2026 table it
+   replaced gave fewer points for every total from 41 down (24 → 350), so
+   211 Irish figures dropped by one IB point (three by two); none became
+   blank, the HL Maths bonus rule is worded as before, and HPAT Medicine's
+   480-point minimum is still 35. A 2027 applicant is scored with the 2027
+   table, so last year's cutoffs are converted with it. Each November, when
+   the next guide comes out, copy its table into `js/points.js` (and the
+   copy in `tools/check.mjs`), then run
+   `node tools/update-cao-points.mjs --reconvert` (a dry run that lists every
+   change), read the list, add `--apply`, and run `node tools/make-snapshot.mjs`.
 8. ~~Living costs~~ — filled on 2026-10-26 for the 47 universities of the time
    (see *Living costs* under Decisions); every university added since carries
    a figure too. Re-check them each autumn with the rest.

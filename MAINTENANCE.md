@@ -285,6 +285,10 @@ second (later, lower) round; a course with no second round names only Round 1.
 everyone on exactly that score got a place in that round. The IB figure is the
 conversion of the latest round. `tools/update-cao-points.mjs` rewrites these
 sentences each August, so don't edit them; anything else in the note is kept.
+The conversion uses the CAO's IB table for the coming entry year (the 2027
+table since 2026-11-13). When the CAO publishes a new table each November,
+the figures are converted again with `--reconvert`; STATUS.md ("CAO cutoffs
+are 2026's") says how.
 
 **Some Irish notes contain a sentence the card reads.** When an Irish row's
 `deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
