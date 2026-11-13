@@ -14,6 +14,7 @@
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
 //   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
 //   node tools/smoke.mjs --only=runSelectedFirst # ticked pick-list options first on the next open
+//   node tools/smoke.mjs --only=runBestMatchDesktop # desktop Sort strip: Best match reachable (SMOKE_SHOTS=<dir> saves screenshots)
 //   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
@@ -4895,6 +4896,91 @@ async function runSelectedFirst(base) {
   }
 }
 
+// Desktop (wide list) used to hide the Sort pick-list behind the column
+// headings, so once a heading was clicked there was no way back to Best match
+// and nothing said it was active. The strip now stays; the headings and the
+// pick-list share state. SMOKE_SHOTS=<dir> also writes bestmatch-light.png and
+// bestmatch-dark.png there, for looking at the strip by eye.
+async function runBestMatchDesktop(base) {
+  for (const width of [1280, 1440]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 900);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden && !!document.querySelector('#results .item'),why:'loading'})`, 15000, 'Best match boot');
+      const state = `(()=>({value:document.querySelector('#f-sort').value,shown:document.querySelector('#sort-current').textContent,
+        pressed:[...document.querySelectorAll('.cols [data-sort]')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.dataset.sort+':'+b.dataset.direction),
+        urlSort:new URLSearchParams(location.search).get('sort'),savedSort:JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort??null}))()`;
+      await check(`${width}`, 'BEST desktop', 'the Sort pick-list shows beside the headings, reaches Best match after a heading sort, and both stay in step', async () => {
+        const visible = await page.ev(`(()=>{const strip=document.querySelector('.listp>.f-sort'),cols=document.querySelector('.cols'),summary=document.querySelector('#dd-sort>summary'),label=document.querySelector('#sort-l'),list=document.querySelector('.listp');
+          const r=(n)=>n.getBoundingClientRect();return {strip:r(strip).height>0,cols:getComputedStyle(cols).display,label:r(label).right<=r(summary).left,inside:r(summary).right<=r(list).right&&r(summary).left>=r(list).left,
+          above:r(strip).bottom<=r(cols).top+1,flat:list.scrollWidth<=list.clientWidth,box:Math.round(r(summary).width)}})()`);
+        assert(visible.strip && visible.cols === 'grid' && visible.label && visible.inside && visible.above && visible.flat, `desktop sort strip layout: ${JSON.stringify(visible)}`);
+        // Without points Best match is offered but disabled, as on a phone.
+        assert(await page.ev(`[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true`), 'Best match enabled without points');
+        // Points make Best match the default and the strip says so.
+        await page.ev(`{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'points did not select Best match'})`, 5000, 'Best match default');
+        let now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0, `Best match not shown as active: ${JSON.stringify(now)}`);
+        // A heading click sorts by it; the strip follows.
+        await page.click(`document.querySelector('.cols [data-sort="tuition"]')`, 'EU fee heading');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='tuition:asc' && JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='tuition',why:'heading sort not in the pick-list or saved'})`, 5000, 'heading sort');
+        now = await page.ev(state);
+        assert(now.shown !== 'Best match' && now.pressed.join() === 'tuition:asc' && now.urlSort === 'tuition' && now.savedSort === 'tuition', `heading sort state: ${JSON.stringify(now)}`);
+        // The pick-list goes back to Best match with the mouse.
+        await page.click(`document.querySelector('#dd-sort>summary')`, 'open Sort');
+        await page.click(`document.querySelector('#sort-options input[value="best:asc"]')`, 'pick Best match');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc' && JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort!=='tuition',why:'Best match not chosen or the heading sort is still saved'})`, 5000, 'Best match back');
+        now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0 && now.urlSort === 'best' && now.savedSort !== 'tuition', `back to Best match state: ${JSON.stringify(now)}`);
+        // The pick-list moves the heading arrows.
+        if (!(await page.ev(`document.querySelector('#dd-sort').open`))) await page.click(`document.querySelector('#dd-sort>summary')`, 'reopen Sort');
+        await page.click(`document.querySelector('#sort-options input[value="points:desc"]')`, 'pick IB points, highest first');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='points:desc',why:'pick-list did not choose points'})`, 5000, 'points sort');
+        now = await page.ev(state);
+        assert(now.pressed.join() === 'points:desc' && now.urlSort === 'points', `pick-list did not move the headings: ${JSON.stringify(now)}`);
+        await page.key('Escape', 'Escape', 27);
+        // Keyboard only: Enter on the summary opens the list, Space chooses Best match.
+        await page.ev(`document.querySelector('#dd-sort>summary').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.querySelector('#dd-sort').open,why:'Enter did not open Sort'})`, 5000, 'keyboard open');
+        await page.ev(`document.querySelector('#sort-options input[value="best:asc"]').focus()`);
+        await page.key(' ', 'Space', 32, [], ' ');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Space did not choose Best match'})`, 5000, 'keyboard Best match');
+        now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0, `keyboard Best match state: ${JSON.stringify(now)}`);
+        if (width === 1280 && process.env.SMOKE_SHOTS) {
+          await page.key('Escape', 'Escape', 27);
+          await page.ev('document.activeElement.blur();scrollTo({top:0,behavior:"instant"})');
+          for (const scheme of ['light', 'dark']) {
+            await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+            // The theme colours ease over a moment; a picture taken sooner shows them half-way.
+            await page.ev('new Promise(r=>setTimeout(r,600))');
+            await page.screenshot(join(process.env.SMOKE_SHOTS, `bestmatch-${scheme}.png`), { viewportOnly: true });
+          }
+        }
+      });
+      assert(!page.errors.length, JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+  // The phone keeps its strip and its Sort pick-list, and still has no headings.
+  watchdog.refresh();
+  const phone = await openPage('about:blank', 390, 844);
+  try {
+    await phone.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+    await phone.send('Page.navigate', { url: base + '?ui=en' });
+    await phone.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`, 15000, 'phone Best match boot');
+    await check('390', 'BEST phone', 'the phone keeps the Sort strip full width and no column headings', async () => {
+      const m = await phone.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect(),list=r('.listp'),sum=r('#dd-sort>summary');
+        return {cols:getComputedStyle(document.querySelector('.cols')).display,strip:r('.listp>.f-sort').height>0,justify:getComputedStyle(document.querySelector('.listp>.f-sort')).justifyContent,fills:list.right-sum.right<=16,box:Math.round(sum.width)}})()`);
+      assert(m.cols === 'none' && m.strip && m.justify !== 'flex-end' && m.fills, `phone sort strip: ${JSON.stringify(m)}`);
+    });
+    assert(!phone.errors.length, JSON.stringify(phone.errors));
+  } finally { await phone.close(); }
+}
+
 async function runRowKeyboard(base) {
   for (const width of [390, 1300]) for (const language of ['en', 'sk']) {
     watchdog.refresh();
@@ -6136,7 +6222,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6208,7 +6294,8 @@ async function main() {
       await runRowScroll(base);
       await runFaqPanel(base, want);
       await runPr7Polish(base);
-      await runSelectedFirst(base); }
+      await runSelectedFirst(base);
+      await runBestMatchDesktop(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

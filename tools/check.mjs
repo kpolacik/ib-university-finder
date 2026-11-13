@@ -3232,8 +3232,20 @@ check('headings and rows share one track template, gap and inset at the 900 px l
     && /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', desktopQuery))
     && /--pane-w:clamp\(300px,26vw,380px\)/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
     && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
-    && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
     && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
+// The Sort strip used to be display:none at the list query, so a student who
+// clicked a column heading had no way back to Best match (it has no heading)
+// and nothing showed that it was active. It stays, at the right, above the headings.
+const sortStripStays = (rules) => {
+  const wide = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';');
+  const box = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort .sort-dd').map((r) => r.body).join(';');
+  return !/display:none/.test(wide) && /justify-content:flex-end/.test(wide) && /flex:0 1 20rem/.test(box);
+};
+check('wide lists keep the Sort pick-list (right-aligned above the headings) so Best match stays reachable and visible; both controls write one state; a display:none fixture fails',
+  sortStripStays(paneCss) && !sortStripStays(cssTree(cssRules + '@container (min-width: 800px){.listp>.f-sort{display:none}}'))
+    && /<div class="fld f-sort">[\s\S]*?id="dd-sort"[\s\S]*?<div class="cols"/.test(indexHtml)
+    && /function syncSort\(\) \{[\s\S]*?renderSortOptions\(dom\.sort[\s\S]*?sortPick\(\);[\s\S]*?for \(const button of dom\.sortButtons\)/.test(appSrc)
+    && /dom\.sort\.addEventListener\('change'[\s\S]*?syncSort\(\);/.test(appSrc));
 check('the header Settings button is regular 15 px like My list, Compare and FAQ, not the 600 button weight; dropping it from the rule fails',
   (() => {
     const same = (source) => /#header-compare,#settings-open\{font-size:15px;font-weight:400\}/.test(source.replace(/\s+/g, ''));

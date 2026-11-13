@@ -1005,7 +1005,6 @@ html{overflow-anchor:none}
    one gap and one inset, so a heading sits over its column at every width. A
    16 px track holds the row chevron below 1200 px, where rows open in place. */
 @container (min-width: 800px) {
-  .listp>.f-sort{display:none}
   .cols,.row{grid-template-columns:minmax(0,1fr) 168px 148px 128px 16px;column-gap:12px;padding-inline:16px}
   .cols{display:grid}
   .row{grid-template-areas:"main pts ddl fee chev";row-gap:6px;padding-block:12px;align-items:start}
@@ -2207,6 +2206,13 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
  .ml-group>.inp{max-width:none}
 }
 @media (max-width:359.98px){.listp>.f-sort>.sort-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
+/* Wide lists keep the strip too (it was hidden here, which left no way back to
+   Best match once a heading was clicked, and no sign that it was active): it
+   shrinks to a label and a 20 rem box at the right, above the headings. */
+@container (min-width: 800px){
+ .listp>.f-sort{justify-content:flex-end}
+ .listp>.f-sort .sort-dd{flex:0 1 20rem}
+}
 
 /* Copy link in the Filters sheet looks like the rows above it (full width,
    hairline, 8 px corners) instead of a lone heavy box, and its help is one
