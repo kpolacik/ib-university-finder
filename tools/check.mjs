@@ -1482,7 +1482,13 @@ check('T05 report groups, caps and counts errors', cappedReport.includes('marker
 check('T05 --all report shows every finding', !formatReport(reportRows, [], { all: true }).includes('more (add --all)'));
 const lintScript = join(root, 'tools/lint-data.mjs');
 const runLint = (args, options = {}) => spawnSync(process.execPath, [lintScript, ...args], { encoding: 'utf8', cwd: tmpdir(), ...options });
-const cliGood = runLint(['--no-git', '--today', '2026-11-02']);
+// "Today" is the newest last_verified in the real data, so a data batch dated after a
+// hard-coded day can never read as "in the future" here (the 2026-11-12 batch did).
+const lintDataDay = ['universities', 'programmes'].flatMap((kind) => {
+  const [head, ...rows] = parseCsv(read(`data/${kind}.csv`));
+  return rows.map((r) => r[head.indexOf('last_verified')]);
+}).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().pop();
+const cliGood = runLint(['--no-git', '--today', lintDataDay]);
 check('T05 CLI works away from root without git', cliGood.status === 0 && cliGood.stdout.trimEnd().endsWith('OK to commit.') && !cliGood.stderr, cliGood.stderr || cliGood.stdout);
 for (const args of [['--bogus'], ['--against'], ['--today'], ['--against', '--all'], ['--today', '--all'], ['--today', '2026-02-31'], ['--today', '2026-13-01'], ['--today', 'tomorrow'], ['--today', '2026-2-1']]) {
   const result = runLint(args);
@@ -1526,7 +1532,8 @@ check('every real subject is canonical or Unclassified',
   live.every((row) => row.subjectAreas.every((area) => SUBJECT_AREAS.includes(area) || area === UNCLASSIFIED)));
 const liveSubjects = filtersMod.buildFacets(live).subjectAreas;
 check('live facet stays within the closed vocabulary', liveSubjects.length <= SUBJECT_AREAS.length + 1);
-equal('the current dataset has 23 subject facets', liveSubjects.length, 23);
+// Every word of the closed vocabulary is used by some programme (Unclassified would be the extra facet).
+equal('the current dataset uses every subject in the vocabulary', liveSubjects.filter((s) => s !== UNCLASSIFIED).length, SUBJECT_AREAS.length);
 check('no current programme becomes Unclassified', live.every((row) => !row.subjectAreas.includes(UNCLASSIFIED)));
 check('bocconi-fin maps Finance to Business & Management', liveRow('bocconi-fin').subjectAreas.includes('Business & Management'));
 equal('sdu-mech maps to Engineering', liveRow('sdu-mech').subjectAreas, ['Engineering']);
@@ -1676,11 +1683,11 @@ check('the UvA housing sentence is on the open-entry rows (at least 15)', housin
 const baselineOf = new Map(csvToObjects(read('data/universities.csv'), 'Universities').rows
   .map((u) => [u.name.trim(), (u.baseline_requirement || '').trim()]));
 const lostBaseline = live.filter((p) => p.baselineRequirement !== baselineOf.get(p.university));
-// The count guards against a whole column going blank. It was 29 on the fork;
-// upstream filled baselines for the countries it added, so it is 144 since the
-// merge (all 29 fork baselines survived unchanged).
-check('every programme carries its university\'s baseline (144 universities have one)',
-  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length === 144,
+// The share guards against a whole column going blank. It was 29 on the fork and
+// 144 of 159 after the upstream merge; 266 of 283 after the 2026-11-12 batch. Most
+// universities have one, so the guard is a share of the universities, not a count.
+check('every programme carries its university\'s baseline (most universities have one)',
+  lostBaseline.length === 0 && [...baselineOf.values()].filter(Boolean).length >= 0.8 * baselineOf.size,
   `${lostBaseline.length} rows differ; ${[...baselineOf.values()].filter(Boolean).length} baselines`);
 check('the one "?" city on the real data is flagged', liveRow('cvut-aplikace-informatiky-v-prirodnich-vedac')?.cityUnknown === true);
 
@@ -1854,7 +1861,7 @@ check('T03 update-cao-points.mjs never writes last_verified or verified_by',
   !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/update-cao-points.mjs')));
 check('update-cao-points.mjs keeps UCD sentences by a list, not by matching Maths|625',
   !read('tools/update-cao-points.mjs').includes('Maths|625'));
-const isIrish = (p) => /^(tcd|ucd|ucc|galway|dcu|ul|maynooth)-/.test(p.id);
+const isIrish = (p) => p.country === 'Ireland';
 const cutoffOf = (p) => latestOf(p)?.points ?? null;
 const ucdConverted = live.filter((p) => p.id.startsWith('ucd-')
   && [ie.BONUS_ONLY, D28_SENTENCE, ie.aboveIB(610), ie.aboveIB(610, true), ie.aboveIB(700), ie.aboveIB(700, true)]
@@ -2135,10 +2142,16 @@ section('"#" cutoffs whose test marks are added, or not confirmed (D27)');
 // 2026-11-02: 3 confirmed-added codes say "Cutoff includes a test score", 8
 // unconfirmed say "Assessment required; IB equivalent unverified", and the
 // separate pass/fail ones keep their figure. plans/d27-test-marked-cutoffs.md.
-equal('D27 TEST_IN_CUTOFF holds the three confirmed codes',
-  [...(pts.TEST_IN_CUTOFF ?? [])].sort(), ['CK112', 'DC014', 'GY261']);
-equal('D27 TEST_UNVERIFIED holds CK114 and the seven UL codes',
-  [...(pts.TEST_UNVERIFIED ?? [])].sort(), ['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135']);
+// 2026-11-12: MTU's MT823/MT936 (offers on the portfolio/test result) and
+// MT811 (portfolio, scoring not stated) added for the proposed MTU rows, so a
+// low "#240" portfolio score never shows as "IB 24".
+equal('D27 TEST_IN_CUTOFF holds the five confirmed codes',
+  [...(pts.TEST_IN_CUTOFF ?? [])].sort(), ['CK112', 'DC014', 'GY261', 'MT823', 'MT936']);
+equal('D27 TEST_UNVERIFIED holds CK114, the seven UL codes and MT811',
+  [...(pts.TEST_UNVERIFIED ?? [])].sort(), ['CK114', 'LM076', 'LM099', 'LM131', 'LM132', 'LM133', 'LM134', 'LM135', 'MT811']);
+equal('D27 MTU portfolio cutoffs get no IB figure (MT823 #240 would otherwise read as 24)',
+  [pts.ibForCutoff(240, { test: true, code: 'MT823' }).ib, pts.ibForCutoff(372, { test: true, code: 'MT936' }).ib,
+    pts.ibForCutoff(400, { test: true, code: 'MT811' }).ib], [null, null, null]);
 check('D27 the separate-requirement codes and HPAT codes are in neither list',
   ['TR025', 'TR093', 'DN300', 'CK104', 'LM103', ...ie.HPAT_CODES]
     .every((c) => !pts.TEST_IN_CUTOFF?.has(c) && !pts.TEST_UNVERIFIED?.has(c)));
@@ -2210,9 +2223,14 @@ equal('D27 My points never hides them (unknown bucket)',
   ['ie-added', 'ie-unver'].map((id) => d27Filters.pointsBucket(d27Of(id), { myIbPoints: 24, hlMaths: false })), ['unknown', 'unknown']);
 const d27Live = live.filter((p) => p.pointsTestUnverified || (p.pointsPlusTest && !(cutoffOf(p) > 625)))
   .map((p) => [p.id, p.pointsPlusTest ? 'added' : 'unverified']).sort();
-equal('D27 real data: exactly the 11 chosen rows lose their figure', d27Live, [
+// The three MTU rows (MT823 Visual Communications, MT936 Music, MT811 Animation) come with the
+// 2026-11-12 batch, so they are expected only once they are in the data.
+const d27Mtu = [['mtu-animation-visual-storytelling', 'unverified'], ['mtu-music', 'added'], ['mtu-visual-communications', 'added']]
+  .filter(([id]) => live.some((p) => p.id === id));
+equal('D27 real data: exactly the 11 chosen rows (plus the MTU ones, once present) lose their figure', d27Live, [
   ['dcu-jazz-and-contemporary-music-performance', 'added'],
   ['galway-bachelor-of-business-studies-internat', 'added'],
+  ...d27Mtu,
   ['ucc-theatre-and-performative-practices', 'added'],
   ['ucc-youth-and-community-work', 'unverified'],
   ['ul-architecture-barch', 'unverified'],
@@ -2222,7 +2240,7 @@ equal('D27 real data: exactly the 11 chosen rows lose their figure', d27Live, [
   ['ul-music-ba', 'unverified'],
   ['ul-product-design-and-technology-bsc', 'unverified'],
   ['ul-voice-ba', 'unverified'],
-]);
+].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
 equal('D27 real data: the separate-requirement "#" rows keep their figure',
   ['tcd-drama-and-theatre-studies', 'tcd-nursing---general-nursing-adel', 'ucd-veterinary-medicine', 'ucc-arts-music', 'ul-paramedic-studies-bsc']
     .map((id) => typeof live.find((p) => p.id === id)?.ibPointsMin), ['number', 'number', 'number', 'number', 'number']);
@@ -2985,13 +3003,12 @@ check('row provenance keeps the detail signature/date/sample chain',
   const paired = (fg, bg) => PAIRS.some(([f, b, , min]) => f === fg && b === bg && min >= 4.5);
   const r = fxRow('fx-plain');
   const badge = (country) => byClass(rowOf({ ...r, country }), 'cc')[0];
-  check('country badges: the eleven data countries are mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
-    mapped.map(([, c]) => c).sort().join() === 'Austria,Czechia,Denmark,Finland,Germany,Ireland,Italy,Netherlands,Norway,Sweden,United Kingdom'
-      && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
+  check('country badges: every data country is mapped, every mapped and the neutral pair has an enforced 4.5 contrast pair, and an unmapped country renders in words on the neutral tint',
+    mapped.length >= 11 && mapped.every(([, , bg, fg]) => paired(fg, bg)) && paired('--cty-ink', '--cty-fill')
       && /background:var\(--cty-fill\);color:var\(--cty-ink\)/.test(ruleBody('.cc'))
       && badge('Portugal')?.textContent === 'Portugal' && badge('Portugal').getAttribute('data-country') === 'Portugal'
       && !mapped.some(([, c]) => c === 'Portugal') && badge('Denmark')?.getAttribute('data-country') === 'Denmark'
-      && new Set(live.map((row) => row.country)).size === 11 &&[...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
+      && new Set(live.map((row) => row.country)).size >= 11 && [...new Set(live.map((row) => row.country))].every((c) => mapped.some(([, m]) => m === c)));
 }
 check('requirements run across the row: the line is a direct child of .row after the three cells, never inside the title block',
   [...live.slice(0, 40), fxRow('fx-checked')].every((row) => {
@@ -3651,11 +3668,16 @@ check('every button in the filter form and the sheet is type="button" (no implic
   const buttons = src.match(/<button\b[^>]*>/g) ?? [];
   return buttons.length > 0 && buttons.every((b) => /type="button"/.test(b));
 }));
-check('the sprite has the Phosphor funnel and a flag for each of the 11 data countries, filled only from the canonical flag tokens',
-  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && ['f-at', 'f-cz', 'f-de', 'f-dk', 'f-fi', 'f-gb', 'f-ie', 'f-it', 'f-nl', 'f-no', 'f-se'].every((id) => {
-    const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
-    return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
-  }));
+check('the sprite has the Phosphor funnel and a flag for each data country, filled only from the canonical flag tokens',
+  /<symbol id="i-filter" viewBox="0 0 256 256">/.test(indexHtml) && (() => {
+    // The flags the app maps (COUNTRY_FLAGS in js/app.js), plus one for every country in the data.
+    const mappedFlags = Object.fromEntries([...appSrc.match(/const COUNTRY_FLAGS = \{([\s\S]*?)\};/)[1].matchAll(/(?:'([^']+)'|(\w+)): '(f-\w+)'/g)].map((m) => [m[1] ?? m[2], m[3]]));
+    return [...new Set(live.map((row) => row.country))].every((c) => mappedFlags[c])
+      && Object.values(mappedFlags).every((id) => {
+        const symbol = indexHtml.match(new RegExp(`<symbol id="${id}"[\\s\\S]*?</symbol>`))?.[0] ?? '';
+        return /fill:var\(--flag-/.test(symbol) && !/#[0-9a-f]{3,8}\b/i.test(symbol);
+      });
+  })());
 // Stage 5 slipped the funnel and flags in between the globe's licence line and
 // the globe, so the MIT credit sat on the wrong icon.
 check('the globe and funnel licence lines sit directly on their own symbols',
@@ -5379,8 +5401,8 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
       'university\'s estimate', 'estimate from VŠE, same city', 'university\'s estimate (weekly totals × 52 / 12), £741–£2,019 a month', '', null]
       .map(livingIsFloor), [true, true, true, true, false, false, false, false, false, false, false]);
   const realFloors = [...new Set(live.filter((r) => livingIsFloor(r.livingCostSource)).map((r) => r.livingCostSource))].sort();
-  check('real data: every floor source names a visa, UDI or the Migration Agency, and all four kinds are found',
-    realFloors.every((s) => /visa|UDI|Migration Agency/.test(s))
+  check('real data: every floor source names a visa, UDI, the Migration Agency or an immigration service, and all four kinds are found',
+    realFloors.every((s) => /visa|UDI|Migration Agency|Immigration Service/.test(s))
       && ['German student visa', 'UDI', 'Migration Agency', 'UK student visa'].every((k) => realFloors.some((s) => s.includes(k))), realFloors.join(' | '));
   check('real data: no university\'s own estimate or national portal is read as a floor',
     live.every((r) => !livingIsFloor(r.livingCostSource) || !/university's|Study in|same city/.test(r.livingCostSource)));

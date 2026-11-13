@@ -93,6 +93,9 @@
   --cty-se-fill:#e7eaf5; --cty-se-ink:#37467a;
   --cty-fi-fill:#e4f0ee; --cty-fi-ink:#2a5650;
   --cty-no-fill:#ecebf1; --cty-no-ink:#42485f;
+  /* Slovakia (2026-11-12): a warm sand, the one hue no neighbour in a list uses, so it
+     is not mistaken for Czechia's grey-mauve. */
+  --cty-sk-fill:#f1ece2; --cty-sk-ink:#574725;
 
   /* ---------- Flags: ONLY inside the Country filter options. Never on rows, cells or headings. ---------- */
   --flag-white:#ffffff;
@@ -108,6 +111,7 @@
   --flag-fi-blue:#002f6c;
   --flag-no-red:#ba0c2f; --flag-no-blue:#00205b;
   --flag-fr-blue:#000091; --flag-fr-red:#e1000f;
+  --flag-sk-blue:#0b4ea2; --flag-sk-red:#ee1c25;
 
   /* ---------- Type: IBM Plex Sans, self-hosted later. Hierarchy by weight, not size. ---------- */
   --font:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -196,6 +200,8 @@
   --cty-fi-ink:#c8d0da;
   --cty-no-fill:#2c333d;
   --cty-no-ink:#c8d0da;
+  --cty-sk-fill:#2c333d;
+  --cty-sk-ink:#c8d0da;
   --scrim:rgb(0 0 0 / .55);
   --thumb-shadow:0 1px 3px rgb(0 0 0 / .5);
   --pop-shadow:0 0 0 1px #3b4350,0 12px 32px -10px rgb(0 0 0 / .45);
@@ -820,6 +826,7 @@ html{overflow-anchor:none}
 .cc[data-country=Sweden]{background:var(--cty-se-fill);color:var(--cty-se-ink)}
 .cc[data-country=Finland]{background:var(--cty-fi-fill);color:var(--cty-fi-ink)}
 .cc[data-country=Norway]{background:var(--cty-no-fill);color:var(--cty-no-ink)}
+.cc[data-country=Slovakia]{background:var(--cty-sk-fill);color:var(--cty-sk-ink)}
 /* The row disclosure: i-chevron in a fixed 16 px box, centred on the title's
    first 22 px line, turned whole when open. It was a rotated CSS border that
    dropped 3 px when open (Phase 3 diagnosis). */

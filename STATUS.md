@@ -46,7 +46,7 @@ later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
 
-2,915 programmes · 159 universities · 11 countries, counted from `data/*.csv` on 2026-11-02, right after the upstream merge (the table below is the same count by country). Recount with a small node script if you need the figure again; don't trust this line after a data change.
+3,966 programmes · 283 universities · 12 countries, counted from `data/*.csv` on 2026-11-12, right after the research rows were added (the table below is the same count by country; its Notes column still describes the older rows). Recount with a small node script if you need the figure again; don't trust this line after a data change.
 
 `node tools/lint-data.mjs` checks maintainer edits before a commit (T05) and detects swapped, renamed or missing ids against HEAD, or `--against ORIG_HEAD` after a merge (M02). Reciprocal swaps and chains of shifted ids (an importer meeting one more row first) are errors; other identity changes need a human review. A mistyped `--against` ref stops with exit 2. Importer id preservation is still open.
 
@@ -72,17 +72,21 @@ Subject filters now use 23 fixed names, including Sports Science, with old names
 
 | Country | Universities | Programmes | Notes |
 |---|---|---|---|
-| Netherlands | 13 | 196 | **Complete** — every Dutch research university |
-| Ireland | 7 | 548 | **Complete** — every Irish university |
-| Czechia | 5 | 424 | **The big five**, added 2026-10-24 — Czech- and English-taught |
-| Italy | 15 | 99 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
-| Denmark | 7 | 31 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
+| Netherlands | 26 | 346 | **Complete** — every Dutch research university |
+| Ireland | 10 | 621 | **Complete** — every Irish university |
+| Czechia | 15 | 579 | **The big five**, added 2026-10-24 — Czech- and English-taught |
+| Italy | 24 | 121 | English-taught only — Bologna, Sapienza, Bocconi, PoliMi, PoliTo, Padova, Milan Statale, Trento, Pavia, Milano-Bicocca, Ca' Foscari, Turin, Tor Vergata, Luiss, Cattolica |
+| Denmark | 10 | 45 | English-taught only — CBS, Aarhus, SDU, Aalborg, DTU, ITU, Roskilde |
 | Sweden | 25 | 95 | English-taught only — every bachelor universityadmissions.se lists for autumn 2027, added 2026-10-27 |
-| United Kingdom | 25 | 883 | **Shown since 2026-11-02** (see Decisions). Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
-| Austria | 7 | 92 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
-| Germany | 38 | 474 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU, Heidelberg (140, 2026-10-29) and KIT, RWTH, TU Berlin, FU Berlin, Freiburg, Tübingen (273, 2026-10-30). HU Berlin missing (bot check blocks this machine) |
-| Norway | 5 | 14 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
-| Finland | 12 | 59 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
+| United Kingdom | 34 | 971 | **Shown since 2026-11-02** (see Decisions). Russell Group and other leading universities: 19 researched by Jakub (CAS/verification/uk, on his machine), merged 2026-10-29; Liverpool, Newcastle, Nottingham, QMUL, York and Queen's Belfast added 2026-10-29. Cardiff missing (blocks this machine) |
+| Austria | 15 | 127 | English-taught bachelors at public universities and CEU, plus every German-taught bachelor at Vienna, TU Wien and WU, added 2026-10-29 |
+| Germany | 72 | 600 | English-taught university bachelors from the DAAD database (61), plus German-taught bachelors at TUM, LMU, Heidelberg (140, 2026-10-29) and KIT, RWTH, TU Berlin, FU Berlin, Freiburg, Tübingen (273, 2026-10-30). HU Berlin missing (bot check blocks this machine) |
+| Norway | 6 | 16 | English-taught bachelors at universities on Study in Norway's list, added 2026-10-27 |
+| Finland | 34 | 208 | English-taught university bachelors on Studyinfo.fi for autumn 2027 (most are bachelor + master), added 2026-10-27 |
+| Slovakia | 12 | 237 | New country, added 2026-11-12 with the research rows below |
+
+
+**Research rows (2026-11-12).** `tools/add-research-2026-11-12.mjs` added 124 universities and 1,051 programmes in 12 countries, including Slovakia as a new country (12 universities, 237 programmes). Every row is AI-DRAFT. The evidence for each risky field (URL, place on the page, quote, academic year) is kept outside this repo in `ib-research-expansion/proposals/evidence.jsonl`. A few rows were held back there (`held-back.csv`). One-off; do not re-run it.
 
 **Upstream merge (2026-11-02).** The fork's redesign merged Jakub's `main`
 (c7b5495). Leon's rule: Jakub's data and choices win. So Jakub's two CSVs

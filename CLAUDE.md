@@ -7,8 +7,8 @@ programmes, filtering on entry requirements, deadlines, tuition and language.
 The users are a Slovak school cohort of about 30, all EU citizens, so EU fees
 are the only fees shown. The UK is shown too (Leon, 2026-11-02, reversing the
 fork's earlier exclusion): its `tuition_eu` is the international fee, which is
-what EU students pay there now. The data covers 11 countries, 159 universities
-and about 2,900 programmes (recount from `data/*.csv`; STATUS.md "State"
+what EU students pay there now. The data covers 12 countries, 283 universities
+and about 3,970 programmes (recount from `data/*.csv`; STATUS.md "State"
 has the table). Each programme has one row in
 `data/programmes.csv`, joined to `data/universities.csv` by `university_id`.
 The browser loads the CSVs (or the published Google Sheet once
