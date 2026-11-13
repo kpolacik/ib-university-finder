@@ -193,7 +193,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -3471,7 +3471,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
@@ -3737,6 +3737,55 @@ check('country options get an aria-hidden flag between the tick and the name; an
     }) && !byTag(plain, 'svg').length && appSrc.includes("{ flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') }")
       && Object.entries(flags).every(([c, f]) => appSrc.includes(`${c}: '${f}'`));
   }));
+
+// Pick-lists open with ticked options first (never reordered while open).
+// Ticked values keep their own order at the top, the rest keep theirs, and
+// unticking puts a value back where it was.
+equal('selectedFirst: ticked values first in their original order, the rest after in theirs',
+  filtersMod.selectedFirst(['A', 'B', 'C', 'D', 'E'], (v) => v === 'D' || v === 'B'), ['B', 'D', 'A', 'C', 'E']);
+equal('selectedFirst: nothing ticked leaves the order alone, and the input is not changed',
+  (() => { const list = ['A', 'B', 'C']; const out = filtersMod.selectedFirst(list, () => false); return [out, list]; })(), [['A', 'B', 'C'], ['A', 'B', 'C']]);
+check('showSelectedFirst reorders a pick-list on demand, keeps the search row first and hidden options in place, and unticking restores the original order',
+  typeof showSelectedFirst === 'function' && withStubDocument(() => {
+    const names = ['Austria', 'Belgium', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'Germany', 'Hungary', 'Ireland', 'Italy', 'Latvia', 'Malta', 'Norway'];
+    const parent = new ChromeNode('div'), box = new ChromeNode('div'); parent.setAttribute('aria-label', 'Country'); parent.append(box);
+    renderChips(box, names, new Set(), () => {}, { forceSearch: true });
+    const labels = () => box.children.filter((c) => c.classList.contains('option'));
+    const order = () => labels().map((l) => l.textContent);
+    const tickBox = (name, on) => { labels().find((l) => l.textContent === name).children[0].checked = on; };
+    const searchRow = box.children[0];
+    if (showSelectedFirst(box) !== false || order().join() !== names.join()) return false;
+    tickBox('Italy', true); tickBox('Czechia', true);
+    labels().find((l) => l.textContent === 'Malta').hidden = true;
+    if (showSelectedFirst(box) !== true) return false;
+    if (order().slice(0, 2).join() !== 'Czechia,Italy' || order().slice(2).join() !== names.filter((n) => n !== 'Czechia' && n !== 'Italy').join()) return false;
+    if (box.children[0] !== searchRow || !labels().find((l) => l.textContent === 'Malta').hidden) return false;
+    if (showSelectedFirst(box) !== false) return false;
+    tickBox('Italy', false); tickBox('Czechia', false);
+    return showSelectedFirst(box) === true && order().join() === names.join();
+  }));
+appCheck('actual pick-lists: a ticked option goes to the top when the list opens, not while it is open; Sort and the single-value lists are left alone', ({ run, get, fire }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const dd = get('dd-countries'), box = get('f-countries');
+  const values = () => box.children.filter((c) => c.classList.contains('option')).map((l) => l.children[0].value);
+  const original = values(); if (original.length < 3) return false;
+  const last = box.children.filter((c) => c.classList.contains('option')).at(-1);
+  // Tick the last country with the list open: it stays where it is.
+  dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  last.children[0].checked = true; fire(last.children[0], 'change');
+  if (values().join() !== original.join()) return false;
+  // Close, then open again (the click runs before the browser opens it).
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); fire(dd.querySelector('summary'), 'click');
+  if (values()[0] !== original.at(-1) || values().slice(1).join() !== original.slice(0, -1).join()) return false;
+  // Clearing puts it back on the next open.
+  box.children.filter((c) => c.classList.contains('option')).find((l) => l.children[0].value === original.at(-1)).children[0].checked = false;
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  if (values().join() !== original.join()) return false;
+  // Sort opens as before: its radios are never moved, even with one checked.
+  const sort = get('dd-sort'), radios = get('sort-options'), before = radios.children.slice();
+  sort.open = true; fire(sort, 'toggle', { bubbles: false }); fire(sort.querySelector('summary'), 'click');
+  return radios.children.length === before.length && radios.children.every((node, i) => node === before[i]);
+});
 
 // Real handlers on the real markup. Each would pass with a wrong target only
 // if the app code were wrong in the same way, so every outcome is asserted.

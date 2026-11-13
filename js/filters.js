@@ -213,6 +213,14 @@ export function pointsSummaryParts(rows, state) {
 // a longer one may appear anywhere. A hyphen or other punctuation starts a new
 // word, so "eco" finds "Socio-economic". The exact query token "cs" expands
 // to both full words before matching, without changing any row's search blob.
+// Pick-list order on open: ticked values first, each group in its original
+// order. A stable partition, so unticking puts a value back in its own place.
+export function selectedFirst(items, isSelected) {
+  const picked = [], rest = [];
+  for (const item of items) (isSelected(item) ? picked : rest).push(item);
+  return [...picked, ...rest];
+}
+
 export function matchesSearch(blob, query) {
   return tokensMatch(blob, searchTokens(query));
 }

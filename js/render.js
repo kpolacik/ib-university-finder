@@ -7,7 +7,7 @@ import { t, dateFormatter, dataParts, facetLabel, getLanguage, formatCount } fro
 
 import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
-import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
+import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS, selectedFirst } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
 // The detail's wording for the exam, the countdown, money and the yearly
@@ -933,13 +933,17 @@ function compareActions(row, saved) {
 
 // ------------------------------------------------------------ filter chips
 
+// Each option's place in the original order, for showSelectedFirst.
+const optionPos = new WeakMap();
+
 // One checkbox row per value, inside a filter drop-down's pick-list. (These were
 // pill-shaped chips until the filters moved into a bar above the results.)
 // flags maps a value to a sprite symbol (the Country list only). The flag is
 // aria-hidden, so the option is still named by the country alone.
 export function renderChips(container, values, selected, onToggle, { flags, field, counts, forceSearch = false } = {}) {
-  const options = values.map((value) => {
+  const options = values.map((value, pos) => {
     const label = el('label', 'option');
+    optionPos.set(label, pos);
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.value = value;
@@ -975,6 +979,20 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     container.append(searchLabel, clear, empty);
   }
   container.append(...options);
+}
+
+// Called when a pick-list opens, never while it is open, so nothing jumps under
+// the pointer or the keyboard focus. Ticked options go first; both groups keep
+// their original order (optionPos, set in renderChips). Hidden (searched-out) options
+// are reordered too, so a search keeps the same rule. Returns true if it moved.
+export function showSelectedFirst(container) {
+  const options = [...container.children].filter((node) => node.classList.contains('option'));
+  const byPos = [...options].sort((a, b) => optionPos.get(a) - optionPos.get(b));
+  const wanted = selectedFirst(byPos, (option) => option.children[0]?.checked);
+  if (wanted.every((option, i) => option === options[i])) return false;
+  container.append(...wanted);
+  container.scrollTop = 0;
+  return true;
 }
 
 export function renderAppliedChips(container, chips, onRemove) {

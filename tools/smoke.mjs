@@ -13,6 +13,7 @@
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
 //   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
+//   node tools/smoke.mjs --only=runSelectedFirst # ticked pick-list options first on the next open
 //   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
@@ -4837,6 +4838,63 @@ async function runColdSheet(base, want) {
   }
 }
 
+// Pick-lists open with the ticked options first, and never reorder while open.
+// Bar lists (1300) and the sheet's inline lists (390) use the same code.
+async function runSelectedFirst(base) {
+  for (const [width, phone] of [[1300, false], [390, true]]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`, 15000, 'selected-first ready');
+      await check(`${width}`, 'selected first', 'a ticked country goes to the top on the next open, not while open; clearing puts it back', async () => {
+        if (phone) {
+          await page.click(`document.querySelector('#f-more')`, 'Filters');
+          await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet did not open'})`, 5000, 'the open sheet');
+        }
+        const values = `[...document.querySelectorAll('#f-countries label.option input')].map(i=>i.value)`;
+        const summary = `document.querySelector('#dd-countries summary')`;
+        const isOpen = (want) => page.waitFor(`({ok:document.querySelector('#dd-countries').open===${want},why:'list did not ${want ? 'open' : 'close'}'})`, 5000, want ? 'the open list' : 'the closed list');
+        const toggle = async (want) => { await page.click(summary, 'the Country list'); await isOpen(want); };
+        await toggle(true);
+        const original = await page.ev(values);
+        assert(original.length > 6, 'too few countries to test');
+        // Tick a middle one (scrolled into view) while the list is open.
+        const pick = original[4], pickJs = JSON.stringify(pick);
+        await page.ev(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').closest('label').scrollIntoView({block:'center'})`);
+        await page.click(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').closest('label')`, `the ${pick} option`);
+        assert(await page.ev(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').checked`), 'option did not tick');
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(original), 'the list reordered while open');
+        await toggle(false); await toggle(true);
+        const after = await page.ev(values);
+        assert(after[0] === pick, `ticked ${pick} is not first after reopening (got ${after[0]})`);
+        assert(JSON.stringify(after.slice(1)) === JSON.stringify(original.filter((v) => v !== pick)), 'the unticked countries lost their order');
+        assert(await page.ev(`document.querySelector('#f-countries').scrollTop===0`), 'the list did not start at the top');
+        // A search keeps the same rule: with a one-letter query most countries
+        // match, and the ticked one still leads the visible results.
+        const typed = (q) => page.ev(`(()=>{const q=document.querySelector('#f-countries input[type=search]');q.value=${JSON.stringify(q)};q.dispatchEvent(new Event('input',{bubbles:true}));return [...document.querySelectorAll('#f-countries label.option')].filter(l=>!l.hidden).map(l=>l.querySelector('input').value)})()`);
+        const found = await typed(pick.slice(0, 1).toLowerCase());
+        assert(found[0] === pick && found.length > 1, `search results do not lead with the ticked ${pick}: ${found.slice(0, 3)}`);
+        await typed('');
+        // Keyboard: the reopened list is still operable; Space unticks the first option.
+        await page.ev(`document.querySelector('#f-countries label.option input').focus()`);
+        await page.key(' ', 'Space', 32, [], ' ');
+        assert(!(await page.ev(`document.querySelector('#f-countries label.option input').checked`)), 'Space did not untick the first option');
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(after), 'unticking reordered the open list');
+        // aria-expanded follows the (queued) toggle event, so wait for it.
+        await page.waitFor(`({ok:document.querySelector('#dd-countries summary').getAttribute('aria-expanded')==='true',why:'aria-expanded is not true on the open list'})`, 5000, 'aria-expanded');
+        await toggle(false); await toggle(true);
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(original), 'clearing did not restore the original order on the next open');
+        // Sort is left alone: its order carries meaning.
+        assert(await page.ev(`document.querySelector('#dd-sort')===null || ![...document.querySelectorAll('#sort-options input')].some(i=>i.type==='checkbox')`), 'Sort has tick boxes');
+        await toggle(false);
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
 async function runRowKeyboard(base) {
   for (const width of [390, 1300]) for (const language of ['en', 'sk']) {
     watchdog.refresh();
@@ -6078,7 +6136,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6149,7 +6207,8 @@ async function main() {
       await runCompareTouchScroll(base);
       await runRowScroll(base);
       await runFaqPanel(base, want);
-      await runPr7Polish(base); }
+      await runPr7Polish(base);
+      await runSelectedFirst(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

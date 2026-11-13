@@ -19,7 +19,7 @@ import {
 import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
-  appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
   setSaved, setInCompare, renderCompare,
 } from './render.js';
 
@@ -2563,7 +2563,27 @@ function wireDropdowns() {
     for (const d of dom.dropdowns) if (d !== except) d.open = false;
   };
   for (const d of dom.dropdowns) {
-    d.addEventListener('toggle', () => { if (d.open) closeAll(d); });
+    // Ticked options go to the top as the list opens, never while it is open.
+    // The click runs before the browser opens it, so there is no flash of the
+    // old order; the toggle covers opening by find-in-page or a script. Only
+    // the five tick-lists are reordered: Sort's order carries meaning and the
+    // single-value lists have no ticks, so both are left alone.
+    // `sorted` is true from the sort until the list is seen closed, so a toggle
+    // event that arrives late (it is queued, not instant) never reorders a list
+    // someone has already started ticking.
+    let sorted = false;
+    const ticked = () => {
+      sorted = true;
+      const box = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities].find((list) => d.contains(list));
+      if (box) showSelectedFirst(box);
+    };
+    d.querySelector('summary')?.addEventListener('click', () => { if (!d.open) ticked(); });
+    d.addEventListener('change', () => { sorted = true; });
+    d.addEventListener('toggle', () => {
+      if (!d.open) { sorted = false; return; }
+      if (!sorted) ticked();
+      closeAll(d);
+    });
     // Tabbing past the last option left the panel open over the next control
     // (A06). A null relatedTarget is left alone: Safari does not focus a
     // clicked checkbox, so focus "leaves" to nothing on every tick.
