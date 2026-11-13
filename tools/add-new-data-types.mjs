@@ -2,6 +2,7 @@
 // changes last_verified. Run after merging main, then run make-snapshot.mjs.
 // node tools/add-new-data-types.mjs [wave-directory] [media-directory] [rankings-directory]
 // --dry-run validates and reports without writing CSVs or the translation todo.
+// --no-todo leaves the external translation todo untouched.
 // --self-test exercises the conversion and refusal rules without reading inputs.
 //
 // ECB reference date: 2026-11-12; 1 EUR = GBP 0.83595, CZK 24.379,
@@ -30,6 +31,10 @@ const GAP_COLUMNS = new Set(['degree_type', 'english_requirement_default', 'ib_s
 const CORRECTIONS = new Set(['admission', 'application_deadline', 'deadline_notes', 'tuition_eu', 'english_requirement']);
 const UNKNOWN = new Set(['app_fee', 'places', 'intake_months', 'ib_recognition', 'ib_offer']);
 const FREE_TEXT = ['ib_recognition', 'ib_recognition_default', 'app_fee_note', 'app_fee_note_default'];
+const UNICATT_OLD = 'Full IB Diploma only (at least 12 years of schooling; IB certificates and the Career-related Programme are not accepted). Final scores go from IBO to Cattolica by the May 2027 session, which replaces legalisation, Dichiarazione di Valore or CIMEA statements; November retakes are not accepted.';
+const UNICATT_NEW = UNICATT_OLD.replace('Final scores go from IBO to Cattolica by the May 2027 session', 'Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027');
+const recognition = (id, field, value) => id === 'unicatt' && field === 'ib_recognition_default' && value === UNICATT_OLD ? UNICATT_NEW : value;
+const writeTodo = (args) => !args.includes('--no-todo');
 const RANK = /^(?:=?\d+|\d+–\d+|\d+\+)$/;
 const COMPARISON = /(?:^|\.)(?:studyportals\.com|bachelorsportal\.com|mastersportal\.com|educations\.com|topuniversities\.com|timeshighereducation\.com|wikipedia\.org|unipage\.net)$/i;
 const safe = (s) => { try { return /^https?:$/.test(new URL(s).protocol); } catch { return false; } };
@@ -92,6 +97,12 @@ function mergeBrowser(proposals, browser, conflicts) {
   return [...cells.values()];
 }
 function selfTest() {
+  assert(writeTodo([])); assert(!writeTodo(['--no-todo']));
+  assert.equal(recognition('unicatt', 'ib_recognition_default', UNICATT_OLD), UNICATT_NEW);
+  assert.equal(recognition('unicatt', 'ib_recognition_default', UNICATT_NEW), UNICATT_NEW);
+  assert.equal(recognition('other', 'ib_recognition_default', UNICATT_OLD), UNICATT_OLD);
+  assert.equal(recognition('unicatt', 'ib_recognition', UNICATT_OLD), UNICATT_OLD);
+  assert.equal(recognition('unicatt', 'ib_recognition_default', UNICATT_OLD + ' '), UNICATT_OLD + ' ');
   assert.equal(fee('34.50 GBP').euros, '41');
   assert.equal(fee('1050 CZK').euros, '43');
   assert.equal(fee('0 EUR').euros, '0');
@@ -119,7 +130,7 @@ function selfTest() {
   console.log('Import self-tests passed.');
 }
 if (process.argv.includes('--self-test')) { selfTest(); process.exit(0); }
-const args = process.argv.slice(2).filter((a) => a !== '--dry-run');
+const args = process.argv.slice(2).filter((a) => a !== '--dry-run' && a !== '--no-todo');
 const dry = process.argv.includes('--dry-run');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const wave = resolve(args[0] || '/Users/leon/projects/ib-research-expansion/pr2/wave');
@@ -167,7 +178,7 @@ for (const p of proposals) {
   const row = target(p);
   const name = indexes.universities.has(p.id) ? 'universities' : 'programmes';
   let reason = '';
-  let value = p.column === 'degree_type' ? degree(p.value) : p.value;
+  let value = p.column === 'degree_type' ? degree(p.value) : recognition(p.id, p.column, p.value);
   const fillOnly = GAP_COLUMNS.has(p.column);
   if (!NEW[name].includes(p.column) && !(name === 'programmes' && CORRECTIONS.has(p.column)) && !fillOnly) reason = 'column outside approved proposals';
   else if (!official(p.source_url) || !p.quote.trim()) reason = 'missing official source or quote';
@@ -341,6 +352,7 @@ const translationsFile = join(wave, 'sk/translations.csv');
 report.translations.present = existsSync(translationsFile);
 report.translations.applied = 0;
 if (existsSync(translationsFile)) for (const t of read(translationsFile).rows) {
+  t.english = recognition('unicatt', t.field, t.english);
   if (!strings.has(`${t.field}\0${t.english}`) || !t.slovak.trim()) continue;
   const existing = sk.rows.find((r) => r.field === t.field && r.en === t.english);
   if (existing && existing.verified_by !== 'AI-DRAFT') continue;
@@ -362,12 +374,14 @@ for (const [name, sheet] of Object.entries(sheets)) {
 }
 if (!dry) {
   for (const [name, sheet] of Object.entries(sheets)) writeFileSync(join(root, 'data', `${name}.csv`), csv(sheet.head, sheet.rows));
-  mkdirSync(join(wave, 'sk'), { recursive: true });
-  writeFileSync(join(wave, 'sk/todo.csv'), csv(['field', 'english', 'count'], todo));
+  if (writeTodo(process.argv)) {
+    mkdirSync(join(wave, 'sk'), { recursive: true });
+    writeFileSync(join(wave, 'sk/todo.csv'), csv(['field', 'english', 'count'], todo));
+  }
   if (existsSync(translationsFile)) writeFileSync(join(root, 'data/i18n/sk.csv'), csv(sk.head, sk.rows));
 }
 console.log(JSON.stringify(report, null, 2));
 if (!report.browser.present) console.log('browser_verified.csv absent: continuing with proposals_verified.csv only.');
 if (!report.testFees.present) console.log('test_fees.csv absent: continuing without admission-test fee notes.');
 if (!report.translations.present) console.log('translations.csv absent: data/i18n/sk.csv left untouched.');
-console.log(dry ? 'Dry run: no files written.' : 'Wrote the data CSVs and sk/todo.csv. Run node tools/make-snapshot.mjs next.');
+console.log(dry ? 'Dry run: no files written.' : `Wrote the data CSVs${process.argv.includes('--no-todo') ? '' : ' and sk/todo.csv'}. Run node tools/make-snapshot.mjs next.`);

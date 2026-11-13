@@ -8,6 +8,64 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**PR 2 / Wave 6 (2026-11-13, local and provisional).** The shared
+`filter-selected-first` worktree contains the detail-only facts, application
+actions, credited campus photos and Slovak translations from Waves 2–4.
+Rankings remain behind `SHOW_RANKINGS = false`. PR 2 follows the CSV path,
+before the database switch-over. Wave 5 adds real-data CAO/URL/photo acceptance
+checks and the targetable browser section
+`node tools/smoke.mjs --only=runPr2 --require-chrome`: 390 px slots and 1280 px
+panes, light and dark, real application and fee edge cases, isolated unknown
+and forced-ranking fixtures, Slovak inherited text/reveal, and print media.
+Maintenance rules are in MAINTENANCE.md under "Detail facts added in PR 2".
+Wave 5 targeted smoke passed: 56 checks in 44.4 seconds (Node 26.13.0).
+Lint passed with 0 errors / 215 warnings; all 150 contrast pairs passed;
+`i18n-missing.mjs` exited 0 with no MISSING for the four new translation
+fields (993 unrelated missing strings / 4 orphan translations remain).
+`git diff --check` passed.
+
+**Wave 6 fast gate corrected:** the PR 2 CAO assertion now accepts UCD's
+published IB minimum without a cutoff sentence only when the whole note is
+`UCD's stated minimum: NN IB points.`, NN is 24–45 and matches the row's
+`ib_points_min`, the university is UCD, and its code has the CAO DN format.
+When a CAO sentence exists, its code must still match. Other missing or
+malformed notes fail. Regression checks cover code mismatches, non-UCD notes,
+missing/malformed/out-of-range UCD minimums, point mismatches, malformed codes
+and contradictory/malformed appended cutoff text. No data or product parser
+changed. `node tools/check.mjs` now ends `All checks passed.` (Node 26.13.0).
+Wave 6 targeted smoke passed: 56 checks in 44.2 seconds.
+Wave 6 lint again passed with 0 errors / 215 warnings; all 150 contrast pairs
+passed; i18n exited 0 with no MISSING for the four new fields (993 unrelated
+missing strings / 4 orphan translations remain). Diff whitespace check passed.
+All photo checks passed: 281 referenced JPEGs, 640 × 360, at most 128 KiB,
+complete credits, no orphan files; Humak and UCN remain deliberately absent.
+
+Persistent browser captures and gate logs are in the ignored local directory
+`plans/pr2-review-20261113/`: the four real mockup rows at 390 px slot and
+1280 px pane widths, light/dark (16 PNGs); labelled unknown and blank fixtures
+at both widths; labelled forced-on rankings fixtures with Not listed and source
+links; and an EUR print slot with photo credit. Full-detail captures use a tall
+viewport to include the final credit, with no product style changes. Fixture
+values exist only in the throwaway browser. Preview snapshots timed out twice;
+the permitted native Chrome/CDP fallback saved the PNGs. Capture waits for
+slot animation completion; the first clipped capture was replaced.
+
+Final full smoke on the owner's committed tree, independent reviews, commit
+and PR remain pending; these fast gates and screenshots are not final release
+acceptance. The owner proceeds with the PR and merge only after passing
+checks and reviews; no new Verify Implementation handoff is needed.
+
+Known research residue remains, without a data fix in this wave: VŠE
+`vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
+requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
+engineering's EUR 50 fee are unapplied. Some university intake defaults were
+inferred from one programme. Roughly 1–2% of unsampled integrated-master
+`degree_type` values may be imprecise. Accepted ranking name matches have not
+been hand-reviewed; a blank rank with an edition may still be a missed match,
+so the flag stays off. Cattolica's English recognition text was corrected
+through the importer to May 2027 exams / July 2027 results. The 287 new Slovak
+translations are covered; 993 unrelated missing strings remain.
+
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px
 header (also 56 px when compact), two filter rows with custom sliders, a

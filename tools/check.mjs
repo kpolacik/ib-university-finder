@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -294,6 +294,194 @@ check('blank rejected', safeUrl('   ') === null);
 check('a link with a user name or password is rejected (https://www.ucd.ie@evil.example/)',
   [safeUrl('https://www.ucd.ie@evil.example/'), safeUrl('https://a@b.example/'), safeUrl('https://user:pw@example.org/')]
     .every((v) => v === null));
+
+section('PR2 parser');
+const pr2Csv = (objects) => {
+  const keys = [...new Set(objects.flatMap(Object.keys))];
+  return keys.join(',') + '\n' + objects.map(obj => keys.map(k => `"${String(obj[k] ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n';
+};
+const pr2Fixture = async (u = {}, p = {}) => load(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', ...u }]),
+  pr2Csv([{ programme_id: 'p', university_id: 'u', programme: 'Test', application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', ...p }])
+);
+const pr2Defaults = { app_fee_default: '0', app_fee_note_default: 'default', intake_months_default: '9 · 2', ib_recognition_default: 'recognised', ib_offer_default: 'final', rankings_year: '2027' };
+let pr2 = await pr2Fixture(pr2Defaults);
+let pr2row = pr2.programmes[0];
+check('PR2 inherits defaults and zero', pr2row.appFee === 0 && pr2row.appFeeNote === 'default' && pr2row.intakeMonths.join(',') === '9,2' && pr2row.ibRecognition === 'recognised' && pr2row.ibOffer === 'final' && pr2row.qsRank === '');
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?', places: '?' }); pr2row = pr2.programmes[0];
+check('PR2 unknown overrides defaults', pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.recognitionUnknown && pr2row.offerUnknown && pr2row.placesUnknown && !pr2row.appFeeNote);
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' }); pr2row = pr2.programmes[0];
+check('PR2 explicit values override', pr2row.appFee === 12 && pr2row.appFeeNote === 'own' && pr2row.places === 5 && pr2row.placesKind === 'capacity' && pr2row.ibOffer === 'predicted' && pr2row.ibRecognition === 'own' && pr2row.intakeMonths[0] === 1);
+pr2 = await pr2Fixture({ ...pr2Defaults, qs_rank: 'bad', image_file: '../bad', image_source_url: 'javascript:bad' }, { app_fee: '1.2', intake_months: '13', ib_offer: 'bad', places: '0', places_kind: 'open', apply_code: 'BAD:x' }); pr2row = pr2.programmes[0];
+check('PR2 invalid values report issues and become unknown', pr2.meta.issues.length >= 7 && pr2row.qsRank === null && !pr2row.imageFile && !pr2row.imageSourceUrl && pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.offerUnknown && pr2row.placesUnknown);
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo'], ['ucas.com.evil.test','programme']]) {
+  pr2 = await pr2Fixture({}, { apply_url: `https://sub.${host}/` });
+  check(`PR2 apply host ${host}`, pr2.programmes[0].applyLinkKind === kind);
+}
+pr2 = await pr2Fixture({ apply_url_default: 'https://example.org' }, { apply_code: 'CAO:ABC' });
+check('PR2 code wins over inherited URL', pr2.programmes[0].applyLinkKind === 'cao');
+pr2 = await pr2Fixture({ app_fee_default: 'bad', ib_offer_default: '?' });
+check('PR2 invalid defaults inherit unknown', pr2.programmes[0].appFeeUnknown && pr2.programmes[0].offerUnknown);
+
+// Malformed defaults must be diagnosed even when every programme overrides them.
+const pr2Blank = (await pr2Fixture()).programmes[0];
+for (const [key, value] of Object.entries({ appFee: null, appFeeNote: '', places: null, placesKind: '', placesYear: '', intakeMonths: [], ibRecognition: '', ibOffer: '', qsRank: '', theRank: '', rankingsYear: '', imageFile: '', imageAuthor: '', imageLicence: '', applyCode: '', applyLinkKind: '' })) {
+  equal(`PR2 missing ${key}`, pr2Blank[key], value);
+}
+section('PR2 detail UI');
+{
+  const draw = (row, options = {}) => withStubDocument(() => renderDetail(row, noFilters(), options));
+  const inherited = (await pr2Fixture(pr2Defaults)).programmes[0];
+  const unknown = (await pr2Fixture(pr2Defaults, { app_fee: '?', app_fee_note: 'Test fee only', places: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?' })).programmes[0];
+  for (const [name, row, expected] of [['blank', pr2Blank, 'Not checked yet'], ['unknown', unknown, 'Not published']]) {
+    const facts = kvOf(draw(row));
+    check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
+  }
+  const inheritedFacts = kvOf(draw(inherited));
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent.includes('No application feedefaultFor EU citizens with an IB Diploma.')
+    && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
+  check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
+  const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
+  const explicitFacts = kvOf(draw(explicit));
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12own') && !explicitFacts['Application fee'].textContent.includes('default')
+    && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
+    && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 · capacity · 2027/28');
+  const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent.includes('Not checked yetAdmission test fee: EUR 35 (TOL).'));
+  const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
+  check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
+  const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
+  for (const slot of [false,true]) {
+    const detail = draw(photo, { slot }), image = byTag(detail,'img')[0], credit = detail.lastChild;
+    check(`PR2 photo and last credit in ${slot ? 'printable slot' : 'pane'}`, detail.children[0].className === 'd-photo'
+      && image.getAttribute('width') === '640' && image.getAttribute('height') === '360' && image.getAttribute('decoding') === 'async'
+      && image.alt === 'Test: campus photo' && credit.className === 'd-src'
+      && credit.textContent.includes('A long author name intact') && credit.textContent.includes('Campus ž photo') && credit.textContent.endsWith('cropped')
+      && byTag(credit,'a').length === 2);
+  }
+  check('PR2 public-domain credit preserves title with fallback author', byClass(draw({...photo,imageAuthor:'',imageLicence:'CC0'}),'d-src')[0].textContent.startsWith('Photo: author not recorded'));
+  check('PR2 absent image has no photo or credit', !byClass(draw(pr2Blank),'d-photo').length && !byClass(draw(pr2Blank),'d-src').length);
+  check('PR2 ranks forced off have no DOM', !byClass(draw(photo,{showRankings:false}),'d-rank').length);
+  const ranks = draw({ ...photo, qsRank: '', theRank: null }, { showRankings: true });
+  check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
+    && ranks.textContent.includes('Not listed in QS 2027') && ranks.textContent.includes('Not published')
+    && byClass(ranks,'d-rank')[0].textContent.includes(UI.en.rank_note)
+    && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
+    && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
+  check('PR2 no rankings year omits block even with flag on', !byClass(draw({...photo,rankingsYear:''},{showRankings:true}),'d-rank').length);
+  const applied = {...pr2Blank, applyUrl:'https://www.cao.ie/apply', applyCode:'CAO:TR028', applyLinkKind:'cao'};
+  const action = byClass(draw(applied),'btn-apply')[0];
+  check('PR2 apply uses actual URL, code, primary style and accessible identity', action.href === applied.applyUrl && action.classList.contains('btn-p') && action.textContent.includes('Apply via CAO · TR028') && action.textContent.includes(applied.programme) && action.target === '_blank' && action.rel === 'noopener noreferrer');
+  check('PR2 code alone creates no application action', !byClass(draw({...applied,applyUrl:null}),'btn-apply').length && byTag(byClass(draw({...applied,applyUrl:null}),'d-actions')[0],'a').length === 1);
+  const closed = byClass(draw({...applied,deadlinePassed:true}),'btn-apply')[0];
+  check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
+  for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
+  const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
+  check('PR2 historical places says past intake and year', historical['past intake']?.textContent === '42 · past intake · 2026');
+  check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
+    && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 · EU quota · year not published');
+  i18n.setLanguage('sk',{setItem(){}});
+  i18n.setDataTranslations([{field:'ib_recognition_default',en:'recognised',sk:'Uznané'}, {field:'app_fee_note_default',en:'default',sk:'Poznámka'}]);
+  const sk = draw(photo,{slot:true});
+  check('PR2 SK months, default translations and originals below photo', kvOf(sk)['Začiatok štúdia'].textContent === 'september · február'
+    && kvOf(sk)['Uznanie IB'].textContent.includes('Uznané') && sk.children[0].className === 'd-photo'
+    && sk.children[1].className === 'detail-originals' && sk.lastChild.className === 'd-src');
+  const originalButton = byClass(sk,'detail-originals')[0];
+  originalButton.dispatchEvent({type:'click'});
+  check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
+  check('PR2 missing new translation labels its section', byClass(draw({...pr2Blank,ibRecognition:'Untranslated recognition'}),'english-note').length === 1);
+  i18n.initLanguage('',{getItem:()=> 'en'}); i18n.setDataTranslations([]);
+}
+
+for (const key of ['appFeeUnknown', 'placesUnknown', 'intakeUnknown', 'recognitionUnknown', 'offerUnknown']) equal(`PR2 blank ${key}`, pr2Blank[key], false);
+for (const [field, value, output, unknown] of [
+  ['app_fee', '-1', 'appFee', 'appFeeUnknown'], ['app_fee', '1.0', 'appFee', 'appFeeUnknown'],
+  ['app_fee', '1,000', 'appFee', 'appFeeUnknown'], ['app_fee', '1000000000', 'appFee', 'appFeeUnknown'],
+  ['intake_months', '0', 'intakeMonths', 'intakeUnknown'], ['intake_months', '13', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '09', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9·2', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '9;2', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9 · ', 'intakeMonths', 'intakeUnknown'],
+  ['ib_offer', 'conditional', 'ibOffer', 'offerUnknown'], ['ib_recognition', '?', 'ibRecognition', 'recognitionUnknown'],
+]) {
+  const parsed = await pr2Fixture(pr2Defaults, { [field]: value });
+  check(`PR2 invalid or unknown ${field} ${value} blocks default`, parsed.programmes[0][unknown] && JSON.stringify(parsed.programmes[0][output]) === JSON.stringify(pr2Blank[output]) && (value === '?' || parsed.meta.issues.length > 0));
+}
+for (const field of ['app_fee', 'intake_months', 'ib_recognition', 'ib_offer', 'app_fee_note', 'apply_url']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: field === 'apply_url' ? 'https://example.org' : field === 'app_fee' ? '12' : field === 'intake_months' ? '9' : field === 'ib_offer' ? 'final' : 'own' });
+  check(`PR2 invalid ${field} default diagnosed despite override`, parsed.meta.issues.some(s => s.includes(`${field}_default`)));
+}
+for (const [p, expectedFee, expectedNote, unknown] of [
+  [{}, 0, 'default', false], [{ app_fee_note: 'own' }, 0, 'own', false],
+  [{ app_fee: '12' }, 12, '', false], [{ app_fee: '?' }, null, '', true],
+  [{ app_fee: '?', app_fee_note: 'test fee only' }, null, 'test fee only', true],
+  [{ app_fee: '0', app_fee_note: 'free' }, 0, 'free', false],
+  [{ app_fee: '0' }, null, '', true],
+]) {
+  const parsed = (await pr2Fixture(pr2Defaults, p)).programmes[0];
+  equal(`PR2 fee-note coupling ${JSON.stringify(p)}`, [parsed.appFee, parsed.appFeeNote, parsed.appFeeUnknown], [expectedFee, expectedNote, unknown]);
+}
+const noteOnly = (await pr2Fixture({}, { app_fee_note: 'test fee only' })).programmes[0];
+equal('PR2 note-only row survives unknown fee', [noteOnly.appFee, noteOnly.appFeeNote], [null, 'test fee only']);
+for (const kind of ['capacity', 'eu_quota', 'past_intake', 'open']) {
+  const parsed = await pr2Fixture({}, { places: kind === 'open' ? '' : '12', places_kind: kind, places_year: '2027' });
+  equal(`PR2 valid places ${kind}`, [parsed.programmes[0].places, parsed.programmes[0].placesKind, parsed.meta.issues], [kind === 'open' ? null : 12, kind, []]);
+}
+for (const p of [{ places: '0' }, { places: '1.5' }, { places: '-1' }, { places: '1e2' }, { places: '9007199254740992' }, { places: '12' }, { places_kind: 'capacity' }, { places: '?', places_kind: 'open' }, { places: '12', places_kind: 'open' }, { places_kind: 'bad' }, { places_year: '2027-28' }, { places_year: '?' }]) {
+  const parsed = await pr2Fixture({}, p);
+  check(`PR2 malformed places ${JSON.stringify(p)}`, parsed.meta.issues.length > 0 && parsed.programmes[0].placesUnknown && parsed.programmes[0].places === null && !parsed.programmes[0].placesKind);
+}
+for (const rank of ['62', '=218', '201–250', '1201+']) {
+  const parsed = await pr2Fixture({ rankings_year: '2027', qs_rank: rank, the_rank: rank });
+  equal(`PR2 valid rank ${rank}`, [parsed.programmes[0].qsRank, parsed.programmes[0].theRank, parsed.meta.issues], [rank, rank, []]);
+}
+for (const u of [{ qs_rank: '?' }, { qs_rank: 'Reporter' }, { the_rank: '201-250' }, { qs_rank: '62', rankings_year: '' }, { qs_rank: '62', rankings_year: '2027/28' }]) {
+  const parsed = await pr2Fixture(u);
+  check(`PR2 invalid rank ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && (u.the_rank ? parsed.programmes[0].theRank : parsed.programmes[0].qsRank) === null);
+}
+for (const [code, kind] of [['UCAS:H401', 'ucas'], ['CAO:TR028', 'cao'], ['SE:LNU-F3536', 'se']]) {
+  for (const apply_url of ['', 'https://studielink.nl/apply']) {
+    const parsed = (await pr2Fixture({}, { apply_code: code, apply_url })).programmes[0];
+    equal(`PR2 code precedence ${code} ${apply_url}`, [parsed.applyCode, parsed.applyLinkKind, parsed.applyUrl], [code, kind, apply_url || null]);
+  }
+}
+for (const code of ['?', 'ucas:H401', 'UCAS:', 'CAO:TR 028', 'BAD:123']) {
+  const parsed = await pr2Fixture({}, { apply_code: code });
+  check(`PR2 malformed code ${code}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyCode && !parsed.programmes[0].applyLinkKind && !parsed.programmes[0].applyUrl);
+}
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo']]) {
+  for (const hostname of [host, `sub.${host}`, `${host}.evil.test`, `evil${host}`]) {
+    equal(`PR2 exact host boundary ${hostname}`, (await pr2Fixture({}, { apply_url: `https://${hostname}/` })).programmes[0].applyLinkKind, hostname === host || hostname === `sub.${host}` ? kind : 'programme');
+  }
+}
+for (const apply_url of ['?', 'javascript:alert(1)', 'data:text/plain,test', 'https://ucas.com@evil.test/', '//ucas.com', 'ucas.com']) {
+  const parsed = await pr2Fixture({ apply_url_default: 'https://ucas.com/' }, { apply_url });
+  check(`PR2 invalid explicit URL blocks inheritance ${apply_url}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyUrl && !parsed.programmes[0].applyLinkKind);
+}
+equal('PR2 fallback URL is university kind', (await pr2Fixture({ apply_url_default: 'https://example.org' })).programmes[0].applyLinkKind, 'university');
+equal('PR2 application_system cannot invent portal', (await pr2Fixture({ application_system: 'UCAS' }, { application_system: 'CAO' })).programmes[0].applyLinkKind, '');
+const pr2Photo = { image_file: 'img/universities/u.jpg', image_author: 'Author', image_licence: 'CC BY-SA 4.0', image_licence_url: 'https://creativecommons.org/licenses/by-sa/4.0/', image_source_url: 'https://commons.wikimedia.org/wiki/File:Campus.jpg' };
+check('PR2 complete photo exposes credit', (await pr2Fixture(pr2Photo)).programmes[0].imageCreditComplete === true);
+for (const u of [{ image_file: '../u.jpg' }, { image_file: 'img/universities/other.jpg' }, { image_file: 'https://example.org/u.jpg' }, { image_file: '?' }, { image_author: '' }, { image_licence: '' }, { image_licence_url: '' }, { image_source_url: 'javascript:bad' }, { image_source_url: 'https://commons.wikimedia.org@evil.test/' }]) {
+  const parsed = await pr2Fixture({ ...pr2Photo, ...u });
+  check(`PR2 unsafe or incomplete photo ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].imageFile && !parsed.programmes[0].imageCreditComplete);
+}
+for (const image_licence of ['Public domain', 'CC0']) check(`PR2 ${image_licence} permits missing author`, (await pr2Fixture({ ...pr2Photo, image_licence, image_author: '' })).programmes[0].imageCreditComplete);
+
+const pr2Unused = sheetsModule.readSheets(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', app_fee_default: 'bad' }, { university_id: 'unused', name: 'Unused', country: 'Test', verified_by: 'AI-DRAFT', ib_offer_default: '?' }]),
+  pr2Csv(['a', 'b'].map(programme_id => ({ programme_id, university_id: 'u', programme: programme_id, application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', app_fee: '12' })))
+);
+check('PR2 defaults are validated once even when unused or overridden', pr2Unused.issues.length === 2 && pr2Unused.issues.some(s => s.includes('app_fee_default')) && pr2Unused.issues.some(s => s.includes('ib_offer_default')));
+for (const field of ['qs_rank', 'the_rank', 'rankings_year', 'image_file', 'image_author', 'image_licence', 'image_licence_url', 'image_source_url']) check(`PR2 university forbids ? in ${field}`, (await pr2Fixture({ [field]: '?' })).meta.issues.length > 0);
+for (const field of ['app_fee', 'intake_months', 'ib_offer']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: 'bad' });
+  const flag = { app_fee: 'appFeeUnknown', intake_months: 'intakeUnknown', ib_offer: 'offerUnknown' }[field];
+  check(`PR2 invalid inherited ${field} stays unknown`, parsed.programmes[0][flag] && parsed.meta.issues.length === 1);
+}
+const pr2BadZero = await pr2Fixture({ app_fee_default: '0' });
+check('PR2 default zero requires its own note', pr2BadZero.programmes[0].appFee === null && pr2BadZero.programmes[0].appFeeUnknown && pr2BadZero.meta.issues.length === 1);
+for (const field of ['app_fee_note', 'apply_url']) check(`PR2 invalid ${field} default without inheritance still diagnosed`, (await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: 'own' })).meta.issues.some(s => s.includes(`${field}_default`)));
+equal('PR2 every month keeps its stated order', (await pr2Fixture({}, { intake_months: Array.from({ length: 12 }, (_, i) => i + 1).join(' · ') })).programmes[0].intakeMonths, Array.from({ length: 12 }, (_, i) => i + 1));
+check('PR2 safe non-Commons source remains a usable credit URL', (await pr2Fixture({ ...pr2Photo, image_source_url: 'https://www.flickr.com/photos/author/123/' })).programmes[0].imageCreditComplete);
 
 // ---------------------------------------------- inherit / override / unknown
 
@@ -1363,13 +1551,16 @@ for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'adm
 }
 // PR 2 adds data columns before the detail parser/rendering work lands.
 for (const column of ['app_fee_note', 'places_kind', 'places_year', 'apply_code', 'apply_url']) {
-  equal(`PR2 ? is invalid in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), ['error:unknown-misuse']);
+  equal(`PR2 ? is invalid in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), ['error:site', 'error:unknown-misuse']);
 }
 equal('PR2 apply URL rejects a comparison site', lintRules(lintFixture({ programmes: [{ ...lintProg, apply_url: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
 equal('PR2 default apply URL rejects a comparison site', lintRules(lintFixture({ universities: [{ ...lintUni, apply_url_default: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
 equal('PR2 missing rankings year warns without blocking', lintRules(lintFixture({ universities: [{ ...lintUni, rankings_year: '' }] })), ['warning:rankings-unchecked']);
 const importSelfTest = spawnSync(process.execPath, [join(root, 'tools/add-new-data-types.mjs'), '--self-test'], { encoding: 'utf8' });
 check('PR2 importer conversion and refusal self-tests pass', importSelfTest.status === 0 && importSelfTest.stdout.includes('Import self-tests passed.'));
+const pr2Uni = csvToObjects(read('data/universities.csv')).rows.find((r) => r.university_id === 'unicatt');
+const pr2Sk = csvToObjects(read('data/i18n/sk.csv')).rows;
+check('PR2 Cattolica recognition has corrected timing and Slovak translation', pr2Uni?.ib_recognition_default?.includes('Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027') && pr2Sk.some((r) => r.field === 'ib_recognition_default' && r.en === pr2Uni.ib_recognition_default && r.sk.includes('Konečné výsledky z májového termínu 2027 posiela IBO priamo na Cattolica po ich zverejnení v júli 2027')));
 equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
 equal('T05 duplicate header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'city'] })), ['error:header-dup']);
 equal('T05 unknown header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'offical_url'] })), ['warning:header-extra']);
@@ -1731,6 +1922,80 @@ check('data/fallback.json matches the CSVs exactly',
   'the saved copy is out of date: run  node tools/make-snapshot.mjs  and commit data/fallback.json with the CSVs');
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
+
+// PR2 acceptance uses the shipped CSVs and JPEG bytes, not parser fixtures.
+section('PR2 real-data acceptance');
+{
+  const universities = csvRows('data/universities.csv'), programmes = csvRows('data/programmes.csv');
+  const { parseCaoSentence } = await import('../js/points.js');
+  const irish = new Set(universities.filter(u => u.country === 'Ireland').map(u => u.university_id));
+  const caoCodeAgrees = p => {
+    if (!p.apply_code?.startsWith('CAO:')) return true;
+    const cao = parseCaoSentence(p.deadline_notes);
+    if (cao) return p.apply_code === `CAO:${cao.code}`;
+    // UCD publishes its own IB minimum, not a converted CAO cutoff (CLAUDE.md).
+    // Only the complete minimum-only note qualifies; extra/malformed CAO text fails.
+    const minimum = /^UCD's stated minimum: (\d{2}) IB points\.$/.exec(p.deadline_notes || '');
+    return p.university_id === 'ucd' && /^CAO:DN\d{3}$/.test(p.apply_code)
+      && !!minimum && Number(minimum[1]) >= 24 && Number(minimum[1]) <= 45
+      && String(p.ib_points_min) === minimum[1];
+  };
+  const minimumOnly = { university_id: 'ucd', apply_code: 'CAO:DN670', ib_points_min: '39',
+    deadline_notes: "UCD's stated minimum: 39 IB points." };
+  check('PR2 accepts a matching UCD published minimum without a cutoff', caoCodeAgrees(minimumOnly));
+  const cutoff = '2026 CAO cutoff: 544 points (code DN670).';
+  check('PR2 still compares UCD CAO sentences when present', caoCodeAgrees({ ...minimumOnly, deadline_notes: cutoff }));
+  for (const [name, change] of [
+    ['genuine code mismatch', { apply_code: 'CAO:DN671', deadline_notes: cutoff }],
+    ['non-UCD missing notes', { university_id: 'tcd', apply_code: 'CAO:TR001', deadline_notes: '' }],
+    ['non-UCD minimum note', { university_id: 'tcd' }],
+    ['UCD missing notes', { deadline_notes: '' }],
+    ['UCD malformed minimum', { deadline_notes: "UCD's stated minimum: thirty-nine IB points." }],
+    ['UCD out-of-range minimum', { ib_points_min: '46', deadline_notes: "UCD's stated minimum: 46 IB points." }],
+    ['UCD minimum mismatch', { ib_points_min: '38' }],
+    ['UCD malformed code', { apply_code: 'CAO:DN' }],
+    ['UCD contradictory cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: 544 points (code DN671).' }],
+    ['UCD malformed cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: unknown.' }],
+  ]) check(`PR2 rejects ${name}`, !caoCodeAgrees({ ...minimumOnly, ...change }));
+  const mismatches = programmes.filter(p => irish.has(p.university_id) && !caoCodeAgrees(p));
+  check('PR2 Irish apply codes agree with CAO sentences or a matching UCD minimum-only note', !mismatches.length, mismatches.map(p => p.programme_id).join(', '));
+  for (const [rows, fields] of [[universities, ['apply_url_default', 'image_licence_url', 'image_source_url']], [programmes, ['apply_url']]]) {
+    for (const field of fields) {
+      const bad = rows.filter(r => r[field] && !safeUrl(r[field]));
+      check(`PR2 real ${field} URLs are safe`, !bad.length, bad.map(r => r.university_id).join(', '));
+    }
+  }
+  // Read JPEG Start Of Frame markers; no image package or platform utility needed.
+  const jpegSize = bytes => {
+    if (bytes.readUInt16BE(0) !== 0xffd8) return null;
+    let at = 2;
+    while (at + 4 <= bytes.length && bytes[at] === 0xff) {
+      const marker = bytes[at + 1], length = bytes.readUInt16BE(at + 2);
+      if ([0xc0, 0xc1, 0xc2].includes(marker) && length >= 7 && at + 9 <= bytes.length)
+        return [bytes.readUInt16BE(at + 7), bytes.readUInt16BE(at + 5)];
+      if (length < 2) return null;
+      at += 2 + length;
+    }
+    return null;
+  };
+  const photos = universities.filter(u => u.image_file), errors = [];
+  for (const u of photos) {
+    const id = u.university_id, path = `img/universities/${id}.jpg`;
+    if (u.image_file !== path || !existsSync(join(root, path))) { errors.push(`${id}: path/file`); continue; }
+    const bytes = readFileSync(join(root, path));
+    if (JSON.stringify(jpegSize(bytes)) !== '[640,360]') errors.push(`${id}: JPEG dimensions`);
+    // 128 KiB allows normal JPEG variation around the approximately 120 KB target.
+    if (bytes.length > 128 * 1024) errors.push(`${id}: ${bytes.length} bytes`);
+    if (!u.image_licence || !safeUrl(u.image_licence_url) || !safeUrl(u.image_source_url)) errors.push(`${id}: incomplete credit`);
+    if (!u.image_author && !/^(Public domain|CC0)$/i.test(u.image_licence)) errors.push(`${id}: missing author`);
+    if (/@|\bmail\b/i.test(u.image_author) || u.image_author.length > 160) errors.push(`${id}: unsafe/long author`);
+  }
+  check('PR2 photos have exact paths, 640×360 JPEGs, bounded size and complete clean credits', !errors.length, errors.join('\n'));
+  const referenced = new Set(photos.map(u => u.image_file));
+  const orphans = readdirSync(join(root, 'img/universities')).filter(f => !referenced.has(`img/universities/${f}`));
+  check('PR2 photo folder has no orphan files', !orphans.length, orphans.join(', '));
+  equal('PR2 281 photos; only Humak and UCN deliberately absent', [photos.length, universities.filter(u => !u.image_file).map(u => u.university_id).sort()], [281, ['humak', 'ucn']]);
+}
 
 // ---------------------------------------------------------------- importers
 
@@ -2501,7 +2766,7 @@ function detailProblems(row, state, slot = false) {
   const out = [];
   const a = withStubDocument(() => renderDetail(row, state, { slot }));
   const say = (what) => out.push(`${row.id}: ${what}`);
-  const head = a.children[0];
+  const head = a.children[row.imageFile ? 1 : 0];
   const title = head?.children[0];
   if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
   if (!slot && (!head?.classList.contains('d-head') || title?.tagName !== 'h2')) say('heading is not first in .d-head');
@@ -2512,7 +2777,7 @@ function detailProblems(row, state, slot = false) {
     if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
   }
   if (byTag(a, 'dt').some((dt) => !dt.textContent.trim())) say('empty dt');
-  const empty = findAll(a, (n) => !['svg', 'use'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0);
+  const empty = findAll(a, (n) => !['svg', 'use', 'img'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0 && byTag(n, 'img').length === 0);
   if (empty.length) say(`empty ${empty.map((n) => `${n.tagName}.${n.className}`).join(' ')}`);
   const note = filtersMod.pointsNote(row, state);
   const pnotes = byClass(a, 'pnote');
@@ -2728,19 +2993,19 @@ equal('Admission and Other join their items with " · "; "?" admission is a dash
   ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
 equal('a "?" Language requirement is a dashed "Not published"',
   byClass(kvOf(fxDetail('fx-english-q'))['Language requirement'], 'unk-t')[0]?.textContent, 'Not published');
-check('"nothing at all" is a plain sentence and no list',
+check('"nothing at all" keeps its sentence and adds recognition',
   (() => {
     const a = fxDetail('fx-nothing');
     const req = byClass(a, 'd-sec')[0];
-    return byTag(req, 'dl').length === 0
+    return byTag(req, 'dl').length === 1 && kvOf(a)['IB recognition'].textContent === 'Not checked yet'
       && byClass(req, 'kv-none')[0]?.textContent === 'No IB subject requirements. General requirement: A school diploma equivalent to Dutch VWO. Language requirement not checked yet.';
   })());
 check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general'))['General requirement']
   && kvOf(fxDetail('fx-plain'))['General requirement']?.textContent === 'A school diploma equivalent to Dutch VWO');
-check('an Applying section with nothing to say is left out, not drawn empty',
+check('an unchecked Applying section names the four new unknown facts',
   (() => {
     const a = fxDetail('fx-no-applying');
-    return byClass(a, 'd-sec').length === 1 && byClass(a, 'two')[0].children.length === 1;
+    return byClass(a, 'd-sec').length === 2 && ['Application fee', 'Places', 'Intake', 'Offer timing'].every(k => kvOf(a)[k]?.textContent.includes('Not checked yet'));
   })());
 equal('Applying: living costs, taught in and apply via',
   ['Living costs', 'Language', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
@@ -6427,6 +6692,7 @@ section('SK/EN interface and data translations');
   const snapshot = JSON.parse(read('data/fallback.json'));
   equal('offline snapshot includes the exact translation CSV', snapshot.translations, skRows.map(({ __row, ...row }) => row));
   const inventory = translationInventory(csvToObjects(read('data/universities.csv')).rows, csvToObjects(read('data/programmes.csv')).rows, skRows);
+  equal('PR2 all four new free-text columns have Slovak coverage', inventory.missing.filter(row => ['ib_recognition','ib_recognition_default','app_fee_note','app_fee_note_default'].includes(row.field)), []);
   console.log(`        ${skRows.length} Slovak data rows; ${inventory.missing.length} missing; ${inventory.orphans.length} orphan rows (report only)`);
 
   const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
@@ -6833,7 +7099,7 @@ section('Batch 2 · C');
 check('C1 print resets the detail actions to a plain left-aligned link',
   /@media print\{\.d-actions\{display:block\}\.d-actions \.btn\{min-height:0;text-align:left\}\}/.test(cssText));
 {
-  const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
+  const row = { ...live[0], applyUrl: null, studentLifeUrl: 'https://example.org/life', isChecked: true,
     lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
   // Batch 3 · A: the detail also carries the compare button (Leon's compare
   // icon on every programme), so the actions are official, save, compare.
@@ -6963,7 +7229,7 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
       && name.includes(rows[0].programme) && name.includes(rows[0].university) && name.startsWith(lang === 'sk' ? 'Pridať' : 'Add'));
   }
   i18n.initLanguage('', { getItem: () => 'en' });
-  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null }, noFilters(), { saved: true, inCompare: true }));
+  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null, applyUrl: null }, noFilters(), { saved: true, inCompare: true }));
   const pair = byClass(solo, 'd-actions')[0].children;
   check('A2 detail without an official link: Save and Compare are the pair, Compare says "In compare" with its symbol',
     pair.length === 2 && pair[0].classList.contains('save') && pair[1].classList.contains('cmpb') && pair[1].getAttribute('aria-pressed') === 'true'

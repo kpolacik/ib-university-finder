@@ -6196,6 +6196,105 @@ async function runPr7Polish(base) {
   }
 }
 
+// PR2: real row opening exercises both layout paths; fixtures never write data.
+async function runPr2(base) {
+  const { readSheets } = await import('../js/data.js');
+  const rows = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8')).programmes;
+  const ids = ['lse-ba-anthropology-and-law', 'tcd-ancient-and-medieval-history-a', 'cuni-computer-science',
+    'eur-ibeb', 'polito-arch', 'ucn-architectural-technology', 'um-cs', 'unibo-6653', 'uu-pharma', 'bocconi-wbb'];
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 900);
+    const where = `${width}/${theme}`;
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      for (const id of ids) await check(where, 'PR2', id, async () => {
+        const row = rows.find(r => r.id === id);
+        assert(row, `missing candidate ${id}`);
+        await page.send('Page.navigate', { url: base + '?ui=en&q=' + encodeURIComponent(row.programme) });
+        await mountProgramme(page, id);
+        await page.click(`document.querySelector('li[data-id="${id}"] button.open')`, id);
+        const selector = width === 390 ? `li[data-id="${id}"] .detail` : '#pane .detail';
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('.d-actions'),why:'detail not open'})`, 5000, 'PR2 detail');
+        await page.ev(`window.__pr2detail=document.querySelector(${JSON.stringify(selector)})`);
+        const facts = await page.ev(`(async()=>{
+          const d=window.__pr2detail, image=d.querySelector('.d-photo img');
+          if(image) await image.decode();
+          const {SHOW_RANKINGS}=await import('./js/config.js');
+          const box=image?.getBoundingClientRect(), frame=image?.parentElement.getBoundingClientRect();
+          return {text:d.textContent, first:d.firstElementChild.className,last:d.lastElementChild.className,
+            image:!!image,loaded:!image||image.naturalWidth===640&&image.naturalHeight===360,
+            ratio:!image||Math.abs(frame.width/frame.height-16/9)<0.02,
+            overflow:d.scrollWidth>d.clientWidth+1||document.documentElement.scrollWidth>innerWidth+1,
+            slot:!!d.querySelector('.d-pts'), ranks:!!d.querySelector('.d-rank'),flag:SHOW_RANKINGS,
+            apply:d.querySelector('.btn-apply')?.getAttribute('href')||null,
+            primary:!!d.querySelector('.btn-apply.btn-p'), action:d.querySelector('.btn-apply')?.textContent,
+            official:!!d.querySelector('.d-actions a'),creditLinks:d.querySelectorAll('.d-src a').length};
+        })()`);
+        assert(facts.slot === (width === 390), 'wrong slot/pane layout');
+        assert(!facts.overflow, 'horizontal overflow');
+        assert(facts.ranks === !!(facts.flag && row.rankingsYear), 'ranking flag DOM mismatch');
+        assert(facts.image === !!row.imageFile && facts.loaded && facts.ratio, 'photo missing, unloadable or not 16:9');
+        if (row.imageFile) assert(facts.first === 'd-photo' && facts.last === 'd-src' && facts.creditLinks === 2, 'photo first / linked credit last');
+        else assert(facts.last !== 'd-src', 'credit without photo');
+        for (const label of ['IB recognition', 'Application fee', 'Intake', 'Offer timing']) assert(facts.text.includes(label), `missing ${label}`);
+        assert(facts.apply === row.applyUrl && facts.official, 'apply URL / official fallback mismatch');
+        if (row.applyUrl) assert(facts.primary === !row.deadlinePassed, 'expired action emphasis');
+        if (row.deadlinePassed && row.applyUrl) assert(facts.action.startsWith('This cycle has closed'), 'expired action wording');
+        if (id === 'polito-arch') assert(facts.text.includes('Not checked yet') && facts.text.includes(row.appFeeNote), 'note-only fee lost');
+        if (id === 'um-cs') assert(facts.text.includes('No application fee') && facts.text.includes(row.appFeeNote), 'zero fee/note lost');
+        if (id === 'unibo-6653') assert(facts.text.includes('No fixed limit'), 'open places lost');
+        if (id === 'tcd-ancient-and-medieval-history-a') assert(facts.text.includes('year not published'), 'missing places year invented');
+      });
+      await check(where, 'PR2 print', 'printable slot keeps photo and final credit', async () => {
+        // Print deliberately hides the desktop pane; exercise the shared slot renderer.
+        await page.ev(`(async()=>{const {renderSlot}=await import('./js/render.js'),{loadData}=await import('./js/data.js'),{paramsToState}=await import('./js/filters.js');
+          const row=(await loadData()).programmes.find(r=>r.id==='bocconi-wbb');
+          window.__pr2print=renderSlot(row,paramsToState(''));
+          document.querySelector('li[data-id="bocconi-wbb"]').append(window.__pr2print)})()`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          assert(await page.ev(`(()=>{const d=window.__pr2print.querySelector('.detail');return ['.d-photo','.d-src'].every(s=>{const e=d.querySelector(s);return e&&getComputedStyle(e).display!=='none'&&e.getBoundingClientRect().height>0})&&d.lastElementChild.className==='d-src'})()`), 'print photo or credit hidden');
+        } finally {
+          await page.send('Emulation.setEmulatedMedia', { media: '' });
+          await page.ev(`window.__pr2print.remove()`);
+        }
+      });
+      await check(where, 'PR2 fixtures', 'forced rankings, absent year and five unknown facts', async () => {
+        const result = await page.ev(`(async()=>{
+          const {loadData}=await import('./js/data.js'),{renderDetail}=await import('./js/render.js'),{paramsToState}=await import('./js/filters.js');
+          const rows=(await loadData()).programmes, row=rows.find(r=>r.id==='uu-pharma');
+          const d=renderDetail(row,paramsToState(''),{slot:${width === 390},showRankings:true});
+          const ranks=d.querySelector('.d-rank'), links=[...ranks.querySelectorAll('a')].map(a=>a.href);
+          const missingYear=renderDetail({...row,rankingsYear:''},paramsToState(''),{showRankings:true});
+          const unknown=renderDetail({...row,appFee:null,appFeeNote:'',places:null,placesKind:'',intakeMonths:[],ibRecognition:'',ibOffer:'',appFeeUnknown:true,placesUnknown:true,intakeUnknown:true,recognitionUnknown:true,offerUnknown:true},paramsToState(''),{slot:${width === 390}});
+          window.__pr2detail.replaceWith(unknown);window.__pr2detail=unknown;
+          return {rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
+        })()`);
+        assert(result.rank.includes('Not listed in THE 2027') && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
+        assert(result.noYear && result.unknown >= 5 && result.flat, 'missing year / unknown fixture');
+      });
+      await check(where, 'PR2 SK', 'inherited recognition and fee translations reveal English originals', async () => {
+        await page.send('Page.navigate', { url: base + '?ui=sk&q=' + encodeURIComponent(rows.find(r => r.id === ids[0]).programme) });
+        await mountProgramme(page, ids[0]);
+        await page.click(`document.querySelector('li[data-id="${ids[0]}"] button.open')`, 'LSE Slovak');
+        const selector = width === 390 ? `li[data-id="${ids[0]}"] .detail` : '#pane .detail';
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('.detail-originals'),why:'SK detail'})`, 5000, 'SK originals');
+        const lse = rows.find(r => r.id === ids[0]);
+        const translated = await page.ev(`(()=>{const d=document.querySelector(${JSON.stringify(selector)});return [...d.querySelectorAll('[data-english]')].map(e=>({en:e.getAttribute('data-english'),sk:e.firstChild.textContent,hidden:e.querySelector('.data-original')?.hidden}))})()`);
+        for (const english of [lse.ibRecognition, lse.appFeeNote]) assert(translated.some(e => e.en === english && e.sk !== english && e.hidden), 'inherited SK translation missing');
+        await page.click(`document.querySelector(${JSON.stringify(selector)}).querySelector('.detail-originals')`, 'reveal originals');
+        const originals = await page.ev(`[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('.data-original')].filter(e=>!e.hidden).map(e=>e.textContent).join(' ')`);
+        assert(originals.includes(lse.ibRecognition) && originals.includes(lse.appFeeNote), 'inherited recognition/fee originals missing');
+
+      });
+      await check(where, 'PR2 console', 'no browser errors', async () => assert(!page.errors.length, page.errors.map(e => e.text).join(' | ')));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -6218,7 +6317,7 @@ async function main() {
   const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean);
   if (only) {
     if (!only.length) throw new Error('--only: name at least one section, e.g. --only=runRowScroll');
-    const sections = { runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
+    const sections = { runPr2, runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
@@ -6295,7 +6394,8 @@ async function main() {
       await runFaqPanel(base, want);
       await runPr7Polish(base);
       await runSelectedFirst(base);
-      await runBestMatchDesktop(base); }
+      await runBestMatchDesktop(base);
+      await runPr2(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

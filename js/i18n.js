@@ -1,6 +1,36 @@
 // Interface wording. Empty Slovak entries deliberately fall back to English.
 export const UI = {
   en: {
+    "photo_alt": "{university}: campus photo",
+    "photo_credit": "Photo:",
+    "photo_cropped": "cropped",
+    "photo_author_not_recorded": "author not recorded",
+    "ib_recognition": "IB recognition",
+    "app_fee": "Application fee",
+    "app_fee_none": "No application fee",
+    "app_fee_profile": "For EU citizens with an IB Diploma.",
+    "places": "Places",
+    "places_kind_capacity": "capacity",
+    "places_kind_eu_quota": "EU quota",
+    "places_kind_past_intake": "past intake",
+    "places_no_fixed_limit": "No fixed limit",
+    "places_year_not_published": "year not published",
+    "intake": "Intake",
+    "offer_timing": "Offer timing",
+    "offer_predicted": "Conditional offer on predicted grades",
+    "offer_final": "Offer after final results",
+    "apply_btn_programme": "Apply on the programme page",
+    "apply_btn_university": "Apply on the university's admissions page",
+    "apply_btn_system": "Apply via {system}",
+    "apply_closed": "This cycle has closed · {dest}",
+    "apply_dest_programme": "programme page",
+    "apply_dest_university": "university admissions page",
+    "apply_code_suffix": " · code {code}",
+    "rankings": "Rankings",
+    "rank_not_listed": "Not listed in {source} {year}",
+    "rank_source_table": "{source} {year} table",
+    "rank_note": "Whole-university ranks, not this programme. “=” is a tied rank; a range is as published.",
+
     "settings_name": "Settings, language: English",
     "settings_language": "Language · Jazyk",
     "settings_sk": "Slovenčina",
@@ -412,6 +442,7 @@ export const UI = {
     "official_url": "{value1}, official_url",
     "every_programme_row_failed_to_load": "every programme row failed to load",
     "verified_by_is_blank_shown_as_not_checked_use_ai_draft_until_you_per": "{value1}: verified_by is blank. Shown as not checked. Use AI-DRAFT until you personally check the official page; then add your initials.",
+    "invalid_value_treated_as_unknown": "{value1}: \"{value2}\" is invalid or incomplete — treated as unknown.",
     "is_not_one_of_treated_as_unknown": "{value1}: \"{value2}\" is not one of {value3} — treated as unknown.",
     "living_cost_min": "{value1}, living_cost_min",
     "living_cost_max": "{value1}, living_cost_max",
@@ -678,6 +709,36 @@ export const UI = {
     "ml_more": "More",
   },
   sk: {
+    "photo_alt": "{university}: fotografia kampusu",
+    "photo_credit": "Foto:",
+    "photo_cropped": "orezané",
+    "photo_author_not_recorded": "autor neuvedený",
+    "ib_recognition": "Uznanie IB",
+    "app_fee": "Poplatok za prihlášku",
+    "app_fee_none": "Bez poplatku za prihlášku",
+    "app_fee_profile": "Pre občanov EÚ s IB diplomom.",
+    "places": "Počet miest",
+    "places_kind_capacity": "kapacita",
+    "places_kind_eu_quota": "kvóta pre EÚ",
+    "places_kind_past_intake": "Počet prijatých v minulosti",
+    "places_no_fixed_limit": "Bez pevného limitu",
+    "places_year_not_published": "rok nezverejnený",
+    "intake": "Začiatok štúdia",
+    "offer_timing": "Kedy príde ponuka",
+    "offer_predicted": "Podmienečná ponuka na základe predpokladaných známok",
+    "offer_final": "Ponuka až po konečných výsledkoch",
+    "apply_btn_programme": "Prihlásiť sa na stránke programu",
+    "apply_btn_university": "Prihlásiť sa na stránke prijímacieho konania univerzity",
+    "apply_btn_system": "Prihlásiť sa cez {system}",
+    "apply_closed": "Prihlasovanie na tento ročník skončilo · {dest}",
+    "apply_dest_programme": "stránka programu",
+    "apply_dest_university": "stránka prijímacieho konania univerzity",
+    "apply_code_suffix": " · kód {code}",
+    "rankings": "Rebríčky",
+    "rank_not_listed": "Nie je v rebríčku {source} {year}",
+    "rank_source_table": "Tabuľka {source} {year}",
+    "rank_note": "Poradie celej univerzity, nie tohto programu. „=“ znamená delené miesto; rozpätie je uvedené tak, ako bolo zverejnené.",
+
     "settings_name": "Nastavenia, jazyk: slovenčina",
     "settings_language": "Language · Jazyk",
     "settings_sk": "Slovenčina",
@@ -1089,6 +1150,7 @@ export const UI = {
     "official_url": "{value1}, official_url",
     "every_programme_row_failed_to_load": "žiadny riadok s programom sa nepodarilo načítať",
     "verified_by_is_blank_shown_as_not_checked_use_ai_draft_until_you_per": "{value1}: verified_by je prázdne. Zobrazuje sa ako neoverené. Kým oficiálnu stránku osobne neoveríš, použi AI-DRAFT; potom doplň svoje iniciály.",
+    "invalid_value_treated_as_unknown": "{value1}: \"{value2}\" je neplatné alebo neúplné — považuje sa za neznáme.",
     "is_not_one_of_treated_as_unknown": "{value1}: \"{value2}\" nie je jedna z hodnôt {value3} — považuje sa za neznáme.",
     "living_cost_min": "{value1}, living_cost_min",
     "living_cost_max": "{value1}, living_cost_max",
@@ -1442,7 +1504,7 @@ export const normaliseEnglish = (text) => String(text ?? '').replace(/\s+/g, ' '
 export const DATA_FIELDS = {
   subject_area: 'subjectAreas', degree_type: 'degreeType', application_system: 'applicationSystem',
   living_cost_source: 'livingCostSource', admission: 'admission', english_requirement: 'englishRequirement',
-  baseline_requirement: 'baselineRequirement',
+  baseline_requirement: 'baselineRequirement', ib_recognition: 'ibRecognition', app_fee_note: 'appFeeNote',
 };
 let translations = new Map();
 let searchCache = new WeakMap();
@@ -1461,7 +1523,7 @@ export function dataParts(field, english, lang = language) {
   if (!en) return [];
   if (lang === 'en') return [{ text: String(english) }];
   const sk = translations.get(`${field}\u0000${en}`)
-    || (['admission', 'english_requirement'].includes(field) ? translations.get(`${field}_default\u0000${en}`) : null);
+    || (['admission', 'english_requirement', 'ib_recognition', 'app_fee_note'].includes(field) ? translations.get(`${field}_default\u0000${en}`) : null);
   if (sk) return normaliseEnglish(sk) === en ? [{ text: sk }] : [{ text: sk, en }];
   if (/ · |;/.test(en)) return en.split(/( · |;\s*)/).filter(Boolean).flatMap((item, i) =>
     i % 2 ? [{ text: item }] : dataParts(field, item, lang));

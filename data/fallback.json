@@ -1552,7 +1552,7 @@
       "app_fee_default": "",
       "app_fee_note_default": "",
       "intake_months_default": "9",
-      "ib_recognition_default": "Full IB Diploma only (at least 12 years of schooling; IB certificates and the Career-related Programme are not accepted). Final scores go from IBO to Cattolica by the May 2027 session, which replaces legalisation, Dichiarazione di Valore or CIMEA statements; November retakes are not accepted.",
+      "ib_recognition_default": "Full IB Diploma only (at least 12 years of schooling; IB certificates and the Career-related Programme are not accepted). Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027, which replaces legalisation, Dichiarazione di Valore or CIMEA statements; November retakes are not accepted.",
       "ib_offer_default": ""
     },
     {
@@ -148149,6 +148149,1728 @@
       "field": "application_system",
       "en": "Common App: choose USC, then WBB (code 1485) as first-choice programme",
       "sk": "Common App: vyber USC, potom WBB (kód 1485) ako program prvej voľby",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 41 EUR. Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "1000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 41 EUR. Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 41 EUR. Paid to the faculty by all applicants for each application. A separate 990 CZK fee applies to applicants whose secondary education is documented by a foreign-issued certificate.",
+      "sk": "1000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 41 EUR. Platia ho fakulte všetci uchádzači za každú prihlášku. Samostatný poplatok 990 CZK platia uchádzači, ktorí stredoškolské vzdelanie dokladajú vysvedčením vydaným v zahraničí.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 41 EUR. Per application (each separately); due on the last application day (31 Mar 2027); no cash; non-refundable; online card payment is fastest.",
+      "sk": "1000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 41 EUR. Za každú prihlášku (každú zvlášť); splatný v posledný deň podávania prihlášok (31. marca 2027); nie v hotovosti; nevratný; najrýchlejšia je online platba kartou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 41 EUR. Per application (each separately); due on the last application day; no cash; non-refundable.",
+      "sk": "1000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 41 EUR. Za každú prihlášku (každú zvlášť); splatný v posledný deň podávania prihlášok; nie v hotovosti; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Faculty fee for its design, multimedia and related art programmes; non-refundable at any stage of the admission procedure.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Poplatok fakulty za jej programy dizajnu, multimédií a príbuzných umeleckých odborov; nevratný v žiadnej fáze prijímacieho konania.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. One application per applicant, paid to the faculty by card or bank transfer; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Jedna prihláška na uchádzača, platí sa fakulte kartou alebo bankovým prevodom; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application (a separate application for each form of study), paid electronically via the link in the application system to VŠE's account; fees for several applications cannot be combined in one payment; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku (samostatná prihláška pre každú formu štúdia), platí sa elektronicky cez odkaz v prihlasovacom systéme na účet VŠE; poplatky za viac prihlášok sa nedajú spojiť do jednej platby; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application (separate fee for each application), paid to the faculty by card or QR code/bank transfer; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku (za každú samostatný poplatok), platí sa fakulte kartou alebo QR kódom/bankovým prevodom; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, by card/QR code online, bank transfer or cash at any Komerční banka branch; non-refundable. Application open until 31 Mar 2027.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, kartou/QR kódom online, bankovým prevodom alebo v hotovosti na ktorejkoľvek pobočke Komerční banka; nevratný. Prihlášky sa prijímajú do 31. marca 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid by card or transfer (account and variable symbol sent by e-mail); one application covers 1 main + 2 optional alternative programmes; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, kartou alebo prevodom (číslo účtu a variabilný symbol prídu e-mailom); jedna prihláška pokrýva 1 hlavný + 2 nepovinné náhradné programy; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid by card via the link in the application system or by transfer/QR code to the account sent by e-mail; fees for several applications cannot be combined; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, kartou cez odkaz v prihlasovacom systéme alebo prevodom/QR kódom na účet zaslaný e-mailom; poplatky za viac prihlášok sa nedajú spojiť; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to the faculty (card gateway in the application or bank transfer); due by 31 Mar 2027.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa fakulte (platobná brána v prihláške alebo bankový prevod); splatný do 31. marca 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to the faculty (online in the application or by bank transfer); late payments after 31 Mar 2027 cannot be processed.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa fakulte (online v prihláške alebo bankovým prevodom); oneskorené platby po 31. marci 2027 sa nedajú spracovať.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to the faculty by card or bank transfer within the application window (1 – 30 Nov 2026); non-refundable once the application is entered.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa fakulte kartou alebo bankovým prevodom v období podávania prihlášok (1. – 30. novembra 2026); po zadaní prihlášky nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to VŠE (the university) by card or transfer; one application covers 1 main + 2 optional alternative programmes; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa VŠE (univerzite) kartou alebo prevodom; jedna prihláška pokrýva 1 hlavný + 2 nepovinné náhradné programy; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to VŠE's account (card, QR code or transfer, after submitting the e-application); you count as applied only once the fee is credited. Deadline 30 Apr 2027.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa na účet VŠE (kartou, QR kódom alebo prevodom po odoslaní e-prihlášky); prihlásený si až po pripísaní poplatku. Termín 30. apríla 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application, paid to VŠE's account by card or QR-code transfer after you submit the e-application; non-refundable; deadline 30 Apr 2027.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku, platí sa na účet VŠE kartou alebo prevodom cez QR kód po odoslaní e-prihlášky; nevratný; termín 30. apríla 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1050 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 43 EUR. Per application: a separate application and fee for each programme, paid to the faculty by card or transfer; non-refundable.",
+      "sk": "1050 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 43 EUR. Za každú prihlášku: na každý program samostatná prihláška a poplatok, platí sa fakulte kartou alebo prevodom; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "1500 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 62 EUR. Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "1500 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 62 EUR. Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "2000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 82 EUR. Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "2000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 82 EUR. Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "2000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 82 EUR. Per application. The page gives CZK 2000 or USD 100 for English-taught programmes.",
+      "sk": "2000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 82 EUR. Za každú prihlášku. Stránka pre programy v angličtine uvádza 2000 CZK alebo 100 USD.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "2000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 82 EUR. University-wide fee for programmes in a foreign language: CZK 2000 or USD 100 (the faculty page lists 100 USD only). Per application.",
+      "sk": "2000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 82 EUR. Celouniverzitný poplatok za programy v cudzom jazyku: 2000 CZK alebo 100 USD (stránka fakulty uvádza len 100 USD). Za každú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "2026/27 figure (admission rules for 2026 entry; 2027/28 rules not published yet). Paid to the university online or by bank transfer; non-refundable.",
+      "sk": "Údaj pre 2026/27 (pravidlá prijímania pre nástup v roku 2026; pravidlá na 2027/28 zatiaľ nie sú zverejnené). Platí sa univerzite online alebo bankovým prevodom; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "2500 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 103 EUR. Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "2500 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 103 EUR. Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "3000 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 123 EUR. Application fee for international (English-taught) programmes, payable in CZK, EUR or USD by the application deadline; non-refundable; the page says it covers visa-related costs. 2026/27 figure.",
+      "sk": "3000 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 123 EUR. Poplatok za prihlášku na medzinárodné programy (v angličtine), splatný v CZK, EUR alebo USD do termínu podania prihlášky; nevratný; podľa stránky pokrýva náklady súvisiace s vízami. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "450 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 18 EUR. Per programme applied for; non-refundable; programme taught in Czech.",
+      "sk": "450 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 18 EUR. Za každý program, na ktorý sa hlásiš; nevratný; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "500 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 21 EUR. Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "500 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 21 EUR. Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "520 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 21 EUR. Application fee charged by the faculty; the same for all its bachelor programmes; non-refundable.",
+      "sk": "520 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 21 EUR. Poplatok za prihlášku, ktorý vyberá fakulta; rovnaký pre všetky jej bakalárske programy; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "520 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 21 EUR. Faculty fee for all its bachelor programmes (first round, deadline 31 March 2027).",
+      "sk": "520 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 21 EUR. Poplatok fakulty za všetky jej bakalárske programy (prvé kolo, termín 31. marca 2027).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "600 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 25 EUR. 2026/27 figure (rules for 2026/27 entry). Per application, a separate application and fee for each programme; paid to the faculty.",
+      "sk": "600 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 25 EUR. Údaj pre 2026/27 (pravidlá pre nástup v 2026/27). Za každú prihlášku, na každý program samostatná prihláška a poplatok; platí sa fakulte.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "600 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 25 EUR. 2026/27 figure. Per application (a separate application and fee for each programme); paid to the faculty.",
+      "sk": "600 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 25 EUR. Údaj pre 2026/27. Za každú prihlášku (na každý program samostatná prihláška a poplatok); platí sa fakulte.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "600 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 25 EUR. Administrative fee; non-refundable. 2026/27 figure: the 2027/28 Czech-language rules were not published when checked.",
+      "sk": "600 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 25 EUR. Administratívny poplatok; nevratný. Údaj pre 2026/27: pravidlá pre programy v češtine na 2027/28 v čase overovania neboli zverejnené.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "650 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 27 EUR. Paid by card or bank transfer without undue delay after you close the application; the admission procedure stops if it is unpaid. 2026/27 figure.",
+      "sk": "650 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 27 EUR. Platí sa kartou alebo bankovým prevodom bez zbytočného odkladu po uzavretí prihlášky; ak nie je zaplatený, prijímacie konanie sa zastaví. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "650 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 27 EUR. Per application, paid to the faculty; for Czech-language programmes.",
+      "sk": "650 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 27 EUR. Za každú prihlášku, platí sa fakulte; pre programy v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "700 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 29 EUR. Admission-procedure fee for the first round (applications 1 Dec 2026 - 31 Mar 2027); payment instructions are in the application.",
+      "sk": "700 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 29 EUR. Poplatok za prijímacie konanie v prvom kole (prihlášky 1. decembra 2026 – 31. marca 2027); pokyny na platbu sú v prihláške.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "700 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 29 EUR. Admission-procedure fee; non-refundable. A separate 800 CZK fee is charged only if previous foreign education has to be assessed.",
+      "sk": "700 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 29 EUR. Poplatok za prijímacie konanie; nevratný. Samostatný poplatok 800 CZK sa platí len vtedy, ak treba posúdiť predchádzajúce zahraničné vzdelanie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "790 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 32 EUR. Per application (a separate fee for each application), paid right after choosing the programme with the details given in the e-application; non-refundable, not returned if you skip the exam.",
+      "sk": "790 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 32 EUR. Za každú prihlášku (za každú samostatný poplatok), platí sa hneď po výbere programu podľa údajov v e-prihláške; nevratný, nevracia sa ani vtedy, ak na skúšku neprídeš.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "790 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 32 EUR. Same fee payable as EUR 32; card payment preferred inside the TBU e-application; non-refundable and cannot be waived.",
+      "sk": "790 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 32 EUR. Rovnaký poplatok sa dá zaplatiť aj ako 32 EUR; uprednostňuje sa platba kartou v e-prihláške TBU; nevratný a nedá sa odpustiť.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. 2026/27 figure (MU central fee table, programmes taught in a foreign language). Per application.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU, programy vyučované v cudzom jazyku). Za každú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. A separate 990 CZK fee applies to applicants whose foreign secondary-school certificate is assessed (not to an IB Diploma).",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Samostatný poplatok 990 CZK platia uchádzači, ktorým sa posudzuje zahraničné stredoškolské vysvedčenie (netýka sa IB diplomu).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. A separate 990 CZK fee applies to foreign applicants in Czech-language programmes for assessing the conditions for admission.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Samostatný poplatok 990 CZK platia zahraniční uchádzači o programy v češtine za posúdenie podmienok prijatia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. A separate application and fee for each programme, form and admission round; Czech-language programmes.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Samostatná prihláška a poplatok za každý program, formu štúdia a kolo prijímacieho konania; programy v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Faculty fee. A separate 990 CZK fee applies to applicants who document secondary education with a foreign-issued certificate.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Poplatok fakulty. Samostatný poplatok 990 CZK platia uchádzači, ktorí stredoškolské vzdelanie dokladajú vysvedčením vydaným v zahraničí.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Paid to the faculty by every applicant for each application. A separate 990 CZK fee applies to applicants whose secondary education is documented by a foreign-issued certificate.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Platí ho fakulte každý uchádzač za každú prihlášku. Samostatný poplatok 990 CZK platia uchádzači, ktorí stredoškolské vzdelanie dokladajú vysvedčením vydaným v zahraničí.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application (as many applications as you like); programme taught in Czech.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku (počet prihlášok nie je obmedzený); program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application (one fee even if you tick up to three plans in the same programme); programme taught in Czech.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku (jeden poplatok, aj keď v tom istom programe označíš až tri študijné plány); program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application, paid to the faculty; the application is registered only once the fee is paid.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku, platí sa fakulte; prihláška sa zaeviduje až po zaplatení poplatku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application, paid to the university account by bank transfer; non-refundable; first-round 2026/27 figure.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku, platí sa bankovým prevodom na účet univerzity; nevratný; údaj pre prvé kolo 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application; due on the last day of the application period (1 Apr 2027) to the account shown in the e-application; non-refundable; card payment is fastest.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku; splatný v posledný deň obdobia podávania prihlášok (1. apríla 2027) na účet uvedený v e-prihláške; nevratný; najrýchlejšia je platba kartou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per application; programme taught in Czech.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každú prihlášku; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "800 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 33 EUR. Per programme (a separate application and fee for each); paid to the faculty; Czech-language programme.",
+      "sk": "800 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 33 EUR. Za každý program (na každý samostatná prihláška a poplatok); platí sa fakulte; program v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "850 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 35 EUR. 2026/27 figure (MU central fee table, programmes taught in a foreign language). Per application.",
+      "sk": "850 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 35 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU, programy vyučované v cudzom jazyku). Za každú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "850 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 35 EUR. 2026/27 figure (MU central fee table). Per application; programme taught in Czech.",
+      "sk": "850 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 35 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU). Za každú prihlášku; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "850 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 35 EUR. Per application (one per programme); programme taught in Czech.",
+      "sk": "850 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 35 EUR. Za každú prihlášku (jedna na každý program); program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "850 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 35 EUR. Per application, paid through the e-application after submitting; non-refundable.",
+      "sk": "850 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 35 EUR. Za každú prihlášku, platí sa cez e-prihlášku po jej odoslaní; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "900 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 37 EUR. 2026/27 figure (MU central fee table, programmes taught in a foreign language). Per application.",
+      "sk": "900 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 37 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU, programy vyučované v cudzom jazyku). Za každú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "900 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 37 EUR. Per application (each e-application), paid to the faculty; programme taught in Czech.",
+      "sk": "900 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 37 EUR. Za každú prihlášku (každú e-prihlášku), platí sa fakulte; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "900 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 37 EUR. Per application, submitted electronically; programme taught in Czech.",
+      "sk": "900 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 37 EUR. Za každú prihlášku podanú elektronicky; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "900 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 37 EUR. Per application; programme taught in Czech.",
+      "sk": "900 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 37 EUR. Za každú prihlášku; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "950 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 39 EUR. 2026/27 figure (MU central fee table). Per application; programme taught in Czech.",
+      "sk": "950 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 39 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU). Za každú prihlášku; program sa vyučuje v češtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "950 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 39 EUR. Per application (a separate fee for each application); card payment online in the e-application is recommended. 2026/27 figure.",
+      "sk": "950 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 39 EUR. Za každú prihlášku (za každú samostatný poplatok); odporúča sa online platba kartou v e-prihláške. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "950 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 39 EUR. Per application (one application per programme, number of applications not limited), paid to the faculty. 2026/27 figure.",
+      "sk": "950 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 39 EUR. Za každú prihlášku (jedna prihláška na program, počet prihlášok nie je obmedzený), platí sa fakulte. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "950 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 39 EUR. Per application, paid to the faculty by card/QR code or bank transfer; one fee for each programme applied to; non-refundable. 2026/27 figure.",
+      "sk": "950 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 39 EUR. Za každú prihlášku, platí sa fakulte kartou/QR kódom alebo bankovým prevodom; jeden poplatok za každý program, na ktorý sa hlásiš; nevratný. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "970 CZK at the ECB reference rate of 2026-11-12 (1 EUR = 24.379 CZK), rounded to 40 EUR. 2026/27 figure (MU central fee table, programmes taught in a foreign language). Per application.",
+      "sk": "970 CZK podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 24.379 CZK), zaokrúhlené na 40 EUR. Údaj pre 2026/27 (centrálna tabuľka poplatkov MU, programy vyučované v cudzom jazyku). Za každú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Admission test: 50 EUR.",
+      "sk": "Prijímací test: 50 EUR.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Application fee stated as 0 EUR on the admission-criteria page (page shown for academic year 2026/27). 2026/27 figure.",
+      "sk": "Poplatok za prihlášku je na stránke s kritériami prijatia uvedený ako 0 EUR (stránka pre akademický rok 2026/27). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Examination fee for checking the documents of applicants with a non-German entrance qualification, paid in advance to the Environmental Campus; €130 if you apply to both SBT and SBL. Not paid to uni-assist.",
+      "sk": "Poplatok za kontrolu dokladov uchádzačov s nenemeckou kvalifikáciou na vysokoškolské štúdium, platí sa vopred Environmental Campus; 130 €, ak sa hlásiš na SBT aj SBL. Neplatí sa uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (Faculty of Law UK) admission fee for the full-time Law programme, paid by bank transfer together with the application. 2026/27 figure.",
+      "sk": "Poplatok fakulty (Právnická fakulta UK) za prijímacie konanie na denný program Právo, platí sa bankovým prevodom spolu s prihláškou. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (FAPZ SPU) fee per application; one application can list an alternative programme. Paid by bank transfer per the instructions in the e-application. 2026/27 figure.",
+      "sk": "Poplatok fakulty (FAPZ SPU) za každú prihlášku; v jednej prihláške môžeš uviesť aj náhradný program. Platí sa bankovým prevodom podľa pokynov v e-prihláške. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (FEM SPU) admission fee for the English-taught programme; one application can cover two programmes for a single fee. 2026/27 figure.",
+      "sk": "Poplatok fakulty (FEM SPU) za prijímacie konanie na program v angličtine; jedna prihláška môže zahŕňať dva programy za jeden poplatok. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (FEM SPU) fee for the electronic application; one application can list two programmes for a single fee. 2026/27 figure.",
+      "sk": "Poplatok fakulty (FEM SPU) za elektronickú prihlášku; v jednej prihláške môžeš uviesť dva programy za jeden poplatok. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (FSEV UK) fee paid by bank transfer after submitting the electronic application, per the 2026/27 admission conditions. 2026/27 figure.",
+      "sk": "Poplatok fakulty (FSEV UK), platí sa bankovým prevodom po odoslaní elektronickej prihlášky podľa podmienok prijatia na 2026/27. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (Pedagogical Faculty UK) fee per application; the page lists it as preliminary information for 2027/28. Application is electronic.",
+      "sk": "Poplatok fakulty (Pedagogická fakulta UK) za každú prihlášku; stránka ho uvádza ako predbežnú informáciu na 2027/28. Prihláška sa podáva elektronicky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (PriF UK) fee per study programme applied for, electronic application; paper application is 50 EUR for the first programme (20 EUR each further one). 2026/27 figure.",
+      "sk": "Poplatok fakulty (PriF UK) za každý študijný program, na ktorý sa hlásiš, elektronická prihláška; papierová prihláška stojí 50 EUR za prvý program (20 EUR za každý ďalší). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty (Technical Faculty SPU) fee for the electronic application; one application can list two programmes for a single fee. 2026/27 figure.",
+      "sk": "Poplatok fakulty (Technická fakulta SPU) za elektronickú prihlášku; v jednej prihláške môžeš uviesť dva programy za jeden poplatok. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty application through the STU UIS e-application; the 30 EUR is for a Slovak-language application (60 EUR for English-language study). The programme is taught mainly in Slovak.",
+      "sk": "Prihláška na fakultu cez e-prihlášku v STU UIS; 30 EUR platí pre prihlášku na štúdium v slovenčine (60 EUR pre štúdium v angličtine). Program sa vyučuje prevažne v slovenčine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty fee (FMFI UK) for the electronic application; paid by bank transfer, once per application regardless of how many programmes are listed. Paper application is 33 EUR.",
+      "sk": "Poplatok fakulty (FMFI UK) za elektronickú prihlášku; platí sa bankovým prevodom, raz za prihlášku bez ohľadu na počet uvedených programov. Papierová prihláška stojí 33 EUR.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Aeronautics (TUKE) fee for the electronic application; Slovak-language study (paper application: 40 EUR).",
+      "sk": "Poplatok Leteckej fakulty (TUKE) za elektronickú prihlášku; štúdium v slovenčine (papierová prihláška: 40 EUR).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Aeronautics (TUKE) fee for the electronic application; study in a language other than Slovak (paper application: 60 EUR).",
+      "sk": "Poplatok Leteckej fakulty (TUKE) za elektronickú prihlášku; štúdium v inom jazyku ako slovenčina (papierová prihláška: 60 EUR).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Architecture and Design fee for the English-language bachelor application (the Slovak-language one costs 50 EUR).",
+      "sk": "Poplatok Fakulty architektúry a dizajnu za prihlášku na bakalárske štúdium v angličtine (prihláška na štúdium v slovenčine stojí 50 EUR).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Architecture and Design fee for the material provision of the entrance (talent) examination.",
+      "sk": "Poplatok Fakulty architektúry a dizajnu za materiálne zabezpečenie prijímacej (talentovej) skúšky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Arts (Trnava University) fee per application; a separate application and fee is needed for each programme. Paid by bank transfer.",
+      "sk": "Poplatok Filozofickej fakulty (Trnavská univerzita) za každú prihlášku; na každý program treba samostatnú prihlášku a poplatok. Platí sa bankovým prevodom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Arts (UMB) fee; the page gives the same figure for the application and the electronic application.",
+      "sk": "Poplatok Filozofickej fakulty (UMB); stránka uvádza rovnakú sumu za prihlášku aj za elektronickú prihlášku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Arts (UPJŠ) fee for the electronic application (40 EUR for the paper application); one fee per study programme, paid by bank transfer.",
+      "sk": "Poplatok Filozofickej fakulty (UPJŠ) za elektronickú prihlášku (40 EUR za papierovú prihlášku); jeden poplatok za každý študijný program, platí sa bankovým prevodom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Arts UK fee per electronic application (one study programme per application), paid by bank transfer; paper application is 40 EUR.",
+      "sk": "Poplatok Filozofickej fakulty UK za každú elektronickú prihlášku (jeden študijný program na prihlášku), platí sa bankovým prevodom; papierová prihláška stojí 40 EUR.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Central European Studies (UKF) fee per application; a separate application and fee for each programme, not refunded after registration if the applicant skips the exam or withdraws.",
+      "sk": "Poplatok Fakulty stredoeurópskych štúdií (UKF) za každú prihlášku; na každý program samostatná prihláška a poplatok, po zaevidovaní sa nevracia, ak uchádzač na skúšku nepríde alebo prihlášku stiahne.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Civil Engineering (UNIZA) fee for a programme accredited in English (35 EUR for Slovak-language programmes).",
+      "sk": "Poplatok Stavebnej fakulty (UNIZA) za program akreditovaný v angličtine (35 EUR za programy v slovenčine).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Civil Engineering (UNIZA) fee for a programme accredited in Slovak; 50 EUR for an English-language programme.",
+      "sk": "Poplatok Stavebnej fakulty (UNIZA) za program akreditovaný v slovenčine; 50 EUR za program v angličtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Education (UKF) fee per e-application for one study programme (UKF information system or Portál VŠ); paid by bank transfer, not refunded.",
+      "sk": "Poplatok Pedagogickej fakulty (UKF) za každú e-prihlášku na jeden študijný program (informačný systém UKF alebo Portál VŠ); platí sa bankovým prevodom, nevracia sa.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Electrical Engineering and Information Technology (UNIZA) fee; one application per programme or specialisation.",
+      "sk": "Poplatok Fakulty elektrotechniky a informačných technológií (UNIZA); jedna prihláška na každý program alebo špecializáciu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Health (SZU, Banská Bystrica) fee for a programme with an entrance exam (physical fitness test and knowledge test). 2026/27 figure.",
+      "sk": "Poplatok Fakulty zdravotníctva (SZU, Banská Bystrica) za program s prijímacou skúškou (test fyzickej zdatnosti a vedomostný test). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Health (SZU, Banská Bystrica) fee for a programme without an entrance exam. 2026/27 figure.",
+      "sk": "Poplatok Fakulty zdravotníctva (SZU, Banská Bystrica) za program bez prijímacej skúšky. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Health and Social Work (Trnava University) fee for the entrance procedure, paid by bank transfer with the e-application (MAIS).",
+      "sk": "Poplatok Fakulty zdravotníctva a sociálnej práce (Trnavská univerzita) za prijímacie konanie, platí sa bankovým prevodom spolu s e-prihláškou (MAIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Law (Trnava University) administrative fee for the bachelor application, paid by bank transfer; not refunded if the applicant does not attend the entrance exam. A separate application is needed for full-time and part-time study.",
+      "sk": "Administratívny poplatok Právnickej fakulty (Trnavská univerzita) za prihlášku na bakalárske štúdium, platí sa bankovým prevodom; nevracia sa, ak uchádzač nepríde na prijímaciu skúšku. Na denné a externé štúdium treba samostatné prihlášky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Law UK admission fee for the English-taught Management and Law programme, paid by bank transfer with the application. 2026/27 figure.",
+      "sk": "Poplatok Právnickej fakulty UK za prijímacie konanie na program Management and Law v angličtine, platí sa bankovým prevodom spolu s prihláškou. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Management Science and Informatics (UNIZA) fee; one application covers several programmes with one fee.",
+      "sk": "Poplatok Fakulty riadenia a informatiky (UNIZA); jedna prihláška pokrýva viac programov za jeden poplatok.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Management UK fee for the English-taught programme; payable with the e-application, by bank transfer or QR code.",
+      "sk": "Poplatok Fakulty managementu UK za program v angličtine; platí sa spolu s e-prihláškou, bankovým prevodom alebo QR kódom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Management UK fee for the Slovak-taught programme; payable with the e-application, by bank transfer or QR code.",
+      "sk": "Poplatok Fakulty managementu UK za program v slovenčine; platí sa spolu s e-prihláškou, bankovým prevodom alebo QR kódom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Mechanical Engineering (UNIZA) fee, paid by bank transfer or postal order.",
+      "sk": "Poplatok Strojníckej fakulty (UNIZA), platí sa bankovým prevodom alebo poštovou poukážkou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Mechanical Engineering fee for the e-application, daily study; English-language study.",
+      "sk": "Poplatok Strojníckej fakulty za e-prihlášku, denné štúdium; štúdium v angličtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Mechanical Engineering fee for the e-application, daily study; Slovak-language study (80 EUR for English-language study).",
+      "sk": "Poplatok Strojníckej fakulty za e-prihlášku, denné štúdium; štúdium v slovenčine (80 EUR za štúdium v angličtine).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Medicine (UPJŠ) fee for the electronic application (50 EUR on paper); the page lists the 2026 application deadlines. 2026/27 figure.",
+      "sk": "Poplatok Lekárskej fakulty (UPJŠ) za elektronickú prihlášku (50 EUR za papierovú); stránka uvádza termíny podávania prihlášok na rok 2026. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Nursing and Health Professional Studies (SZU, Bratislava) fee for a programme with an entrance exam. 2026/27 figure.",
+      "sk": "Poplatok Fakulty ošetrovateľstva a zdravotníckych odborných štúdií (SZU, Bratislava) za program s prijímacou skúškou. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Nursing and Health Professional Studies (SZU, Bratislava) fee for a programme without an entrance exam. 2026/27 figure.",
+      "sk": "Poplatok Fakulty ošetrovateľstva a zdravotníckych odborných štúdií (SZU, Bratislava) za program bez prijímacej skúšky. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Operation and Economics of Transport and Communications fee for EU citizens (50 EUR for non-EU citizens); one application per study programme.",
+      "sk": "Poplatok Fakulty prevádzky a ekonomiky dopravy a spojov pre občanov EÚ (50 EUR pre občanov krajín mimo EÚ); jedna prihláška na každý študijný program.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Pharmacy UK fee for the bachelor programme; the page gives the 2027 application window (1 Dec 2026 to 30 Jun 2027).",
+      "sk": "Poplatok Farmaceutickej fakulty UK za bakalársky program; stránka uvádza obdobie podávania prihlášok na rok 2027 (1. decembra 2026 až 30. júna 2027).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Physical Education, Sport and Health (UMB) fee; the page gives the same figure for the application and the electronic application; paid by bank transfer.",
+      "sk": "Poplatok Fakulty telesnej výchovy, športu a zdravia (UMB); stránka uvádza rovnakú sumu za prihlášku aj za elektronickú prihlášku; platí sa bankovým prevodom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Political Science and International Relations (UMB) fee for the electronic application made on the faculty website (60 EUR via vsportal.sk or on paper). 2026/27 figure.",
+      "sk": "Poplatok Fakulty politických vied a medzinárodných vzťahov (UMB) za elektronickú prihlášku podanú na webe fakulty (60 EUR cez vsportal.sk alebo na papieri). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Public Administration (UPJŠ) fee for the electronic application (40 EUR on paper), paid by bank transfer. The page shows the 2026/27 round. 2026/27 figure.",
+      "sk": "Poplatok Fakulty verejnej správy (UPJŠ) za elektronickú prihlášku (40 EUR za papierovú), platí sa bankovým prevodom. Stránka uvádza kolo 2026/27. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Public Health (SZU, Bratislava) fee for the study without an entrance exam. 2026/27 figure.",
+      "sk": "Poplatok Fakulty verejného zdravotníctva (SZU, Bratislava) za štúdium bez prijímacej skúšky. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Security Engineering (UNIZA) fee, paid by bank transfer or postal order.",
+      "sk": "Poplatok Fakulty bezpečnostného inžinierstva (UNIZA), platí sa bankovým prevodom alebo poštovou poukážkou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Social Sciences and Health Care (UKF) fee, paid electronically with the e-application (payment generated after saving the application).",
+      "sk": "Poplatok Fakulty sociálnych vied a zdravotníctva (UKF), platí sa elektronicky spolu s e-prihláškou (platba sa vygeneruje po uložení prihlášky).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Faculty of Theology (Trnava University) fee, paid by bank transfer with the e-application (MAIS); not refunded if the applicant does not attend the entrance exam or the application is incomplete.",
+      "sk": "Poplatok Teologickej fakulty (Trnavská univerzita), platí sa bankovým prevodom spolu s e-prihláškou (MAIS); nevracia sa, ak uchádzač nepríde na prijímaciu skúšku alebo je prihláška neúplná.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Fee for the electronic application form, as listed on the programme page in the Charles University admissions system (SIS).",
+      "sk": "Poplatok za elektronickú prihlášku podľa stránky programu v systéme prijímacieho konania Univerzity Karlovej (SIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Fee for the joint Economics and Law programme; the payment instructions name the Faculty of National Economy of the University of Economics (NHF EU) as payee. 2026/27 figure.",
+      "sk": "Poplatok za spoločný program Ekonómia a právo; pokyny na platbu uvádzajú ako príjemcu Národohospodársku fakultu Ekonomickej univerzity (NHF EU). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Institute of Media and Cultural Heritage (UNIZA) fee, paid by bank transfer or postal order.",
+      "sk": "Poplatok Ústavu mediamatiky a kultúrneho dedičstva (UNIZA), platí sa bankovým prevodom alebo poštovou poukážkou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Jessenius Faculty of Medicine UK fee for the bachelor programmes (Nursing, Midwifery, Public Health); only one fee is paid when applying to several bachelor programmes in one application. Bank transfer.",
+      "sk": "Poplatok Jesseniovej lekárskej fakulty UK za bakalárske programy (ošetrovateľstvo, pôrodná asistencia, verejné zdravotníctvo); ak sa v jednej prihláške hlásiš na viac bakalárskych programov, platíš len jeden poplatok. Bankový prevod.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Medicine and Surgery (Rome) application fee, paid at submission, non-refundable; gives access to the online simulator for the entrance exam held on 17 March 2027.",
+      "sk": "Poplatok za prihlášku na Medicine and Surgery (Rím), platí sa pri podaní, nevratný; dáva prístup k online simulátoru prijímacej skúšky, ktorá sa koná 17. marca 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "No admission fee for EU/EEA, Swiss and Ukrainian citizens (65 EUR for citizens of other countries); joint programme with Uzhhorod National University. 2026/27 figure.",
+      "sk": "Občania EÚ/EHP, Švajčiarska a Ukrajiny poplatok za prijímacie konanie neplatia (65 EUR pre občanov iných krajín); spoločný program s Užhorodskou národnou univerzitou. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Paid separately for each programme applied to on the DreamApply platform. 2026/27 figure.",
+      "sk": "Platí sa zvlášť za každý program, na ktorý sa hlásiš cez platformu DreamApply. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Per application for an English-taught VŠE programme, paid in the information system (InSIS) after registering the e-application; non-refundable.",
+      "sk": "Za každú prihlášku na program VŠE v angličtine, platí sa v informačnom systéme (InSIS) po zaevidovaní e-prihlášky; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Per application, for programmes taught in foreign languages; the application is complete only after payment; due 31 March for bachelor programmes.",
+      "sk": "Za každú prihlášku, pre programy vyučované v cudzích jazykoch; prihláška je úplná až po zaplatení; pri bakalárskych programoch splatný do 31. marca.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Per application, paid to the university (VUT), not the faculty; 28 EUR when paying from outside the Czech Republic, 700 CZK when paying to the Czech bank account.",
+      "sk": "Za každú prihlášku, platí sa univerzite (VUT), nie fakulte; 28 EUR pri platbe zo zahraničia (mimo Česka), 700 CZK pri platbe na český bankový účet.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Per application, payable online right after choosing the programme; non-refundable. Applications 1 Nov 2026 - 31 Jul 2027.",
+      "sk": "Za každú prihlášku, platí sa online hneď po výbere programu; nevratný. Prihlášky 1. novembra 2026 – 31. júla 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "The programme page announces a €50 application fee from the 2026/27 winter semester; it does not say whether this applies to EU applicants or how it relates to the uni-assist fee.",
+      "sk": "Stránka programu ohlasuje od zimného semestra 2026/27 poplatok 50 € za prihlášku; neuvádza, či sa týka uchádzačov z EÚ, ani ako súvisí s poplatkom uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "The programme page says the €50 OTH application fee applies to non-EU students (not to EU applicants).",
+      "sk": "Podľa stránky programu sa poplatok OTH 50 € za prihlášku týka študentov mimo EÚ (nie uchádzačov z EÚ).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University directive 6/2026-SR fee for a Slovak-language application (paid in the UIS e-application).",
+      "sk": "Poplatok podľa smernice univerzity 6/2026-SR za prihlášku na štúdium v slovenčine (platí sa v e-prihláške v UIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University directive 6/2026-SR fee for an English-language application (paid in the UIS e-application).",
+      "sk": "Poplatok podľa smernice univerzity 6/2026-SR za prihlášku na štúdium v angličtine (platí sa v e-prihláške v UIS).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University fee for the electronic application to a Slovak-language programme (EUBA charges 90 EUR for English-language ones); paid by bank transfer. 2026/27 figure.",
+      "sk": "Poplatok univerzity za elektronickú prihlášku na program v slovenčine (EUBA za programy v angličtine účtuje 90 EUR); platí sa bankovým prevodom. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University fee for the electronic application to the joint Economics and Law programme (with Comenius University Faculty of Law). 2026/27 figure.",
+      "sk": "Poplatok univerzity za elektronickú prihlášku na spoločný program Ekonómia a právo (s Právnickou fakultou Univerzity Komenského). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University fee for the English-taught bachelor application (UIS e-application); proof of payment is attached to the application.",
+      "sk": "Poplatok univerzity za prihlášku na bakalárske štúdium v angličtine (e-prihláška v UIS); doklad o zaplatení sa prikladá k prihláške.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "University fee for the online application to an English-taught programme; the payment order is generated in the application. Same 90 EUR is stated for 2026/27 in the university fee regulation.",
+      "sk": "Poplatok univerzity za online prihlášku na program v angličtine; platobný príkaz sa vygeneruje v prihláške. Rovnakých 90 EUR na 2026/27 uvádza aj predpis univerzity o poplatkoch.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Willem de Kooning Academy FAQ: no registration fee. Applies to WdKA programmes; no fee was found for other Rotterdam UAS programmes.",
+      "sk": "Časté otázky Willem de Kooning Academy: žiadny registračný poplatok. Týka sa programov WdKA; pri ostatných programoch Rotterdam UAS sa poplatok nenašiel.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "2026/27 figure. FAU charges a 100 EUR processing fee per application only to applicants from non-EU states; EU/EEA citizens apply free of charge.",
+      "sk": "Údaj pre 2026/27. FAU účtuje poplatok za spracovanie 100 EUR za prihlášku len uchádzačom zo štátov mimo EÚ; občania EÚ/EHP sa hlásia bezplatne.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "34.50 GBP at the ECB reference rate of 2026-11-12 (1 EUR = 0.83595 GBP), rounded to 41 EUR. One UCAS fee per application (2027 cycle), covering up to five university choices; paid to UCAS.",
+      "sk": "34.50 GBP podľa referenčného kurzu ECB z 2026-11-12 (1 EUR = 0.83595 GBP), zaokrúhlené na 41 EUR. Jeden poplatok UCAS za prihlášku (cyklus 2027), pokrýva výber až piatich univerzít; platí sa UCAS.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (admission test): 35 EUR (2026/27 figure).",
+      "sk": "Prijímací test: 35 EUR (údaj pre 2026/27).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (CEnT-S/TOLC-based selection): 10 EUR (2026/27 figure). Pre-selection fee for English-taught programmes, per submitted application (maximum two per candidate per intake), no waiver. 2026/27 figure.",
+      "sk": "Prijímací test (výber na základe CEnT-S/TOLC): 10 EUR (údaj pre 2026/27). Poplatok za predvýber na programy v angličtine, za každú podanú prihlášku (najviac dve na uchádzača v jednom prijímacom období), bez možnosti odpustenia. Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (CISIA CEnT-S): 55 EUR.",
+      "sk": "Prijímací test (CISIA CEnT-S): 55 EUR.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (TIL-A): 50 EUR (2026/27 figure). Admission test (TIL-I): 50 EUR (2026/27 figure).",
+      "sk": "Prijímací test (TIL-A): 50 EUR (údaj pre 2026/27). Prijímací test (TIL-I): 50 EUR (údaj pre 2026/27).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (TOL Test On Line): 35 EUR (2026/27 figure).",
+      "sk": "Prijímací test (TOL Test On Line): 35 EUR (údaj pre 2026/27).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test (TOLC-E): 35 EUR (2026/27 figure).",
+      "sk": "Prijímací test (TOLC-E): 35 EUR (údaj pre 2026/27).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Admission test: 100 EUR (2027/28 figure).",
+      "sk": "Prijímací test: 100 EUR (údaj pre 2027/28).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Application fee (150 EUR per admission round) is for non-EU/EEA/Swiss citizens only; EU/EEA and Swiss citizens do not pay.",
+      "sk": "Poplatok za prihlášku (150 EUR za každé kolo prijímania) platia len občania krajín mimo EÚ/EHP/Švajčiarska; občania EÚ/EHP a Švajčiarska neplatia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Application fee (150 EUR) applies only to non-EU/EEA citizens; EU/EEA citizens do not pay.",
+      "sk": "Poplatok za prihlášku (150 EUR) platia len občania krajín mimo EÚ/EHP; občania EÚ/EHP neplatia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Application fee (150 EUR) is for paying applicants, i.e. non-EU/EEA/Swiss citizens; EU/EEA and Swiss citizens are not liable to pay fees.",
+      "sk": "Poplatok za prihlášku (150 EUR) platia platiaci uchádzači, t. j. občania krajín mimo EÚ/EHP/Švajčiarska; občania EÚ/EHP a Švajčiarska poplatky platiť nemusia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Charged to applicants with an international diploma; paid once per academic year even for several Tilburg programmes; non-refundable.",
+      "sk": "Platia ho uchádzači s medzinárodným diplomom; raz za akademický rok, aj pri viacerých programoch v Tilburgu; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "EU/EEA and Swiss citizens do not pay an application fee.",
+      "sk": "Občania EÚ/EHP a Švajčiarska poplatok za prihlášku neplatia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "KLU charges its own fee to all applicants, EU applicants included.",
+      "sk": "KLU účtuje vlastný poplatok všetkým uchádzačom vrátane uchádzačov z EÚ.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Maastricht charges a EUR 100 handling fee to applicants with a non-EU/EEA curriculum, but bachelor applicants who completed the IB are exempt. Paid before the application deadline.",
+      "sk": "Maastricht účtuje manipulačný poplatok 100 EUR uchádzačom s učebným plánom z krajiny mimo EÚ/EHP, uchádzači o bakalárske štúdium, ktorí ukončili IB, sú však oslobodení. Platí sa pred termínom podania prihlášky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "No application fee at Bard College Berlin (page for Fall 2027 entry).",
+      "sk": "Bard College Berlin nemá poplatok za prihlášku (stránka pre nástup na jeseň 2027).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "No application fee at HAN for any applicant; fees start only when the programme starts.",
+      "sk": "HAN nevyberá poplatok za prihlášku od žiadneho uchádzača; poplatky sa platia až od začiatku štúdia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "No application fee for EU/EEA and Swiss citizens on universityadmissions.se; you document your citizenship there.",
+      "sk": "Občania EÚ/EHP a Švajčiarska na universityadmissions.se poplatok za prihlášku neplatia; občianstvo tam doložíš.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "No application fee for Finnish or EU citizens. The €100 fee applies only to applicants from outside the EU/EEA and is collected through the Studyinfo application form.",
+      "sk": "Občania Fínska a EÚ poplatok za prihlášku neplatia. Poplatok 100 € platia len uchádzači spoza EÚ/EHP a vyberá sa cez prihlasovací formulár Studyinfo.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "No fee: applying directly to Universität Hamburg and having foreign school certificates evaluated are both free. Certified translations, if needed, are paid by the applicant.",
+      "sk": "Bez poplatku: priama prihláška na Universität Hamburg aj posúdenie zahraničných školských vysvedčení sú bezplatné. Úradne overené preklady, ak sú potrebné, si platí uchádzač.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Once per applicant per admissions cycle, however many CEU programmes you apply to; non-refundable and cannot be waived; paid online after submitting the first application.",
+      "sk": "Raz na uchádzača za prijímací cyklus, bez ohľadu na počet programov CEU, na ktoré sa hlásiš; nevratný a nedá sa odpustiť; platí sa online po odoslaní prvej prihlášky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid for each application submitted to the international pre-evaluation (maximum two applications for different courses). 2026/27 figure.",
+      "sk": "Platí sa za každú prihlášku podanú na medzinárodné predbežné hodnotenie (najviac dve prihlášky na rôzne programy). Údaj pre 2026/27.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to Munich Business School by bank transfer or PayPal; documents are checked once the fee has arrived.",
+      "sk": "Platí sa Munich Business School bankovým prevodom alebo cez PayPal; dokumenty sa kontrolujú až po pripísaní poplatku.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the CAO, non-refundable. €50 is the normal fee (apply by 1 Feb 2027, 17:00); €35 online by 20 Jan 2027; €65 for a late online application by 1 May 2027.",
+      "sk": "Platí sa CAO, nevratný. Bežný poplatok je 50 € (prihláška do 1. februára 2027, 17:00); 35 € online do 20. januára 2027; 65 € za oneskorenú online prihlášku do 1. mája 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university by applicants to English-taught programmes with an international diploma. Not needed for an IB obtained in the Kingdom of the Netherlands, or if already paid for another VU programme (valid two academic years).",
+      "sk": "Platia ho univerzite uchádzači o programy v angličtine s medzinárodným diplomom. Netýka sa IB získaného v Holandskom kráľovstve ani prípadu, keď už bol zaplatený za iný program VU (platí dva akademické roky).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university by applicants with a non-Dutch diploma, including an IB. RSM IBA and ESE international bachelors charge an additional fee (amount not published on this page).",
+      "sk": "Platia ho univerzite uchádzači s neholandským diplomom vrátane IB. Medzinárodné bakalárske programy RSM IBA a ESE účtujú ďalší poplatok (suma na tejto stránke nie je zverejnená).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university by applicants with non-Dutch prior education (an IB or EB obtained in the Netherlands also counts as non-Dutch); once per academic year, however many programmes you apply to.",
+      "sk": "Platia ho univerzite uchádzači s predchádzajúcim vzdelaním, ktoré sa nepovažuje za holandské (aj IB alebo EB získané v Holandsku sa počíta ako neholandské); raz za akademický rok bez ohľadu na počet programov, na ktoré sa hlásiš.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university by transfer from applicants educated outside the Netherlands or at an international school there (so IB applicants); per application, with proof of payment uploaded in the online application.",
+      "sk": "Platia ho univerzite prevodom uchádzači vzdelaní mimo Holandska alebo na medzinárodnej škole v Holandsku (teda uchádzači s IB); za každú prihlášku, doklad o zaplatení sa nahrá do online prihlášky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university in OSIRIS Online Application; non-refundable; paid once for several programmes (valid three years). The exemption list (UU exchange students, refugees, Caribbean VWO) does not include the IB.",
+      "sk": "Platí sa univerzite v OSIRIS Online Application; nevratný; platí sa raz za viac programov (platnosť tri roky). Zoznam výnimiek (výmenní študenti UU, utečenci, karibské VWO) IB nezahŕňa.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to the university; one fee covers several programmes (Leiden University College charges its own, separate fee). The exemption list covers Dutch VWO, Dutch propaedeutic and EB from a Dutch department; it does not mention the IB.",
+      "sk": "Platí sa univerzite; jeden poplatok pokrýva viac programov (Leiden University College účtuje vlastný, samostatný poplatok). Zoznam výnimiek zahŕňa holandské VWO, holandský propedeutický diplom a EB z holandskej sekcie; IB nespomína.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist for the VPD that foreign-qualification applicants need, per semester: €75 for the first programme, €30 for each further one.",
+      "sk": "Platí sa uni-assist za VPD, ktoré potrebujú uchádzači so zahraničnou kvalifikáciou, za semester: 75 € za prvý program, 30 € za každý ďalší.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. A school-leaving qualification from outside Germany (an IB) must be submitted through uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Maturitné vysvedčenie získané mimo Nemecka (aj IB) sa musí podať cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Applicants with a foreign entrance qualification (an IB) apply via uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Uchádzači so zahraničnou kvalifikáciou na vysokoškolské štúdium (aj IB) sa hlásia cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Applicants with an international entrance qualification apply through uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Uchádzači s medzinárodnou kvalifikáciou na vysokoškolské štúdium sa hlásia cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Applies to the Trier main campus; Birkenfeld has its own rules.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Platí pre hlavný kampus v Trieri; Birkenfeld má vlastné pravidlá.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Fulda takes applications with an International Baccalaureate only through uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Fulda prijíma prihlášky s International Baccalaureate len cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Halle takes applications with a foreign entrance qualification only through uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Halle prijíma prihlášky so zahraničnou kvalifikáciou na vysokoškolské štúdium len cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. HWR lists uni-assist as the route for a non-German entrance qualification (an IB).",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. HWR uvádza uni-assist ako cestu pre nenemeckú kvalifikáciu na vysokoškolské štúdium (aj IB).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. International certificates (an IB) can be applied with only through uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. S medzinárodnými vysvedčeniami (aj IB) sa dá hlásiť len cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. Jade sends everyone with a school-leaving certificate from abroad (an IB is one) to uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Jade posiela na uni-assist každého so zahraničným maturitným vysvedčením (IB medzi ne patrí).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. OVGU sends applicants with an IB to uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. OVGU posiela uchádzačov s IB na uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: 75 EUR for the first programme (30 EUR each further one); applicants with a school certificate from outside Germany must apply via uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: 75 EUR za prvý program (30 EUR za každý ďalší); uchádzači so školským vysvedčením získaným mimo Nemecka sa musia hlásiť cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: applicants with a school-leaving qualification from abroad apply via uni-assist (shorter deadlines apply).",
+      "sk": "Platí sa uni-assist, za semester: uchádzači so zahraničným maturitným vysvedčením sa hlásia cez uni-assist (platia kratšie termíny).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: applicants with an international (non-German) university entrance qualification must apply via uni-assist.",
+      "sk": "Platí sa uni-assist, za semester: uchádzači s medzinárodnou (nenemeckou) kvalifikáciou na vysokoškolské štúdium sa musia hlásiť cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist, per semester: international applicants without a German school diploma (an IB counts) must apply via uni-assist; the university points to uni-assist for the costs.",
+      "sk": "Platí sa uni-assist, za semester: zahraniční uchádzači bez nemeckého maturitného vysvedčenia (to platí aj pre IB) sa musia hlásiť cez uni-assist; pri nákladoch univerzita odkazuje na uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist: €75 for the first programme, €30 for each further one, per semester. An IB counts as a foreign qualification, so BTU takes these applications through uni-assist.",
+      "sk": "Platí sa uni-assist: 75 € za prvý program, 30 € za každý ďalší, za semester. IB sa počíta ako zahraničná kvalifikácia, preto BTU takéto prihlášky prijíma cez uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to uni-assist: the university sends all applicants with a foreign school qualification there; per semester, 75 EUR for the first programme.",
+      "sk": "Platí sa uni-assist: univerzita tam posiela všetkých uchádzačov so zahraničným školským vzdelaním; za semester, 75 EUR za prvý program.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Paid to WHU when you apply online. €150 from 1 April 2027; €75 from 1 Feb to 31 March 2027 with a voucher code; the page lists no fee for earlier applications.",
+      "sk": "Platí sa WHU pri online prihláške. 150 € od 1. apríla 2027; 75 € od 1. februára do 31. marca 2027 s kódom poukážky; pre skoršie prihlášky stránka neuvádza žiadny poplatok.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Participation fee paid online when submitting the application, non-refundable; the same 150 EUR applies to the Luiss Test route (apply by 10 February 2027) and to direct admission with certificates such as the IB (apply by 24 March 2027).",
+      "sk": "Poplatok za účasť, platí sa online pri podaní prihlášky, nevratný; rovnakých 150 EUR platí pre cestu cez Luiss Test (prihláška do 10. februára 2027) aj pre priame prijatie na základe vysvedčení, napríklad IB (prihláška do 24. marca 2027).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Per application submitted (Undergraduate School, Law School and HEC double degree each count separately); paid only through the application portal; not refunded.",
+      "sk": "Za každú podanú prihlášku (Undergraduate School, Law School a dvojitý diplom s HEC sa rátajú každý zvlášť); platí sa len cez prihlasovací portál; nevracia sa.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Pre-evaluation application fee covering up to two applications (a second one in a later call is free); paid before submission; not refundable.",
+      "sk": "Poplatok za prihlášku na predbežné hodnotenie, pokrýva až dve prihlášky (druhá v neskoršej výzve je bezplatná); platí sa pred podaním; nevratný.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "Processing fee for the university to assess a school certificate not obtained in Germany (so for an IB); per application, paid in the online application.",
+      "sk": "Poplatok za to, že univerzita posúdi školské vysvedčenie získané mimo Nemecka (teda aj IB); za každú prihlášku, platí sa v online prihláške.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "SSE charges no application fee; UniversityAdmissions.se charges its fee only to non-EU/EEA/Swiss citizens.",
+      "sk": "SSE nevyberá poplatok za prihlášku; UniversityAdmissions.se účtuje svoj poplatok len občanom krajín mimo EÚ/EHP/Švajčiarska.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee (per semester) for recognising a foreign school certificate before applying in the PULS portal. The alternative route, recognition by the Schulamt Cottbus, was not checked for fees.",
+      "sk": "Poplatok za VPD od uni-assist (za semester) na uznanie zahraničného školského vysvedčenia pred prihláškou na portáli PULS. Pri alternatívnej ceste, uznaní cez Schulamt Cottbus, sa poplatky neoverovali.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, paid to uni-assist: IB applicants need this preliminary documentation (unless they already hold a certificate-recognition notification) and also apply separately in TUMonline.",
+      "sk": "Poplatok za VPD od uni-assist, platí sa uni-assist: uchádzači s IB potrebujú túto predbežnú dokumentáciu (ak už nemajú rozhodnutie o uznaní vysvedčenia) a navyše sa hlásia samostatne v TUMonline.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, paid to uni-assist: THI requires this preliminary assessment for school qualifications obtained abroad; the application itself is then made in THI's PRIMUSS portal.",
+      "sk": "Poplatok za VPD od uni-assist, platí sa uni-assist: THI vyžaduje toto predbežné posúdenie pri školskom vzdelaní získanom v zahraničí; samotná prihláška sa potom podáva na portáli PRIMUSS školy THI.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, paid to uni-assist: TU Berlin requires a VPD for foreign school certificates (an IB counts); the application itself is then made in the TU Berlin portal.",
+      "sk": "Poplatok za VPD od uni-assist, platí sa uni-assist: TU Berlin vyžaduje VPD pri zahraničných školských vysvedčeniach (aj pri IB); samotná prihláška sa potom podáva na portáli TU Berlin.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one (same for the VPD procedure). OTH requires every EU applicant with a foreign school certificate to get a VPD.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší (rovnako aj pri konaní VPD). OTH vyžaduje VPD od každého uchádzača z EÚ so zahraničným školským vysvedčením.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one (same for the VPD procedure). THWS requires a VPD from applicants with a foreign certificate.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší (rovnako aj pri konaní VPD). THWS vyžaduje VPD od uchádzačov so zahraničným vysvedčením.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one (same for the VPD procedure). Worms requires the VPD for qualifications obtained abroad.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší (rovnako aj pri konaní VPD). Worms vyžaduje VPD pri kvalifikácii získanej v zahraničí.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one. A school-leaving certificate from abroad (an IB) needs a uni-assist VPD.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Zahraničné maturitné vysvedčenie (aj IB) potrebuje VPD od uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one. Applicants with a foreign school certificate (an IB is one) need the VPD before applying to LMU.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Uchádzači so zahraničným školským vysvedčením (IB medzi ne patrí) potrebujú VPD ešte pred prihláškou na LMU.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one. International applicants (an IB) need a VPD from uni-assist issued for HAW Hamburg.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Uchádzači s medzinárodným vzdelaním (aj IB) potrebujú VPD od uni-assist vystavené pre HAW Hamburg.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one. Needed first by applicants with foreign credentials (an IB is foreign); then apply to htw saar with the VPD.",
+      "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. Najprv ho potrebujú uchádzači so zahraničnými dokladmi o vzdelaní (IB je zahraničné); potom sa s VPD prihlásiš na htw saar.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note_default",
+      "en": "VPD fee paid to uni-assist, per semester: €75 for the first programme, €30 for each further one. FU accepts applications with a foreign entrance qualification (an IB) only with a uni-assist VPD.",
+      "sk": "Poplatok za VPD, platí sa uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší. FU prijíma prihlášky so zahraničnou kvalifikáciou na vysokoškolské štúdium (aj IB) len s VPD od uni-assist.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "A secondary diploma from a foreign school must be proven by a recognition document from the Ministry of Education recognition portal; in other cases, a request goes to the regional school office. Applicants can be admitted conditionally and must show the proof by enrolment day.",
+      "sk": "Stredoškolský diplom zo zahraničnej školy treba doložiť dokladom o uznaní z portálu ministerstva školstva na uznávanie dokladov; v ostatných prípadoch sa žiadosť podáva na regionálny úrad školskej správy. Uchádzačov možno prijať podmienečne a doklad musia predložiť do dňa zápisu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "An IB Diploma is accepted directly as proof of secondary education, without the 990 CZK assessment fee that applies to other foreign certificates. It needs an apostille where the state of issue is in the Apostille Convention.",
+      "sk": "IB diplom sa prijíma priamo ako doklad o stredoškolskom vzdelaní, bez poplatku 990 CZK za posúdenie, ktorý platí pre iné zahraničné vysvedčenia. Ak je štát vydania zmluvnou stranou Apostilového dohovoru, potrebuje apostilu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants must attach the secondary-school certificate and a recognition of the education (nostrification or the recognition clause, see the Ministry recognition portal). Applicants from a Slovak secondary school deliver only a notarised copy of the certificate.",
+      "sk": "Uchádzači musia priložiť stredoškolské vysvedčenie a uznanie vzdelania (nostrifikáciu alebo uznávaciu doložku, pozri portál ministerstva na uznávanie dokladov). Uchádzači zo slovenskej strednej školy dodávajú len notársky overenú kópiu vysvedčenia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who completed secondary school abroad (including Slovak citizens) must submit, by the day of enrolment at the latest, the diploma with a recognition clause from the Ministry of Education recognition portal, or (if no clause is available there) the regional school office decision on equivalence of the diploma.",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí (aj občania SR), musia najneskôr v deň zápisu predložiť diplom s uznávacou doložkou z portálu ministerstva školstva na uznávanie dokladov alebo (ak tam doložka nie je dostupná) rozhodnutie regionálneho úradu školskej správy o rovnocennosti diplomu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who completed secondary school abroad must show proof of equivalence of the certificate: for EU and treaty countries a certified translation and the recognition clause (uznávacia doložka); for other countries a recognition decision from the regional school office. Documents are due at the faculty study office by 31 August 2027.",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí, musia preukázať rovnocennosť vysvedčenia: pri krajinách EÚ a zmluvných krajinách úradne overeným prekladom a uznávacou doložkou; pri ostatných krajinách rozhodnutím regionálneho úradu školskej správy o uznaní. Doklady treba doručiť na študijné oddelenie fakulty do 31. augusta 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who finished secondary school abroad (except in Czechia) must deliver on paper by enrolment day at the latest: a notarised copy of the official Slovak translation of the diploma, and either a decision on recognition of equivalence of the secondary diploma or the recognition clause (Doložka o uznaní stupňa zahraničného vzdelania).",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí (okrem Česka), musia najneskôr v deň zápisu doručiť v papierovej podobe: notársky overenú kópiu úradného slovenského prekladu diplomu a buď rozhodnutie o uznaní rovnocennosti stredoškolského diplomu, alebo doložku (Doložka o uznaní stupňa zahraničného vzdelania).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who finished secondary school abroad must submit a certificate of equivalence or a nostrification clause (recognition of the foreign certificate). Applicants who cannot show the basic condition by the deadline must deliver the certified school-leaving certificate by the enrolment day at the latest.",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí, musia predložiť osvedčenie o rovnocennosti alebo nostrifikačnú doložku (uznanie zahraničného vysvedčenia). Uchádzači, ktorí základnú podmienku nedokážu preukázať do termínu, musia overené maturitné vysvedčenie doručiť najneskôr v deň zápisu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who finished secondary school abroad submit nostrified education documents. Without a school-leaving exam in Slovak or Czech, applicants must pass the faculty Slovak-language test at B1 level with at least 60% to enter selection.",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí, predkladajú nostrifikované doklady o vzdelaní. Uchádzači bez maturity zo slovenčiny alebo češtiny musia na postup do výberu urobiť fakultný test zo slovenčiny na úrovni B1 aspoň na 60 %.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who finished secondary school abroad submit nostrified education documents. Without a school-leaving exam in Slovak or Czech, applicants must take a faculty Slovak-language test.",
+      "sk": "Uchádzači, ktorí ukončili strednú školu v zahraničí, predkladajú nostrifikované doklady o vzdelaní. Uchádzači bez maturity zo slovenčiny alebo češtiny musia absolvovať fakultný test zo slovenčiny.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants who studied at a foreign secondary school upload proof of equivalence of the secondary education or a nostrification of the school-leaving certificate (PDF) into the e-application; applicants from abroad must submit it to the study office.",
+      "sk": "Uchádzači, ktorí študovali na zahraničnej strednej škole, nahrajú do e-prihlášky doklad o rovnocennosti stredoškolského vzdelania alebo nostrifikáciu maturitného vysvedčenia (PDF); uchádzači zo zahraničia ho musia predložiť na študijnom oddelení.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants whose previous education was obtained abroad submit proof of recognition of that education with an official translation, plus an official apostille certification.",
+      "sk": "Uchádzači, ktorí predchádzajúce vzdelanie získali v zahraničí, predkladajú doklad o jeho uznaní s úradným prekladom a navyše úradné overenie apostilou.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Applicants with a foreign secondary school certificate upload a nostrification or a recognition clause (doložka o uznaní vzdelania) with the e-application, with all foreign documents officially translated and certified.",
+      "sk": "Uchádzači so zahraničným stredoškolským vysvedčením nahrajú k e-prihláške nostrifikáciu alebo doložku o uznaní vzdelania, všetky zahraničné doklady musia byť úradne preložené a overené.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Foreign applicants with a secondary school certificate from abroad submit the recognition clause (doložka o uznaní stupňa zahraničného vzdelania) from the Ministry portal if their education does not need nostrification; in other cases they submit a nostrification.",
+      "sk": "Zahraniční uchádzači so stredoškolským vysvedčením zo zahraničia predkladajú doložku o uznaní stupňa zahraničného vzdelania z portálu ministerstva, ak ich vzdelanie nepotrebuje nostrifikáciu; v ostatných prípadoch predkladajú nostrifikáciu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "IB Diploma: submit the certificate as an officially certified copy or authorised conversion, with an official translation into Czech or English (not needed for Slovak or English certificates). IB holders pay no verification fee.",
+      "sk": "IB diplom: vysvedčenie predlož ako úradne overenú kópiu alebo autorizovanú konverziu s úradným prekladom do češtiny alebo angličtiny (pri slovenských alebo anglických vysvedčeniach netreba). Držitelia IB neplatia poplatok za overenie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: request assessment in the application form; 100 EUR for foreign HZB (130 EUR for both SBT/SBL); uni-assist VPD not accepted. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: v prihlasovacom formulári požiadaj o posúdenie; 100 EUR za zahraničnú HZB (130 EUR za SBT aj SBL); VPD od uni-assist sa neprijíma. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Recognition of secondary education is required before enrolment, with an administrative fee of CZK 990 paid online; an IB diploma counts as completed secondary education.",
+      "sk": "Pred zápisom sa vyžaduje uznanie stredoškolského vzdelania s administratívnym poplatkom 990 CZK, ktorý sa platí online; IB diplom sa počíta ako ukončené stredoškolské vzdelanie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition",
+      "en": "Successful applicants who finished secondary school abroad (including Slovak citizens graduating abroad) must submit proof of equivalence of their secondary education (nostrification) by enrolment day, in the first week of September. Nostrification takes usually 1-2 months; apply at the regional school office.",
+      "sk": "Prijatí uchádzači, ktorí ukončili strednú školu v zahraničí (aj občania SR, ktorí maturovali v zahraničí), musia do dňa zápisu v prvom septembrovom týždni predložiť doklad o rovnocennosti stredoškolského vzdelania (nostrifikáciu). Nostrifikácia trvá zvyčajne 1 – 2 mesiace; žiadosť sa podáva na regionálnom úrade školskej správy.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Accepted for enrolment without translation or legalisation. The full IB Diploma must be awarded by the May session, after at least 12 years of education, with at least 24 points in six subjects (12 at Higher Level) and TOK, CAS and EE passed. Retakes in November are not accepted.",
+      "sk": "Na zápis sa prijíma bez prekladu a legalizácie. Úplný IB diplom musí byť udelený najneskôr v májovom termíne, po aspoň 12 rokoch vzdelávania, s aspoň 24 bodmi zo šiestich predmetov (12 na Higher Level) a so splnenými TOK, CAS a EE. Novembrové opravné termíny sa neuznávajú.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Accepted: the full IB Diploma from an IBO-accredited school (at least 24 points in six subjects, 12 at Higher Level, TOK, CAS and EE passed). IBO must send the scores to Bologna online, or you provide confirmation of authenticity; no other value documents. A diploma awarded after 11 years of schooling needs an integration procedure.",
+      "sk": "Prijíma sa úplný IB diplom zo školy akreditovanej IBO (aspoň 24 bodov zo šiestich predmetov, 12 na Higher Level, splnené TOK, CAS a EE). IBO musí poslať výsledky do Bologne online, alebo predložíš potvrdenie pravosti; iné doklady o hodnote vzdelania sa nevyžadujú. Diplom udelený po 11 rokoch školskej dochádzky si vyžaduje doplňujúce (integračné) konanie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An applicant holding a secondary-school certificate from abroad must attach to the e-application the decision on recognition of that certificate, issued by the regional school office (for SPU, the Regional Office of School Administration in Nitra).",
+      "sk": "Uchádzač so stredoškolským vysvedčením zo zahraničia musí k e-prihláške priložiť rozhodnutie o uznaní tohto vysvedčenia, ktoré vydáva regionálny úrad školskej správy (pre SPU Regionálny úrad školskej správy v Nitre).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB degree or graduation from IB high school gives eligibility to apply for bachelor studies.",
+      "sk": "IB diplom alebo absolvovanie strednej školy s programom IB oprávňuje hlásiť sa na bakalárske štúdium.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma (authorised by the International Baccalaureate Foundation in Switzerland) proves completed secondary education with a school-leaving exam without any further verification; no nostrification needed.",
+      "sk": "IB diplom (autorizovaný nadáciou International Baccalaureate vo Švajčiarsku) dokladá ukončené stredoškolské vzdelanie s maturitou bez ďalšieho overovania; nostrifikácia nie je potrebná.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma completed previously or in the spring of the application year gives eligibility to apply.",
+      "sk": "Oprávnenie prihlásiť sa dáva IB diplom získaný skôr alebo na jar v roku podania prihlášky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma from an IB World School is submitted directly as proof of secondary education; the other routes (faculty verification, nostrification) are for other foreign certificates. Faculties give their own document details and deadlines.",
+      "sk": "IB diplom z IB World School sa predkladá priamo ako doklad o stredoškolskom vzdelaní; ostatné cesty (overenie fakultou, nostrifikácia) sú pre iné zahraničné vysvedčenia. Podrobnosti o dokladoch a termíny uvádzajú jednotlivé fakulty.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma gives eligibility for English-taught bachelor programmes; it must be completed by the specified deadline.",
+      "sk": "IB diplom oprávňuje hlásiť sa na bakalárske programy v angličtine; musí byť získaný do stanoveného termínu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma is an eligible qualification for the spring joint application.",
+      "sk": "IB diplom je platnou kvalifikáciou pre jarné spoločné prihlasovanie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma issued by an IB World School needs no assessment or nostrification at TUL: send it directly to the study department of the faculty you apply to (Section 48(4)(c) of the Czech Higher Education Act). Other foreign certificates need assessment by TUL's International Office.",
+      "sk": "IB diplom vydaný IB World School na TUL nepotrebuje posúdenie ani nostrifikáciu: pošli ho priamo na študijné oddelenie fakulty, na ktorú sa hlásiš (§ 48 ods. 4 písm. c) českého zákona o vysokých školách). Iné zahraničné vysvedčenia posudzuje medzinárodné oddelenie TUL (International Office).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An IB Diploma needs no nostrification: submit a certified copy of the International Baccalaureate (with an official translation where required). VSB does not charge the 800 CZK foreign-education assessment fee in this case; it may ask for extra documents on the content of studies.",
+      "sk": "IB diplom nepotrebuje nostrifikáciu: predlož overenú kópiu International Baccalaureate (s úradným prekladom, ak sa vyžaduje). VSB v tomto prípade neúčtuje poplatok 800 CZK za posúdenie zahraničného vzdelania; môže si však vyžiadať ďalšie doklady o obsahu štúdia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "An International Baccalaureate is an eligible qualification for bachelor studies.",
+      "sk": "International Baccalaureate je platnou kvalifikáciou na bakalárske štúdium.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Documents from Slovakia, Hungary, Poland and Germany count as equivalent to Czech ones automatically; other foreign education is assessed by VUT itself on request, for a fee, during admission. The page does not name the IB, so ask the faculty how an IB Diploma is treated.",
+      "sk": "Doklady zo Slovenska, Maďarska, Poľska a Nemecka sa automaticky považujú za rovnocenné s českými; iné zahraničné vzdelanie posudzuje VUT samo na žiadosť a za poplatok počas prijímacieho konania. Stránka IB nespomína, preto sa fakulty opýtaj, ako zaobchádza s IB diplomom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Every applicant with a secondary school certificate from abroad must have it recognised (nostrification) at the Regional Office of School Administration (Regionálny úrad školskej správy). You may apply before it is done; the recognition must be delivered to EUBA by enrolment at the latest.",
+      "sk": "Každý uchádzač so stredoškolským vysvedčením zo zahraničia si ho musí dať uznať (nostrifikovať) na regionálnom úrade školskej správy (Regionálny úrad školskej správy). Prihlásiť sa môžeš ešte predtým; uznanie treba doručiť EUBA najneskôr pri zápise.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "For Czech-taught bachelor programmes at the Faculty of Agronomy, foreign secondary education needs either nostrification or a positive assessment by MENDELU (fee 900 CZK), plus a Czech B2 exam; the rules do not name the IB, so ask the faculty how an IB Diploma is treated.",
+      "sk": "Pri bakalárskych programoch v češtine na Agronomickej fakulte potrebuje zahraničné stredoškolské vzdelanie buď nostrifikáciu, alebo kladné posúdenie MENDELU (poplatok 900 CZK), a k tomu skúšku z češtiny na úrovni B2; pravidlá IB nespomínajú, preto sa fakulty opýtaj, ako zaobchádza s IB diplomom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "For diplomas from EU/EEA countries, the UK, Switzerland, Ukraine, Russia and China, the recognition clause generated at the Ministry portal (uznavanie.minedu.sk) can replace the recognition decision; attach a certified copy of the diploma. Czech diplomas are valid without recognition. The faculty may ask for a Slovak translation.",
+      "sk": "Pri diplomoch z krajín EÚ/EHP, Spojeného kráľovstva, Švajčiarska, Ukrajiny, Ruska a Číny môže rozhodnutie o uznaní nahradiť uznávacia doložka vygenerovaná na portáli ministerstva (uznavanie.minedu.sk); prilož overenú kópiu diplomu. České diplomy platia bez uznania. Fakulta si môže vyžiadať slovenský preklad.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "For IB certificate-based rolling admission: an awarded IB Diploma with three HL and three SL courses and at least 93/198 in the national UAS scoring model. AI and Digital Infrastructure Engineering has additional maths requirements.",
+      "sk": "Pri priebežnom prijímaní na základe IB vysvedčenia: udelený IB diplom s tromi predmetmi na HL a tromi na SL a aspoň 93/198 v celoštátnom bodovacom modeli UAS. Program AI and Digital Infrastructure Engineering má ďalšie požiadavky z matematiky.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Full IB Diploma only (at least 12 years of schooling; IB certificates and the Career-related Programme are not accepted). Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027, which replaces legalisation, Dichiarazione di Valore or CIMEA statements; November retakes are not accepted.",
+      "sk": "Len úplný IB diplom (aspoň 12 rokov školskej dochádzky; IB certifikáty ani Career-related Programme sa neprijímajú). Konečné výsledky z májového termínu 2027 posiela IBO priamo na Cattolica po ich zverejnení v júli 2027, čo nahrádza legalizáciu, Dichiarazione di Valore aj vyjadrenia CIMEA; novembrové opravné termíny sa neprijímajú.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB applicants graduating in spring 2027 must submit predicted grades by 1 April 2027 at 15:00 and final results by 13 July 2027.",
+      "sk": "Uchádzači s IB, ktorí maturujú na jar 2027, musia predložiť predpokladané známky do 1. apríla 2027 do 15:00 a konečné výsledky do 13. júla 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB applicants graduating in spring must attach predicted grades to the application by 1 April 2027 at 15:00 Finnish time. Admission remains conditional until the final original degree certificate is checked at the beginning of studies.",
+      "sk": "Uchádzači s IB, ktorí maturujú na jar, musia k prihláške priložiť predpokladané známky do 1. apríla 2027 do 15:00 fínskeho času. Prijatie zostáva podmienečné, kým sa na začiatku štúdia neoverí originál konečného diplomu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB applicants who finish after the application period must send Helsinki Admission Services an officially certified copy of their final IB results (Diploma Programme Results) by 31 August 2027.",
+      "sk": "Uchádzači s IB, ktorí končia po období podávania prihlášok, musia do 31. augusta 2027 poslať Helsinki Admission Services úradne overenú kópiu konečných výsledkov IB (Diploma Programme Results).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB Diploma accepted; IB course results/certificate route requires at least 20 points (including TOK/EE points), 3 HL + 3 SL or 4 HL + 2 SL subjects passed, grade 3+ in every subject, TOK and Extended Essay passed, and CAS fully satisfied.",
+      "sk": "IB diplom sa prijíma; cesta cez výsledky jednotlivých IB kurzov/certifikát vyžaduje aspoň 20 bodov (vrátane bodov za TOK/EE), úspešne absolvované predmety 3 HL + 3 SL alebo 4 HL + 2 SL, známku 3+ z každého predmetu, splnené TOK a Extended Essay a úplne splnený CAS.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB Diploma from an accredited IB school is accepted; IB applicants apply in admission round B and, if graduating in spring 2027, attach predicted grades by 1 April 2027.",
+      "sk": "IB diplom z akreditovanej IB školy sa prijíma; uchádzači s IB sa hlásia v kole prijímania B a ak maturujú na jar 2027, prikladajú predpokladané známky do 1. apríla 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "IB Diplomas are included in certificate-based selection. Bring original educational certificates for verification at the beginning of studies, no later than 30 September 2027.",
+      "sk": "IB diplomy sú zahrnuté do výberu na základe vysvedčení. Originály dokladov o vzdelaní prines na overenie na začiatku štúdia, najneskôr do 30. septembra 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No nostrification and no assessment at the CTU rectorate for an IB Diploma (rule in force since 1 March 2025); you submit official copies of the IB documents directly to the faculty you apply to, so ask that faculty about the exact documents.",
+      "sk": "Pri IB diplome nie je potrebná nostrifikácia ani posúdenie na rektoráte CTU (pravidlo platí od 1. marca 2025); úradné kópie IB dokladov predkladáš priamo fakulte, na ktorú sa hlásiš, preto sa jej opýtaj na presné doklady.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step: an IB Diploma counts as the general university entrance qualification in Austria. A programme can still ask for more, such as proof of language skills.",
+      "sk": "Bez samostatného kroku uznania: IB diplom sa v Rakúsku počíta ako všeobecná kvalifikácia na vysokoškolské štúdium. Program môže aj tak vyžadovať viac, napríklad doklad o jazykových znalostiach.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step: an IB Diploma that lists your subjects meets the general entry requirements. If you graduate in May 2027, apply in the second admissions round and have your IB coordinator release your results to recipient code \"UHR\" by 5 July.",
+      "sk": "Bez samostatného kroku uznania: IB diplom so zoznamom tvojich predmetov spĺňa všeobecné podmienky prijatia. Ak maturuješ v máji 2027, prihlás sa v druhom kole a požiadaj svojho IB koordinátora, aby do 5. júla uvoľnil tvoje výsledky pre kód príjemcu „UHR“.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step: Nuffic rates the IB Diploma as comparable to a VWO diploma, the Dutch pre-university school-leaving diploma. Programme subject requirements still apply.",
+      "sk": "Bez samostatného kroku uznania: Nuffic hodnotí IB diplom ako porovnateľný s diplomom VWO, holandským maturitným vysvedčením, ktoré pripravuje na univerzitu. Požiadavky programu na predmety však platia ďalej.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step: UK universities accept the IB Diploma and set their own IB requirements on each course page. Your school adds predicted grades to your UCAS application.",
+      "sk": "Bez samostatného kroku uznania: britské univerzity prijímajú IB diplom a vlastné požiadavky na IB uvádzajú na stránke každého programu. Predpokladané známky doplní do tvojej prihlášky UCAS tvoja škola.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step: you apply through the CAO with your IB results. Minimum for a degree: the IB Diploma with 24 points, including three subjects at grade 5 HL and three at grade 4 SL. Your IB total is converted to CAO points. Ask your IB coordinator to give the CAO access to your May 2027 results.",
+      "sk": "Bez samostatného kroku uznania: hlásiš sa cez CAO so svojimi výsledkami IB. Minimum na bakalárske štúdium: IB diplom s 24 bodmi vrátane troch predmetov so známkou 5 na HL a troch so známkou 4 na SL. Tvoj celkový počet bodov IB sa prepočíta na body CAO. Požiadaj svojho IB koordinátora, aby CAO sprístupnil tvoje výsledky z mája 2027.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "No separate recognition step. Apply on Optagelse.dk by 15 March, 12:00 Danish time: the deadline for anyone with an IB, wherever it was taken. If your IB average can be converted to the Danish 7-point scale, you are also considered in quota 1.",
+      "sk": "Bez samostatného kroku uznania. Prihlás sa na Optagelse.dk do 15. marca do 12:00 dánskeho času: to je termín pre každého s IB, bez ohľadu na to, kde bol získaný. Ak sa tvoj priemer IB dá prepočítať na dánsku 7-stupňovú škálu, posudzuješ sa aj v kvóte 1.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "One optional route: TBU can assess foreign secondary education itself for 1,050 CZK (43 EUR). This assessment is valid only at TBU. The page states no IB-specific requirement.",
+      "sk": "Jedna nepovinná cesta: TBU môže zahraničné stredoškolské vzdelanie posúdiť sama za 1,050 CZK (43 EUR). Toto posúdenie platí len na TBU. Stránka neuvádza žiadnu požiadavku špecifickú pre IB.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification (KMK agreement) after 12 school years, if your six subjects include two languages, a science, Maths (AA or AI) and a social science, all at grade 4+, with a language, Maths or a science at HL. Maths at SL only: subjects outside maths, science and engineering. German grade = 1 + 3 × (42 − points) / 18; 42–45 points = 1.0.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium (dohoda KMK) po 12 rokoch školskej dochádzky, ak tvojich šesť predmetov zahŕňa dva jazyky, prírodnú vedu, matematiku (AA alebo AI) a spoločenskú vedu, všetky so známkou 4+, a jazyk, matematiku alebo prírodnú vedu na HL. Ak máš matematiku len na SL: len odbory mimo matematiky, prírodných vied a techniky. Nemecká známka = 1 + 3 × (42 − body) / 18; 42 – 45 bodov = 1.0.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: apply via uni-assist for evaluation of your foreign entrance qualification. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: prihlás sa cez uni-assist na posúdenie svojej zahraničnej kvalifikácie na vysokoškolské štúdium. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: apply via uni-assist if your school-leaving certificate was obtained abroad. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: ak je tvoje maturitné vysvedčenie zo zahraničia, prihlás sa cez uni-assist. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: apply via uni-assist with a non-German entrance qualification for Department 1 programmes. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: s nenemeckou kvalifikáciou na vysokoškolské štúdium sa na programy Department 1 hlásiš cez uni-assist. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: apply via uni-assist with your IB Diploma. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: s IB diplomom sa prihlás cez uni-assist. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: apply via uni-assist; with a Studienkolleg FSP or ZAB evaluation, use the SSC portal. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: prihlás sa cez uni-assist; ak máš FSP zo Studienkolleg alebo hodnotenie ZAB, použi portál SSC. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: EU applicants with foreign certificates need Studienkolleg Konstanz recognition (free). German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači z EÚ so zahraničnými vysvedčeniami potrebujú uznanie od Studienkolleg Konstanz (bezplatné). Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: for German-taught programmes, submit proof of university-level German with your application if your HZB was not in Germany and German. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: pri programoch v nemčine prilož k prihláške doklad o nemčine na vysokoškolskej úrovni, ak tvoja HZB nie je z Nemecka a v nemčine. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: foreign diplomas are assessed individually; English-taught bachelor applications cost 50 EUR each, paid online. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zahraničné diplomy sa posudzujú individuálne; každá prihláška na bakalársky program v angličtine stojí 50 EUR, platí sa online. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: foreign-certificate applicants need a uni-assist VPD by the deadline: 75 EUR, 30 EUR per additional university. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači so zahraničným vysvedčením potrebujú do termínu VPD od uni-assist: 75 EUR, 30 EUR za každú ďalšiu univerzitu. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: foreign-certificate applicants to International Business use uni-assist and must show A2 German. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači so zahraničným vysvedčením na International Business sa hlásia cez uni-assist a musia preukázať nemčinu na úrovni A2. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: foreign-certificate applicants use uni-assist: 75 EUR for the first application, 30 EUR per additional application. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači so zahraničným vysvedčením sa hlásia cez uni-assist: 75 EUR za prvú prihlášku, 30 EUR za každú ďalšiu. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: German BA eligibility requires Abitur equivalence; US degree admission is based on your national school diploma. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: na nemecký BA treba rovnocennosť s Abiturom; prijatie na americký titul (US degree) vychádza z tvojho národného maturitného vysvedčenia. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: get DHBW's free equivalence check before applying to a dual partner; post certified copies (2-3 weeks). German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: pred prihláškou u duálneho partnera si nechaj na DHBW bezplatne overiť rovnocennosť; pošli poštou overené kópie (2 – 3 týždne). Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: get the uni-assist preliminary assessment of your school reports; submit it with your Worms application. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si predbežné posúdenie svojich vysvedčení od uni-assist; prilož ho k prihláške do Worms. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: have your foreign entrance qualification verified through a uni-assist VPD. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: nechaj si overiť zahraničnú kvalifikáciu na vysokoškolské štúdium cez VPD od uni-assist. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: have your foreign school certificate checked by uni-assist; upload the VPD in Primuss within the application period. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: nechaj si zahraničné vysvedčenie skontrolovať cez uni-assist; VPD nahraj do Primuss v období podávania prihlášok. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: have your non-German certificate recognised by Studienkolleg Konstanz (free) or uni-assist (fee charged). German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: nechaj si nenemecké vysvedčenie uznať na Studienkolleg Konstanz (bezplatne) alebo cez uni-assist (za poplatok). Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: Hohenheim checks equivalence during your application; no additional uni-assist application. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: Hohenheim overuje rovnocennosť počas tvojej prihlášky; žiadna ďalšia prihláška cez uni-assist. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: IB applicants apply via uni-assist: 75 EUR for the first programme choice, 30 EUR per additional choice. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači s IB sa hlásia cez uni-assist: 75 EUR za prvý zvolený program, 30 EUR za každú ďalšiu voľbu. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: IB holders without a certificate-recognition notification need a paid uni-assist VPD and a separate TUMonline application. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: držitelia IB bez rozhodnutia o uznaní vysvedčenia potrebujú platené VPD od uni-assist a samostatnú prihlášku v TUMonline. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: non-German citizens need Studienkolleg Konstanz recognition of foreign certificates by the application deadline. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: uchádzači bez nemeckého občianstva potrebujú do termínu prihlášky uznanie zahraničných vysvedčení od Studienkolleg Konstanz. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: normally obtain a uni-assist VPD; EU applicants for medicine, dentistry, veterinary medicine or pharmacy use Hochschulstart. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zvyčajne si zaobstaraj VPD od uni-assist; uchádzači z EÚ o medicínu, zubné lekárstvo, veterinárnu medicínu alebo farmáciu sa hlásia cez Hochschulstart. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: obtain a TU Berlin uni-assist VPD (fee charged); you can request it before final IB results. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si VPD od uni-assist pre TU Berlin (za poplatok); môžeš oň požiadať ešte pred konečnými výsledkami IB. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: obtain a uni-assist VPD for your foreign entrance qualification. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si VPD od uni-assist pre svoju zahraničnú kvalifikáciu na vysokoškolské štúdium. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: obtain a uni-assist VPD for your foreign qualification and submit it with your application in THWS's portal. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si VPD od uni-assist pre svoju zahraničnú kvalifikáciu a prilož ho k prihláške na portáli THWS. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: obtain a uni-assist VPD issued for FU (fee charged); submit it in FU's application portal. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si VPD od uni-assist vystavené pre FU (za poplatok); predlož ho na prihlasovacom portáli FU. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: obtain Brandenburg recognition via Schulamt Cottbus or uni-assist; it must arrive by the application deadline. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: zaobstaraj si uznanie pre Brandenbursko cez Schulamt Cottbus alebo uni-assist; musí prísť do termínu prihlášky. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: request a uni-assist VPD (handling fee), then upload it in CAMPUSonline. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: požiadaj o VPD od uni-assist (manipulačný poplatok), potom ho nahraj do CAMPUSonline. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: request a uni-assist VPD at least six weeks before the deadline; submit it with your htw saar application. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: požiadaj o VPD od uni-assist aspoň šesť týždňov pred termínom; prilož ho k prihláške na htw saar. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: request free recognition of your foreign certificates in Hamburg's application portal (winter: 15 October-30 June). German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: požiadaj o bezplatné uznanie zahraničných vysvedčení na prihlasovacom portáli v Hamburgu (zimný semester: 15. októbra – 30. júna). Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: request JGU recognition of foreign certificates in Jogustine before applying (75 EUR; exemptions apply). German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: pred prihláškou požiadaj v Jogustine o uznanie zahraničných vysvedčení na JGU (75 EUR; platia výnimky). Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: SAT/ACT may be required for enrolment if your diploma does not grant direct admission in Germany. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: na zápis môže byť potrebný SAT/ACT, ak tvoj diplom neoprávňuje na priame prijatie v Nemecku. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Recognised as a German university entrance qualification under the KMK agreement (12 school years; subject and grade conditions; Maths SL opens only non-STEM subjects). Extra step here: upload your IB diploma, transcript and IB Results Summary for all four semesters in StudyOhm for review. German grade = 1 + 3 × (42 − points) / 18.",
+      "sk": "Uznáva sa ako nemecká kvalifikácia na vysokoškolské štúdium podľa dohody KMK (12 rokov školskej dochádzky; podmienky na predmety a známky; matematika na SL otvára len odbory mimo STEM). Krok navyše na tejto škole: nahraj do StudyOhm na posúdenie svoj IB diplom, výpis známok a IB Results Summary za všetky štyri semestre. Nemecká známka = 1 + 3 × (42 − body) / 18.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Secondary school abroad: attach proof of recognition of the education with a certified copy of the school-leaving certificate and a certified Slovak translation. Countries with a recognition clause (EU except Czechia, Norway, Switzerland, Liechtenstein, UK, Ukraine, Russia, China, Iceland): the clause on paper. Other countries: a recognition decision. Not needed for Czech diplomas.",
+      "sk": "Stredná škola v zahraničí: prilož doklad o uznaní vzdelania s overenou kópiou maturitného vysvedčenia a úradne overeným slovenským prekladom. Krajiny s uznávacou doložkou (EÚ okrem Česka, Nórsko, Švajčiarsko, Lichtenštajnsko, Spojené kráľovstvo, Ukrajina, Rusko, Čína, Island): doložka v papierovej podobe. Ostatné krajiny: rozhodnutie o uznaní. Pri českých diplomoch netreba.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "The IB is not named. Foreign secondary education must be verified: either an existing nostrification, or an assessment by the faculty during admission (800 CZK per faculty applied to). Documents must be translated into Czech or English and legalised.",
+      "sk": "IB sa nespomína. Zahraničné stredoškolské vzdelanie treba overiť: buď už existujúcou nostrifikáciou, alebo posúdením fakultou počas prijímacieho konania (800 CZK za každú fakultu, na ktorú sa hlásiš). Doklady musia byť preložené do češtiny alebo angličtiny a legalizované.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "The university page names no IB-specific rule. Foreign secondary education must be recognised, or assessed within admission by the faculty you apply to; ask that faculty how an IB Diploma is treated.",
+      "sk": "Stránka univerzity neuvádza žiadne pravidlo špecifické pre IB. Zahraničné stredoškolské vzdelanie musí byť uznané alebo posúdené v rámci prijímacieho konania fakultou, na ktorú sa hlásiš; opýtaj sa jej, ako zaobchádza s IB diplomom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "Upload predicted/final grades, transcripts and diplomas to UniversityAdmissions.se. Conditional admission is possible; submit final grades and documents by enrolment.",
+      "sk": "Predpokladané/konečné známky, výpisy známok a diplomy nahraj na UniversityAdmissions.se. Podmienečné prijatie je možné; konečné známky a doklady predlož do zápisu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "ib_recognition_default",
+      "en": "VŠE assesses a foreign school-leaving diploma itself once you have applied (inside the InSIS application); formal nostrification is needed only if VŠE doubts the diploma. A fee applies for Czech-taught programmes, none for English-taught ones. The page says \"foreign education\" and does not name the IB.",
+      "sk": "VŠE posúdi zahraničné maturitné vysvedčenie sama po podaní prihlášky (priamo v prihláške v InSIS); formálna nostrifikácia je potrebná len vtedy, ak má VŠE o diplome pochybnosti. Pri programoch v češtine sa platí poplatok, pri programoch v angličtine nie. Stránka hovorí o „zahraničnom vzdelaní“ a IB nespomína.",
       "verified_by": "AI-DRAFT"
     }
   ]

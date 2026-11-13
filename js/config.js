@@ -27,3 +27,6 @@ export const STALE_AFTER_DAYS = 183;
 
 // A deadline this close gets highlighted as urgent.
 export const URGENT_WITHIN_DAYS = 60;
+
+// Jakub enables whole-university rankings when ready.
+export const SHOW_RANKINGS = false;
