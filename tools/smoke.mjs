@@ -2057,12 +2057,20 @@ async function runBatch2C(base) {
       await check(1280, 'R4J', 'Czech note is in matching Language detail, absent from filter (' + ui + ')', async () => {
         await page.click(`document.querySelector('#results>li.item button.open')`, 'Czech programme');
         const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+        // PR 2 put an application-fee profile .dd-note (and sometimes a fee note) on
+        // every detail, so "a .dd-note" no longer means "the Czech note": find the
+        // Language row's <dd> by its <dt>, then the note by its wording.
+        const lang = ui === 'sk' ? 'Jazyk' : 'Language';
+        const profile = ui === 'sk' ? 'Pre občanov EÚ s IB diplomom.' : 'For EU citizens with an IB Diploma.';
         assert(await page.ev(`(()=>{
-          const n=document.querySelector('#pane .dd-note');
-          return n?.textContent.startsWith(${JSON.stringify(note)}) && n.closest('dd') &&
+          const dt=[...document.querySelectorAll('#pane dt')].find(d=>d.textContent===${JSON.stringify(lang)});
+          const dd=dt?.nextElementSibling;
+          const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
+          return !!n &&
+            [...document.querySelectorAll('#pane dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}) &&
             !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
             !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
-        })()`), 'Czech note missing or Language help remains');
+        })()`), 'Czech note missing from the Language row, fee profile note missing, or Language help remains');
         await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
       });
     } finally { await page.close(); }
@@ -2075,15 +2083,31 @@ async function runBatch2C(base) {
     ['paid-czech', data.find(r => r.country === 'Czechia' && r.tuitionEu > 0)],
     ['non-czech', data.find(r => r.country !== 'Czechia')],
   ]) {
-    const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
-    try {
-      await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
-        await mountProgramme(page, row.id);
-        await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
-        assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
-        await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
-      });
-    } finally { await page.close(); }
+    for (const ui of ['en', 'sk']) {
+      const page = await open('?ui=' + ui + '&q=' + encodeURIComponent(row.programme), 1280);
+      try {
+        await check(1280, 'R4J', 'no Czech note on ' + name + ' (' + ui + ')', async () => {
+          await mountProgramme(page, row.id);
+          await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
+          const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+          const lang = ui === 'sk' ? 'Jazyk' : 'Language';
+          const profile = ui === 'sk' ? 'Pre občanov EÚ s IB diplomom.' : 'For EU citizens with an IB Diploma.';
+          // The other PR 2 notes stay (the fee profile is always drawn), so only the
+          // Czech tuition wording is absent: from the Language row and the whole pane.
+          const m = await page.ev(`(()=>{
+            const pane=document.querySelector('#pane');
+            const dt=[...pane.querySelectorAll('dt')].find(d=>d.textContent===${JSON.stringify(lang)});
+            const dd=dt?.nextElementSibling;
+            return {foot:!!pane.querySelector('.d-foot'),
+              profile:[...pane.querySelectorAll('dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}),
+              czechAnywhere:[...pane.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)})),
+              czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.startsWith(${JSON.stringify(note)}))}
+          })()`);
+          assert(m.foot && m.profile && !m.czechAnywhere && !m.czechInLanguage, 'unexpected Czech note or missing fee profile note ' + JSON.stringify(m));
+          if (ui === 'en') await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
+        });
+      } finally { await page.close(); }
+    }
   }
 }
 
@@ -3189,10 +3213,18 @@ async function runAlignListCompare(base) {
               await page.waitFor(`({ok:document.querySelector('${detail} button.save').getAttribute('aria-pressed')==='${on}'&&document.querySelector('${detail} button.cmpb').getAttribute('aria-pressed')==='${on}',why:'state'})`, 5000, 'toggled');
             }
             await page.ev(TEXT);
-            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),[l,a,b]=[...g.children],o=g.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),ia=a.querySelector('.ic').getBoundingClientRect(),ib=b.querySelector('.ic').getBoundingClientRect();
-              return {lines:[__lines(a.querySelector('.save-t')),__lines(b.querySelector('.cmpb-w'))],splits:[l,a,b].flatMap(x=>__splits(x).map(s=>s.word)),
+            // PR 2 can put an Apply link before the official-admissions link, so the
+            // pair is found by what it is (button.save, button.cmpb), never by position;
+            // every link in the row is still checked for split words.
+            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),kids=[...g.children],links=kids.filter(x=>x.tagName==='A'),a=g.querySelector(':scope>button.save'),b=g.querySelector(':scope>button.cmpb');
+              const parts={save:a,cmpb:b,saveText:a?.querySelector('.save-t'),cmpbText:b?.querySelector('.cmpb-w'),saveIcon:a?.querySelector('.ic'),cmpbIcon:b?.querySelector('.ic')};
+              const missing=Object.keys(parts).filter(k=>!parts[k]);
+              if(missing.length)return {missing,children:kids.map(x=>x.tagName+'.'+x.className)};
+              const o=g.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),ia=parts.saveIcon.getBoundingClientRect(),ib=parts.cmpbIcon.getBoundingClientRect();
+              return {links:links.length,lines:[__lines(parts.saveText),__lines(parts.cmpbText)],splits:[...links,a,b].flatMap(x=>__splits(x).map(s=>s.word)),
                 side:Math.abs(ra.top-rb.top)<1&&Math.abs(ra.width-rb.width)<=1,stacked:Math.abs(ra.left-rb.left)<1&&Math.abs(ra.width-o.width)<=1&&Math.abs(rb.width-o.width)<=1&&rb.top>=ra.bottom,
                 clip:[a,b].some(x=>x.scrollWidth>x.clientWidth+1),icons:[ia.width,ia.height,ib.width,ib.height],page:${noOverflow}}})()`);
+            assert(!m.missing, `${on ? 'on' : 'off'} detail actions lack ${m.missing} among ${JSON.stringify(m.children)}`);
             assert(m.lines.every((n) => n === 1) && !m.splits.length && (m.side || m.stacked) && !m.clip && m.icons.every((n) => n === m.icons[0]) && m.page, `${on ? 'on' : 'off'} ${JSON.stringify(m)}`);
           }
           if ([320, 390, 1280, 1440].includes(width)) await shot(page, `detail-pair-${width}-${ui}`);

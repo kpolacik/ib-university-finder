@@ -50,9 +50,24 @@ values exist only in the throwaway browser. Preview snapshots timed out twice;
 the permitted native Chrome/CDP fallback saved the PNGs. Capture waits for
 slot animation completion; the first clipped capture was replaced.
 
-Final full smoke on the owner's committed tree, independent reviews, commit
-and PR remain pending; these fast gates and screenshots are not final release
-acceptance. The owner proceeds with the PR and merge only after passing
+First full smoke (Node 26.1.0, Chrome; log `plans/pr2-final-gates-20261113/08-smoke-full.log`)
+ran 844 checks in 1125.2 s: all 56 PR 2 checks passed and 24 failed, from two
+smoke assumptions the PR 2 detail additions had broken, not from product code.
+(1) `runBatch2C` R4J wanted no `#pane .dd-note` on paid-Czech and non-Czech rows,
+but PR 2 draws the fee-profile `.dd-note` on every detail; it now looks for the
+Czech tuition wording in the Language row (English and Slovak), keeps the fee
+profile note as a required positive, and the negatives run in both languages.
+(2) `runAlignListCompare` "AL detail pair" took `[link, save, compare]` by
+position; the new Apply link comes first, so it threw at all 11 widths in both
+languages (22 failures). It now finds `button.save` and `button.cmpb` by class,
+fails with the missing part named, and checks every link in the row for split
+words. `tools/check.mjs` has a regression for each (C3 and A2). Repair gates
+(ignored `plans/pr2-smoke-repair-20261113/`): check.mjs passes; targeted
+`--only=runBatch2C,runAlignListCompare,runPr2` passed 182 checks in 150.4 s.
+
+Pending: the owner commits this repair, then runs one full smoke retry against the
+committed state. Independent reviews, commit and PR remain pending; these fast
+gates and screenshots are not final release acceptance. The owner proceeds with the PR and merge only after passing
 checks and reviews; no new Verify Implementation handoff is needed.
 
 Known research residue remains, without a data fix in this wave: VŠE

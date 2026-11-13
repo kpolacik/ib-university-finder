@@ -7138,6 +7138,12 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
     const note = t('r2_czech_free');
     check('C3 free Czech detail note is in Language (' + lang + ')',
       kvOf(detailOf(czech))[t('language')]?.textContent.includes(note));
+    {
+      const free = detailOf(czech), languageDd = kvOf(free)[t('language')];
+      check('C3 free Czech note is a .dd-note inside the Language row, beside the fee profile note (' + lang + ')',
+        byClass(languageDd, 'dd-note').some((n) => n.textContent.startsWith(note)) && byClass(free, 'dd-note').length > 1
+        && byClass(kvOf(free)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+    }
     for (const [name, row] of [
       ['English taught', { ...czech, languages: ['English'] }],
       ['paid', { ...czech, tuitionEu: 2000 }],
@@ -7147,6 +7153,14 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
       check('C3 no note for ' + name + ' (' + lang + ')', !detail.textContent.includes(note));
       check('C3 note-free detail keeps the fee wording guard (' + name + ', ' + lang + ')',
         !/Tuition \(EU\)|no tuition fee/.test(detail.textContent));
+      // Regression (smoke R4J): PR 2 draws .dd-note on every detail (the fee profile),
+      // so "no .dd-note in the pane" is no longer the way to say "no Czech note".
+      // The Czech wording must be absent from the Language row while the other notes stay.
+      const languageDd = kvOf(detail)[t('language')];
+      check('C3 ' + name + ' (' + lang + '): other fee/profile notes are drawn, so a bare .dd-note test cannot mean "Czech note"',
+        byClass(detail, 'dd-note').length > 0 && byClass(kvOf(detail)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+      check('C3 ' + name + ' (' + lang + '): the Language row has no Czech tuition note',
+        !languageDd || !byClass(languageDd, 'dd-note').some((n) => n.textContent.includes(note)));
     }
   }
   i18n.initLanguage('', { getItem: () => 'en' });
@@ -7237,6 +7251,20 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
     && pair[1].textContent.endsWith(`: ${rows[0].programme}, ${rows[0].university}`));
   const none = withStubDocument(() => renderDetail(rows[0], noFilters()));
   check('A2 a detail drawn without inCompare has no compare button (the print and CSV paths)', !byClass(none, 'cmpb').length);
+  // Regression (smoke AL detail pair): an Apply link now precedes the official link, so
+  // Save and Compare are no longer the 2nd and 3rd children. They are found by what they are.
+  {
+    const both = withStubDocument(() => renderDetail({ ...rows[0], applyUrl: 'https://example.org/apply', applyLinkKind: 'programme', applyCode: '',
+      officialUrl: 'https://example.org/official', deadlinePassed: false }, noFilters(), { saved: false, inCompare: false }));
+    const group = byClass(both, 'd-actions')[0], kids = group.children;
+    equal('A2 detail with Apply and official links: links first, then Save, then Compare',
+      kids.map((n) => [n.tagName, n.classList.contains('save') ? 'save' : n.classList.contains('cmpb') ? 'cmpb' : n.classList.contains('btn-apply') ? 'apply' : 'official']),
+      [['a', 'apply'], ['a', 'official'], ['button', 'save'], ['button', 'cmpb']]);
+    check('A2 with two links, positional [link, save, compare] would pick the official link as Save, so the smoke finds buttons by class',
+      kids[1].tagName === 'a' && byTag(group, 'button').filter((n) => n.classList.contains('save')).length === 1
+      && byTag(group, 'button').filter((n) => n.classList.contains('cmpb')).length === 1
+      && byTag(group, 'a').length === 2 && !/\[l,\s*a,\s*b\]\s*=\s*\[\.\.\.g\.children\]/.test(read('tools/smoke.mjs')));
+  }
   check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
     /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)
     && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)
