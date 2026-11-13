@@ -285,6 +285,10 @@ second (later, lower) round; a course with no second round names only Round 1.
 everyone on exactly that score got a place in that round. The IB figure is the
 conversion of the latest round. `tools/update-cao-points.mjs` rewrites these
 sentences each August, so don't edit them; anything else in the note is kept.
+The conversion uses the CAO's IB table for the coming entry year (the 2027
+table since 2026-11-13). When the CAO publishes a new table each November,
+the figures are converted again with `--reconvert`; STATUS.md ("CAO cutoffs
+are 2026's") says how.
 
 **Some Irish notes contain a sentence the card reads.** When an Irish row's
 `deadline_notes` contains exactly "Only reachable with the 25 HL Maths bonus
@@ -346,6 +350,101 @@ save it, Excel rewrites every ISO date into its own format — the exact problem
 the Plain text setting exists to prevent — and can mangle the `€`, `—` and `·`
 characters. Excel also locks the file while it is open, which stops anything
 else from writing to it. If you need to look at a CSV, use a text editor.
+
+---
+
+## Detail facts added in PR 2
+
+PR 2 uses the CSVs, before the database switch-over. Use the PR 2 add script
+(`tools/add-new-data-types.mjs`) with reviewed proposals; do not hand-edit the
+CSV files or the offline snapshot. Keep source URLs and quotes with the research.
+These facts appear only in programme details, not in filters or summary rows.
+
+For the pairs below, a blank programme cell inherits the university's `_default`.
+A programme `?` blocks inheritance and displays "Not published". With no value
+after inheritance, the detail says "Not checked yet". University defaults must
+be a value or blank, never `?`. Blank never means free, no requirement or no limit.
+
+| Programme column | University column | What to enter |
+|---|---|---|
+| `app_fee` | `app_fee_default` | Whole euros, at most nine digits; programme may use `?` |
+| `app_fee_note` | `app_fee_note_default` | Short explanation; never `?` |
+| `intake_months` | `intake_months_default` | First teaching months, numbers 1–12 joined by ` · `, such as `9 · 2`; programme may use `?` |
+| `ib_recognition` | `ib_recognition_default` | Recognition steps for an EU citizen with an IB Diploma; programme may use `?` |
+| `ib_offer` | `ib_offer_default` | `predicted` or `final`; programme may use `?` |
+| `apply_url` | `apply_url_default` | Official http(s) application URL; never `?` |
+
+**Fees and their notes travel together.** The note inherits only when the fee
+inherits. A programme's own fee, or `?`, uses only that programme's note, even
+when it is blank. A programme note can override a default note while the fee
+still inherits. A note can stand alone when no application fee was found.
+Every row containing a fee of `0` needs its own non-blank note and positive
+source evidence that this profile pays no application fee; silence is not zero.
+
+Record the original amount and currency, conversion date, rounding, year,
+collector, and whether the fee covers one programme or the whole cycle in the
+note. Use the add script's fixed ECB rate date. Label a 2026/27 fee explicitly;
+the target is 2027/28. Put an admission-test fee at the **start of the note**,
+for example "Admission test fee: EUR 35 (TOL)." Do not put it in `app_fee`.
+Include mandatory uni-assist or certificate-processing charges when the quoted
+source requires them for an IB applicant; do not assume they apply from the
+university's free-text application-system label. Record an IB exemption or an
+optional alternative route in the note so a conditional charge never reads as
+universal. Extra or later fees also belong in the note, not a new fee column.
+
+**Places belong to a programme.** `places` is a whole number of at least 1,
+blank, or `?`. A number requires `places_kind`: `capacity` (available places),
+`eu_quota` (EU places) or `past_intake` (previous enrolment, not a current cap).
+`places_year` is a year (`YYYY`) or academic year (`YYYY/YY`), such as
+`2025` or `2026/27`; if absent, the page says "year not published".
+Use `places_kind=open` with blank `places` only when a programme or faculty
+source positively says there is no fixed limit. A national generalisation is
+not enough. Blank alone never means unlimited. These columns do not inherit.
+
+Months become month names in the interface language. `predicted` means an
+offer based on predicted results; `final` means an offer after final results.
+Recognition text and fee notes need Slovak translations in `data/i18n/sk.csv`,
+including inherited `_default` text. The detail's originals button reveals the
+English wording. Use 2027/28 or undated evidence for recognition, offer timing,
+intake and application destinations; these columns have no historical-year label.
+
+**Application destinations must be real.** `apply_code` is a programme-only
+`UCAS:H401`, `CAO:TR028` or `SE:LNU-F3536`: uppercase system, colon, non-empty
+code without whitespace. Irish CAO codes must agree with the CAO sentence in
+`deadline_notes`. A code chooses the button wording first; otherwise an exact
+portal host or its subdomain chooses the system (UCAS, CAO, Studielink,
+uni-assist, Swedish admissions or Finnish Studyinfo). Other links say programme
+or university according to where the URL came from. Do not infer a portal from
+`application_system` or invent a URL from a code. Without an application URL,
+only the official admissions button remains. Expired cycles keep a secondary
+application link that says the cycle has closed. Comparison sites are not portals.
+
+**Photos need a complete, usable credit.** On the university row, `image_file`
+is exactly `img/universities/<university_id>.jpg`, a 640 × 360 JPEG (16:9),
+around 120 KB or less (the check allows up to 128 KiB). Every file must have a
+row and every named file must exist. Humak and UCN deliberately have no photo.
+The accepted PR 2 photo picks include originals below 1200 px wide; that old
+minimum no longer excludes them.
+
+Fill `image_licence`, `image_licence_url` and `image_source_url` (the original
+file page, normally Commons), using safe http(s) URLs. Keep a short credit name
+in `image_author`, without an email address or mail annotation (at most 160
+characters). CC BY and BY-SA require an author. Only Public domain and CC0
+allow a blank author, shown as "author not recorded". Keep the file title in
+the Commons source URL. The two approved non-Commons sources (CEU on Flickr
+and Reading on Geograph) have recorded titles in `photoCredit` in `js/render.js`;
+record the work title there when adding a source whose URL has no title.
+The last line links the licence and title and says "cropped".
+The photo and credit also print. Incomplete credits suppress the photo.
+
+**Rankings stay off until enabled.** `qs_rank` and `the_rank` hold the published
+display value: `62`, `=218`, `201–250` (en dash), or `1201+`. No invented ranks,
+zero, `Reporter`, or `?`. A rank needs a four-digit `rankings_year` (`2027`).
+With a year and blank rank, the enabled panel says "Not listed in QS/THE 2027";
+without a year it omits the whole block. Confirm name matches before enabling:
+a missed match must not become a false "Not listed" claim. Jakub can change
+`SHOW_RANKINGS = false` to `true` in `js/config.js` in one line. Checks cover
+both settings and stay usable after that change; ranking source links remain.
 
 ---
 

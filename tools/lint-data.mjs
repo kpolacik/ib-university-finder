@@ -9,8 +9,8 @@ import { readSheets } from '../js/data.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const COLUMNS = {
-  Universities: 'university_id,name,city,country,application_system,living_cost_min,living_cost_max,living_cost_source,living_cost_monthly,tuition_eu_default,tuition_noneu_default,baseline_requirement,english_requirement_default,admission_default,student_life_url,last_verified,verified_by,aliases'.split(','),
-  Programmes: 'programme_id,university_id,city,programme,degree_type,subject_area,language,ib_points_min,ib_subjects,ib_maths,other_requirements,admission,entrance_exam,tuition_eu,tuition_noneu,english_requirement,application_deadline,deadline_notes,official_url,last_verified,verified_by,application_system'.split(','),
+  Universities: 'university_id,name,city,country,application_system,living_cost_min,living_cost_max,living_cost_source,living_cost_monthly,tuition_eu_default,tuition_noneu_default,baseline_requirement,english_requirement_default,admission_default,student_life_url,last_verified,verified_by,aliases,qs_rank,the_rank,rankings_year,image_file,image_author,image_licence,image_licence_url,image_source_url,apply_url_default,app_fee_default,app_fee_note_default,intake_months_default,ib_recognition_default,ib_offer_default'.split(','),
+  Programmes: 'programme_id,university_id,city,programme,degree_type,subject_area,language,ib_points_min,ib_subjects,ib_maths,other_requirements,admission,entrance_exam,tuition_eu,tuition_noneu,english_requirement,application_deadline,deadline_notes,official_url,last_verified,verified_by,application_system,apply_url,apply_code,app_fee,app_fee_note,places,places_kind,places_year,intake_months,ib_recognition,ib_offer'.split(','),
 };
 const REQUIRED = {
   Universities: ['university_id', 'name', 'country', 'verified_by'],
@@ -21,7 +21,7 @@ const REQUIRED = {
 const LEGACY = new Set(['living_cost_monthly']);
 // entrance_exam and ib_maths came from upstream (MAINTENANCE.md): "?" there means
 // nobody has found out, and their filters never hide such rows.
-const UNKNOWN_COLUMNS = new Set(['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths']);
+const UNKNOWN_COLUMNS = new Set(['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths', 'app_fee', 'places', 'intake_months', 'ib_recognition', 'ib_offer']);
 // These universities publish official pages under more than one domain.
 const EXTRA_DOMAINS = { vut: ['vutbr.cz'], eur: ['rsm.nl'] };
 const COMPARISON_DOMAINS = new Set(['studyportals.com', 'bachelorsportal.com', 'mastersportal.com', 'educations.com', 'topuniversities.com', 'timeshighereducation.com', 'wikipedia.org', 'unipage.net']);
@@ -131,7 +131,7 @@ export function lintData({ universitiesCsv, programmesCsv, today = new Date() })
         const marker = /\b(?:CONFIRM|TODO|TBD|FIXME|XXX)\b|\?\?/.exec(value);
         if (marker) cell('error', 'marker', column, `"${marker[0]}" is a note to yourself and students would see it. Finish the check or delete it.`);
         if (value === '?' && (label === 'Universities' || !UNKNOWN_COLUMNS.has(column))) {
-          cell('error', 'unknown-misuse', column, '"?" only means "not published" in programme tuition, English, admission, entrance exam, IB maths, city, application system and degree type. Leave this cell blank if nobody checked.');
+          cell('error', 'unknown-misuse', column, '"?" only means "not published" in programme tuition, English, admission, entrance exam, IB maths, city, application system, degree type, application fee, places, intake, IB recognition and offer timing. Leave this cell blank if nobody checked.');
         }
         if (/\bSAMPLE\b/.test(value)) cell('error', 'sample', column, 'SAMPLE marks invented test rows and puts a red banner on the site.');
         if (/Ã|â€|Â/.test(value)) cell('error', 'encoding', column, 'This cell was damaged by Excel or a wrong encoding (é became Ã©). Re-type it; never open the CSV in Excel.');
@@ -146,6 +146,14 @@ export function lintData({ universitiesCsv, programmesCsv, today = new Date() })
       }
       const verified = cellDate(row.last_verified || '');
       if (verified && +verified > day) cell('error', 'future-verified', 'last_verified', 'This date is in the future, so it is probably a typo.');
+      for (const column of ['apply_url', 'apply_url_default']) {
+        if (row[column] && COMPARISON_DOMAINS.has(domain(row[column]))) {
+          cell('error', 'comparison-site', column, "Use the university's own application page or an official application system, not a comparison site.");
+        }
+      }
+      if (label === 'Universities' && !row.rankings_year) {
+        cell('warning', 'rankings-unchecked', 'rankings_year', 'No rankings edition recorded; the rankings block stays hidden.');
+      }
       if (label !== 'Programmes') continue;
       if (/^(?:none|n\/a|-|no requirements?)$/i.test(row.ib_subjects) && row.ib_subjects !== 'none') {
         cell('error', 'none-spelling', 'ib_subjects', 'Write exactly "none", and only when the university says it has no subject requirements. Leave it blank if nobody checked.');

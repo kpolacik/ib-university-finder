@@ -13,6 +13,8 @@
 //   node tools/smoke.mjs --sheet-only      # only the phone sheet regression
 //   node tools/smoke.mjs --faq-only        # only the header "?" and its FAQ panel
 //   node tools/smoke.mjs --only=runRowScroll,runReview2 # just these sections (function names)
+//   node tools/smoke.mjs --only=runSelectedFirst # ticked pick-list options first on the next open
+//   node tools/smoke.mjs --only=runBestMatchDesktop # desktop Sort strip: Best match reachable (SMOKE_SHOTS=<dir> saves screenshots)
 //   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
@@ -2055,12 +2057,20 @@ async function runBatch2C(base) {
       await check(1280, 'R4J', 'Czech note is in matching Language detail, absent from filter (' + ui + ')', async () => {
         await page.click(`document.querySelector('#results>li.item button.open')`, 'Czech programme');
         const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+        // PR 2 put an application-fee profile .dd-note (and sometimes a fee note) on
+        // every detail, so "a .dd-note" no longer means "the Czech note": find the
+        // Language row's <dd> by its <dt>, then the note by its wording.
+        const lang = ui === 'sk' ? 'Jazyk' : 'Language';
+        const profile = ui === 'sk' ? 'Pre občanov EÚ s IB diplomom.' : 'For EU citizens with an IB Diploma.';
         assert(await page.ev(`(()=>{
-          const n=document.querySelector('#pane .dd-note');
-          return n?.textContent.startsWith(${JSON.stringify(note)}) && n.closest('dd') &&
+          const dt=[...document.querySelectorAll('#pane dt')].find(d=>d.textContent===${JSON.stringify(lang)});
+          const dd=dt?.nextElementSibling;
+          const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
+          return !!n &&
+            [...document.querySelectorAll('#pane dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}) &&
             !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
             !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
-        })()`), 'Czech note missing or Language help remains');
+        })()`), 'Czech note missing from the Language row, fee profile note missing, or Language help remains');
         await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
       });
     } finally { await page.close(); }
@@ -2073,15 +2083,31 @@ async function runBatch2C(base) {
     ['paid-czech', data.find(r => r.country === 'Czechia' && r.tuitionEu > 0)],
     ['non-czech', data.find(r => r.country !== 'Czechia')],
   ]) {
-    const page = await open('?ui=en&q=' + encodeURIComponent(row.programme), 1280);
-    try {
-      await check(1280, 'R4J', 'no Czech note on ' + name, async () => {
-        await mountProgramme(page, row.id);
-        await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
-        assert(await page.ev(`!!document.querySelector('#pane .d-foot') && !document.querySelector('#pane .dd-note')`), 'unexpected Czech note');
-        await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
-      });
-    } finally { await page.close(); }
+    for (const ui of ['en', 'sk']) {
+      const page = await open('?ui=' + ui + '&q=' + encodeURIComponent(row.programme), 1280);
+      try {
+        await check(1280, 'R4J', 'no Czech note on ' + name + ' (' + ui + ')', async () => {
+          await mountProgramme(page, row.id);
+          await page.click(`document.querySelector('li[data-id="${row.id}"] button.open')`, name);
+          const note = ui === 'sk' ? 'Za štúdium v češtine' : 'Taught in Czech at a public university';
+          const lang = ui === 'sk' ? 'Jazyk' : 'Language';
+          const profile = ui === 'sk' ? 'Pre občanov EÚ s IB diplomom.' : 'For EU citizens with an IB Diploma.';
+          // The other PR 2 notes stay (the fee profile is always drawn), so only the
+          // Czech tuition wording is absent: from the Language row and the whole pane.
+          const m = await page.ev(`(()=>{
+            const pane=document.querySelector('#pane');
+            const dt=[...pane.querySelectorAll('dt')].find(d=>d.textContent===${JSON.stringify(lang)});
+            const dd=dt?.nextElementSibling;
+            return {foot:!!pane.querySelector('.d-foot'),
+              profile:[...pane.querySelectorAll('dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}),
+              czechAnywhere:[...pane.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)})),
+              czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.startsWith(${JSON.stringify(note)}))}
+          })()`);
+          assert(m.foot && m.profile && !m.czechAnywhere && !m.czechInLanguage, 'unexpected Czech note or missing fee profile note ' + JSON.stringify(m));
+          if (ui === 'en') await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
+        });
+      } finally { await page.close(); }
+    }
   }
 }
 
@@ -3187,10 +3213,18 @@ async function runAlignListCompare(base) {
               await page.waitFor(`({ok:document.querySelector('${detail} button.save').getAttribute('aria-pressed')==='${on}'&&document.querySelector('${detail} button.cmpb').getAttribute('aria-pressed')==='${on}',why:'state'})`, 5000, 'toggled');
             }
             await page.ev(TEXT);
-            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),[l,a,b]=[...g.children],o=g.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),ia=a.querySelector('.ic').getBoundingClientRect(),ib=b.querySelector('.ic').getBoundingClientRect();
-              return {lines:[__lines(a.querySelector('.save-t')),__lines(b.querySelector('.cmpb-w'))],splits:[l,a,b].flatMap(x=>__splits(x).map(s=>s.word)),
+            // PR 2 can put an Apply link before the official-admissions link, so the
+            // pair is found by what it is (button.save, button.cmpb), never by position;
+            // every link in the row is still checked for split words.
+            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),kids=[...g.children],links=kids.filter(x=>x.tagName==='A'),a=g.querySelector(':scope>button.save'),b=g.querySelector(':scope>button.cmpb');
+              const parts={save:a,cmpb:b,saveText:a?.querySelector('.save-t'),cmpbText:b?.querySelector('.cmpb-w'),saveIcon:a?.querySelector('.ic'),cmpbIcon:b?.querySelector('.ic')};
+              const missing=Object.keys(parts).filter(k=>!parts[k]);
+              if(missing.length)return {missing,children:kids.map(x=>x.tagName+'.'+x.className)};
+              const o=g.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),ia=parts.saveIcon.getBoundingClientRect(),ib=parts.cmpbIcon.getBoundingClientRect();
+              return {links:links.length,lines:[__lines(parts.saveText),__lines(parts.cmpbText)],splits:[...links,a,b].flatMap(x=>__splits(x).map(s=>s.word)),
                 side:Math.abs(ra.top-rb.top)<1&&Math.abs(ra.width-rb.width)<=1,stacked:Math.abs(ra.left-rb.left)<1&&Math.abs(ra.width-o.width)<=1&&Math.abs(rb.width-o.width)<=1&&rb.top>=ra.bottom,
                 clip:[a,b].some(x=>x.scrollWidth>x.clientWidth+1),icons:[ia.width,ia.height,ib.width,ib.height],page:${noOverflow}}})()`);
+            assert(!m.missing, `${on ? 'on' : 'off'} detail actions lack ${m.missing} among ${JSON.stringify(m.children)}`);
             assert(m.lines.every((n) => n === 1) && !m.splits.length && (m.side || m.stacked) && !m.clip && m.icons.every((n) => n === m.icons[0]) && m.page, `${on ? 'on' : 'off'} ${JSON.stringify(m)}`);
           }
           if ([320, 390, 1280, 1440].includes(width)) await shot(page, `detail-pair-${width}-${ui}`);
@@ -4837,6 +4871,148 @@ async function runColdSheet(base, want) {
   }
 }
 
+// Pick-lists open with the ticked options first, and never reorder while open.
+// Bar lists (1300) and the sheet's inline lists (390) use the same code.
+async function runSelectedFirst(base) {
+  for (const [width, phone] of [[1300, false], [390, true]]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 844);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`, 15000, 'selected-first ready');
+      await check(`${width}`, 'selected first', 'a ticked country goes to the top on the next open, not while open; clearing puts it back', async () => {
+        if (phone) {
+          await page.click(`document.querySelector('#f-more')`, 'Filters');
+          await page.waitFor(`({ok:document.querySelector('#filter-sheet').open,why:'sheet did not open'})`, 5000, 'the open sheet');
+        }
+        const values = `[...document.querySelectorAll('#f-countries label.option input')].map(i=>i.value)`;
+        const summary = `document.querySelector('#dd-countries summary')`;
+        const isOpen = (want) => page.waitFor(`({ok:document.querySelector('#dd-countries').open===${want},why:'list did not ${want ? 'open' : 'close'}'})`, 5000, want ? 'the open list' : 'the closed list');
+        const toggle = async (want) => { await page.click(summary, 'the Country list'); await isOpen(want); };
+        await toggle(true);
+        const original = await page.ev(values);
+        assert(original.length > 6, 'too few countries to test');
+        // Tick a middle one (scrolled into view) while the list is open.
+        const pick = original[4], pickJs = JSON.stringify(pick);
+        await page.ev(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').closest('label').scrollIntoView({block:'center'})`);
+        await page.click(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').closest('label')`, `the ${pick} option`);
+        assert(await page.ev(`document.querySelector('#f-countries input[value=' + JSON.stringify(${pickJs}) + ']').checked`), 'option did not tick');
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(original), 'the list reordered while open');
+        await toggle(false); await toggle(true);
+        const after = await page.ev(values);
+        assert(after[0] === pick, `ticked ${pick} is not first after reopening (got ${after[0]})`);
+        assert(JSON.stringify(after.slice(1)) === JSON.stringify(original.filter((v) => v !== pick)), 'the unticked countries lost their order');
+        assert(await page.ev(`document.querySelector('#f-countries').scrollTop===0`), 'the list did not start at the top');
+        // A search keeps the same rule: with a one-letter query most countries
+        // match, and the ticked one still leads the visible results.
+        const typed = (q) => page.ev(`(()=>{const q=document.querySelector('#f-countries input[type=search]');q.value=${JSON.stringify(q)};q.dispatchEvent(new Event('input',{bubbles:true}));return [...document.querySelectorAll('#f-countries label.option')].filter(l=>!l.hidden).map(l=>l.querySelector('input').value)})()`);
+        const found = await typed(pick.slice(0, 1).toLowerCase());
+        assert(found[0] === pick && found.length > 1, `search results do not lead with the ticked ${pick}: ${found.slice(0, 3)}`);
+        await typed('');
+        // Keyboard: the reopened list is still operable; Space unticks the first option.
+        await page.ev(`document.querySelector('#f-countries label.option input').focus()`);
+        await page.key(' ', 'Space', 32, [], ' ');
+        assert(!(await page.ev(`document.querySelector('#f-countries label.option input').checked`)), 'Space did not untick the first option');
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(after), 'unticking reordered the open list');
+        // aria-expanded follows the (queued) toggle event, so wait for it.
+        await page.waitFor(`({ok:document.querySelector('#dd-countries summary').getAttribute('aria-expanded')==='true',why:'aria-expanded is not true on the open list'})`, 5000, 'aria-expanded');
+        await toggle(false); await toggle(true);
+        assert(JSON.stringify(await page.ev(values)) === JSON.stringify(original), 'clearing did not restore the original order on the next open');
+        // Sort is left alone: its order carries meaning.
+        assert(await page.ev(`document.querySelector('#dd-sort')===null || ![...document.querySelectorAll('#sort-options input')].some(i=>i.type==='checkbox')`), 'Sort has tick boxes');
+        await toggle(false);
+      });
+      assert(!page.exceptions.length, JSON.stringify(page.exceptions));
+    } finally { await page.close(); }
+  }
+}
+
+// Desktop (wide list) used to hide the Sort pick-list behind the column
+// headings, so once a heading was clicked there was no way back to Best match
+// and nothing said it was active. The strip now stays; the headings and the
+// pick-list share state. SMOKE_SHOTS=<dir> also writes bestmatch-light.png and
+// bestmatch-dark.png there, for looking at the strip by eye.
+async function runBestMatchDesktop(base) {
+  for (const width of [1280, 1440]) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 900);
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Page.navigate', { url: base + '?ui=en' });
+      await page.waitFor(`({ok:document.querySelector('#loading')?.hidden && !!document.querySelector('#results .item'),why:'loading'})`, 15000, 'Best match boot');
+      const state = `(()=>({value:document.querySelector('#f-sort').value,shown:document.querySelector('#sort-current').textContent,
+        pressed:[...document.querySelectorAll('.cols [data-sort]')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.dataset.sort+':'+b.dataset.direction),
+        urlSort:new URLSearchParams(location.search).get('sort'),savedSort:JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort??null}))()`;
+      await check(`${width}`, 'BEST desktop', 'the Sort pick-list shows beside the headings, reaches Best match after a heading sort, and both stay in step', async () => {
+        const visible = await page.ev(`(()=>{const strip=document.querySelector('.listp>.f-sort'),cols=document.querySelector('.cols'),summary=document.querySelector('#dd-sort>summary'),label=document.querySelector('#sort-l'),list=document.querySelector('.listp');
+          const r=(n)=>n.getBoundingClientRect();return {strip:r(strip).height>0,cols:getComputedStyle(cols).display,label:r(label).right<=r(summary).left,inside:r(summary).right<=r(list).right&&r(summary).left>=r(list).left,
+          above:r(strip).bottom<=r(cols).top+1,flat:list.scrollWidth<=list.clientWidth,box:Math.round(r(summary).width)}})()`);
+        assert(visible.strip && visible.cols === 'grid' && visible.label && visible.inside && visible.above && visible.flat, `desktop sort strip layout: ${JSON.stringify(visible)}`);
+        // Without points Best match is offered but disabled, as on a phone.
+        assert(await page.ev(`[...document.querySelector('#f-sort').options].find(o=>o.value==='best:asc')?.disabled===true`), 'Best match enabled without points');
+        // Points make Best match the default and the strip says so.
+        await page.ev(`{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'points did not select Best match'})`, 5000, 'Best match default');
+        let now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0, `Best match not shown as active: ${JSON.stringify(now)}`);
+        // A heading click sorts by it; the strip follows.
+        await page.click(`document.querySelector('.cols [data-sort="tuition"]')`, 'EU fee heading');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='tuition:asc' && JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort==='tuition',why:'heading sort not in the pick-list or saved'})`, 5000, 'heading sort');
+        now = await page.ev(state);
+        assert(now.shown !== 'Best match' && now.pressed.join() === 'tuition:asc' && now.urlSort === 'tuition' && now.savedSort === 'tuition', `heading sort state: ${JSON.stringify(now)}`);
+        // The pick-list goes back to Best match with the mouse.
+        await page.click(`document.querySelector('#dd-sort>summary')`, 'open Sort');
+        await page.click(`document.querySelector('#sort-options input[value="best:asc"]')`, 'pick Best match');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc' && JSON.parse(localStorage.getItem('ibuf.filters.v1')||'{}').filters?.sort!=='tuition',why:'Best match not chosen or the heading sort is still saved'})`, 5000, 'Best match back');
+        now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0 && now.urlSort === 'best' && now.savedSort !== 'tuition', `back to Best match state: ${JSON.stringify(now)}`);
+        // The pick-list moves the heading arrows.
+        if (!(await page.ev(`document.querySelector('#dd-sort').open`))) await page.click(`document.querySelector('#dd-sort>summary')`, 'reopen Sort');
+        await page.click(`document.querySelector('#sort-options input[value="points:desc"]')`, 'pick IB points, highest first');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='points:desc',why:'pick-list did not choose points'})`, 5000, 'points sort');
+        now = await page.ev(state);
+        assert(now.pressed.join() === 'points:desc' && now.urlSort === 'points', `pick-list did not move the headings: ${JSON.stringify(now)}`);
+        await page.key('Escape', 'Escape', 27);
+        // Keyboard only: Enter on the summary opens the list, Space chooses Best match.
+        await page.ev(`document.querySelector('#dd-sort>summary').focus()`);
+        await page.key('Enter', 'Enter', 13, [], '\r');
+        await page.waitFor(`({ok:document.querySelector('#dd-sort').open,why:'Enter did not open Sort'})`, 5000, 'keyboard open');
+        await page.ev(`document.querySelector('#sort-options input[value="best:asc"]').focus()`);
+        await page.key(' ', 'Space', 32, [], ' ');
+        await page.waitFor(`({ok:document.querySelector('#f-sort').value==='best:asc',why:'Space did not choose Best match'})`, 5000, 'keyboard Best match');
+        now = await page.ev(state);
+        assert(now.shown === 'Best match' && now.pressed.length === 0, `keyboard Best match state: ${JSON.stringify(now)}`);
+        if (width === 1280 && process.env.SMOKE_SHOTS) {
+          await page.key('Escape', 'Escape', 27);
+          await page.ev('document.activeElement.blur();scrollTo({top:0,behavior:"instant"})');
+          for (const scheme of ['light', 'dark']) {
+            await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+            // The theme colours ease over a moment; a picture taken sooner shows them half-way.
+            await page.ev('new Promise(r=>setTimeout(r,600))');
+            await page.screenshot(join(process.env.SMOKE_SHOTS, `bestmatch-${scheme}.png`), { viewportOnly: true });
+          }
+        }
+      });
+      assert(!page.errors.length, JSON.stringify(page.errors));
+    } finally { await page.close(); }
+  }
+  // The phone keeps its strip and its Sort pick-list, and still has no headings.
+  watchdog.refresh();
+  const phone = await openPage('about:blank', 390, 844);
+  try {
+    await phone.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+    await phone.send('Page.navigate', { url: base + '?ui=en' });
+    await phone.waitFor(`({ok:document.querySelector('#loading')?.hidden,why:'loading'})`, 15000, 'phone Best match boot');
+    await check('390', 'BEST phone', 'the phone keeps the Sort strip full width and no column headings', async () => {
+      const m = await phone.ev(`(()=>{const r=(s)=>document.querySelector(s).getBoundingClientRect(),list=r('.listp'),sum=r('#dd-sort>summary');
+        return {cols:getComputedStyle(document.querySelector('.cols')).display,strip:r('.listp>.f-sort').height>0,justify:getComputedStyle(document.querySelector('.listp>.f-sort')).justifyContent,fills:list.right-sum.right<=16,box:Math.round(sum.width)}})()`);
+      assert(m.cols === 'none' && m.strip && m.justify !== 'flex-end' && m.fills, `phone sort strip: ${JSON.stringify(m)}`);
+    });
+    assert(!phone.errors.length, JSON.stringify(phone.errors));
+  } finally { await phone.close(); }
+}
+
 async function runRowKeyboard(base) {
   for (const width of [390, 1300]) for (const language of ['en', 'sk']) {
     watchdog.refresh();
@@ -6052,6 +6228,105 @@ async function runPr7Polish(base) {
   }
 }
 
+// PR2: real row opening exercises both layout paths; fixtures never write data.
+async function runPr2(base) {
+  const { readSheets } = await import('../js/data.js');
+  const rows = readSheets(await readFile(join(root, 'data/universities.csv'), 'utf8'),
+    await readFile(join(root, 'data/programmes.csv'), 'utf8')).programmes;
+  const ids = ['lse-ba-anthropology-and-law', 'tcd-ancient-and-medieval-history-a', 'cuni-computer-science',
+    'eur-ibeb', 'polito-arch', 'ucn-architectural-technology', 'um-cs', 'unibo-6653', 'uu-pharma', 'bocconi-wbb'];
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    watchdog.refresh();
+    const page = await openPage('about:blank', width, 900);
+    const where = `${width}/${theme}`;
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed')` });
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      for (const id of ids) await check(where, 'PR2', id, async () => {
+        const row = rows.find(r => r.id === id);
+        assert(row, `missing candidate ${id}`);
+        await page.send('Page.navigate', { url: base + '?ui=en&q=' + encodeURIComponent(row.programme) });
+        await mountProgramme(page, id);
+        await page.click(`document.querySelector('li[data-id="${id}"] button.open')`, id);
+        const selector = width === 390 ? `li[data-id="${id}"] .detail` : '#pane .detail';
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('.d-actions'),why:'detail not open'})`, 5000, 'PR2 detail');
+        await page.ev(`window.__pr2detail=document.querySelector(${JSON.stringify(selector)})`);
+        const facts = await page.ev(`(async()=>{
+          const d=window.__pr2detail, image=d.querySelector('.d-photo img');
+          if(image) await image.decode();
+          const {SHOW_RANKINGS}=await import('./js/config.js');
+          const box=image?.getBoundingClientRect(), frame=image?.parentElement.getBoundingClientRect();
+          return {text:d.textContent, first:d.firstElementChild.className,last:d.lastElementChild.className,
+            image:!!image,loaded:!image||image.naturalWidth===640&&image.naturalHeight===360,
+            ratio:!image||Math.abs(frame.width/frame.height-16/9)<0.02,
+            overflow:d.scrollWidth>d.clientWidth+1||document.documentElement.scrollWidth>innerWidth+1,
+            slot:!!d.querySelector('.d-pts'), ranks:!!d.querySelector('.d-rank'),flag:SHOW_RANKINGS,
+            apply:d.querySelector('.btn-apply')?.getAttribute('href')||null,
+            primary:!!d.querySelector('.btn-apply.btn-p'), action:d.querySelector('.btn-apply')?.textContent,
+            official:d.querySelector('.d-actions a:not(.btn-apply)')?.getAttribute('href')||null,creditLinks:d.querySelectorAll('.d-src a').length};
+        })()`);
+        assert(facts.slot === (width === 390), 'wrong slot/pane layout');
+        assert(!facts.overflow, 'horizontal overflow');
+        assert(facts.ranks === !!(facts.flag && row.rankingsYear), 'ranking flag DOM mismatch');
+        assert(facts.image === !!row.imageFile && facts.loaded && facts.ratio, 'photo missing, unloadable or not 16:9');
+        if (row.imageFile) assert(facts.first === 'd-photo' && facts.last === 'd-src' && facts.creditLinks === 2, 'photo first / linked credit last');
+        else assert(facts.last !== 'd-src', 'credit without photo');
+        for (const label of ['IB recognition', 'Application fee', 'Intake', 'Offer timing']) assert(facts.text.includes(label), `missing ${label}`);
+        assert(facts.apply === row.applyUrl && facts.official === (row.officialUrl !== row.applyUrl ? row.officialUrl : null), 'apply URL / official fallback mismatch');
+        if (row.applyUrl) assert(facts.primary === !row.deadlinePassed, 'expired action emphasis');
+        if (row.deadlinePassed && row.applyUrl) assert(facts.action.startsWith('This cycle has closed'), 'expired action wording');
+        if (id === 'polito-arch') assert(facts.text.includes('Not checked yet') && facts.text.includes(row.appFeeNote), 'note-only fee lost');
+        if (id === 'um-cs') assert(facts.text.includes('No application fee') && facts.text.includes(row.appFeeNote), 'zero fee/note lost');
+        if (id === 'unibo-6653') assert(facts.text.includes('No fixed limit'), 'open places lost');
+        if (id === 'tcd-ancient-and-medieval-history-a') assert(facts.text.includes('year not published'), 'missing places year invented');
+      });
+      await check(where, 'PR2 print', 'printable slot keeps photo and final credit', async () => {
+        // Print deliberately hides the desktop pane; exercise the shared slot renderer.
+        await page.ev(`(async()=>{const {renderSlot}=await import('./js/render.js'),{loadData}=await import('./js/data.js'),{paramsToState}=await import('./js/filters.js');
+          const row=(await loadData()).programmes.find(r=>r.id==='bocconi-wbb');
+          window.__pr2print=renderSlot(row,paramsToState(''));
+          document.querySelector('li[data-id="bocconi-wbb"]').append(window.__pr2print)})()`);
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+        try {
+          assert(await page.ev(`(()=>{const d=window.__pr2print.querySelector('.detail');return ['.d-photo','.d-src'].every(s=>{const e=d.querySelector(s);return e&&getComputedStyle(e).display!=='none'&&e.getBoundingClientRect().height>0})&&d.lastElementChild.className==='d-src'})()`), 'print photo or credit hidden');
+        } finally {
+          await page.send('Emulation.setEmulatedMedia', { media: '' });
+          await page.ev(`window.__pr2print.remove()`);
+        }
+      });
+      await check(where, 'PR2 fixtures', 'forced rankings, absent year and five unknown facts', async () => {
+        const result = await page.ev(`(async()=>{
+          const {loadData}=await import('./js/data.js'),{renderDetail}=await import('./js/render.js'),{paramsToState}=await import('./js/filters.js');
+          const rows=(await loadData()).programmes, row=rows.find(r=>r.id==='uu-pharma');
+          const d=renderDetail(row,paramsToState(''),{slot:${width === 390},showRankings:true});
+          const ranks=d.querySelector('.d-rank'), links=[...ranks.querySelectorAll('a')].map(a=>a.href);
+          const missingYear=renderDetail({...row,rankingsYear:''},paramsToState(''),{showRankings:true});
+          const unknown=renderDetail({...row,appFee:null,appFeeNote:'',places:null,placesKind:'',intakeMonths:[],ibRecognition:'',ibOffer:'',appFeeUnknown:true,placesUnknown:true,intakeUnknown:true,recognitionUnknown:true,offerUnknown:true},paramsToState(''),{slot:${width === 390}});
+          window.__pr2detail.replaceWith(unknown);window.__pr2detail=unknown;
+          return {rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
+        })()`);
+        assert(result.rank.includes('Not listed in THE 2027') && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
+        assert(result.noYear && result.unknown >= 5 && result.flat, 'missing year / unknown fixture');
+      });
+      await check(where, 'PR2 SK', 'inherited recognition and fee translations reveal English originals', async () => {
+        await page.send('Page.navigate', { url: base + '?ui=sk&q=' + encodeURIComponent(rows.find(r => r.id === ids[0]).programme) });
+        await mountProgramme(page, ids[0]);
+        await page.click(`document.querySelector('li[data-id="${ids[0]}"] button.open')`, 'LSE Slovak');
+        const selector = width === 390 ? `li[data-id="${ids[0]}"] .detail` : '#pane .detail';
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('.detail-originals'),why:'SK detail'})`, 5000, 'SK originals');
+        const lse = rows.find(r => r.id === ids[0]);
+        const translated = await page.ev(`(()=>{const d=document.querySelector(${JSON.stringify(selector)});return [...d.querySelectorAll('[data-english]')].map(e=>({en:e.getAttribute('data-english'),sk:e.firstChild.textContent,hidden:e.querySelector('.data-original')?.hidden}))})()`);
+        for (const english of [lse.ibRecognition, lse.appFeeNote]) assert(translated.some(e => e.en === english && e.sk !== english && e.hidden), 'inherited SK translation missing');
+        await page.click(`document.querySelector(${JSON.stringify(selector)}).querySelector('.detail-originals')`, 'reveal originals');
+        const originals = await page.ev(`[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('.data-original')].filter(e=>!e.hidden).map(e=>e.textContent).join(' ')`);
+        assert(originals.includes(lse.ibRecognition) && originals.includes(lse.appFeeNote), 'inherited recognition/fee originals missing');
+
+      });
+      await check(where, 'PR2 console', 'no browser errors', async () => assert(!page.errors.length, page.errors.map(e => e.text).join(' | ')));
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -6074,11 +6349,11 @@ async function main() {
   const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean);
   if (only) {
     if (!only.length) throw new Error('--only: name at least one section, e.g. --only=runRowScroll');
-    const sections = { runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
+    const sections = { runPr2, runSmarterSort, runRowKeyboard, runWindow, runWindowFixes, runFallback, runI18n, runRound2, runReview2,
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6149,7 +6424,10 @@ async function main() {
       await runCompareTouchScroll(base);
       await runRowScroll(base);
       await runFaqPanel(base, want);
-      await runPr7Polish(base); }
+      await runPr7Polish(base);
+      await runSelectedFirst(base);
+      await runBestMatchDesktop(base);
+      await runPr2(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }
 

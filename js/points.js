@@ -11,11 +11,20 @@ import { t } from './i18n.js';
 //
 // Pure functions only, no DOM, so Node can import this file.
 
-// CAO's official IB conversion, from the 2026 EU/EFTA guidelines document.
-// The 2027 table is not published yet; re-check it each cycle.
-export const TABLE = [[45, 600], [44, 600], [43, 594], [42, 577], [41, 565], [40, 553], [39, 541], [38, 520],
-  [37, 508], [36, 497], [35, 481], [34, 466], [33, 453], [32, 442], [31, 430], [30, 412],
-  [29, 400], [28, 389], [27, 379], [26, 368], [25, 359], [24, 350]];
+// CAO's official IB conversion for 2027 entry: "Table 2: Points Conversion
+// Table", page 92 of "Entry requirements criteria for EU/EFTA/UK Applicants
+// (other than Irish Leaving Certificate) for 2027 entry", November 2026
+// (www2.cao.ie/downloads/documents/2027/Guidelines-EU-EFTA-UK-2027.pdf, linked
+// from www.cao.ie/euefta, read 2026-11-13). The 2026 edition's table (read the
+// same day) gave 24 → 350; 2027 gives 24 → 360. 45, 44, 43 and 42 are
+// unchanged (600, 600, 594, 577); every total from 41 down is worth more
+// (+1 to +11 points). The HL Maths bonus (25 points for grade 4+) and the
+// single-sitting rule are worded as before. A 2027 applicant is scored with
+// this table, so last year's (2026) cutoffs are converted with it too.
+// Re-check it each November, when the CAO publishes the next edition.
+export const TABLE = [[45, 600], [44, 600], [43, 594], [42, 577], [41, 566], [40, 554], [39, 542], [38, 530],
+  [37, 519], [36, 502], [35, 486], [34, 475], [33, 463], [32, 452], [31, 433], [30, 421],
+  [29, 410], [28, 399], [27, 389], [26, 378], [25, 369], [24, 360]];
 
 // The 25 CAO bonus points for HL Mathematics at grade 4 or better. They apply
 // to any course, not only to maths-sounding ones (registry P03, D28).

@@ -8,6 +8,118 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
+`filter-selected-first` worktree contains the detail-only facts, application
+actions, credited campus photos and Slovak translations from Waves 2–4.
+Rankings remain behind `SHOW_RANKINGS = false`. PR 2 follows the CSV path,
+before the database switch-over. Wave 5 adds real-data CAO/URL/photo acceptance
+checks and the targetable browser section
+`node tools/smoke.mjs --only=runPr2 --require-chrome`: 390 px slots and 1280 px
+panes, light and dark, real application and fee edge cases, isolated unknown
+and forced-ranking fixtures, Slovak inherited text/reveal, and print media.
+Maintenance rules are in MAINTENANCE.md under "Detail facts added in PR 2".
+Wave 5 targeted smoke passed: 56 checks in 44.4 seconds (Node 26.13.0).
+Lint passed with 0 errors / 215 warnings; all 150 contrast pairs passed;
+`i18n-missing.mjs` exited 0 with no MISSING for the four new translation
+fields (993 unrelated missing strings / 4 orphan translations remain).
+`git diff --check` passed.
+
+**Wave 6 fast gate corrected:** the PR 2 CAO assertion now accepts UCD's
+published IB minimum without a cutoff sentence only when the whole note is
+`UCD's stated minimum: NN IB points.`, NN is 24–45 and matches the row's
+`ib_points_min`, the university is UCD, and its code has the CAO DN format.
+When a CAO sentence exists, its code must still match. Other missing or
+malformed notes fail. Regression checks cover code mismatches, non-UCD notes,
+missing/malformed/out-of-range UCD minimums, point mismatches, malformed codes
+and contradictory/malformed appended cutoff text. No data or product parser
+changed. `node tools/check.mjs` now ends `All checks passed.` (Node 26.13.0).
+Wave 6 targeted smoke passed: 56 checks in 44.2 seconds.
+Wave 6 lint again passed with 0 errors / 215 warnings; all 150 contrast pairs
+passed; i18n exited 0 with no MISSING for the four new fields (993 unrelated
+missing strings / 4 orphan translations remain). Diff whitespace check passed.
+All photo checks passed: 281 referenced JPEGs, 640 × 360, at most 128 KiB,
+complete credits, no orphan files; Humak and UCN remain deliberately absent.
+
+Persistent browser captures and gate logs are in the ignored local directory
+`plans/pr2-review-20261113/`: the four real mockup rows at 390 px slot and
+1280 px pane widths, light/dark (16 PNGs); labelled unknown and blank fixtures
+at both widths; labelled forced-on rankings fixtures with Not listed and source
+links; and an EUR print slot with photo credit. Full-detail captures use a tall
+viewport to include the final credit, with no product style changes. Fixture
+values exist only in the throwaway browser. Preview snapshots timed out twice;
+the permitted native Chrome/CDP fallback saved the PNGs. Capture waits for
+slot animation completion; the first clipped capture was replaced.
+
+First full smoke (Node 26.1.0, Chrome; log `plans/pr2-final-gates-20261113/08-smoke-full.log`)
+ran 844 checks in 1125.2 s: all 56 PR 2 checks passed and 24 failed, from two
+smoke assumptions the PR 2 detail additions had broken, not from product code.
+(1) `runBatch2C` R4J wanted no `#pane .dd-note` on paid-Czech and non-Czech rows,
+but PR 2 draws the fee-profile `.dd-note` on every detail; it now looks for the
+Czech tuition wording in the Language row (English and Slovak), keeps the fee
+profile note as a required positive, and the negatives run in both languages.
+(2) `runAlignListCompare` "AL detail pair" took `[link, save, compare]` by
+position; the new Apply link comes first, so it threw at all 11 widths in both
+languages (22 failures). It now finds `button.save` and `button.cmpb` by class,
+fails with the missing part named, and checks every link in the row for split
+words. `tools/check.mjs` has a regression for each (C3 and A2). Repair gates
+(ignored `plans/pr2-smoke-repair-20261113/`): check.mjs passes; targeted
+`--only=runBatch2C,runAlignListCompare,runPr2` passed 182 checks in 150.4 s.
+
+The smoke repair is committed as `e4e5550`. Its full corrective run passed
+846 checks in 1138.6 s, exit 0 (Node 26.1.0, Chrome 157.0.8103.51), on a clean
+committed tree. Check, lint (0 errors / 215 warnings), all 150 contrast pairs,
+importer self-tests and the four-field translation inventory passed too.
+Logs: `plans/pr2-full-retry-20261113/`. Two earlier importer/snapshot passes
+were byte-identical to the committed data; evidence is in
+`plans/pr2-final-gates-20261113/`.
+
+Independent Opus xhigh (claude2) and Astra xhigh (codex2) reviews found the
+same non-Commons credit bug. The CEU Flickr and Reading Geograph picks are
+approved; the renderer now preserves their recorded work titles instead of
+showing "undefined". Pane/slot regressions and a check over every real credit
+cover it. The photo coverage gate now permits newly added universities without
+photos while retaining a majority guard, deliberate Humak/UCN omissions, and
+all per-file and orphan checks. Zero ranks are rejected by the parser and
+importer. The THE table link follows its edition, historical intake wording
+is no longer repeated, the places-year documentation permits historic years,
+and the browser assertion checks the actual official link. Rankings remain off.
+Code-only rows retain the approved official-page fallback; no portal is invented.
+The review-repair full smoke ran on `cb9a9a3`: 830 of 846 passed and 16 failed
+because its stricter official-link selector required a class that exists only
+when there is also an Apply action. The correction selects the non-Apply
+anchor and compares its exact URL, including the shared-destination case;
+regressions cover primary, secondary and shared official/apply layouts.
+All other gates and 31 refreshed captures passed; CEU and Reading now each
+have four additional phone/desktop, light/dark captures with full titles.
+The corrected retry on `84106b8` passed all 846 smoke checks in 1131.6 s,
+exit 0 (Node 26.1.0, Chrome 157.0.8103.51). Its targeted PR 2 run passed
+56 checks; all fast gates passed with 0 lint errors / 215 warnings, all 150
+contrast pairs, and no MISSING entries for the four new text fields.
+The committed tree stayed clean and all four data hashes still matched the
+repeatability evidence. Final logs: `plans/pr2-official-final-retry-20261113/`.
+The 31 current PNGs and their manifest are in `plans/pr2-review-20261113/`;
+the previous 23 captures are preserved in its `before-wave7/` subdirectory.
+Earlier repair logs:
+`plans/pr2-review-final-gates-20261113/`.
+The PR and merge follow passing checks and resolved material findings; no
+Verify Implementation handoff is required.
+
+Known research residue remains, without a data fix in this wave: VŠE
+`vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
+requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
+engineering's EUR 50 fee are unapplied. Some university intake defaults were
+inferred from one programme. Roughly 1–2% of unsampled integrated-master
+`degree_type` values may be imprecise. Accepted ranking name matches have not
+been hand-reviewed; a blank rank with an edition may still be a missed match,
+so the flag stays off. Cattolica's English recognition text was corrected
+through the importer to May 2027 exams / July 2027 results. The 287 new Slovak
+translations are covered; 993 unrelated missing strings remain. Review also
+identified fee-note limitations to revisit against sources: two OTH programmes
+inherit EUR 75 but their own non-EU fee note hides the university's uni-assist
+explanation; `unipd-tmps` has its own EUR 60 fee and does not inherit the
+university CISIA test-fee note. The documented fee-note inheritance rule is
+unchanged; these source/data follow-ups were not repaired in the UI wave.
+
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px
 header (also 56 px when compact), two filter rows with custom sliders, a
@@ -472,7 +584,8 @@ plans/backlog/wording.md for the translation queue.
    English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
    if the IB was taken through English) — the same rule UCD, UCC and Trinity
    carry. DCU's IELTS line (6.5, no component below 6.0) is added alongside.
-   The guide is the 2026-entry edition and DCU says it is under review.
+   The guide was the 2026-entry edition and DCU says it is under review; the
+   2027-entry edition (November 2026) gives the same IB English grades.
 
    UCD's fees are no longer a hole, though its page is still broken: the "EU
    Undergraduate Fees 2026/27" page says *"Fees published for the Colleges
@@ -494,9 +607,20 @@ plans/backlog/wording.md for the translation queue.
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
    than re-running the importers; notes rewritten 2026-10-26 to quote both
    rounds, figures unchanged). Re-run it each August when the CAO
-   replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
-   600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
-   the 2027 table is not out yet.
+   replaces the table. The IB→points conversion is the CAO's **2027** table
+   (since 2026-11-13): 45/44 → 600, 43 → 594, 42 → 577, 41 → 566 … 36 → 502,
+   35 → 486 … 24 → 360, +25 for HL Maths 4+. It is Table 2 on page 92 of the
+   CAO's *Entry requirements criteria for EU/EFTA/UK Applicants … for 2027
+   entry* (November 2026, linked from www.cao.ie/euefta). The 2026 table it
+   replaced gave fewer points for every total from 41 down (24 → 350), so
+   211 Irish figures dropped by one IB point (three by two); none became
+   blank, the HL Maths bonus rule is worded as before, and HPAT Medicine's
+   480-point minimum is still 35. A 2027 applicant is scored with the 2027
+   table, so last year's cutoffs are converted with it. Each November, when
+   the next guide comes out, copy its table into `js/points.js` (and the
+   copy in `tools/check.mjs`), then run
+   `node tools/update-cao-points.mjs --reconvert` (a dry run that lists every
+   change), read the list, add `--apply`, and run `node tools/make-snapshot.mjs`.
 8. ~~Living costs~~ — filled on 2026-10-26 for the 47 universities of the time
    (see *Living costs* under Decisions); every university added since carries
    a figure too. Re-check them each autumn with the rest.

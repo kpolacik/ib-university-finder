@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -193,7 +193,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -294,6 +294,217 @@ check('blank rejected', safeUrl('   ') === null);
 check('a link with a user name or password is rejected (https://www.ucd.ie@evil.example/)',
   [safeUrl('https://www.ucd.ie@evil.example/'), safeUrl('https://a@b.example/'), safeUrl('https://user:pw@example.org/')]
     .every((v) => v === null));
+
+section('PR2 parser');
+const pr2Csv = (objects) => {
+  const keys = [...new Set(objects.flatMap(Object.keys))];
+  return keys.join(',') + '\n' + objects.map(obj => keys.map(k => `"${String(obj[k] ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n';
+};
+const pr2Fixture = async (u = {}, p = {}) => load(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', ...u }]),
+  pr2Csv([{ programme_id: 'p', university_id: 'u', programme: 'Test', application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', ...p }])
+);
+const pr2Defaults = { app_fee_default: '0', app_fee_note_default: 'default', intake_months_default: '9 · 2', ib_recognition_default: 'recognised', ib_offer_default: 'final', rankings_year: '2027' };
+let pr2 = await pr2Fixture(pr2Defaults);
+let pr2row = pr2.programmes[0];
+check('PR2 inherits defaults and zero', pr2row.appFee === 0 && pr2row.appFeeNote === 'default' && pr2row.intakeMonths.join(',') === '9,2' && pr2row.ibRecognition === 'recognised' && pr2row.ibOffer === 'final' && pr2row.qsRank === '');
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?', places: '?' }); pr2row = pr2.programmes[0];
+check('PR2 unknown overrides defaults', pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.recognitionUnknown && pr2row.offerUnknown && pr2row.placesUnknown && !pr2row.appFeeNote);
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' }); pr2row = pr2.programmes[0];
+check('PR2 explicit values override', pr2row.appFee === 12 && pr2row.appFeeNote === 'own' && pr2row.places === 5 && pr2row.placesKind === 'capacity' && pr2row.ibOffer === 'predicted' && pr2row.ibRecognition === 'own' && pr2row.intakeMonths[0] === 1);
+pr2 = await pr2Fixture({ ...pr2Defaults, qs_rank: 'bad', image_file: '../bad', image_source_url: 'javascript:bad' }, { app_fee: '1.2', intake_months: '13', ib_offer: 'bad', places: '0', places_kind: 'open', apply_code: 'BAD:x' }); pr2row = pr2.programmes[0];
+check('PR2 invalid values report issues and become unknown', pr2.meta.issues.length >= 7 && pr2row.qsRank === null && !pr2row.imageFile && !pr2row.imageSourceUrl && pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.offerUnknown && pr2row.placesUnknown);
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo'], ['ucas.com.evil.test','programme']]) {
+  pr2 = await pr2Fixture({}, { apply_url: `https://sub.${host}/` });
+  check(`PR2 apply host ${host}`, pr2.programmes[0].applyLinkKind === kind);
+}
+pr2 = await pr2Fixture({ apply_url_default: 'https://example.org' }, { apply_code: 'CAO:ABC' });
+check('PR2 code wins over inherited URL', pr2.programmes[0].applyLinkKind === 'cao');
+pr2 = await pr2Fixture({ app_fee_default: 'bad', ib_offer_default: '?' });
+check('PR2 invalid defaults inherit unknown', pr2.programmes[0].appFeeUnknown && pr2.programmes[0].offerUnknown);
+
+// Malformed defaults must be diagnosed even when every programme overrides them.
+const pr2Blank = (await pr2Fixture()).programmes[0];
+for (const [key, value] of Object.entries({ appFee: null, appFeeNote: '', places: null, placesKind: '', placesYear: '', intakeMonths: [], ibRecognition: '', ibOffer: '', qsRank: '', theRank: '', rankingsYear: '', imageFile: '', imageAuthor: '', imageLicence: '', applyCode: '', applyLinkKind: '' })) {
+  equal(`PR2 missing ${key}`, pr2Blank[key], value);
+}
+section('PR2 detail UI');
+{
+  const draw = (row, options = {}) => withStubDocument(() => renderDetail(row, noFilters(), options));
+  const inherited = (await pr2Fixture(pr2Defaults)).programmes[0];
+  const unknown = (await pr2Fixture(pr2Defaults, { app_fee: '?', app_fee_note: 'Test fee only', places: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?' })).programmes[0];
+  for (const [name, row, expected] of [['blank', pr2Blank, 'Not checked yet'], ['unknown', unknown, 'Not published']]) {
+    const facts = kvOf(draw(row));
+    check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
+  }
+  const inheritedFacts = kvOf(draw(inherited));
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent.includes('No application feedefaultFor EU citizens with an IB Diploma.')
+    && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
+  check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
+  const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
+  const explicitFacts = kvOf(draw(explicit));
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12own') && !explicitFacts['Application fee'].textContent.includes('default')
+    && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
+    && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 · capacity · 2027/28');
+  const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent.includes('Not checked yetAdmission test fee: EUR 35 (TOL).'));
+  const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
+  check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
+  const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
+  for (const slot of [false,true]) {
+    const detail = draw(photo, { slot }), image = byTag(detail,'img')[0], credit = detail.lastChild;
+    check(`PR2 photo and last credit in ${slot ? 'printable slot' : 'pane'}`, detail.children[0].className === 'd-photo'
+      && image.getAttribute('width') === '640' && image.getAttribute('height') === '360' && image.getAttribute('decoding') === 'async'
+      && image.alt === 'Test: campus photo' && credit.className === 'd-src'
+      && credit.textContent.includes('A long author name intact') && credit.textContent.includes('Campus ž photo') && credit.textContent.endsWith('cropped')
+      && byTag(credit,'a').length === 2);
+  }
+  for (const [imageSourceUrl, title] of [
+    ['https://www.flickr.com/photos/ssomkuti/48578075597/', 'Central European University, Vienna'],
+    ['https://www.geograph.org.uk/photo/7929879', 'Foxhill House'],
+  ]) for (const slot of [false, true]) {
+    const credit = byClass(draw({ ...photo, imageSourceUrl }, { slot }), 'd-src')[0];
+    const links = byTag(credit, 'a');
+    check(`PR2 non-Commons title and complete credit ${imageSourceUrl} slot=${slot}`,
+      links.length === 2 && links[1].children.filter(n => typeof n === 'string').join('') === title && links[1].href === imageSourceUrl
+      && credit.textContent.includes(photo.imageAuthor) && credit.textContent.includes(photo.imageLicence)
+      && credit.textContent.endsWith('cropped') && !credit.textContent.includes('undefined'));
+  }
+  check('PR2 public-domain credit preserves title with fallback author', byClass(draw({...photo,imageAuthor:'',imageLicence:'CC0'}),'d-src')[0].textContent.startsWith('Photo: author not recorded'));
+  check('PR2 absent image has no photo or credit', !byClass(draw(pr2Blank),'d-photo').length && !byClass(draw(pr2Blank),'d-src').length);
+  check('PR2 ranks forced off have no DOM', !byClass(draw(photo,{showRankings:false}),'d-rank').length);
+  const ranks = draw({ ...photo, qsRank: '', theRank: null }, { showRankings: true });
+  check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
+    && ranks.textContent.includes('Not listed in QS 2027') && ranks.textContent.includes('Not published')
+    && byClass(ranks,'d-rank')[0].textContent.includes(UI.en.rank_note)
+    && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
+    && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
+  const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
+  check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
+  const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
+  const invalidRanks = byClass(draw(zeroRank, { showRankings: true }), 'd-rank')[0];
+  check('PR2 zero ranks render unknown instead of a published figure', !byClass(invalidRanks, 'fig').length && byClass(invalidRanks, 'rk-none').every(n => n.textContent === 'Not published'));
+  check('PR2 no rankings year omits block even with flag on', !byClass(draw({...photo,rankingsYear:''},{showRankings:true}),'d-rank').length);
+  const applied = {...pr2Blank, applyUrl:'https://www.cao.ie/apply', applyCode:'CAO:TR028', applyLinkKind:'cao'};
+  const action = byClass(draw(applied),'btn-apply')[0];
+  check('PR2 apply uses actual URL, code, primary style and accessible identity', action.href === applied.applyUrl && action.classList.contains('btn-p') && action.textContent.includes('Apply via CAO · TR028') && action.textContent.includes(applied.programme) && action.target === '_blank' && action.rel === 'noopener noreferrer');
+  check('PR2 code alone creates no application action', !byClass(draw({...applied,applyUrl:null}),'btn-apply').length && byTag(byClass(draw({...applied,applyUrl:null}),'d-actions')[0],'a').length === 1);
+  for (const applyUrl of [null, applied.applyUrl, applied.officialUrl]) {
+    const actions = byClass(draw({ ...applied, applyUrl }), 'd-actions')[0];
+    const official = byTag(actions, 'a').filter(a => !a.classList.contains('btn-apply'));
+    check(`PR2 official destination survives primary, secondary and shared-link layouts ${applyUrl}`,
+      applyUrl === applied.officialUrl ? official.length === 0 && byClass(actions, 'btn-apply')[0]?.href === applied.officialUrl
+        : official.length === 1 && official[0].href === applied.officialUrl);
+  }
+  const closed = byClass(draw({...applied,deadlinePassed:true}),'btn-apply')[0];
+  check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
+  for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
+  const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
+  check('PR2 historical places says past intake and year', historical['past intake']?.textContent === '42 · 2026');
+  check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
+    && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 · EU quota · year not published');
+  i18n.setLanguage('sk',{setItem(){}});
+  i18n.setDataTranslations([{field:'ib_recognition_default',en:'recognised',sk:'Uznané'}, {field:'app_fee_note_default',en:'default',sk:'Poznámka'}]);
+  const sk = draw(photo,{slot:true});
+  check('PR2 SK months, default translations and originals below photo', kvOf(sk)['Začiatok štúdia'].textContent === 'september · február'
+    && kvOf(sk)['Uznanie IB'].textContent.includes('Uznané') && sk.children[0].className === 'd-photo'
+    && sk.children[1].className === 'detail-originals' && sk.lastChild.className === 'd-src');
+  const originalButton = byClass(sk,'detail-originals')[0];
+  originalButton.dispatchEvent({type:'click'});
+  check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
+  check('PR2 missing new translation labels its section', byClass(draw({...pr2Blank,ibRecognition:'Untranslated recognition'}),'english-note').length === 1);
+  i18n.initLanguage('',{getItem:()=> 'en'}); i18n.setDataTranslations([]);
+}
+
+for (const key of ['appFeeUnknown', 'placesUnknown', 'intakeUnknown', 'recognitionUnknown', 'offerUnknown']) equal(`PR2 blank ${key}`, pr2Blank[key], false);
+for (const [field, value, output, unknown] of [
+  ['app_fee', '-1', 'appFee', 'appFeeUnknown'], ['app_fee', '1.0', 'appFee', 'appFeeUnknown'],
+  ['app_fee', '1,000', 'appFee', 'appFeeUnknown'], ['app_fee', '1000000000', 'appFee', 'appFeeUnknown'],
+  ['intake_months', '0', 'intakeMonths', 'intakeUnknown'], ['intake_months', '13', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '09', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9·2', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '9;2', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9 · ', 'intakeMonths', 'intakeUnknown'],
+  ['ib_offer', 'conditional', 'ibOffer', 'offerUnknown'], ['ib_recognition', '?', 'ibRecognition', 'recognitionUnknown'],
+]) {
+  const parsed = await pr2Fixture(pr2Defaults, { [field]: value });
+  check(`PR2 invalid or unknown ${field} ${value} blocks default`, parsed.programmes[0][unknown] && JSON.stringify(parsed.programmes[0][output]) === JSON.stringify(pr2Blank[output]) && (value === '?' || parsed.meta.issues.length > 0));
+}
+for (const field of ['app_fee', 'intake_months', 'ib_recognition', 'ib_offer', 'app_fee_note', 'apply_url']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: field === 'apply_url' ? 'https://example.org' : field === 'app_fee' ? '12' : field === 'intake_months' ? '9' : field === 'ib_offer' ? 'final' : 'own' });
+  check(`PR2 invalid ${field} default diagnosed despite override`, parsed.meta.issues.some(s => s.includes(`${field}_default`)));
+}
+for (const [p, expectedFee, expectedNote, unknown] of [
+  [{}, 0, 'default', false], [{ app_fee_note: 'own' }, 0, 'own', false],
+  [{ app_fee: '12' }, 12, '', false], [{ app_fee: '?' }, null, '', true],
+  [{ app_fee: '?', app_fee_note: 'test fee only' }, null, 'test fee only', true],
+  [{ app_fee: '0', app_fee_note: 'free' }, 0, 'free', false],
+  [{ app_fee: '0' }, null, '', true],
+]) {
+  const parsed = (await pr2Fixture(pr2Defaults, p)).programmes[0];
+  equal(`PR2 fee-note coupling ${JSON.stringify(p)}`, [parsed.appFee, parsed.appFeeNote, parsed.appFeeUnknown], [expectedFee, expectedNote, unknown]);
+}
+const noteOnly = (await pr2Fixture({}, { app_fee_note: 'test fee only' })).programmes[0];
+equal('PR2 note-only row survives unknown fee', [noteOnly.appFee, noteOnly.appFeeNote], [null, 'test fee only']);
+for (const kind of ['capacity', 'eu_quota', 'past_intake', 'open']) {
+  const parsed = await pr2Fixture({}, { places: kind === 'open' ? '' : '12', places_kind: kind, places_year: '2027' });
+  equal(`PR2 valid places ${kind}`, [parsed.programmes[0].places, parsed.programmes[0].placesKind, parsed.meta.issues], [kind === 'open' ? null : 12, kind, []]);
+}
+for (const p of [{ places: '0' }, { places: '1.5' }, { places: '-1' }, { places: '1e2' }, { places: '9007199254740992' }, { places: '12' }, { places_kind: 'capacity' }, { places: '?', places_kind: 'open' }, { places: '12', places_kind: 'open' }, { places_kind: 'bad' }, { places_year: '2027-28' }, { places_year: '?' }]) {
+  const parsed = await pr2Fixture({}, p);
+  check(`PR2 malformed places ${JSON.stringify(p)}`, parsed.meta.issues.length > 0 && parsed.programmes[0].placesUnknown && parsed.programmes[0].places === null && !parsed.programmes[0].placesKind);
+}
+for (const rank of ['62', '=218', '201–250', '1201+']) {
+  const parsed = await pr2Fixture({ rankings_year: '2027', qs_rank: rank, the_rank: rank });
+  equal(`PR2 valid rank ${rank}`, [parsed.programmes[0].qsRank, parsed.programmes[0].theRank, parsed.meta.issues], [rank, rank, []]);
+}
+for (const u of [{ rankings_year: '2027', qs_rank: '0' }, { rankings_year: '2027', qs_rank: '=0' }, { rankings_year: '2027', qs_rank: '0+' }, { rankings_year: '2027', qs_rank: '0–10' }, { rankings_year: '2027', the_rank: '10–0' }, { qs_rank: '?' }, { qs_rank: 'Reporter' }, { the_rank: '201-250' }, { qs_rank: '62', rankings_year: '' }, { qs_rank: '62', rankings_year: '2027/28' }]) {
+  const parsed = await pr2Fixture(u);
+  check(`PR2 invalid rank ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && (u.the_rank ? parsed.programmes[0].theRank : parsed.programmes[0].qsRank) === null);
+}
+for (const [code, kind] of [['UCAS:H401', 'ucas'], ['CAO:TR028', 'cao'], ['SE:LNU-F3536', 'se']]) {
+  for (const apply_url of ['', 'https://studielink.nl/apply']) {
+    const parsed = (await pr2Fixture({}, { apply_code: code, apply_url })).programmes[0];
+    equal(`PR2 code precedence ${code} ${apply_url}`, [parsed.applyCode, parsed.applyLinkKind, parsed.applyUrl], [code, kind, apply_url || null]);
+  }
+}
+for (const code of ['?', 'ucas:H401', 'UCAS:', 'CAO:TR 028', 'BAD:123']) {
+  const parsed = await pr2Fixture({}, { apply_code: code });
+  check(`PR2 malformed code ${code}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyCode && !parsed.programmes[0].applyLinkKind && !parsed.programmes[0].applyUrl);
+}
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo']]) {
+  for (const hostname of [host, `sub.${host}`, `${host}.evil.test`, `evil${host}`]) {
+    equal(`PR2 exact host boundary ${hostname}`, (await pr2Fixture({}, { apply_url: `https://${hostname}/` })).programmes[0].applyLinkKind, hostname === host || hostname === `sub.${host}` ? kind : 'programme');
+  }
+}
+for (const apply_url of ['?', 'javascript:alert(1)', 'data:text/plain,test', 'https://ucas.com@evil.test/', '//ucas.com', 'ucas.com']) {
+  const parsed = await pr2Fixture({ apply_url_default: 'https://ucas.com/' }, { apply_url });
+  check(`PR2 invalid explicit URL blocks inheritance ${apply_url}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyUrl && !parsed.programmes[0].applyLinkKind);
+}
+equal('PR2 fallback URL is university kind', (await pr2Fixture({ apply_url_default: 'https://example.org' })).programmes[0].applyLinkKind, 'university');
+equal('PR2 application_system cannot invent portal', (await pr2Fixture({ application_system: 'UCAS' }, { application_system: 'CAO' })).programmes[0].applyLinkKind, '');
+const pr2Photo = { image_file: 'img/universities/u.jpg', image_author: 'Author', image_licence: 'CC BY-SA 4.0', image_licence_url: 'https://creativecommons.org/licenses/by-sa/4.0/', image_source_url: 'https://commons.wikimedia.org/wiki/File:Campus.jpg' };
+check('PR2 complete photo exposes credit', (await pr2Fixture(pr2Photo)).programmes[0].imageCreditComplete === true);
+for (const u of [{ image_file: '../u.jpg' }, { image_file: 'img/universities/other.jpg' }, { image_file: 'https://example.org/u.jpg' }, { image_file: '?' }, { image_author: '' }, { image_licence: '' }, { image_licence_url: '' }, { image_source_url: 'javascript:bad' }, { image_source_url: 'https://commons.wikimedia.org@evil.test/' }]) {
+  const parsed = await pr2Fixture({ ...pr2Photo, ...u });
+  check(`PR2 unsafe or incomplete photo ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].imageFile && !parsed.programmes[0].imageCreditComplete);
+}
+for (const image_licence of ['Public domain', 'CC0']) check(`PR2 ${image_licence} permits missing author`, (await pr2Fixture({ ...pr2Photo, image_licence, image_author: '' })).programmes[0].imageCreditComplete);
+
+const pr2Unused = sheetsModule.readSheets(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', app_fee_default: 'bad' }, { university_id: 'unused', name: 'Unused', country: 'Test', verified_by: 'AI-DRAFT', ib_offer_default: '?' }]),
+  pr2Csv(['a', 'b'].map(programme_id => ({ programme_id, university_id: 'u', programme: programme_id, application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', app_fee: '12' })))
+);
+check('PR2 defaults are validated once even when unused or overridden', pr2Unused.issues.length === 2 && pr2Unused.issues.some(s => s.includes('app_fee_default')) && pr2Unused.issues.some(s => s.includes('ib_offer_default')));
+for (const field of ['qs_rank', 'the_rank', 'rankings_year', 'image_file', 'image_author', 'image_licence', 'image_licence_url', 'image_source_url']) check(`PR2 university forbids ? in ${field}`, (await pr2Fixture({ [field]: '?' })).meta.issues.length > 0);
+for (const field of ['app_fee', 'intake_months', 'ib_offer']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: 'bad' });
+  const flag = { app_fee: 'appFeeUnknown', intake_months: 'intakeUnknown', ib_offer: 'offerUnknown' }[field];
+  check(`PR2 invalid inherited ${field} stays unknown`, parsed.programmes[0][flag] && parsed.meta.issues.length === 1);
+}
+const pr2BadZero = await pr2Fixture({ app_fee_default: '0' });
+check('PR2 default zero requires its own note', pr2BadZero.programmes[0].appFee === null && pr2BadZero.programmes[0].appFeeUnknown && pr2BadZero.meta.issues.length === 1);
+for (const field of ['app_fee_note', 'apply_url']) check(`PR2 invalid ${field} default without inheritance still diagnosed`, (await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: 'own' })).meta.issues.some(s => s.includes(`${field}_default`)));
+equal('PR2 every month keeps its stated order', (await pr2Fixture({}, { intake_months: Array.from({ length: 12 }, (_, i) => i + 1).join(' · ') })).programmes[0].intakeMonths, Array.from({ length: 12 }, (_, i) => i + 1));
+check('PR2 safe non-Commons source remains a usable credit URL', (await pr2Fixture({ ...pr2Photo, image_source_url: 'https://www.flickr.com/photos/author/123/' })).programmes[0].imageCreditComplete);
 
 // ---------------------------------------------- inherit / override / unknown
 
@@ -1307,7 +1518,7 @@ const { lintData, compareIds, formatReport } = await import(new URL('./lint-data
 const lintToday = new Date(2026, 10, 2, 15);
 const lintUniHeader = parseCsv(read('data/universities.csv'))[0];
 const lintProgHeader = parseCsv(read('data/programmes.csv'))[0];
-const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT' };
+const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT', rankings_year: '2027' };
 const lintProg = { programme_id: 'test-maths', university_id: 'test', programme: 'Mathematics', official_url: 'https://test.nl/maths', verified_by: 'AI-DRAFT' };
 const lintCsv = (header, rows) => [header, ...rows.map((row) => header.map((key) => row[key] ?? ''))]
   .map((row) => row.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(',')).join('\n');
@@ -1358,9 +1569,21 @@ const lintCases = [
 for (const [name, changes, expected] of lintCases) {
   equal(`T05 ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ...changes }] })), expected);
 }
-for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths']) {
+for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths', 'app_fee', 'places', 'intake_months', 'ib_recognition', 'ib_offer']) {
   equal(`T05 ? is meaningful in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), []);
 }
+// PR 2 adds data columns before the detail parser/rendering work lands.
+for (const column of ['app_fee_note', 'places_kind', 'places_year', 'apply_code', 'apply_url']) {
+  equal(`PR2 ? is invalid in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), ['error:site', 'error:unknown-misuse']);
+}
+equal('PR2 apply URL rejects a comparison site', lintRules(lintFixture({ programmes: [{ ...lintProg, apply_url: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 default apply URL rejects a comparison site', lintRules(lintFixture({ universities: [{ ...lintUni, apply_url_default: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 missing rankings year warns without blocking', lintRules(lintFixture({ universities: [{ ...lintUni, rankings_year: '' }] })), ['warning:rankings-unchecked']);
+const importSelfTest = spawnSync(process.execPath, [join(root, 'tools/add-new-data-types.mjs'), '--self-test'], { encoding: 'utf8' });
+check('PR2 importer conversion and refusal self-tests pass', importSelfTest.status === 0 && importSelfTest.stdout.includes('Import self-tests passed.'));
+const pr2Uni = csvToObjects(read('data/universities.csv')).rows.find((r) => r.university_id === 'unicatt');
+const pr2Sk = csvToObjects(read('data/i18n/sk.csv')).rows;
+check('PR2 Cattolica recognition has corrected timing and Slovak translation', pr2Uni?.ib_recognition_default?.includes('Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027') && pr2Sk.some((r) => r.field === 'ib_recognition_default' && r.en === pr2Uni.ib_recognition_default && r.sk.includes('Konečné výsledky z májového termínu 2027 posiela IBO priamo na Cattolica po ich zverejnení v júli 2027')));
 equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
 equal('T05 duplicate header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'city'] })), ['error:header-dup']);
 equal('T05 unknown header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'offical_url'] })), ['warning:header-extra']);
@@ -1722,6 +1945,93 @@ check('data/fallback.json matches the CSVs exactly',
   'the saved copy is out of date: run  node tools/make-snapshot.mjs  and commit data/fallback.json with the CSVs');
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
+
+// PR2 acceptance uses the shipped CSVs and JPEG bytes, not parser fixtures.
+section('PR2 real-data acceptance');
+{
+  const universities = csvRows('data/universities.csv'), programmes = csvRows('data/programmes.csv');
+  const { parseCaoSentence } = await import('../js/points.js');
+  const irish = new Set(universities.filter(u => u.country === 'Ireland').map(u => u.university_id));
+  const caoCodeAgrees = p => {
+    if (!p.apply_code?.startsWith('CAO:')) return true;
+    const cao = parseCaoSentence(p.deadline_notes);
+    if (cao) return p.apply_code === `CAO:${cao.code}`;
+    // UCD publishes its own IB minimum, not a converted CAO cutoff (CLAUDE.md).
+    // Only the complete minimum-only note qualifies; extra/malformed CAO text fails.
+    const minimum = /^UCD's stated minimum: (\d{2}) IB points\.$/.exec(p.deadline_notes || '');
+    return p.university_id === 'ucd' && /^CAO:DN\d{3}$/.test(p.apply_code)
+      && !!minimum && Number(minimum[1]) >= 24 && Number(minimum[1]) <= 45
+      && String(p.ib_points_min) === minimum[1];
+  };
+  const minimumOnly = { university_id: 'ucd', apply_code: 'CAO:DN670', ib_points_min: '39',
+    deadline_notes: "UCD's stated minimum: 39 IB points." };
+  check('PR2 accepts a matching UCD published minimum without a cutoff', caoCodeAgrees(minimumOnly));
+  const cutoff = '2026 CAO cutoff: 544 points (code DN670).';
+  check('PR2 still compares UCD CAO sentences when present', caoCodeAgrees({ ...minimumOnly, deadline_notes: cutoff }));
+  for (const [name, change] of [
+    ['genuine code mismatch', { apply_code: 'CAO:DN671', deadline_notes: cutoff }],
+    ['non-UCD missing notes', { university_id: 'tcd', apply_code: 'CAO:TR001', deadline_notes: '' }],
+    ['non-UCD minimum note', { university_id: 'tcd' }],
+    ['UCD missing notes', { deadline_notes: '' }],
+    ['UCD malformed minimum', { deadline_notes: "UCD's stated minimum: thirty-nine IB points." }],
+    ['UCD out-of-range minimum', { ib_points_min: '46', deadline_notes: "UCD's stated minimum: 46 IB points." }],
+    ['UCD minimum mismatch', { ib_points_min: '38' }],
+    ['UCD malformed code', { apply_code: 'CAO:DN' }],
+    ['UCD contradictory cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: 544 points (code DN671).' }],
+    ['UCD malformed cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: unknown.' }],
+  ]) check(`PR2 rejects ${name}`, !caoCodeAgrees({ ...minimumOnly, ...change }));
+  const mismatches = programmes.filter(p => irish.has(p.university_id) && !caoCodeAgrees(p));
+  check('PR2 Irish apply codes agree with CAO sentences or a matching UCD minimum-only note', !mismatches.length, mismatches.map(p => p.programme_id).join(', '));
+  for (const [rows, fields] of [[universities, ['apply_url_default', 'image_licence_url', 'image_source_url']], [programmes, ['apply_url']]]) {
+    for (const field of fields) {
+      const bad = rows.filter(r => r[field] && !safeUrl(r[field]));
+      check(`PR2 real ${field} URLs are safe`, !bad.length, bad.map(r => r.university_id).join(', '));
+    }
+  }
+  // Read JPEG Start Of Frame markers; no image package or platform utility needed.
+  const jpegSize = bytes => {
+    if (bytes.readUInt16BE(0) !== 0xffd8) return null;
+    let at = 2;
+    while (at + 4 <= bytes.length && bytes[at] === 0xff) {
+      const marker = bytes[at + 1], length = bytes.readUInt16BE(at + 2);
+      if ([0xc0, 0xc1, 0xc2].includes(marker) && length >= 7 && at + 9 <= bytes.length)
+        return [bytes.readUInt16BE(at + 7), bytes.readUInt16BE(at + 5)];
+      if (length < 2) return null;
+      at += 2 + length;
+    }
+    return null;
+  };
+  const photos = universities.filter(u => u.image_file), errors = [];
+  for (const u of photos) {
+    const id = u.university_id, path = `img/universities/${id}.jpg`;
+    if (u.image_file !== path || !existsSync(join(root, path))) { errors.push(`${id}: path/file`); continue; }
+    const bytes = readFileSync(join(root, path));
+    if (JSON.stringify(jpegSize(bytes)) !== '[640,360]') errors.push(`${id}: JPEG dimensions`);
+    // 128 KiB allows normal JPEG variation around the approximately 120 KB target.
+    if (bytes.length > 128 * 1024) errors.push(`${id}: ${bytes.length} bytes`);
+    if (!u.image_licence || !safeUrl(u.image_licence_url) || !safeUrl(u.image_source_url)) errors.push(`${id}: incomplete credit`);
+    if (!u.image_author && !/^(Public domain|CC0)$/i.test(u.image_licence)) errors.push(`${id}: missing author`);
+    if (/@|\bmail\b/i.test(u.image_author) || u.image_author.length > 160) errors.push(`${id}: unsafe/long author`);
+  }
+  check('PR2 photos have exact paths, 640×360 JPEGs, bounded size and complete clean credits', !errors.length, errors.join('\n'));
+  const referenced = new Set(photos.map(u => u.image_file));
+  const orphans = readdirSync(join(root, 'img/universities')).filter(f => !referenced.has(`img/universities/${f}`));
+  check('PR2 photo folder has no orphan files', !orphans.length, orphans.join(', '));
+  // Catch a lost photo column while allowing new universities to arrive without a photo.
+  const enoughPhotos = rows => rows.filter(u => u.image_file).length >= 0.8 * rows.length;
+  check('PR2 most universities retain photos', enoughPhotos(universities), `${photos.length} of ${universities.length}`);
+  check('PR2 a newly added university may have no photo', enoughPhotos([...universities, { university_id: 'new-university', image_file: '' }]));
+  check('PR2 photo coverage still catches a lost column', !enoughPhotos(universities.map(u => ({ ...u, image_file: '' }))));
+  check('PR2 Humak and UCN deliberately have no photo', ['humak', 'ucn'].every(id => universities.some(u => u.university_id === id && !u.image_file)));
+  const badTitles = photos.filter(u => {
+    const row = live.find(p => p.universityId === u.university_id);
+    if (!row) return true;
+    const credit = withStubDocument(() => byClass(renderDetail(row, noFilters()), 'd-src')[0]);
+    const title = credit && byTag(credit, 'a')[1]?.children.filter(n => typeof n === 'string').join('');
+    return !title || title === 'undefined';
+  });
+  check('PR2 every real photo renders a non-empty work title', !badTitles.length, badTitles.map(u => u.university_id).join(', '));
+}
 
 // ---------------------------------------------------------------- importers
 
@@ -2097,7 +2407,34 @@ check('update-cao-points.mjs rebuilds notes with rebuildNote and keeps no OLD li
 // One conversion, in js/points.js, for the tools and the browser.
 check('tools/lib/ireland.mjs takes lowestIB from js/points.js (the same function)', ie.lowestIB === pts.lowestIB);
 check('the IB table is only in js/points.js', !/\[45, 600\]/.test(read('tools/lib/ireland.mjs')) && pts.TABLE[0][1] === 600);
-equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 497, 350, null, null]);
+equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 502, 360, null, null]);
+// The CAO's 2027-entry table (Guidelines-EU-EFTA-UK-2027.pdf, page 92, Table
+// 2), copied here from the printed page so a slip in js/points.js shows up.
+// The 2026 table gave 24 → 350; a stale table would put most Irish figures
+// one point too high.
+equal('TABLE is the CAO 2027 IB table as printed (45 → 600 … 24 → 360)', pts.TABLE, [
+  [45, 600], [44, 600], [43, 594], [42, 577], [41, 566], [40, 554], [39, 542], [38, 530],
+  [37, 519], [36, 502], [35, 486], [34, 475], [33, 463], [32, 452], [31, 433], [30, 421],
+  [29, 410], [28, 399], [27, 389], [26, 378], [25, 369], [24, 360]]);
+equal('2027 conversion at the edges: 360 → 24, 361 → 25, 502 → 36, 503 → 37, 600 → 44, 601 → 42 with the bonus, 626 → none, HPAT → 35',
+  [cc(360).ib, cc(361).ib, cc(502).ib, cc(503).ib, cc(600).ib, cc(601).ib, cc(601).notes.includes(ie.BONUS_ONLY), cc(626).ib,
+    cc(null, { hpat: true }).ib, cc(300).ib],
+  [24, 25, 36, 37, 44, 42, true, null, 35, 24]);
+{
+  // Every Irish row except UCD (whose figure is UCD's own) must hold
+  // convertCutoff of the latest round recorded in its CAO sentence, so a table
+  // change can't leave stored figures behind (run
+  // `node tools/update-cao-points.mjs --reconvert` after changing TABLE).
+  const stale = live.filter(isIrish).filter((p) => !p.id.startsWith('ucd-') && caoOf(p)).filter((p) => {
+    const c = caoOf(p);
+    const last = c.rounds.at(-1);
+    const hpat = ie.HPAT_CODES.has(c.code);
+    const conv = cc(!last || last.aqa ? null : last.points, { test: p.otherRequirements.includes(CAO_TEST) || hpat, hpat, code: c.code });
+    return conv.ib !== p.ibPointsMin;
+  });
+  check('no Irish row (UCD aside) stores a figure that differs from convertCutoff of its recorded cutoff', stale.length === 0,
+    stale.slice(0, 10).map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
+}
 const disagree = [];
 for (let n = 300; n <= 760; n++) {
   for (const test of [false, true]) {
@@ -2195,8 +2532,8 @@ const d27Prog = [
   head,
   d27Row('ie-added', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
   d27Row('ie-unver', 'tcd', 24, '2026 CAO cutoff: Round 1 300 points (code CK114).', dataMod.CAO_TEST),
-  d27Row('ie-sep', 'tcd', 28, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
-  d27Row('ie-nomark', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
+  d27Row('ie-sep', 'tcd', 27, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
+  d27Row('ie-nomark', 'tcd', 25, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
   d27Row('ucd-listed', 'ucd', 30, "UCD's stated minimum: 30 IB points. 2026 CAO cutoff: Round 1 363 points (code CK112).", dataMod.CAO_TEST),
   d27Row('nl-listed', 'nl', 30, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
 ].join('\n') + '\n';
@@ -2210,8 +2547,8 @@ equal('D27 figure, flags and card line per row',
   }),
   [[null, true, false, 'Cutoff includes a test score'],
     [null, false, true, 'Assessment required; IB equivalent unverified'],
-    [28, false, false, '≈ 28 IB points, Round 1 cutoff, 2026'],
-    [26, false, false, '≈ 26 IB points, Round 1 cutoff, 2026'],
+    [27, false, false, '≈ 27 IB points, Round 1 cutoff, 2026'],
+    [25, false, false, '≈ 25 IB points, Round 1 cutoff, 2026'],
     [30, false, false, '30 IB points, minimum'],
     [30, false, false, '30 IB points, minimum']]);
 equal('D27 compact figure says why there is none',
@@ -2278,7 +2615,7 @@ equal('pointsKind: Irish cutoffs, UCD/HPAT/non-Irish minimums, blank none',
   ['ie-two', 'ie-legacy', 'ucd-x', 'ie-hpat', 'nl-min', 'ie-blank'].map((id) => kindOf(id)?.pointsKind),
   ['cutoff', 'cutoff', 'minimum', 'minimum', 'minimum', null]);
 equal('pointsLines for each kind', Object.fromEntries(kinds.map((p) => [p.id, linesOf(p)])), {
-  'ie-two': ['≈ 38 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
+  'ie-two': ['≈ 37 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
   'ie-one': ['≈ 37 IB points, Round 1 cutoff, 2026'],
   'ie-bonus': ['≈ 44 IB points, Round 1 cutoff, 2026, with HL Maths 4+'],
   'ie-above-r1': ['Round 1 cutoff, 2026: above what any IB total can reach', '≈ 44 IB points, Round 2 cutoff, 2026'],
@@ -2325,13 +2662,13 @@ section('HL Maths 4+ tick and the split count (Q5, Q3, D28)');
 // labels and the count, never which rows are shown; unknown never hides.
 const bucketProg = [
   head,
-  kindRow('c-497', 'tcd', 36, '2026 CAO cutoff: Round 1 497 points (code TR101).'),
+  kindRow('c-502', 'tcd', 36, '2026 CAO cutoff: Round 1 502 points (code TR101).'),
   kindRow('c-625', 'tcd', 44, `2026 CAO cutoff: Round 1 625 points (code TR102). ${ie.BONUS_ONLY}`),
   kindRow('c-test-520', 'tcd', 38, '2026 CAO cutoff: Round 1 520 points (code TR103).', dataMod.CAO_TEST),
   kindRow('c-test-560', 'tcd', 40, '2026 CAO cutoff: Round 1 560 points (code TR104).', dataMod.CAO_TEST),
-  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 497 points (code TR105).'),
-  kindRow('c-r2-maths', 'tcd', 38, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
-  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 497 points, Round 2 520 points (code TR107).'),
+  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 502 points (code TR105).'),
+  kindRow('c-r2-maths', 'tcd', 37, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
+  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 502 points, Round 2 520 points (code TR107).'),
   kindRow('ucd-33', 'ucd', 33, "UCD's stated minimum: 33 IB points. 2026 CAO cutoff: Round 1 600 points (code DN101)."),
   kindRow('ie-hpat35', 'tcd', 35, `2026 CAO cutoff: Round 1 738 points (code TR051). ${dataMod.HPAT_NOTE}`),
   kindRow('nl-37', 'nl', 37, ''),
@@ -2341,12 +2678,12 @@ const { programmes: bk, meta: bkMeta } = await load(kindUni, bucketProg);
 check('the bucket fixture parses cleanly', bkMeta.issues.length === 0, JSON.stringify(bkMeta.issues));
 const fstate = (my, maths = false) => ({ ...filtersMod.createFilterState(), myIbPoints: my, hlMaths: maths });
 const buckets = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsBucket(p, fstate(my, maths))]));
-equal('buckets at 36 (497 CAO points), unticked', buckets(36, false), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
+equal('buckets at 36 (502 CAO points), unticked', buckets(36, false), {
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'maths', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 36, ticked: the bonus counts, nothing new is hidden or shown', buckets(36, true), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'within', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 44 (600): a 601–625 cutoff is only with HL Maths 4+ unticked, within ticked',
@@ -2359,7 +2696,7 @@ check('a higher Round 2 does not raise the bar: the lower round (Round 1) decide
   filtersMod.lowerRound(bk.find((p) => p.id === 'c-r2-higher').cao).round === 1);
 const notes = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsNote(p, fstate(my, maths))]));
 equal('card notes at 36, unticked', notes(36, false), {
-  'c-497': null, 'c-625': null,
+  'c-502': null, 'c-625': null,
   'c-test-520': 'Within your IB points only with HL Maths 4+.',
   'c-test-560': 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.',
   'c-r2': 'Within your IB points on the Round 2 cutoff, not Round 1.',
@@ -2367,7 +2704,7 @@ equal('card notes at 36, unticked', notes(36, false), {
   'c-r2-higher': null, 'ucd-33': null, 'ie-hpat35': null, 'nl-37': null,
   blank: 'Not compared with your IB points: no IB figure.',
 });
-equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (522 ≥ 520) but not of c-r2-maths (530)',
+equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (527 ≥ 520) but not of c-r2-maths (530)',
   [notes(36, true)['c-r2'], notes(36, true)['c-r2-maths'], notes(36, true)['c-test-520']],
   [null, 'Within your IB points on the Round 2 cutoff, not Round 1.', null]);
 const visible = (my, maths) => applyFilters(bk, fstate(my, maths)).map((p) => p.id);
@@ -2384,7 +2721,7 @@ equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, 
     [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
 }
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
-  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
+  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-502'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
 
 // The real data, for every total a student can type.
@@ -2465,7 +2802,7 @@ function detailProblems(row, state, slot = false) {
   const out = [];
   const a = withStubDocument(() => renderDetail(row, state, { slot }));
   const say = (what) => out.push(`${row.id}: ${what}`);
-  const head = a.children[0];
+  const head = a.children[row.imageFile ? 1 : 0];
   const title = head?.children[0];
   if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
   if (!slot && (!head?.classList.contains('d-head') || title?.tagName !== 'h2')) say('heading is not first in .d-head');
@@ -2476,7 +2813,7 @@ function detailProblems(row, state, slot = false) {
     if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
   }
   if (byTag(a, 'dt').some((dt) => !dt.textContent.trim())) say('empty dt');
-  const empty = findAll(a, (n) => !['svg', 'use'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0);
+  const empty = findAll(a, (n) => !['svg', 'use', 'img'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0 && byTag(n, 'img').length === 0);
   if (empty.length) say(`empty ${empty.map((n) => `${n.tagName}.${n.className}`).join(' ')}`);
   const note = filtersMod.pointsNote(row, state);
   const pnotes = byClass(a, 'pnote');
@@ -2641,7 +2978,7 @@ const verdictOf = (row, state) => {
     byClass(a, 'pnote')[0]?.textContent ?? null, byClass(cell, 'pnote').length];
 };
 equal('verdict matrix: cell fill, short verdict, full note after the facts (never in the cell)', [
-  verdictOf(bkRow('c-497'), fstate(36)),
+  verdictOf(bkRow('c-502'), fstate(36)),
   verdictOf(bkRow('c-r2'), fstate(36)),
   verdictOf(bkRow('ie-hpat35'), fstate(36)),
   verdictOf(bkRow('c-test-520'), fstate(36)),
@@ -2651,7 +2988,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   verdictOf(bkRow('blank'), fstate(36)),
   verdictOf(fxRow('fx-test-score'), fstate(36)),
   verdictOf(fxRow('fx-entrance'), fstate(36)),
-  verdictOf(bkRow('c-497'), noFilters()),
+  verdictOf(bkRow('c-502'), noFilters()),
   verdictOf(bkRow('blank'), noFilters()),
 ], [
   ['v-fit', 'verd m m-fit: Within your IB points', null, 0],
@@ -2667,13 +3004,16 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   ['', null, null, 0],
   ['v-unk', null, null, 0],
 ]);
-check('TCD Computer Science reads its live band: HL Maths 4+ at 36, within on Round 2 only at 37, no invented degree', (() => {
+// Cutoffs 519 (Round 1) and 498 (Round 2). On the CAO's 2027 IB table 35 is
+// worth 486 (511 with the bonus, which reaches Round 2 only) and 36 is worth
+// 502; on the 2026 table the same band sat one point higher (36 and 37).
+check('TCD Computer Science reads its live band: HL Maths 4+ (Round 2 only) at 35, within on Round 2 only at 36, no invented degree', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
+  const at35 = verdictOf(row, fstate(35));
   const at36 = verdictOf(row, fstate(36));
-  const at37 = verdictOf(row, fstate(37));
   console.log(`        tcd-computer-science: ${pts.pointsLines(row).map(pts.pointsLineText).join(' | ')}; degree ${JSON.stringify(row.degreeType)}`);
-  return at36[0] === 'v-cond' && at36[2] === 'Within your IB points only with HL Maths 4+.'
-    && at37[0] === 'v-fit' && at37[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
+  return at35[0] === 'v-cond' && at35[2] === 'Within your IB points only with HL Maths 4+. Within your IB points on the Round 2 cutoff, not Round 1.'
+    && at36[0] === 'v-fit' && at36[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
     && byClass(detailOf(row), 'deg').length === (row.degreeType ? 1 : 0);
 })());
 
@@ -2689,19 +3029,19 @@ equal('Admission and Other join their items with " · "; "?" admission is a dash
   ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
 equal('a "?" Language requirement is a dashed "Not published"',
   byClass(kvOf(fxDetail('fx-english-q'))['Language requirement'], 'unk-t')[0]?.textContent, 'Not published');
-check('"nothing at all" is a plain sentence and no list',
+check('"nothing at all" keeps its sentence and adds recognition',
   (() => {
     const a = fxDetail('fx-nothing');
     const req = byClass(a, 'd-sec')[0];
-    return byTag(req, 'dl').length === 0
+    return byTag(req, 'dl').length === 1 && kvOf(a)['IB recognition'].textContent === 'Not checked yet'
       && byClass(req, 'kv-none')[0]?.textContent === 'No IB subject requirements. General requirement: A school diploma equivalent to Dutch VWO. Language requirement not checked yet.';
   })());
 check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general'))['General requirement']
   && kvOf(fxDetail('fx-plain'))['General requirement']?.textContent === 'A school diploma equivalent to Dutch VWO');
-check('an Applying section with nothing to say is left out, not drawn empty',
+check('an unchecked Applying section names the four new unknown facts',
   (() => {
     const a = fxDetail('fx-no-applying');
-    return byClass(a, 'd-sec').length === 1 && byClass(a, 'two')[0].children.length === 1;
+    return byClass(a, 'd-sec').length === 2 && ['Application fee', 'Places', 'Intake', 'Offer timing'].every(k => kvOf(a)[k]?.textContent.includes('Not checked yet'));
   })());
 equal('Applying: living costs, taught in and apply via',
   ['Living costs', 'Language', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
@@ -2837,7 +3177,7 @@ const rowOf = (row, state = noFilters()) => withStubDocument(() => {
 });
 const ptsShort = (row) => pts.pointsShort(row);
 const shortCases = {
-  'ie-two': [['≈38', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
+  'ie-two': [['≈37', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
   'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']],
   'ie-test-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2: all qualified got a place']],
   'ie-legacy': [['≈40', 'cutoff 2025']], 'ucd-x': [['33', 'minimum']],
@@ -2896,7 +3236,7 @@ const rowPoints = (row, state) => {
     byClass(c, 'fig')[0]?.textContent ?? null, byClass(c, 'r2')[0]?.textContent ?? null, byClass(c, 'q')[0]?.textContent ?? null];
 };
 equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
-  rowPoints(bkRow('c-497'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
+  rowPoints(bkRow('c-502'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
   rowPoints(bkRow('c-r2-maths'), fstate(36)), rowPoints(bkRow('c-test-520'), fstate(36, true)), rowPoints(bkRow('c-test-560'), fstate(36)),
   rowPoints(fxRow('fx-entrance'), noFilters()), rowPoints(bkRow('blank'), fstate(36)), rowPoints(kindOf('ie-bonus'), noFilters()),
   rowPoints(bkRow('c-625'), fstate(44)), rowPoints(bkRow('c-625'), fstate(44, true)),
@@ -2904,7 +3244,7 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
   ['v-fit', 'Within your IB points', '≈36 R1', null, null],
   ['v-fit', 'Within your IB points', '≈38 R1 · ≈36 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points, then HPAT', '35', null, null],
-  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
+  ['v-cond', 'Only with HL Maths 4+', '≈38 R1 · ≈37 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points', '≈38 R1', null, null],
   ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
   ['v-unk', 'Entrance exam', null, null, null],
@@ -2936,12 +3276,12 @@ check('row points reason labels stay as short as the longest existing one', ['en
   i18n.setLanguage(lang, { setItem() {} });
   try { return ['r2_pts_test_in_cutoff', 'r2_pts_no_ib_figure', 'entrance_exam'].every((k) => i18n.t(k).length <= 17); } finally { i18n.setLanguage('en', { setItem() {} }); }
 }));
-check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
+check('TCD CS row reads the live figures and band at 35/35 ticked/36/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
-  return rowPoints(row, fstate(36))[0] === 'v-cond' && rowPoints(row, fstate(36, true))[0] === 'v-fit'
-    && rowPoints(row, fstate(37))[3] === 'Round 2 cutoff only'
-    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(36))[2] === figure;
+  return rowPoints(row, fstate(35))[0] === 'v-cond' && rowPoints(row, fstate(35, true))[0] === 'v-fit'
+    && rowPoints(row, fstate(36))[3] === 'Round 2 cutoff only'
+    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(35))[2] === figure;
 })());
 equal('row deadline: short plain date, countdowns, neutral passed and dashed unknown',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
@@ -3232,8 +3572,26 @@ check('headings and rows share one track template, gap and inset at the 900 px l
     && /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', desktopQuery))
     && /--pane-w:clamp\(300px,26vw,380px\)/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
     && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
-    && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
     && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
+// The Sort strip used to be display:none at the list query, so a student who
+// clicked a column heading had no way back to Best match (it has no heading)
+// and nothing showed that it was active. It stays, at the right, above the headings.
+const sortStripStays = (rules) => {
+  const wide = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';');
+  const box = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort .sort-dd').map((r) => r.body).join(';');
+  return !/display:none/.test(wide) && /justify-content:flex-end/.test(wide) && /flex:0 1 20rem/.test(box);
+};
+check('wide lists keep the Sort pick-list (right-aligned above the headings) so Best match stays reachable and visible; both controls write one state; a display:none fixture fails',
+  sortStripStays(paneCss) && !sortStripStays(cssTree(cssRules + '@container (min-width: 800px){.listp>.f-sort{display:none}}'))
+    && /<div class="fld f-sort">[\s\S]*?id="dd-sort"[\s\S]*?<div class="cols"/.test(indexHtml)
+    && /function syncSort\(\) \{[\s\S]*?renderSortOptions\(dom\.sort[\s\S]*?sortPick\(\);[\s\S]*?for \(const button of dom\.sortButtons\)/.test(appSrc)
+    && /dom\.sort\.addEventListener\('change'[\s\S]*?syncSort\(\);/.test(appSrc));
+check('the header Settings button is regular 15 px like My list, Compare and FAQ, not the 600 button weight; dropping it from the rule fails',
+  (() => {
+    const same = (source) => /#header-compare,#settings-open\{font-size:15px;font-weight:400\}/.test(source.replace(/\s+/g, ''));
+    return same(cssRules) && !same(cssRules.replace('#header-compare,#settings-open{', '#header-compare{')) && /font-weight:600/.test(ruleAt(cssRules, '.btn'))
+      && /id="settings-open"/.test(indexHtml) && /class="btn hb" id="header-compare"/.test(indexHtml);
+  })());
 check('sort marks: one fixed 14x14 SVG box, the active heading changes colour not weight, right columns put the mark first; facet and row chevrons are 16 px SVG boxes that turn whole',
   /width:14px;height:14px;margin-top:1px;flex:none/.test(paneRule('.cols .sm', '(min-width: 600px)'))
     && !/font-weight/.test(paneRule('.cols [aria-pressed=true]', '(min-width: 600px)'))
@@ -3471,7 +3829,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
@@ -3737,6 +4095,55 @@ check('country options get an aria-hidden flag between the tick and the name; an
     }) && !byTag(plain, 'svg').length && appSrc.includes("{ flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') }")
       && Object.entries(flags).every(([c, f]) => appSrc.includes(`${c}: '${f}'`));
   }));
+
+// Pick-lists open with ticked options first (never reordered while open).
+// Ticked values keep their own order at the top, the rest keep theirs, and
+// unticking puts a value back where it was.
+equal('selectedFirst: ticked values first in their original order, the rest after in theirs',
+  filtersMod.selectedFirst(['A', 'B', 'C', 'D', 'E'], (v) => v === 'D' || v === 'B'), ['B', 'D', 'A', 'C', 'E']);
+equal('selectedFirst: nothing ticked leaves the order alone, and the input is not changed',
+  (() => { const list = ['A', 'B', 'C']; const out = filtersMod.selectedFirst(list, () => false); return [out, list]; })(), [['A', 'B', 'C'], ['A', 'B', 'C']]);
+check('showSelectedFirst reorders a pick-list on demand, keeps the search row first and hidden options in place, and unticking restores the original order',
+  typeof showSelectedFirst === 'function' && withStubDocument(() => {
+    const names = ['Austria', 'Belgium', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'Germany', 'Hungary', 'Ireland', 'Italy', 'Latvia', 'Malta', 'Norway'];
+    const parent = new ChromeNode('div'), box = new ChromeNode('div'); parent.setAttribute('aria-label', 'Country'); parent.append(box);
+    renderChips(box, names, new Set(), () => {}, { forceSearch: true });
+    const labels = () => box.children.filter((c) => c.classList.contains('option'));
+    const order = () => labels().map((l) => l.textContent);
+    const tickBox = (name, on) => { labels().find((l) => l.textContent === name).children[0].checked = on; };
+    const searchRow = box.children[0];
+    if (showSelectedFirst(box) !== false || order().join() !== names.join()) return false;
+    tickBox('Italy', true); tickBox('Czechia', true);
+    labels().find((l) => l.textContent === 'Malta').hidden = true;
+    if (showSelectedFirst(box) !== true) return false;
+    if (order().slice(0, 2).join() !== 'Czechia,Italy' || order().slice(2).join() !== names.filter((n) => n !== 'Czechia' && n !== 'Italy').join()) return false;
+    if (box.children[0] !== searchRow || !labels().find((l) => l.textContent === 'Malta').hidden) return false;
+    if (showSelectedFirst(box) !== false) return false;
+    tickBox('Italy', false); tickBox('Czechia', false);
+    return showSelectedFirst(box) === true && order().join() === names.join();
+  }));
+appCheck('actual pick-lists: a ticked option goes to the top when the list opens, not while it is open; Sort and the single-value lists are left alone', ({ run, get, fire }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const dd = get('dd-countries'), box = get('f-countries');
+  const values = () => box.children.filter((c) => c.classList.contains('option')).map((l) => l.children[0].value);
+  const original = values(); if (original.length < 3) return false;
+  const last = box.children.filter((c) => c.classList.contains('option')).at(-1);
+  // Tick the last country with the list open: it stays where it is.
+  dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  last.children[0].checked = true; fire(last.children[0], 'change');
+  if (values().join() !== original.join()) return false;
+  // Close, then open again (the click runs before the browser opens it).
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); fire(dd.querySelector('summary'), 'click');
+  if (values()[0] !== original.at(-1) || values().slice(1).join() !== original.slice(0, -1).join()) return false;
+  // Clearing puts it back on the next open.
+  box.children.filter((c) => c.classList.contains('option')).find((l) => l.children[0].value === original.at(-1)).children[0].checked = false;
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  if (values().join() !== original.join()) return false;
+  // Sort opens as before: its radios are never moved, even with one checked.
+  const sort = get('dd-sort'), radios = get('sort-options'), before = radios.children.slice();
+  sort.open = true; fire(sort, 'toggle', { bubbles: false }); fire(sort.querySelector('summary'), 'click');
+  return radios.children.length === before.length && radios.children.every((node, i) => node === before[i]);
+});
 
 // Real handlers on the real markup. Each would pass with a wrong target only
 // if the app code were wrong in the same way, so every outcome is asserted.
@@ -6321,6 +6728,7 @@ section('SK/EN interface and data translations');
   const snapshot = JSON.parse(read('data/fallback.json'));
   equal('offline snapshot includes the exact translation CSV', snapshot.translations, skRows.map(({ __row, ...row }) => row));
   const inventory = translationInventory(csvToObjects(read('data/universities.csv')).rows, csvToObjects(read('data/programmes.csv')).rows, skRows);
+  equal('PR2 all four new free-text columns have Slovak coverage', inventory.missing.filter(row => ['ib_recognition','ib_recognition_default','app_fee_note','app_fee_note_default'].includes(row.field)), []);
   console.log(`        ${skRows.length} Slovak data rows; ${inventory.missing.length} missing; ${inventory.orphans.length} orphan rows (report only)`);
 
   const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
@@ -6727,7 +7135,7 @@ section('Batch 2 · C');
 check('C1 print resets the detail actions to a plain left-aligned link',
   /@media print\{\.d-actions\{display:block\}\.d-actions \.btn\{min-height:0;text-align:left\}\}/.test(cssText));
 {
-  const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
+  const row = { ...live[0], applyUrl: null, studentLifeUrl: 'https://example.org/life', isChecked: true,
     lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
   // Batch 3 · A: the detail also carries the compare button (Leon's compare
   // icon on every programme), so the actions are official, save, compare.
@@ -6766,6 +7174,12 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
     const note = t('r2_czech_free');
     check('C3 free Czech detail note is in Language (' + lang + ')',
       kvOf(detailOf(czech))[t('language')]?.textContent.includes(note));
+    {
+      const free = detailOf(czech), languageDd = kvOf(free)[t('language')];
+      check('C3 free Czech note is a .dd-note inside the Language row, beside the fee profile note (' + lang + ')',
+        byClass(languageDd, 'dd-note').some((n) => n.textContent.startsWith(note)) && byClass(free, 'dd-note').length > 1
+        && byClass(kvOf(free)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+    }
     for (const [name, row] of [
       ['English taught', { ...czech, languages: ['English'] }],
       ['paid', { ...czech, tuitionEu: 2000 }],
@@ -6775,6 +7189,14 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
       check('C3 no note for ' + name + ' (' + lang + ')', !detail.textContent.includes(note));
       check('C3 note-free detail keeps the fee wording guard (' + name + ', ' + lang + ')',
         !/Tuition \(EU\)|no tuition fee/.test(detail.textContent));
+      // Regression (smoke R4J): PR 2 draws .dd-note on every detail (the fee profile),
+      // so "no .dd-note in the pane" is no longer the way to say "no Czech note".
+      // The Czech wording must be absent from the Language row while the other notes stay.
+      const languageDd = kvOf(detail)[t('language')];
+      check('C3 ' + name + ' (' + lang + '): other fee/profile notes are drawn, so a bare .dd-note test cannot mean "Czech note"',
+        byClass(detail, 'dd-note').length > 0 && byClass(kvOf(detail)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+      check('C3 ' + name + ' (' + lang + '): the Language row has no Czech tuition note',
+        !languageDd || !byClass(languageDd, 'dd-note').some((n) => n.textContent.includes(note)));
     }
   }
   i18n.initLanguage('', { getItem: () => 'en' });
@@ -6857,7 +7279,7 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
       && name.includes(rows[0].programme) && name.includes(rows[0].university) && name.startsWith(lang === 'sk' ? 'Pridať' : 'Add'));
   }
   i18n.initLanguage('', { getItem: () => 'en' });
-  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null }, noFilters(), { saved: true, inCompare: true }));
+  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null, applyUrl: null }, noFilters(), { saved: true, inCompare: true }));
   const pair = byClass(solo, 'd-actions')[0].children;
   check('A2 detail without an official link: Save and Compare are the pair, Compare says "In compare" with its symbol',
     pair.length === 2 && pair[0].classList.contains('save') && pair[1].classList.contains('cmpb') && pair[1].getAttribute('aria-pressed') === 'true'
@@ -6865,6 +7287,20 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
     && pair[1].textContent.endsWith(`: ${rows[0].programme}, ${rows[0].university}`));
   const none = withStubDocument(() => renderDetail(rows[0], noFilters()));
   check('A2 a detail drawn without inCompare has no compare button (the print and CSV paths)', !byClass(none, 'cmpb').length);
+  // Regression (smoke AL detail pair): an Apply link now precedes the official link, so
+  // Save and Compare are no longer the 2nd and 3rd children. They are found by what they are.
+  {
+    const both = withStubDocument(() => renderDetail({ ...rows[0], applyUrl: 'https://example.org/apply', applyLinkKind: 'programme', applyCode: '',
+      officialUrl: 'https://example.org/official', deadlinePassed: false }, noFilters(), { saved: false, inCompare: false }));
+    const group = byClass(both, 'd-actions')[0], kids = group.children;
+    equal('A2 detail with Apply and official links: links first, then Save, then Compare',
+      kids.map((n) => [n.tagName, n.classList.contains('save') ? 'save' : n.classList.contains('cmpb') ? 'cmpb' : n.classList.contains('btn-apply') ? 'apply' : 'official']),
+      [['a', 'apply'], ['a', 'official'], ['button', 'save'], ['button', 'cmpb']]);
+    check('A2 with two links, positional [link, save, compare] would pick the official link as Save, so the smoke finds buttons by class',
+      kids[1].tagName === 'a' && byTag(group, 'button').filter((n) => n.classList.contains('save')).length === 1
+      && byTag(group, 'button').filter((n) => n.classList.contains('cmpb')).length === 1
+      && byTag(group, 'a').length === 2 && !/\[l,\s*a,\s*b\]\s*=\s*\[\.\.\.g\.children\]/.test(read('tools/smoke.mjs')));
+  }
   check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
     /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)
     && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)

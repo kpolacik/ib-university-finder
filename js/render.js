@@ -5,9 +5,10 @@ import { t, dateFormatter, dataParts, facetLabel, getLanguage, formatCount } fro
 // spreadsheet that any student can edit, and a pasted <script> tag should show
 // up as text rather than run.
 
+import { SHOW_RANKINGS } from './config.js';
 import { foldAccents } from './data.js';
 import { pointsLines, pointsShort } from './points.js';
-import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS } from './filters.js';
+import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS, selectedFirst } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
 // The detail's wording for the exam, the countdown, money and the yearly
@@ -104,11 +105,13 @@ function filterOverview(state, savedCount) {
 
 // The full entry for one programme (design spec §6.7). The pane has the full
 // head and cells; the slot keeps the full points lines and other facts.
-export function renderDetail(row, state, { slot = false, saved, inCompare } = {}) {
+export function renderDetail(row, state, { slot = false, saved, inCompare, showRankings = SHOW_RANKINGS } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
   if (row.isSample) article.classList.add('is-sample');
+
+  if (row.imageFile) article.append(photoBlock(row));
 
   if (slot) {
     const points = el('div', 'd-pts');
@@ -149,6 +152,8 @@ export function renderDetail(row, state, { slot = false, saved, inCompare } = {}
     article.append(cells);
   }
 
+  if (showRankings && row.rankingsYear) article.append(rankBlock(row));
+
   // --- Requirements | Applying -----------------------------------------------
   const two = el('div', 'two');
   two.append(requirementsSection(row));
@@ -168,7 +173,67 @@ export function renderDetail(row, state, { slot = false, saved, inCompare } = {}
   const foot = footer(row, saved, inCompare);
   if (foot) article.append(foot);
   detailOriginals(article, row.id, state);
+  if (row.imageFile) article.append(photoCredit(row));
   return article;
+}
+
+// New facts stay in detail; parsed URLs and credit metadata are validated by data.js.
+function newUnknown(unknown) { return unknownTag(t(unknown ? 'not_published' : 'not_checked_yet')); }
+
+function recognitionRow(list, row) {
+  reqRow(list, t('ib_recognition'), [row.ibRecognition ? dataValue('ib_recognition', row.ibRecognition) : newUnknown(row.recognitionUnknown)]);
+}
+
+function photoBlock(row) {
+  const figure = el('figure', 'd-photo'), frame = el('div', 'ph-frame'), image = el('img');
+  image.src = row.imageFile;
+  image.alt = t('photo_alt', { university: row.university });
+  image.setAttribute('width', '640'); image.setAttribute('height', '360'); image.setAttribute('decoding', 'async');
+  frame.append(image); figure.append(frame); return figure;
+}
+
+function photoCredit(row) {
+  const credit = el('p', 'd-src');
+  // These approved non-Commons picks have numeric source URLs; retain their recorded work titles.
+  const source = new URL(row.imageSourceUrl);
+  const recordedTitles = {
+    'https://www.flickr.com/photos/ssomkuti/48578075597/': 'Central European University, Vienna',
+    'https://www.geograph.org.uk/photo/7929879': 'Foxhill House',
+  };
+  let file = recordedTitles[row.imageSourceUrl] || source.pathname.split('/wiki/')[1] || source.hostname;
+  try { file = decodeURIComponent(file); } catch { /* A literal percent in a valid URL is still a file title. */ }
+  const title = file.replace(/^File:/, '').replace(/\.[^.]+$/, '').replaceAll('_', ' ');
+  credit.append(t('photo_credit'), ' ', row.imageAuthor || t('photo_author_not_recorded'), ' · ',
+    externalLink('lnk', row.imageLicence, row.imageLicenceUrl), ' · ',
+    externalLink('lnk', title, row.imageSourceUrl), ', ', t('photo_cropped'));
+  return credit;
+}
+
+function rankBlock(row) {
+  const section = el('section', 'd-sec d-rank'), grid = el('div', 'rk-grid');
+  section.append(el('h3', '', t('rankings')));
+  for (const [source, rank, url] of [
+    ['QS', row.qsRank, 'https://www.topuniversities.com/world-university-rankings'],
+    ['THE', row.theRank, `https://www.timeshighereducation.com/world-university-rankings/${row.rankingsYear}/world-ranking`],
+  ]) {
+    const item = el('div', 'rk');
+    item.append(el('span', 'lab', `${source} ${row.rankingsYear}`),
+      el('span', rank ? 'fig' : 'rk-none', rank || (rank === '' ? t('rank_not_listed', { source, year: row.rankingsYear }) : t('not_published'))),
+      externalLink('lnk', t('rank_source_table', { source, year: row.rankingsYear }), url));
+    grid.append(item);
+  }
+  section.append(grid, el('p', 'rk-note', t('rank_note'))); return section;
+}
+
+function applyDestination(row) {
+  const kind = row.applyLinkKind;
+  if (kind === 'programme' || kind === 'university') return { label: t(`apply_btn_${kind}`), closed: t(`apply_dest_${kind}`) };
+  const host = new URL(row.applyUrl).hostname.replace(/^www\./, '');
+  const systems = { ucas: 'UCAS', cao: 'CAO', studielink: 'Studielink', uni_assist: 'uni-assist' };
+  const system = systems[kind] || host;
+  const code = row.applyCode?.slice(row.applyCode.indexOf(':') + 1);
+  const suffix = code ? (kind === 'ucas' ? t('apply_code_suffix', { code }) : ` · ${code}`) : '';
+  return { label: t('apply_btn_system', { system }) + suffix, closed: system + suffix };
 }
 
 // Points lines come from pointsLines (js/points.js), shared with the CSV
@@ -480,7 +545,9 @@ function requirementsSection(row) {
     const sentence = t('no_ib_subject_requirements_general_requirement_language_requirement', { value1: '\u0000' }).split('\u0000');
     const text = el('p', 'kv-none');
     text.append(sentence[0], row.baselineRequirement ? dataValue('baseline_requirement', baseline) : baseline[0].toUpperCase() + baseline.slice(1), sentence[1]);
-    section.append(text);
+    const recognition = el('dl', 'kv');
+    recognitionRow(recognition, row);
+    section.append(text, recognition);
     return section;
   }
 
@@ -540,6 +607,7 @@ function requirementsSection(row) {
     reqRow(list, t('general_requirement'), [dataValue('baseline_requirement', general)]);
   }
 
+  recognitionRow(list, row);
   section.append(list);
   return section;
 }
@@ -577,7 +645,18 @@ function applyingSection(row, state) {
     reqRow(list, t('language'), [language]);
   }
   if (row.applicationSystem) reqRow(list, t('apply_via'), [dataValue('application_system', row.applicationSystem)]);
-  if (list.childElementCount === 0) return null;
+  const fee = el('span');
+  fee.append(row.appFee != null ? (row.appFee === 0 ? t('app_fee_none') : money.format(row.appFee)) : newUnknown(row.appFeeUnknown));
+  if (row.appFeeNote) { const note = el('span', 'dd-note'); note.append(dataValue('app_fee_note', row.appFeeNote)); fee.append(note); }
+  fee.append(el('span', 'dd-note', t('app_fee_profile')));
+  reqRow(list, t('app_fee'), [fee]);
+  const places = row.placesKind === 'open' ? t('places_no_fixed_limit')
+    : row.places != null ? `${formatCount(row.places)}${row.placesKind === 'past_intake' ? '' : ` · ${t(`places_kind_${row.placesKind}`)}`} · ${row.placesYear || t('places_year_not_published')}`
+    : newUnknown(row.placesUnknown);
+  reqRow(list, t(row.placesKind === 'past_intake' ? 'places_kind_past_intake' : 'places'), [places]);
+  const months = row.intakeMonths || [];
+  reqRow(list, t('intake'), [months.length ? months.map(month => dateFormatter({ month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2027, month - 1, 1)))).join(' · ') : newUnknown(row.intakeUnknown)]);
+  reqRow(list, t('offer_timing'), [row.ibOffer ? t(`offer_${row.ibOffer}`) : newUnknown(row.offerUnknown)]);
 
   const section = el('section', 'd-sec');
   section.append(el('h3', '', t('applying')), list);
@@ -666,11 +745,18 @@ function footer(row, saved, inCompare) {
 
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
-  if (row.officialUrl) {
+  const identity = row.identity?.text || row.faculty?.name;
+  const hiddenName = t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' });
+  if (row.applyUrl) {
+    const dest = applyDestination(row);
+    const label = row.deadlinePassed ? t('apply_closed', { dest: dest.closed }) : dest.label;
+    actions.append(externalLink(`btn btn-apply${row.deadlinePassed ? '' : ' btn-p'}`, label, row.applyUrl, hiddenName));
+  }
+  if (row.officialUrl && row.officialUrl !== row.applyUrl) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
     const identity = row.identity?.text || row.faculty?.name;
-    actions.append(externalLink('btn btn-p', t('official_admissions_page'), row.officialUrl,
+    actions.append(externalLink(row.applyUrl ? 'btn btn-official' : 'btn btn-p', t('official_admissions_page'), row.officialUrl,
       t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' })));
   }
   if (typeof saved === 'boolean') actions.append(saveButton(row, saved));
@@ -933,13 +1019,17 @@ function compareActions(row, saved) {
 
 // ------------------------------------------------------------ filter chips
 
+// Each option's place in the original order, for showSelectedFirst.
+const optionPos = new WeakMap();
+
 // One checkbox row per value, inside a filter drop-down's pick-list. (These were
 // pill-shaped chips until the filters moved into a bar above the results.)
 // flags maps a value to a sprite symbol (the Country list only). The flag is
 // aria-hidden, so the option is still named by the country alone.
 export function renderChips(container, values, selected, onToggle, { flags, field, counts, forceSearch = false } = {}) {
-  const options = values.map((value) => {
+  const options = values.map((value, pos) => {
     const label = el('label', 'option');
+    optionPos.set(label, pos);
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.value = value;
@@ -975,6 +1065,20 @@ export function renderChips(container, values, selected, onToggle, { flags, fiel
     container.append(searchLabel, clear, empty);
   }
   container.append(...options);
+}
+
+// Called when a pick-list opens, never while it is open, so nothing jumps under
+// the pointer or the keyboard focus. Ticked options go first; both groups keep
+// their original order (optionPos, set in renderChips). Hidden (searched-out) options
+// are reordered too, so a search keeps the same rule. Returns true if it moved.
+export function showSelectedFirst(container) {
+  const options = [...container.children].filter((node) => node.classList.contains('option'));
+  const byPos = [...options].sort((a, b) => optionPos.get(a) - optionPos.get(b));
+  const wanted = selectedFirst(byPos, (option) => option.children[0]?.checked);
+  if (wanted.every((option, i) => option === options[i])) return false;
+  container.append(...wanted);
+  container.scrollTop = 0;
+  return true;
 }
 
 export function renderAppliedChips(container, chips, onRemove) {
@@ -1139,7 +1243,8 @@ function detailOriginals(article, id, state) {
   // Under the title, never above it: at the top of the pane the button sat
   // beneath the × close (review round 2).
   const head = article.querySelector('.d-head');
-  if (head) head.after(button); else article.insertBefore(button, article.firstChild);
+  if (head) head.after(button);
+  else { const photo = article.querySelector('.d-photo'); if (photo) photo.after(button); else article.insertBefore(button, article.firstChild); }
 }
 
 function personalLiving(cost, universityLiving) {
