@@ -1307,7 +1307,7 @@ const { lintData, compareIds, formatReport } = await import(new URL('./lint-data
 const lintToday = new Date(2026, 10, 2, 15);
 const lintUniHeader = parseCsv(read('data/universities.csv'))[0];
 const lintProgHeader = parseCsv(read('data/programmes.csv'))[0];
-const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT' };
+const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT', rankings_year: '2027' };
 const lintProg = { programme_id: 'test-maths', university_id: 'test', programme: 'Mathematics', official_url: 'https://test.nl/maths', verified_by: 'AI-DRAFT' };
 const lintCsv = (header, rows) => [header, ...rows.map((row) => header.map((key) => row[key] ?? ''))]
   .map((row) => row.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(',')).join('\n');
@@ -1358,9 +1358,18 @@ const lintCases = [
 for (const [name, changes, expected] of lintCases) {
   equal(`T05 ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ...changes }] })), expected);
 }
-for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths']) {
+for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths', 'app_fee', 'places', 'intake_months', 'ib_recognition', 'ib_offer']) {
   equal(`T05 ? is meaningful in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), []);
 }
+// PR 2 adds data columns before the detail parser/rendering work lands.
+for (const column of ['app_fee_note', 'places_kind', 'places_year', 'apply_code', 'apply_url']) {
+  equal(`PR2 ? is invalid in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), ['error:unknown-misuse']);
+}
+equal('PR2 apply URL rejects a comparison site', lintRules(lintFixture({ programmes: [{ ...lintProg, apply_url: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 default apply URL rejects a comparison site', lintRules(lintFixture({ universities: [{ ...lintUni, apply_url_default: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 missing rankings year warns without blocking', lintRules(lintFixture({ universities: [{ ...lintUni, rankings_year: '' }] })), ['warning:rankings-unchecked']);
+const importSelfTest = spawnSync(process.execPath, [join(root, 'tools/add-new-data-types.mjs'), '--self-test'], { encoding: 'utf8' });
+check('PR2 importer conversion and refusal self-tests pass', importSelfTest.status === 0 && importSelfTest.stdout.includes('Import self-tests passed.'));
 equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
 equal('T05 duplicate header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'city'] })), ['error:header-dup']);
 equal('T05 unknown header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'offical_url'] })), ['warning:header-extra']);
