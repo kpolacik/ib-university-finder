@@ -26,9 +26,9 @@
 // option (plans/points-honesty.md, second interpretation call; Leon's Q4,
 // 2026-10-26). check.mjs asserts the latest round is the lower one.
 //
-// The conversion is CAO's IB table for 2026 entry (js/points.js, TABLE):
-// 45 and 44 → 600 … 24 → 350, plus 25 points for HL Maths at 4 or better
-// where nothing else reaches the cutoff. The 2027 table is not published yet.
+// The conversion is CAO's IB table for 2027 entry (js/points.js, TABLE):
+// 45 and 44 → 600 … 24 → 360, plus 25 points for HL Maths at 4 or better
+// where nothing else reaches the cutoff.
 //
 // When only the IB table changes (each November, when the CAO publishes the
 // next EU/EFTA guide) the cutoffs have not moved, so there is nothing to

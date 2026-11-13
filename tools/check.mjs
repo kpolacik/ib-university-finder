@@ -2097,7 +2097,34 @@ check('update-cao-points.mjs rebuilds notes with rebuildNote and keeps no OLD li
 // One conversion, in js/points.js, for the tools and the browser.
 check('tools/lib/ireland.mjs takes lowestIB from js/points.js (the same function)', ie.lowestIB === pts.lowestIB);
 check('the IB table is only in js/points.js', !/\[45, 600\]/.test(read('tools/lib/ireland.mjs')) && pts.TABLE[0][1] === 600);
-equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 497, 350, null, null]);
+equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 502, 360, null, null]);
+// The CAO's 2027-entry table (Guidelines-EU-EFTA-UK-2027.pdf, page 92, Table
+// 2), copied here from the printed page so a slip in js/points.js shows up.
+// The 2026 table gave 24 → 350; a stale table would put most Irish figures
+// one point too high.
+equal('TABLE is the CAO 2027 IB table as printed (45 → 600 … 24 → 360)', pts.TABLE, [
+  [45, 600], [44, 600], [43, 594], [42, 577], [41, 566], [40, 554], [39, 542], [38, 530],
+  [37, 519], [36, 502], [35, 486], [34, 475], [33, 463], [32, 452], [31, 433], [30, 421],
+  [29, 410], [28, 399], [27, 389], [26, 378], [25, 369], [24, 360]]);
+equal('2027 conversion at the edges: 360 → 24, 361 → 25, 502 → 36, 503 → 37, 600 → 44, 601 → 42 with the bonus, 626 → none, HPAT → 35',
+  [cc(360).ib, cc(361).ib, cc(502).ib, cc(503).ib, cc(600).ib, cc(601).ib, cc(601).notes.includes(ie.BONUS_ONLY), cc(626).ib,
+    cc(null, { hpat: true }).ib, cc(300).ib],
+  [24, 25, 36, 37, 44, 42, true, null, 35, 24]);
+{
+  // Every Irish row except UCD (whose figure is UCD's own) must hold
+  // convertCutoff of the latest round recorded in its CAO sentence, so a table
+  // change can't leave stored figures behind (run
+  // `node tools/update-cao-points.mjs --reconvert` after changing TABLE).
+  const stale = live.filter(isIrish).filter((p) => !p.id.startsWith('ucd-') && caoOf(p)).filter((p) => {
+    const c = caoOf(p);
+    const last = c.rounds.at(-1);
+    const hpat = ie.HPAT_CODES.has(c.code);
+    const conv = cc(!last || last.aqa ? null : last.points, { test: p.otherRequirements.includes(CAO_TEST) || hpat, hpat, code: c.code });
+    return conv.ib !== p.ibPointsMin;
+  });
+  check('no Irish row (UCD aside) stores a figure that differs from convertCutoff of its recorded cutoff', stale.length === 0,
+    stale.slice(0, 10).map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
+}
 const disagree = [];
 for (let n = 300; n <= 760; n++) {
   for (const test of [false, true]) {
@@ -2195,8 +2222,8 @@ const d27Prog = [
   head,
   d27Row('ie-added', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
   d27Row('ie-unver', 'tcd', 24, '2026 CAO cutoff: Round 1 300 points (code CK114).', dataMod.CAO_TEST),
-  d27Row('ie-sep', 'tcd', 28, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
-  d27Row('ie-nomark', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
+  d27Row('ie-sep', 'tcd', 27, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
+  d27Row('ie-nomark', 'tcd', 25, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
   d27Row('ucd-listed', 'ucd', 30, "UCD's stated minimum: 30 IB points. 2026 CAO cutoff: Round 1 363 points (code CK112).", dataMod.CAO_TEST),
   d27Row('nl-listed', 'nl', 30, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
 ].join('\n') + '\n';
@@ -2210,8 +2237,8 @@ equal('D27 figure, flags and card line per row',
   }),
   [[null, true, false, 'Cutoff includes a test score'],
     [null, false, true, 'Assessment required; IB equivalent unverified'],
-    [28, false, false, '≈ 28 IB points, Round 1 cutoff, 2026'],
-    [26, false, false, '≈ 26 IB points, Round 1 cutoff, 2026'],
+    [27, false, false, '≈ 27 IB points, Round 1 cutoff, 2026'],
+    [25, false, false, '≈ 25 IB points, Round 1 cutoff, 2026'],
     [30, false, false, '30 IB points, minimum'],
     [30, false, false, '30 IB points, minimum']]);
 equal('D27 compact figure says why there is none',
@@ -2278,7 +2305,7 @@ equal('pointsKind: Irish cutoffs, UCD/HPAT/non-Irish minimums, blank none',
   ['ie-two', 'ie-legacy', 'ucd-x', 'ie-hpat', 'nl-min', 'ie-blank'].map((id) => kindOf(id)?.pointsKind),
   ['cutoff', 'cutoff', 'minimum', 'minimum', 'minimum', null]);
 equal('pointsLines for each kind', Object.fromEntries(kinds.map((p) => [p.id, linesOf(p)])), {
-  'ie-two': ['≈ 38 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
+  'ie-two': ['≈ 37 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
   'ie-one': ['≈ 37 IB points, Round 1 cutoff, 2026'],
   'ie-bonus': ['≈ 44 IB points, Round 1 cutoff, 2026, with HL Maths 4+'],
   'ie-above-r1': ['Round 1 cutoff, 2026: above what any IB total can reach', '≈ 44 IB points, Round 2 cutoff, 2026'],
@@ -2325,13 +2352,13 @@ section('HL Maths 4+ tick and the split count (Q5, Q3, D28)');
 // labels and the count, never which rows are shown; unknown never hides.
 const bucketProg = [
   head,
-  kindRow('c-497', 'tcd', 36, '2026 CAO cutoff: Round 1 497 points (code TR101).'),
+  kindRow('c-502', 'tcd', 36, '2026 CAO cutoff: Round 1 502 points (code TR101).'),
   kindRow('c-625', 'tcd', 44, `2026 CAO cutoff: Round 1 625 points (code TR102). ${ie.BONUS_ONLY}`),
   kindRow('c-test-520', 'tcd', 38, '2026 CAO cutoff: Round 1 520 points (code TR103).', dataMod.CAO_TEST),
   kindRow('c-test-560', 'tcd', 40, '2026 CAO cutoff: Round 1 560 points (code TR104).', dataMod.CAO_TEST),
-  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 497 points (code TR105).'),
-  kindRow('c-r2-maths', 'tcd', 38, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
-  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 497 points, Round 2 520 points (code TR107).'),
+  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 502 points (code TR105).'),
+  kindRow('c-r2-maths', 'tcd', 37, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
+  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 502 points, Round 2 520 points (code TR107).'),
   kindRow('ucd-33', 'ucd', 33, "UCD's stated minimum: 33 IB points. 2026 CAO cutoff: Round 1 600 points (code DN101)."),
   kindRow('ie-hpat35', 'tcd', 35, `2026 CAO cutoff: Round 1 738 points (code TR051). ${dataMod.HPAT_NOTE}`),
   kindRow('nl-37', 'nl', 37, ''),
@@ -2341,12 +2368,12 @@ const { programmes: bk, meta: bkMeta } = await load(kindUni, bucketProg);
 check('the bucket fixture parses cleanly', bkMeta.issues.length === 0, JSON.stringify(bkMeta.issues));
 const fstate = (my, maths = false) => ({ ...filtersMod.createFilterState(), myIbPoints: my, hlMaths: maths });
 const buckets = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsBucket(p, fstate(my, maths))]));
-equal('buckets at 36 (497 CAO points), unticked', buckets(36, false), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
+equal('buckets at 36 (502 CAO points), unticked', buckets(36, false), {
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'maths', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 36, ticked: the bonus counts, nothing new is hidden or shown', buckets(36, true), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'within', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 44 (600): a 601–625 cutoff is only with HL Maths 4+ unticked, within ticked',
@@ -2359,7 +2386,7 @@ check('a higher Round 2 does not raise the bar: the lower round (Round 1) decide
   filtersMod.lowerRound(bk.find((p) => p.id === 'c-r2-higher').cao).round === 1);
 const notes = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsNote(p, fstate(my, maths))]));
 equal('card notes at 36, unticked', notes(36, false), {
-  'c-497': null, 'c-625': null,
+  'c-502': null, 'c-625': null,
   'c-test-520': 'Within your IB points only with HL Maths 4+.',
   'c-test-560': 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.',
   'c-r2': 'Within your IB points on the Round 2 cutoff, not Round 1.',
@@ -2367,7 +2394,7 @@ equal('card notes at 36, unticked', notes(36, false), {
   'c-r2-higher': null, 'ucd-33': null, 'ie-hpat35': null, 'nl-37': null,
   blank: 'Not compared with your IB points: no IB figure.',
 });
-equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (522 ≥ 520) but not of c-r2-maths (530)',
+equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (527 ≥ 520) but not of c-r2-maths (530)',
   [notes(36, true)['c-r2'], notes(36, true)['c-r2-maths'], notes(36, true)['c-test-520']],
   [null, 'Within your IB points on the Round 2 cutoff, not Round 1.', null]);
 const visible = (my, maths) => applyFilters(bk, fstate(my, maths)).map((p) => p.id);
@@ -2384,7 +2411,7 @@ equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, 
     [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
 }
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
-  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
+  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-502'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
 
 // The real data, for every total a student can type.
@@ -2641,7 +2668,7 @@ const verdictOf = (row, state) => {
     byClass(a, 'pnote')[0]?.textContent ?? null, byClass(cell, 'pnote').length];
 };
 equal('verdict matrix: cell fill, short verdict, full note after the facts (never in the cell)', [
-  verdictOf(bkRow('c-497'), fstate(36)),
+  verdictOf(bkRow('c-502'), fstate(36)),
   verdictOf(bkRow('c-r2'), fstate(36)),
   verdictOf(bkRow('ie-hpat35'), fstate(36)),
   verdictOf(bkRow('c-test-520'), fstate(36)),
@@ -2651,7 +2678,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   verdictOf(bkRow('blank'), fstate(36)),
   verdictOf(fxRow('fx-test-score'), fstate(36)),
   verdictOf(fxRow('fx-entrance'), fstate(36)),
-  verdictOf(bkRow('c-497'), noFilters()),
+  verdictOf(bkRow('c-502'), noFilters()),
   verdictOf(bkRow('blank'), noFilters()),
 ], [
   ['v-fit', 'verd m m-fit: Within your IB points', null, 0],
@@ -2667,13 +2694,16 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   ['', null, null, 0],
   ['v-unk', null, null, 0],
 ]);
-check('TCD Computer Science reads its live band: HL Maths 4+ at 36, within on Round 2 only at 37, no invented degree', (() => {
+// Cutoffs 519 (Round 1) and 498 (Round 2). On the CAO's 2027 IB table 35 is
+// worth 486 (511 with the bonus, which reaches Round 2 only) and 36 is worth
+// 502; on the 2026 table the same band sat one point higher (36 and 37).
+check('TCD Computer Science reads its live band: HL Maths 4+ (Round 2 only) at 35, within on Round 2 only at 36, no invented degree', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
+  const at35 = verdictOf(row, fstate(35));
   const at36 = verdictOf(row, fstate(36));
-  const at37 = verdictOf(row, fstate(37));
   console.log(`        tcd-computer-science: ${pts.pointsLines(row).map(pts.pointsLineText).join(' | ')}; degree ${JSON.stringify(row.degreeType)}`);
-  return at36[0] === 'v-cond' && at36[2] === 'Within your IB points only with HL Maths 4+.'
-    && at37[0] === 'v-fit' && at37[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
+  return at35[0] === 'v-cond' && at35[2] === 'Within your IB points only with HL Maths 4+. Within your IB points on the Round 2 cutoff, not Round 1.'
+    && at36[0] === 'v-fit' && at36[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
     && byClass(detailOf(row), 'deg').length === (row.degreeType ? 1 : 0);
 })());
 
@@ -2837,7 +2867,7 @@ const rowOf = (row, state = noFilters()) => withStubDocument(() => {
 });
 const ptsShort = (row) => pts.pointsShort(row);
 const shortCases = {
-  'ie-two': [['≈38', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
+  'ie-two': [['≈37', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
   'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']],
   'ie-test-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2: all qualified got a place']],
   'ie-legacy': [['≈40', 'cutoff 2025']], 'ucd-x': [['33', 'minimum']],
@@ -2896,7 +2926,7 @@ const rowPoints = (row, state) => {
     byClass(c, 'fig')[0]?.textContent ?? null, byClass(c, 'r2')[0]?.textContent ?? null, byClass(c, 'q')[0]?.textContent ?? null];
 };
 equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
-  rowPoints(bkRow('c-497'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
+  rowPoints(bkRow('c-502'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
   rowPoints(bkRow('c-r2-maths'), fstate(36)), rowPoints(bkRow('c-test-520'), fstate(36, true)), rowPoints(bkRow('c-test-560'), fstate(36)),
   rowPoints(fxRow('fx-entrance'), noFilters()), rowPoints(bkRow('blank'), fstate(36)), rowPoints(kindOf('ie-bonus'), noFilters()),
   rowPoints(bkRow('c-625'), fstate(44)), rowPoints(bkRow('c-625'), fstate(44, true)),
@@ -2904,7 +2934,7 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
   ['v-fit', 'Within your IB points', '≈36 R1', null, null],
   ['v-fit', 'Within your IB points', '≈38 R1 · ≈36 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points, then HPAT', '35', null, null],
-  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
+  ['v-cond', 'Only with HL Maths 4+', '≈38 R1 · ≈37 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points', '≈38 R1', null, null],
   ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
   ['v-unk', 'Entrance exam', null, null, null],
@@ -2936,12 +2966,12 @@ check('row points reason labels stay as short as the longest existing one', ['en
   i18n.setLanguage(lang, { setItem() {} });
   try { return ['r2_pts_test_in_cutoff', 'r2_pts_no_ib_figure', 'entrance_exam'].every((k) => i18n.t(k).length <= 17); } finally { i18n.setLanguage('en', { setItem() {} }); }
 }));
-check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
+check('TCD CS row reads the live figures and band at 35/35 ticked/36/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
-  return rowPoints(row, fstate(36))[0] === 'v-cond' && rowPoints(row, fstate(36, true))[0] === 'v-fit'
-    && rowPoints(row, fstate(37))[3] === 'Round 2 cutoff only'
-    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(36))[2] === figure;
+  return rowPoints(row, fstate(35))[0] === 'v-cond' && rowPoints(row, fstate(35, true))[0] === 'v-fit'
+    && rowPoints(row, fstate(36))[3] === 'Round 2 cutoff only'
+    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(35))[2] === figure;
 })());
 equal('row deadline: short plain date, countdowns, neutral passed and dashed unknown',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
