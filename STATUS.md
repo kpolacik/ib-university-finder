@@ -91,7 +91,15 @@ anchor and compares its exact URL, including the shared-destination case;
 regressions cover primary, secondary and shared official/apply layouts.
 All other gates and 31 refreshed captures passed; CEU and Reading now each
 have four additional phone/desktop, light/dark captures with full titles.
-One corrected full smoke retry remains pending. Logs:
+The corrected retry on `84106b8` passed all 846 smoke checks in 1131.6 s,
+exit 0 (Node 26.1.0, Chrome 157.0.8103.51). Its targeted PR 2 run passed
+56 checks; all fast gates passed with 0 lint errors / 215 warnings, all 150
+contrast pairs, and no MISSING entries for the four new text fields.
+The committed tree stayed clean and all four data hashes still matched the
+repeatability evidence. Final logs: `plans/pr2-official-final-retry-20261113/`.
+The 31 current PNGs and their manifest are in `plans/pr2-review-20261113/`;
+the previous 23 captures are preserved in its `before-wave7/` subdirectory.
+Earlier repair logs:
 `plans/pr2-review-final-gates-20261113/`.
 The PR and merge follow passing checks and resolved material findings; no
 Verify Implementation handoff is required.
