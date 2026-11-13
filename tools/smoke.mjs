@@ -468,7 +468,11 @@ async function runTheme(base) {
     });
     try {
       await check(375, 'theme first frame', `${saved} saved on ${scheme} system${negative ? ' (negative control)' : ''}`, async () => {
-        await page.waitFor(`({ok:!!window.__themeFrame,why:'waiting for first CSS-ready frame'})`, 5000, 'first frame while app is held');
+        // 15 s, not 5: this is the first page of a freshly started Chrome, and a cold
+        // CI runner once took over 5 s to paint it (PR 8). The frame is recorded at
+        // first paint however long that takes, and app.js stays held, so waiting
+        // longer does not weaken the check.
+        await page.waitFor(`({ok:!!window.__themeFrame,why:'waiting for first CSS-ready frame'})`, 15000, 'first frame while app is held');
         assert(release, 'app request was not held');
         const frame = await page.ev('window.__themeFrame');
         const expected = saved === 'dark' ? '#232933' : '#ffffff';
