@@ -116,6 +116,22 @@ and `tools/check.mjs` guards that reset. Separate non-blocking cleanup left
 for later: `wireCompactHeader` (`js/round2.js`) reads and writes CSS variables
 alternately on `body` during full-list print transitions.
 
+**CI smoke failure in `theme first frame` (2026-11-14).** On PR #9
+(`dea2141`, run `43643902346`, twice) and earlier on PR #8 (`43293708240` at
+5 s), the very first check (`light saved on dark system`) never set
+`window.__themeFrame` within 15 s while `Runtime.evaluate` kept answering and
+later checks passed immediately. `runTheme` in `tools/smoke.mjs` checked only
+`document.body` (~2.7 KB into `index.html`) and `link.sheet` before calling
+`getComputedStyle(document.querySelector('.listp'))`, even though `.listp` sits
+~40 KB later; when CSS loaded before the HTML parser reached `.listp` (reproduced
+on unsplit localhost under 6×/8× CPU throttling), `getComputedStyle(null)` threw
+`TypeError`, killing the `requestAnimationFrame` loop while `waitFor` hid the
+exception behind `"waiting for first CSS-ready frame"`. `runTheme` now captures
+the first CSS-ready `body` palette immediately, keeps polling until `.listp` is
+parsed, asserts `!diag.error` and `!page.exceptions.length`, and prints `rAF`
+count, `visibilityState`, DOM readiness and exceptions if waiting ever fails
+again (`tools/check.mjs` pins the fix).
+
 **Rankings switched on (2026-11-14, Leon).** The flag had stayed off because
 nobody had checked the automatic name matches. Two agents then compared all
 283 universities with the full QS 2027 table (1,504 entries) and the full THE

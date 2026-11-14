@@ -451,8 +451,22 @@ async function runTheme(base) {
         await seed(send, scheme, `localStorage.setItem('${themeKey}','${saved}');
           window.__themeChanges=[];
           new MutationObserver(ms=>{for(const m of ms)if(m.attributeName==='data-theme'||m.attributeName==='content')__themeChanges.push({theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]')?.content})}).observe(document,{subtree:true,attributes:true});
-          const first=()=>{if(!document.body||!document.querySelector('link[rel="stylesheet"]')?.sheet){requestAnimationFrame(first);return}
-            window.__themeFrame={theme:document.documentElement.dataset.theme,meta:document.querySelector('meta[name="color-scheme"]').content,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),background:getComputedStyle(document.querySelector('.listp')).backgroundColor};};requestAnimationFrame(first);`);
+          const diag=window.__themeDiag={raf:0,vis:null,ready:null,body:false,sheet:false,meta:false,listp:false,error:null};
+          const tick=()=>{diag.raf++;diag.vis=document.visibilityState;diag.ready=document.readyState;diag.body=!!document.body;diag.sheet=!!document.querySelector('link[rel="stylesheet"]')?.sheet;diag.meta=!!document.querySelector('meta[name="color-scheme"]');diag.listp=!!document.querySelector('.listp');if(!window.__themeFrame&&!diag.error)requestAnimationFrame(tick);};
+          requestAnimationFrame(tick);
+          // <body> sits at ~2.7 KB in index.html while .listp sits at ~42.9 KB; when CSS
+          // finishes before the parser reaches .listp, first() can run mid-load. Record
+          // the body theme on the very first CSS-ready frame and keep polling until
+          // .listp is parsed instead of calling getComputedStyle(null) and killing rAF.
+          const first=()=>{try{
+            const sheet=document.querySelector('link[rel="stylesheet"]')?.sheet;
+            const meta=document.querySelector('meta[name="color-scheme"]');
+            if(!document.body||!sheet){requestAnimationFrame(first);return;}
+            window.__themeFirstBody??={theme:document.documentElement.dataset.theme,meta:meta?.content,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),bodyBackground:getComputedStyle(document.body).backgroundColor};
+            const listp=document.querySelector('.listp');
+            if(!meta||!listp){requestAnimationFrame(first);return;}
+            window.__themeFrame={theme:document.documentElement.dataset.theme,meta:meta.content,panel:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),background:getComputedStyle(listp).backgroundColor};
+          }catch(err){diag.error=err?.stack||String(err);}};requestAnimationFrame(first);`);
         await send('Fetch.enable', { patterns: [{ urlPattern: '*js/app.js' }, ...(negative ? [{ urlPattern: base, resourceType: 'Document' }] : [])] });
       },
       paused: async (p, send) => {
@@ -470,20 +484,33 @@ async function runTheme(base) {
     });
     try {
       await check(375, 'theme first frame', `${saved} saved on ${scheme} system${negative ? ' (negative control)' : ''}`, async () => {
-        // 15 s, not 5: this is the first page of a freshly started Chrome, and a cold
-        // CI runner once took over 5 s to paint it (PR 8). The frame is recorded at
-        // first paint however long that takes, and app.js stays held, so waiting
-        // longer does not weaken the check.
-        await page.waitFor(`({ok:!!window.__themeFrame,why:'waiting for first CSS-ready frame'})`, 15000, 'first frame while app is held');
+        // 15 s covers a cold CI Chrome startup while app.js stays held, so waiting
+        // longer never weakens the check. Earlier 5 s and 15 s timeouts (PR 8 / PR 9)
+        // happened when CSS unblocked rAF before .listp was parsed and getComputedStyle(null)
+        // threw silently, leaving __themeFrame unset for the whole wait.
+        try {
+          await page.waitFor(`({ok:!!(window.__themeFrame||window.__themeDiag?.error),why:'waiting for first CSS-ready frame'})`, 15000, 'first frame while app is held');
+        } catch (err) {
+          const live = await page.ev(`({diag:window.__themeDiag??null,vis:document.visibilityState,ready:document.readyState,body:!!document.body,sheet:!!document.querySelector('link[rel="stylesheet"]')?.sheet,meta:!!document.querySelector('meta[name="color-scheme"]'),listp:!!document.querySelector('.listp')})`).catch((e) => ({ evalError: e.message }));
+          throw new Error(`${err.message} [held=${Boolean(release)}, state=${JSON.stringify(live)}, exceptions=${JSON.stringify(page.exceptions)}, errors=${JSON.stringify(page.errors.map((e) => e.text))}]`);
+        }
+        const diag = await page.ev('window.__themeDiag');
+        assert(!diag?.error && !page.exceptions.length, `first-frame script error: ${diag?.error ?? page.exceptions.join('; ')}`);
         assert(release, 'app request was not held');
+        const firstBody = await page.ev('window.__themeFirstBody');
         const frame = await page.ev('window.__themeFrame');
         const expected = saved === 'dark' ? '#232933' : '#ffffff';
+        const expectedGround = saved === 'dark' ? 'rgb(27, 32, 39)' : 'rgb(232, 237, 243)';
+        const bodyMatches = firstBody?.theme === saved && firstBody.meta === saved && firstBody.panel === expected
+          && firstBody.bodyBackground === expectedGround;
         const matches = frame.theme === saved && frame.meta === saved && frame.panel === expected
           && frame.background === (saved === 'dark' ? 'rgb(35, 41, 51)' : 'rgb(255, 255, 255)');
+        assert(negative ? !bodyMatches : bodyMatches, `first body frame ${JSON.stringify(firstBody)}`);
         assert(negative ? !matches : matches, `first frame ${JSON.stringify(frame)}`);
         assert(await page.ev(`!document.querySelector('#loading').hidden`), 'app ran before first frame');
         await release(); release = null;
         await page.waitFor(ready, 15000, 'app after releasing module');
+        assert(!page.exceptions.length, `exceptions after module release: ${page.exceptions.join('; ')}`);
         assert((await page.ev(palette)).theme === saved, 'module theme drift');
         if (!negative) assert(await page.ev(`__themeChanges.every(m=>!m.theme||m.theme==='${saved}')`), 'theme changed before/after first paint');
       });

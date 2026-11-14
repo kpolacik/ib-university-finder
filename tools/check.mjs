@@ -5212,6 +5212,19 @@ check('the print block has no .src-more rule: nothing renders that element, so t
     return /setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}[\s\S]*finally\s*\{\s*await page\.send\('Emulation\.setCPUThrottlingRate',\s*\{\s*rate:\s*1\s*\}\);\s*\}/.test(timing)
       && !/setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}/.test(afterTiming);
   })());
+  // PR #8 / #9 CI failure (2026-11-12..14): runTheme's seeded rAF loop checked
+  // only document.body and link.sheet before calling getComputedStyle(.listp),
+  // so when CSS finished loading while index.html was still parsing between
+  // <body> (~2.7 KB) and .listp (~42.9 KB), getComputedStyle(null) threw and
+  // killed the rAF loop while waitFor hid the error behind a 15 s timeout.
+  check('smoke "theme first frame" snapshots the first CSS-ready body frame, waits for .listp before reading it, negates both controls separately, and surfaces rAF/exception diagnostics', (() => {
+    const fn = code.slice(code.indexOf('async function runTheme('), code.indexOf('async function chooseLanguage('));
+    const hasBodyFirst = /window\.__themeFirstBody\s*\?\?=/.test(fn) && /getComputedStyle\(document\.body\)\.backgroundColor/.test(fn);
+    const waitsListp = /const listp=document\.querySelector\('\.listp'\);\s*if\(!meta\|\|!listp\)\{requestAnimationFrame\(first\);return;\}/.test(fn);
+    const negatesSeparately = /assert\(negative \? !bodyMatches : bodyMatches/.test(fn) && /assert\(negative \? !matches : matches/.test(fn);
+    const hasDiagnostics = /window\.__themeDiag=\{/.test(fn) && /exceptions=\$\{JSON\.stringify\(page\.exceptions\)\}/.test(fn) && /!diag\?\.error && !page\.exceptions\.length/.test(fn);
+    return hasBodyFirst && waitsListp && negatesSeparately && hasDiagnostics;
+  })());
 }
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
