@@ -5225,6 +5225,17 @@ check('the print block has no .src-more rule: nothing renders that element, so t
     const hasDiagnostics = /window\.__themeDiag=\{/.test(fn) && /exceptions=\$\{JSON\.stringify\(page\.exceptions\)\}/.test(fn) && /!diag\?\.error && !page\.exceptions\.length/.test(fn);
     return hasBodyFirst && waitsListp && negatesSeparately && hasDiagnostics;
   })());
+  // PR #9 CI failure (2026-11-14, run 43650077084, 390 only): with the
+  // rankings block on, the row A9 leaves open is 2,212 px tall in My list, so
+  // from the top of the page the second saved row starts 14 px outside the
+  // window of mounted rows and is a .row-space gap until scrolled to. A14
+  // clicked its compare toggle without scrolling there first.
+  check('smoke "A14" scrolls a saved row into the mounted window, a screen at a time with a frame to redraw, before it clicks that row\'s compare toggle', (() => {
+    const a14 = code.slice(code.indexOf("'A14', 'save two stars"), code.indexOf("'A11', 'no Filters sheet"));
+    const reach = a14.slice(a14.indexOf('const reach = '), a14.indexOf('for (const id of [a, b]) {\n        await reach(id);'));
+    return /if \(row\(\)\) return \{ ok: true \};\s*scrollBy\(0, innerHeight\);\s*await new Promise\(\(ok\) => requestAnimationFrame\(\(\) => requestAnimationFrame\(ok\)\)\);\s*return \{ ok: !!row\(\),/.test(reach)
+      && /for \(const id of \[a, b\]\) \{\s*await reach\(id\);\s*await page\.click\(scale\(id\), `the compare toggle on \$\{id\}`\);\s*await page\.waitFor\(`\(\{ ok: \$\{scale\(id\)\}\.getAttribute\('aria-pressed'\) === 'true'/.test(a14);
+  })());
 }
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).

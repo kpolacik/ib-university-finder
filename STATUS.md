@@ -132,6 +132,24 @@ parsed, asserts `!diag.error` and `!page.exceptions.length`, and prints `rAF`
 count, `visibilityState`, DOM readiness and exceptions if waiting ever fails
 again (`tools/check.mjs` pins the fix).
 
+**CI smoke failure in `A14` at 390 px (2026-11-14).** On PR #9 (`babbf6d`,
+run `43650077084`), `A14` could not find the compare toggle of the second
+saved programme (`humak-youth-work-community-wellbeing`) for 5 s. It failed
+the same way on this computer every time, so it was not a flake, and the site
+was not broken. The two Humak programmes have the nearest deadline, so they
+are the first two rows. On a phone `A9` opens the first one in place and it
+stays open in My list. Switching the rankings on (`1472635`) made that open
+row 170 px taller (2,042 → 2,212 px). The list only keeps rows in the page up
+to two screens below the screen (`WINDOW_SCREENS` in `js/app.js`); from the top
+of the page that limit is 2,198 px into the list, so the second saved row,
+which now starts at 2,212 px, became an empty placeholder until someone
+scrolls towards it. Scrolling 400 px brings it back, as designed. `A14`
+clicked the first toggle (which scrolls to the top) and then looked for the
+second row without scrolling. It now scrolls down a screen at a time until
+the row is in the page before clicking, and still fails if scrolling never
+brings the row back (`tools/check.mjs` pins the fix). With the rankings
+served as off, the old `A14` passed again, which confirms the cause.
+
 **Rankings switched on (2026-11-14, Leon).** The flag had stayed off because
 nobody had checked the automatic name matches. Two agents then compared all
 283 universities with the full QS 2027 table (1,504 entries) and the full THE

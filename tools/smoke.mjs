@@ -1025,7 +1025,24 @@ async function interactions(page, at, want) {
       // Batch 3 · A: Compare is its own set, added with each row's scale toggle
       // and opened from the header (desktop) or the bottom tray (phones).
       const scale = (id) => `document.querySelector('#results li.item[data-id=' + JSON.stringify(${JSON.stringify('')} + ${JSON.stringify(id)}) + '] button.cmpi')`;
+      // PR #9 CI, 2026-11-14 (run 43650077084, 390 only): on a phone the row A9
+      // opened stays open in My list, and once the rankings block was switched
+      // on it grew from 2,042 to 2,212 px. Clicking its toggle scrolls back to
+      // the top, and from there the second saved row starts 14 px beyond the
+      // two screens of rows the list keeps below the viewport (WINDOW_SCREENS
+      // in js/app.js). It is then a .row-space gap, not a row, until somebody
+      // scrolls towards it, so its toggle was "not in the page" for 5 s. Scroll
+      // down a screen at a time, as a reader would, and give the list its frame
+      // to redraw; a saved row that scrolling never brings back still fails.
+      const reach = (id) => page.waitFor(`(async () => {
+        const row = () => document.querySelector('#results li.item[data-id=' + JSON.stringify(${JSON.stringify(id)}) + ']');
+        if (row()) return { ok: true };
+        scrollBy(0, innerHeight);
+        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+        return { ok: !!row(), why: 'still not in the page after scrolling to ' + Math.round(scrollY) + ' px' };
+      })()`, 5000, `the saved row ${id} when scrolled to`);
       for (const id of [a, b]) {
+        await reach(id);
         await page.click(scale(id), `the compare toggle on ${id}`);
         await page.waitFor(`({ ok: ${scale(id)}.getAttribute('aria-pressed') === 'true', why: 'compare toggle not pressed' })`, 5000, 'a pressed compare toggle');
       }
