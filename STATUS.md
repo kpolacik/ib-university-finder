@@ -11,7 +11,7 @@ pick it up without re-deriving decisions. Update it when the state changes.
 **PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
 `filter-selected-first` worktree contains the detail-only facts, application
 actions, credited campus photos and Slovak translations from Waves 2–4.
-Rankings remain behind `SHOW_RANKINGS = false`. PR 2 follows the CSV path,
+Rankings are on (`SHOW_RANKINGS = true`, Leon, 2026-11-14; see below). PR 2 follows the CSV path,
 before the database switch-over. Wave 5 adds real-data CAO/URL/photo acceptance
 checks and the targetable browser section
 `node tools/smoke.mjs --only=runPr2 --require-chrome`: 390 px slots and 1280 px
@@ -116,14 +116,24 @@ and `tools/check.mjs` guards that reset. Separate non-blocking cleanup left
 for later: `wireCompactHeader` (`js/round2.js`) reads and writes CSS variables
 alternately on `body` during full-list print transitions.
 
+**Rankings switched on (2026-11-14, Leon).** The flag had stayed off because
+nobody had checked the automatic name matches. Two agents then compared all
+283 universities with the full QS 2027 table (1,504 entries) and the full THE
+2027 table (3,146 entries, 849 of them unranked "Reporter" rows): every stored
+rank is right (157 QS, 162 THE) and every blank is a real absence (126 QS,
+121 THE), with no missed match. Spot checks by hand agreed. Most blanks are
+universities of applied sciences and specialist schools (Bocconi, CBS,
+Karolinska for QS), which the whole-university tables leave out; Utrecht and
+Leipzig are not in THE. QS prints ranges with a hyphen; the data keeps an en
+dash, like the THE column. No person has read the tables row by row. Repeat
+the comparison when the 2028 editions replace these.
+
 Known research residue remains, without a data fix in this wave: VŠE
 `vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
 requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
 engineering's EUR 50 fee are unapplied. Some university intake defaults were
 inferred from one programme. Roughly 1–2% of unsampled integrated-master
-`degree_type` values may be imprecise. Accepted ranking name matches have not
-been hand-reviewed; a blank rank with an edition may still be a missed match,
-so the flag stays off. Cattolica's English recognition text was corrected
+`degree_type` values may be imprecise. Cattolica's English recognition text was corrected
 through the importer to May 2027 exams / July 2027 results. The 287 new Slovak
 translations are covered; 993 unrelated missing strings remain. Review also
 identified fee-note limitations to revisit against sources: two OTH programmes

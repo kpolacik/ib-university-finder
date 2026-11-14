@@ -28,5 +28,7 @@ export const STALE_AFTER_DAYS = 183;
 // A deadline this close gets highlighted as urgent.
 export const URGENT_WITHIN_DAYS = 60;
 
-// Jakub enables whole-university rankings when ready.
-export const SHOW_RANKINGS = false;
+// Whole-university QS/THE rankings in the detail pane. On since 2026-11-14,
+// after every rank and every blank was checked against both 2027 tables.
+// Set to false to hide the block; the data stays in the CSV.
+export const SHOW_RANKINGS = true;

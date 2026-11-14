@@ -437,14 +437,15 @@ record the work title there when adding a source whose URL has no title.
 The last line links the licence and title and says "cropped".
 The photo and credit also print. Incomplete credits suppress the photo.
 
-**Rankings stay off until enabled.** `qs_rank` and `the_rank` hold the published
+**Rankings are shown (since 2026-11-14).** `qs_rank` and `the_rank` hold the published
 display value: `62`, `=218`, `201–250` (en dash), or `1201+`. No invented ranks,
 zero, `Reporter`, or `?`. A rank needs a four-digit `rankings_year` (`2027`).
-With a year and blank rank, the enabled panel says "Not listed in QS/THE 2027";
-without a year it omits the whole block. Confirm name matches before enabling:
-a missed match must not become a false "Not listed" claim. Jakub can change
-`SHOW_RANKINGS = false` to `true` in `js/config.js` in one line. Checks cover
-both settings and stay usable after that change; ranking source links remain.
+With a year and blank rank, the panel says "Not listed in QS/THE 2027";
+without a year it omits the whole block. When you load a new edition, confirm
+the name matches against the full QS and THE tables first: a missed match must
+not become a false "Not listed" claim (STATUS.md records the 2027 check). To
+hide rankings, set `SHOW_RANKINGS` to `false` in `js/config.js`. Checks cover
+both settings; ranking source links remain.
 
 ---
 
