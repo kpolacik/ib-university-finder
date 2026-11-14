@@ -5202,6 +5202,16 @@ check('the print block has no .src-more rule: nothing renders that element, so t
   check('smoke "NMO timing" waits out the double-tap window after Finish and fails by name if a Setup close tap counts as a double-tap (GitHub read it as a blocked Filters tap)',
     /if\(action==='finish'\)\{\s*for\(let i=0;i<5;i\+\+\)\{[^\n]*\}\s*await new Promise\(r=>setTimeout\(r,800\)\);\s*\}/.test(code)
     && /window\.__obDetail=e\.detail/.test(code) && /await page\.ev\('__obDetail'\)===1/.test(code));
+  // PR #9 CI failure (2026-11-13): runNonModalSheet left 4x CPU throttling on
+  // past NMS timing into NMS reduced motion, where beforeprint/afterprint over
+  // ~4,000 rows hit the 20 s Runtime.evaluate timeout on a slower GitHub runner.
+  check('smoke "NMS timing" restores 1x CPU in a finally block before "NMS reduced motion" runs beforeprint', (() => {
+    const fn = code.slice(code.indexOf('async function runNonModalSheet('), code.indexOf('async function runNonModalSetup('));
+    const timing = fn.slice(fn.indexOf("'NMS timing'"), fn.indexOf("'NMS focus'"));
+    const afterTiming = fn.slice(fn.indexOf("'NMS focus'"), fn.lastIndexOf('finally'));
+    return /setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}[\s\S]*finally\s*\{\s*await page\.send\('Emulation\.setCPUThrottlingRate',\s*\{\s*rate:\s*1\s*\}\);\s*\}/.test(timing)
+      && !/setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}/.test(afterTiming);
+  })());
 }
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).

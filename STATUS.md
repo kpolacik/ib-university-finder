@@ -104,6 +104,18 @@ Earlier repair logs:
 The PR and merge follow passing checks and resolved material findings; no
 Verify Implementation handoff is required.
 
+**CI smoke timeout in `NMS reduced motion` (2026-11-14).** On PR #9
+(`cbfead7`, run `43492558022`), `NMS reduced motion` timed out after 20 s at
+390 px and 320 px waiting for `Runtime.evaluate`. `runNonModalSheet` in
+`tools/smoke.mjs` turned on 4× CPU throttling before `NMS timing` and only
+turned it off when closing the tab, so `NMS reduced motion` still ran at 4×
+CPU while `beforeprint` mounted all 3,966 programmes and three full layout
+passes ran across them (it was already 49 s per width on GitHub before PR #9).
+`NMS timing` now resets CPU throttling back to 1× in its own `finally` block,
+and `tools/check.mjs` guards that reset. Separate non-blocking cleanup left
+for later: `wireCompactHeader` (`js/round2.js`) reads and writes CSS variables
+alternately on `body` during full-list print transitions.
+
 Known research residue remains, without a data fix in this wave: VŠE
 `vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
 requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum

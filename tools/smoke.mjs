@@ -5269,7 +5269,6 @@ async function runNonModalSheet(base, want) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
       await page.ev(`localStorage.setItem('ibuf.onboarding.v1','dismissed');window.__oldPage=true;location.reload()`);
       await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#results>.item')?.getAttribute('aria-setsize')==='${want.total}',why:'catalogue loading'})`, 20000, 'all rows');
-      await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
       const tap = async (selector) => {
         const { x, y } = await page.ev(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!e.contains(hit))throw Error('covered '+${JSON.stringify(selector)});return {x,y}})()`);
         await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
@@ -5281,22 +5280,29 @@ async function runNonModalSheet(base, want) {
         await page.ev(`document.querySelector('#filter-sheet').close()`);
         await page.waitFor(`(()=>{const s=document.querySelector('#filter-sheet');return {ok:!s.open&&!s.getAnimations().some(a=>a.playState==='running'),why:'closing'}})()`, 5000, 'sheet cleanup');
       };
+      // Only "NMS timing" tests at 4x CPU. Restoring rate 1 inside its finally
+      // keeps 4x throttling out of "NMS reduced motion", whose beforeprint +
+      // print + afterprint flushes and re-layouts all ~4,000 rows three times
+      // and otherwise hits the 20 s Runtime.evaluate limit on GitHub runners.
       await check(width, 'NMS timing', 'touch opens/closes the non-modal sheet with its scrim at 4x CPU', async () => {
-        await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');window.__sheetTimes={};for(const id of ['f-more','sheet-done']){const e=document.getElementById(id);e.addEventListener('pointerdown',()=>{window.__sheetTimes={start:performance.now()}});s.addEventListener('transitionend',e=>{if(e.target===s&&e.propertyName==='transform')window.__sheetTimes.end=performance.now()})}})()`);
-        const times = { open: [], close: [] };
-        for (let i = 0; i < 3; i++) {
-          for (const [selector, kind, open] of [['#f-more', 'open', true], ['#sheet-done', 'close', false]]) {
-            await tap(selector);
-            await page.waitFor(`({ok:!!window.__sheetTimes.end,why:'no transform end'})`, 5000, 'transition end');
-            await page.waitFor(settled(open), 5000, 'settled sheet and scrim');
-            times[kind].push(await page.ev('Math.round(window.__sheetTimes.end-window.__sheetTimes.start)'));
-            assert(await page.ev(`!document.querySelector('#filter-sheet').matches(':modal')`), 'sheet entered the modal top layer');
+        await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        try {
+          await page.ev(`(()=>{const s=document.querySelector('#filter-sheet');window.__sheetTimes={};for(const id of ['f-more','sheet-done']){const e=document.getElementById(id);e.addEventListener('pointerdown',()=>{window.__sheetTimes={start:performance.now()}});s.addEventListener('transitionend',e=>{if(e.target===s&&e.propertyName==='transform')window.__sheetTimes.end=performance.now()})}})()`);
+          const times = { open: [], close: [] };
+          for (let i = 0; i < 3; i++) {
+            for (const [selector, kind, open] of [['#f-more', 'open', true], ['#sheet-done', 'close', false]]) {
+              await tap(selector);
+              await page.waitFor(`({ok:!!window.__sheetTimes.end,why:'no transform end'})`, 5000, 'transition end');
+              await page.waitFor(settled(open), 5000, 'settled sheet and scrim');
+              times[kind].push(await page.ev('Math.round(window.__sheetTimes.end-window.__sheetTimes.start)'));
+              assert(await page.ev(`!document.querySelector('#filter-sheet').matches(':modal')`), 'sheet entered the modal top layer');
+            }
           }
-        }
-        // Chrome 4x gets a scheduling allowance; WebKit's ~250 ms target is
-        // measured separately on its own engine, with no CPU emulation.
-        assert([...times.open, ...times.close].every(ms => ms < 500), JSON.stringify(times));
-        console.log(`MEASURE ${width} Chrome 4x tap-to-settled ms ${JSON.stringify(times)}`);
+          // Chrome 4x gets a scheduling allowance; WebKit's ~250 ms target is
+          // measured separately on its own engine, with no CPU emulation.
+          assert([...times.open, ...times.close].every(ms => ms < 500), JSON.stringify(times));
+          console.log(`MEASURE ${width} Chrome 4x tap-to-settled ms ${JSON.stringify(times)}`);
+        } finally { await page.send('Emulation.setCPUThrottlingRate', { rate: 1 }); }
       });
       await resetSheet();
       await check(width, 'NMS focus', 'Tab wraps inside, nested Escape closes only its panel, then Escape returns focus with a ring', async () => {
@@ -5453,6 +5459,7 @@ async function runNonModalSetup(base, want) {
         assert(await page.ev(`scrollY===${y}&&document.querySelector('#onboarding').open&&getComputedStyle(document.documentElement).overflow==='hidden'`),'background scrolled or outside dismissed');
         await page.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
         assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).transitionDuration==='0s')`),'reduced motion');
+        // Media-only print check: never dispatch beforeprint while 4x CPU throttling is on.
         await page.send('Emulation.setEmulatedMedia',{media:'print'});
         assert(await page.ev(`['#onboarding','#onboarding-scrim'].every(s=>getComputedStyle(document.querySelector(s)).display==='none')&&getComputedStyle(document.documentElement).overflow==='visible'`),'print dialog/scrim/scroll: '+JSON.stringify(await page.ev(`({display:['#onboarding','#onboarding-scrim'].map(s=>getComputedStyle(document.querySelector(s)).display),overflow:getComputedStyle(document.documentElement).overflow})`)));
         await page.send('Emulation.setEmulatedMedia',{media:'',features:[]});await page.key('Escape','Escape',27);
