@@ -2063,12 +2063,10 @@ check('lei-polsci is dropped and lei-iro stays numerus fixus',
 // headline is the general date (1 May); the housing date lives in the note, in
 // one fixed sentence. The check compares the headline with the date the note
 // names, so it needs no year and survives the next cycle.
-// uva-anthro and uva-comm are left out on purpose: when this was fixed
-// (2026-10-25) their pages still showed the 2026 dates (anthro) or an
-// "advisory 1 April" with no year (comm), so their rows were not rewritten.
-// Take them off this list the day their pages show the 2027 dates.
-const UVA_NOT_YET_CONFIRMED = new Set(['uva-anthro', 'uva-comm']);
-const uvaRows = live.filter((p) => p.id.startsWith('uva-') && !UVA_NOT_YET_CONFIRMED.has(p.id));
+// uva-anthro and uva-comm used to be left out (their pages still showed the
+// 2026 dates). UvA's 2027-2028 admissions page confirmed 1 May with the
+// advisory 1 April on 2026-11-15, so every UvA row is checked now.
+const uvaRows = live.filter((p) => p.id.startsWith('uva-'));
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
   'september', 'october', 'november', 'december'];
 const housingDate = (p) => {
