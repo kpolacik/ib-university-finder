@@ -104,5 +104,7 @@ New strings, for the wording pass:
   the current language first: "Site language · Jazyk stránky").
 - `r8_skip_keep`: "Keeps your filters" / "Tvoje filtre ostanú" (Skip's second
   line when setup was reopened over existing answers and one changed).
+- `r8_skip_all`: "Shows all programmes" / "Zobrazí všetky programy" (Skip's
+  second line on a first visit, until an answer is given).
 - Setup step 4's teaching-language label now uses the existing `taught_in`
   ("Taught in" / "Jazyk výučby") instead of `language`.

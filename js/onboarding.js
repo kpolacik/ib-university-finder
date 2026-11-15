@@ -1,5 +1,5 @@
 import { t, facetLabel, formatCount, getLanguage, inLanguage } from './i18n.js';
-import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers } from './saved-state.js';
+import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers, storedFilters } from './saved-state.js';
 import { dataValue } from './render.js';
 import { syncSlider } from './round2.js';
 import { openFaq } from './faq.js';
@@ -90,21 +90,34 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     }
     return box;
   };
-  // "Discards these answers" was on every step, also step 1 where nothing is
-  // asked, and on a setup reopened over existing filters, which Skip keeps.
-  // Now: no hint until an answer changes; then what Skip does with it. The
-  // name stays "Skip setup" and the hint is its description.
+  // Skip's second line says what Skip would do, and only what is true (Leon,
+  // 2026-11-15). Five states, fixed by how setup opened and whether an
+  // answer has changed since:
+  //   opened with no filters at all, unchanged: "Shows all programmes"
+  //   opened without setup answers, changed:    "Discards these answers"
+  //   opened with setup answers, changed:       "Keeps your filters"
+  //   opened with setup answers, unchanged:     no line
+  //   opened with only other filters (a search, a city) or in My list,
+  //   unchanged:                                no line (Skip leaves them)
+  // "Discards these answers" used to show on every step, also over existing
+  // filters, which Skip keeps. The name stays "Skip setup"; the line is its
+  // description.
+  const skipLine = () => answerKey(draft) !== openedWith.key ? (openedWith.had ? 'r8_skip_keep' : 'r2_skip_sub')
+    : openedWith.nothing ? 'r8_skip_all' : null;
+  // Every line this setup can show is in the button from the start, stacked
+  // in one grid cell, so the button never changes size and only transform
+  // and opacity move (css .sk-l, .sk-h).
+  const skipLines = () => openedWith.had ? ['r8_skip_keep'] : openedWith.nothing ? ['r8_skip_all', 'r2_skip_sub'] : ['r2_skip_sub'];
   const syncSkip = () => {
     if (!skipButton || !draft) return;
-    let hint = skipButton.querySelector('small');
-    if (answerKey(draft) === openedWith.key) {
-      hint?.remove(); skipButton.removeAttribute('aria-describedby'); return;
+    const line = skipLine();
+    skipButton.classList.toggle('has-line', Boolean(line));
+    for (const small of skipButton.querySelectorAll('small')) {
+      const on = small.getAttribute('data-line') === line;
+      small.classList.toggle('on', on);
+      if (on) small.id = 'ob-skip-hint'; else small.removeAttribute('id');
     }
-    if (!hint) {
-      hint = el('small'); hint.id = 'ob-skip-hint';
-      skipButton.append(hint); skipButton.setAttribute('aria-describedby', hint.id);
-    }
-    hint.textContent = t(openedWith.had ? 'r8_skip_keep' : 'r2_skip_sub');
+    if (line) skipButton.setAttribute('aria-describedby', 'ob-skip-hint'); else skipButton.removeAttribute('aria-describedby');
   };
   // The site language, first thing on step 1 (backlog, Leon 2026-11-10). It
   // applies and is saved at once, like Settings, so Skip keeps it. Its look
@@ -185,8 +198,14 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     }
     body.replaceChildren(label, section); body.scrollTop = 0;
     // The hint is a second line inside Skip, so the footer has no extra row
-    // under the button (Leon, 2026-11-09); syncSkip adds it when it applies.
-    skipButton = button('r2_skip', 'btn btn-q', () => close()); skipButton.setAttribute('aria-label', t('r2_skip'));
+    // under the button (Leon, 2026-11-09); syncSkip shows the one that applies.
+    skipButton = el('button', 'btn btn-q'); skipButton.type = 'button'; skipButton.addEventListener('click', () => close());
+    skipButton.setAttribute('aria-label', t('r2_skip'));
+    const lines = el('span', 'sk-h');
+    for (const key of skipLines()) { const small = el('small', '', t(key)); small.setAttribute('data-line', key); lines.append(small); }
+    skipButton.append(el('span', 'sk-l', t('r2_skip')), lines);
+    // Its state is set before it is in the page, so a new step starts still.
+    syncSkip();
     const skip = el('div', 'skipwrap'); skip.append(skipButton);
     const spacer = el('span', 'sp');
     const previous = button('r2_back', 'btn', () => { step--; draw(true); }); previous.hidden = step === 1;
@@ -196,7 +215,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       const answers = validateFilters(draft, facets); done = true;
       const result = apply(answers); dismiss('completed'); drawDone(answers, result);
     });
-    foot.replaceChildren(skip, spacer, previous, next); syncSkip(); orderFooter();
+    foot.replaceChildren(skip, spacer, previous, next); orderFooter();
     focus(keep ? [...section.querySelectorAll('input')].find((node) => node.value === keep) : heading);
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
@@ -273,7 +292,9 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   const open = (from) => {
     if (dialog.open) return;
     trigger = from; appliedOnClose = false; closeSheet(); draft = validateFilters(state, facets); step = 1; done = false; foot.classList.remove('ob-done-foot');
-    openedWith = { key: answerKey(draft), had: hasSetupAnswers(draft) };
+    // nothing: no filter at all and not in My list, so Skip shows every programme.
+    const blank = JSON.stringify(storedFilters(validateFilters({}), facets).filters);
+    openedWith = { key: answerKey(draft), had: hasSetupAnswers(draft), nothing: !state.shortlistOnly && JSON.stringify(storedFilters(draft, facets).filters) === blank };
     // WebKit's modal inert update restyles every mounted row (~600 ms).
     // Like Filters, own the scrim/focus/scroll lock without touching the list.
     dialog.show(); document.documentElement.classList.add('onboarding-open'); scrim.classList.add('is-open'); draw();

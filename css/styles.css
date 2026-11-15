@@ -1398,9 +1398,23 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 /* Leon, 2026-11-09 (option B of three mock-ups): the hint is a second line
    inside the Skip button, so the footer loses the row it had under the
    44 px button. Skip's text sits a little above Back's; Leon chose that over
-   keeping it level ("B2 looks broken"). */
-.skipwrap .btn.btn-q{padding-inline:11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:18px}
-.skipwrap .btn small{font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3)}
+   keeping it level ("B2 looks broken").
+   Leon, 2026-11-15: the label glides between centred (no line) and raised
+   (a line under it), both ways, and the line fades and rises in. Label and
+   lines share one grid cell and every possible line is stacked in it, so
+   the button never changes size: only transform and opacity move. 7.5 and
+   9.5 px place an 18 px label and a 14 px line 1 px apart, centred together
+   in the 44 px button. Lines start at the left, not centred in the widest
+   (a button centres its text). The line waits 60 ms coming in and the label 60 ms
+   going back, so the two never cross. Interrupting reverses from where it is. */
+.skipwrap .btn.btn-q{display:grid;grid-template-areas:"s";align-items:center;justify-items:start;padding-inline:11px;line-height:18px}
+.skipwrap .btn.btn-q>span{grid-area:s}
+.skipwrap .sk-l{transition:transform var(--t-med) var(--ease-out) 60ms}
+.skipwrap .has-line .sk-l{transform:translateY(-7.5px);transition-delay:0ms}
+.skipwrap .sk-h{display:grid;grid-template-areas:"h";justify-items:start;transform:translateY(9.5px)}
+.skipwrap .btn small{grid-area:h;font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3);opacity:0;transform:translateY(3px);transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out)}
+.skipwrap .btn small.on{opacity:1;transform:none;transition-delay:60ms}
+@media (prefers-reduced-motion:reduce){.skipwrap .sk-l,.skipwrap .btn small{transition:none}}
 .skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
 /* Setup step 1: the site language (Leon, 2026-11-15). Settings' segmented
    look, not the answer chips', so it never reads as a filter. The checked

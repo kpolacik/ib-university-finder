@@ -1274,7 +1274,13 @@
       "data-ob-language",
       "lang",
       "ob-skip-hint",
-      " stay"
+      " stay",
+      "sk-h",
+      "sk-l",
+      "data-line",
+      "has-line",
+      "on",
+      "id"
     ],
     "js/compare-set.js": [
       "./compare.js",
