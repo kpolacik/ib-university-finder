@@ -213,6 +213,41 @@ IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
+**Setup asks the site language** (Leon, 2026-11-15; local branch
+`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+with "Site language · Jazyk stránky": Slovenčina or English, each written in
+its own language, the one in force already chosen (address, then this
+browser's choice, then English, as before). Picking one switches setup and the
+page behind it at once, exactly as the Settings radios do: it is saved in this
+browser, the Settings radios follow it, the address gets `ui=`, and it never
+touches saved filters or the setup flag. It is not a setup answer, so Skip and
+Esc keep it. It looks like the Settings switch, not like the answer chips, and
+step 4's teaching-language question is now headed "Taught in" / "Jazyk
+výučby", so the two cannot be mixed up. Code: `languageField` in
+`js/onboarding.js`.
+
+**Skip setup says only what is true** (Leon, 2026-11-15, "take a look at this
+on each setup page"). Its grey second line used to say "Discards these
+answers" on every step, also on step 1 where nothing is asked, and when setup
+was reopened over existing filters, which Skip keeps. Now it has five states,
+set by how setup opened and whether an answer has changed since: opened with
+no filters at all (a first visit), unchanged: "Shows all programmes" /
+"Zobrazí všetky programy"; opened without setup answers, changed: "Discards
+these answers"; opened over answers, changed: "Keeps your filters" / "Tvoje
+filtre ostanú"; opened over answers, unchanged: no line; opened with only
+other filters (a search, a city) or in My list, unchanged: no line. Screen
+readers hear the name "Skip setup" and the line as its description.
+The label glides between centred (no line) and raised (a line under it), both
+ways, and the line fades and rises in; a change of words cross-fades (Leon,
+same day). Every line the setup can show sits in the button from the start in
+one grid cell, so the button, Back, Next and the dialog never move; only
+transform and opacity change, 120–160 ms with a 60 ms stagger so label and
+line never cross, and nothing moves under reduced motion. Code: `syncSkip` in
+`js/onboarding.js`. The language radios count as one Tab stop in setup's
+focus trap. Checks: check.mjs "Setup step 1 asks the site language…", "Skip's
+hint…" and "Skip on a first visit / reopened / over a search / in My list…";
+smoke SL-1, SL-2 and SL-3 (the motion, frame by frame) in `runAlignChromeSetup`.
+
 
 3,966 programmes · 283 universities · 12 countries, counted from `data/*.csv` on 2026-11-12, right after the research rows were added (the table below is the same count by country; its Notes column still describes the older rows). Recount with a small node script if you need the figure again; don't trust this line after a data change.
 
@@ -1694,8 +1729,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
   PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and
   EN/SK button, System default and per-browser choice. Settings radios replace
-  the language pill; tapping the shown language no longer flips it. Asking the
-  language in setup is backlog work, not part of this change.
+  the language pill; tapping the shown language no longer flips it. Setup asks
+  the site language on step 1 since 2026-11-15 (see *State*).
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
   “Decided” and “Later changes vs mockup v4”):

@@ -4894,6 +4894,10 @@ const motionAllowed = {
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
+  // Leon 2026-11-15: Skip's label glides between centred and raised; its
+  // second line fades and rises. The 60 ms delay keeps the two from crossing.
+  '.skipwrap .sk-l': 'transition:transform var(--t-med) var(--ease-out) 60ms',
+  '.skipwrap .btn small': 'transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
   // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
   // 2026-11-09: the times and curve became tokens shared with the FAQ panel.
@@ -6803,12 +6807,12 @@ appCheck('heading sort cycles include the default order, announced next state an
 // shown, as app.js's callback does; media queries default to desktop.
 // Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
 // closeCompare is counted; phone picks the narrow media query's answer.
-function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}, switchLanguage} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
-  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
     localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,openFaq(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
-  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true,switchLanguage});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
   // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
   const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
@@ -6825,17 +6829,23 @@ check('Setup uses show(), aria-modal and its own scrim, never showModal/inert/ba
     && !/html:has\([^}]*ob/.test(css) && !css.includes('dialog.ob::backdrop') && /html\.onboarding-open\{overflow:hidden\}/.test(css)
     && /z-index:80/.test(bodyOf('dialog.ob')) && /z-index:79/.test(bodyOf('.ob-scrim'));
 })());
+// Step 1's site-language radios are one Tab stop, the checked one: an
+// unchecked radio is no native stop, so Shift+Tab from English left setup and
+// a wrap could land on Slovenčina (plan review, 2026-11-15).
 appCheck('Setup traps Tab both ways, skips disabled/hidden controls and redirects stray focus', (h) => {
-  const {dialog, primary} = realSetup(h, {phone:true}), {get,fire} = h;
-  const skip=dialog.querySelector('.skipwrap button');
+  const {dialog, primary} = realSetup(h), {get,fire} = h;
+  const skip=dialog.querySelector('.skipwrap button'), radio=(code)=>dialog.querySelectorAll('input').find(n=>n.value===code);
+  if(!radio('en')?.checked || radio('sk').checked)return false;
   fire(get('ob-title'),'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary() || !stubDocument.focusOptions.focusVisible)return false;
-  fire(primary(),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==radio('en') || !stubDocument.focusOptions.focusVisible)return false;
+  fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==primary())return false;
+  fire(primary(),'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==radio('en'))return false;
+  primary().disabled=true; fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
   if(stubDocument.activeElement!==skip)return false;
   fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary())return false;
-  primary().disabled=true; fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==skip)return false;
+  if(stubDocument.activeElement!==radio('en'))return false;
   get('f-search').focus(); fire(get('f-search'),'focusin');
   return stubDocument.activeElement===get('ob-title') && dialog.open;
 });
@@ -6891,6 +6901,112 @@ appCheck('real onboarding handlers: clicking through with no answers shows the n
     && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
     && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
+// Setup asks the site language on step 1 (backlog language-in-setup, built
+// 2026-11-15). It is Settings' switch: applied and saved at once, kept by
+// Skip, and never mixed up with step 4's teaching language.
+appCheck('Setup step 1 asks the site language: both languages, current one checked, apart from the teaching language', (h) => {
+  const {dialog,next}=realSetup(h);
+  const field=dialog.querySelector('.ob-uilang'), legend=field?.querySelector('legend'), labels=field?.querySelectorAll('label')??[], radios=labels.map(l=>l.querySelector('input'));
+  if(!field||dialog.querySelector('.ob-step.on').children[1]!==field)return false;
+  if(legend.textContent!==`${UI.en.r8_ob_site_language} · ${UI.sk.r8_ob_site_language}`||legend.querySelector('span').getAttribute('lang')!=='sk')return false;
+  if(JSON.stringify(radios.map(r=>[r.type,r.name,r.value,r.checked]))!==JSON.stringify([['radio','ob-site-language','sk',false],['radio','ob-site-language','en',true]]))return false;
+  if(labels.map(l=>l.getAttribute('lang')).join()!=='sk,en'||labels.map(l=>l.textContent).join()!=='Slovenčina,English')return false;
+  next();next();next();
+  return dialog.querySelector('.ob-language').textContent===t('taught_in') && !dialog.querySelector('.ob-uilang');
+});
+check('Setup language radios never share Settings\' name or data-language', (() => {
+  const src=read('js/onboarding.js');
+  return !/['"\[]data-language|['"]site-language['"]/.test(src) && src.includes("input.name = 'ob-site-language'") && /settings_language/.test(read('index.html')) && read('index.html').includes('name="site-language"');
+})());
+appCheck('Picking Slovak in setup switches the page and redraws setup in Slovak at once; answers, focus and Skip keep', (h) => {
+  const calls=[];
+  try {
+    const {dialog,next,writes,applied,primary}=realSetup(h,{switchLanguage:(code)=>{calls.push(code);i18n.setLanguage(code,{setItem(){}});}}), {get,fire}=h;
+    next(); const points=get('ob-points'); points.value='38'; fire(points,'input');
+    fire(dialog.querySelectorAll('.ob-foot button').find(b=>b.textContent===t('r2_back')),'click');
+    const sk=dialog.querySelectorAll('input').find(n=>n.value==='sk'); sk.checked=true; fire(sk,'change');
+    const now=dialog.querySelectorAll('input').find(n=>n.value==='sk'), hint=dialog.querySelectorAll('.skipwrap small').find(n=>n.classList.contains('on'));
+    if(JSON.stringify(calls)!=='["sk"]'||get('ob-title').textContent!==UI.sk.r2_ob1h||primary().textContent!==UI.sk.r2_start)return false;
+    if(!now.checked||stubDocument.activeElement!==now||!dialog.querySelector('.ob-step.on').classList.contains('stay'))return false;
+    if(dialog.querySelector('.ob-uilang legend').textContent!==`${UI.sk.r8_ob_site_language} · ${UI.en.r8_ob_site_language}`)return false;
+    if(dialog.querySelector('.skipwrap button').getAttribute('aria-label')!==UI.sk.r2_skip||hint?.textContent!==UI.sk.r2_skip_sub)return false;
+    // Picking the language already in force does nothing.
+    fire(now,'change'); if(calls.length!==1)return false;
+    next(); if(String(get('ob-points').value)!=='38')return false;
+    fire(dialog.querySelector('.skipwrap button'),'click');
+    return writes.length===1&&writes[0][1]==='dismissed'&&applied.length===0&&i18n.getLanguage()==='sk'&&!dialog.open;
+  } finally { i18n.setLanguage('en',{setItem(){}}); }
+});
+// Leon, 2026-11-15 ("take a look at this on each setup page"): Skip said
+// "Discards these answers" on every step, also on step 1 where nothing is
+// asked, and over existing filters, which Skip keeps. Follow-up (Leon, same
+// day): a first visit says "Shows all programmes". Five states; every line
+// the setup can show is in the button from the start (one size throughout),
+// exactly one is on, and only it is the description.
+const skipState=(dialog)=>{
+  const b=dialog.querySelector('.skipwrap button'), smalls=b.querySelectorAll('small'), on=smalls.filter(s=>s.classList.contains('on'));
+  const ids=smalls.filter(s=>s.id==='ob-skip-hint');
+  if(on.length>1||ids.length!==on.length||(on[0]&&ids[0]!==on[0])||b.classList.contains('has-line')!==Boolean(on[0])||(b.getAttribute('aria-describedby')??null)!==(on[0]?'ob-skip-hint':null))return 'inconsistent';
+  return JSON.stringify({name:b.getAttribute('aria-label'),label:b.querySelector('.sk-l').textContent,line:on[0]?.textContent??null,lines:smalls.map(s=>s.getAttribute('data-line'))});
+};
+const skipWant=(line,lines)=>JSON.stringify({name:t('r2_skip'),label:t('r2_skip'),line:line&&t(line),lines});
+appCheck('Skip on a first visit: "Shows all programmes" on every step until an answer, then "Discards these answers", and back', (h) => {
+  const {get,fire}=h, first=realSetup(h), lines=['r8_skip_all','r2_skip_sub'];
+  if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  const points=get('ob-points'); points.value='38'; fire(points,'input');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  points.value=''; fire(points,'input'); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); const chip=first.dialog.querySelector('.chip'); fire(chip,'click');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  fire(chip,'click');
+  return skipState(first.dialog)===skipWant('r8_skip_all',lines);
+});
+appCheck('Skip reopened over answers: no line until a change, then "Keeps your filters"; undone, no line', (h) => {
+  const {get,fire}=h, again=realSetup(h,{state:savedState.validateFilters({myIbPoints:36})}), lines=['r8_skip_keep'];
+  if(skipState(again.dialog)!==skipWant(null,lines))return false;
+  again.next(); if(String(get('ob-points').value)!=='36'||skipState(again.dialog)!==skipWant(null,lines))return false;
+  get('ob-points').value='37'; fire(get('ob-points'),'input'); if(skipState(again.dialog)!==skipWant('r8_skip_keep',lines))return false;
+  get('ob-points').value='36'; fire(get('ob-points'),'input');
+  return skipState(again.dialog)===skipWant(null,lines);
+});
+// A search alone is not a setup answer, so a new answer would be discarded;
+// unchanged, Skip leaves the search, so "Shows all programmes" would be wrong.
+appCheck('Skip over a search alone or in My list: no line until an answer, then "Discards these answers"', (h) => {
+  const {get,fire}=h, search=realSetup(h,{state:savedState.validateFilters({search:'law'})}), lines=['r2_skip_sub'];
+  if(skipState(search.dialog)!==skipWant(null,lines))return false;
+  search.next(); get('ob-points').value='30'; fire(get('ob-points'),'input');
+  if(skipState(search.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  get('ob-points').value=''; fire(get('ob-points'),'input');
+  return skipState(search.dialog)===skipWant(null,lines);
+});
+appCheck('Skip opened in My list with no filters does not claim to show all programmes', (h) => {
+  const list=realSetup(h,{state:Object.assign(savedState.validateFilters({}),{shortlistOnly:true})});
+  return skipState(list.dialog)===skipWant(null,['r2_skip_sub']);
+});
+// The motion (Leon, 2026-11-15): transform and opacity only, token times,
+// the line waits coming in and the label waits going back, none under
+// reduced motion, and the button's own box never changes (one grid cell).
+check('Skip\'s label and line move by transform and opacity only, never resize the button, and stand still under reduced motion',
+  /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && /grid-area:s/.test(ruleAt(cssText, '.skipwrap .btn.btn-q>span'))
+  && /transform:translateY\(-7\.5px\)/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l')) && /transition-delay:0ms/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l'))
+  && /transition:transform var\(--t-med\) var\(--ease-out\) 60ms/.test(ruleAt(cssText, '.skipwrap .sk-l'))
+  // A button centres its text: a shorter line sat 8 px right of the label in the stacked cell (smoke LP-S5, 2026-11-15).
+  && /justify-items:start/.test(ruleAt(cssText, '.skipwrap .sk-h'))
+  && /grid-area:h/.test(ruleAt(cssText, '.skipwrap .btn small')) && /opacity:0/.test(ruleAt(cssText, '.skipwrap .btn small'))
+  && /opacity:1/.test(ruleAt(cssText, '.skipwrap .btn small.on')) && /transition-delay:60ms/.test(ruleAt(cssText, '.skipwrap .btn small.on'))
+  && ['.skipwrap .sk-l', '.skipwrap .btn small'].every((sel) => /transition:none/.test(ruleAt(cssText, sel, '(prefers-reduced-motion:reduce)')))
+  && !/(?:width|height|margin|padding|top|bottom|left|right)\s/.test([ruleAt(cssText, '.skipwrap .sk-l'), ruleAt(cssText, '.skipwrap .btn small')].join(';').match(/transition:[^;}]*/g).join(';')));
+await asyncAppCheck('Setup\'s language switch is app.js\'s switchLanguage and writes no saved filters over URL state', async ({run,get,context,settle,advance}) => {
+  try {
+    context.savedPrefs = {version:1,filters:{myIbPoints:42}}; context.location.search = '?points=36';
+    run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+    if (context.onboardingConfig.switchLanguage !== run('switchLanguage')) return false;
+    const urls = []; context.history.replaceState = (s, title, url) => urls.push(url);
+    context.onboardingConfig.switchLanguage('sk'); advance(500);
+    return !(context.prefWrites ?? []).length && get('f-points').value === '36' && /[?&]ui=sk/.test(urls.at(-1)) && /[?&]points=36/.test(urls.at(-1));
+  } finally { run("switchLanguage('en')"); }
+}, {boot:true});
 // Was "onboarding completion toast uses the compact Edit action…": the toast is
 // gone (the done screen says it), and r2_edit_short with it. The native maths
 // half still stands.
@@ -7025,7 +7141,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
@@ -8759,8 +8875,9 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
   // Leon, 2026-11-09 (option B): the hint is a second line inside Skip, which stacks its two lines.
-  && /flex-direction:column/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
-  && /skipButton\.append\(el\('small', '', t\('r2_skip_sub'\)\)\)/.test(read('js/onboarding.js'))
+  && /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
+  // Since 2026-11-15 every line the setup can show is in the button; syncSkip turns one on.
+  && /const small = el\('small', '', t\(key\)\); small\.setAttribute\('data-line', key\)/.test(read('js/onboarding.js'))
   && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
 // The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',
