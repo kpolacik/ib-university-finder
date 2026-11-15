@@ -1237,6 +1237,8 @@ async function runRound2(base) {
       // so Skip's label sits above Back's centre line by design; the two lines share an edge.
       await check(width,'R2J','setup stepper is centred; Skip\'s label and its hint share an edge inside the button',async()=>{
         await edit(); await next();
+        // The hint shows once an answer would be discarded (2026-11-15).
+        await page.ev(`document.querySelector('#ob-points').value='37';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`);
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
           const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),sb=document.querySelector('.skipwrap button'),lr=document.createRange();lr.selectNode([...sb.childNodes].find(n=>n.nodeType===3));const skip=lr.getBoundingClientRect(),hint=text(sb.querySelector('small')),btn=box(sb);
           return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,inside:hint.bottom<=btn.bottom+0.5&&skip.top>=btn.top-0.5,indent:skip.left-hint.left};})()`);
@@ -4332,12 +4334,20 @@ async function runAlignChromeSetup(base) {
       await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring is visible and holds its hint', async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
         await settle(page);
-        await page.key('Shift', 'ShiftLeft', 16);
-        await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
-        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
-        assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
+        // Nothing to discard on step 1, so no hint (Leon, 2026-11-15).
+        assert(await page.ev(`!document.querySelector('.skipwrap small')`), 'step 1 shows a Skip hint with nothing to discard');
         const heights = [];
-        for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
+        for (let step = 1; step <= 5; step++) {
+          await settle(page);
+          if (step === 2) {
+            await page.ev(`document.querySelector('#ob-points').value='36';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`);
+            await page.key('Shift', 'ShiftLeft', 16);
+            await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
+            const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
+            assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
+          }
+          heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`);
+        }
         await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
         await settle(page);
         const done = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),last=[...d.querySelectorAll('.ob-done>*')].at(-1).getBoundingClientRect(),f=d.querySelector('.ob-foot').getBoundingClientRect();return {gap:f.top-last.bottom,heights:[...d.querySelectorAll('.ob-foot .btn')].map(n=>n.getBoundingClientRect().height)}})()`);
@@ -4358,7 +4368,8 @@ async function runAlignChromeSetup(base) {
     try {
       await check(width, 'LP-S5 setup hints', `(${lang}): Skip's and the maths hint sit close under their label text, aligned with it; the dialog stays centred`, async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
-        await next(page, 'step 2'); await settle(page);
+        await next(page, 'step 2');
+        await page.ev(`document.querySelector('#ob-points').value='36';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`); await settle(page);
         const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
           const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
           const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
@@ -4377,6 +4388,79 @@ async function runAlignChromeSetup(base) {
         assert(h.icon && h.name === (lang === 'sk' ? 'otáznik' : 'the question mark'), `"?" hint: ${JSON.stringify(h)}`);
         if (width >= 390) assert(h.lines === 1, `"?" hint takes ${h.lines} lines`);
       });
+    } finally { await page.close(); }
+  }
+
+  // Setup asks the site language on step 1 (backlog language-in-setup, built
+  // 2026-11-15): a first visit with nothing stored is English; picking
+  // Slovenčina (a click, then the arrow keys as in Settings) switches setup
+  // and the page at once, saves the choice like Settings, keeps focus on the
+  // radio, and Skip keeps it. Opened bare, not with open(), which sets ?ui=
+  // and a stored language.
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    const page = await openPage(base, width, height);
+    try {
+      await check(width, 'SL-1 setup language', 'first visit: English checked; picking Slovenčina switches setup and the page, saves it like Settings; arrows switch; Skip and a bare reload keep it', async () => {
+        await page.waitFor(ready, 15000, 'page');
+        if (width < 600) {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        }
+        await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
+        await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#loading')?.hidden&&!!document.querySelector('#onboarding[open] .ob-uilang'),why:'fresh setup'})`, 15000, 'fresh setup');
+        await settle(page);
+        const look = `(()=>{const d=document.querySelector('#onboarding'),r=(c)=>d.querySelector('input[data-ob-language="'+c+'"]');return {html:document.documentElement.lang,
+          sk:r('sk').checked,en:r('en').checked,legend:d.querySelector('.ob-uilang legend').textContent,h:d.querySelector('#ob-title').textContent,skip:d.querySelector('.skipwrap button').textContent,
+          start:d.querySelector('.ob-foot .btn-p').textContent,focus:document.activeElement?.getAttribute('data-ob-language')??document.activeElement?.id,stored:localStorage.getItem('ib-university-finder:language'),
+          flag:localStorage.getItem('ibuf.onboarding.v1'),settingsSk:document.querySelector('#settings-panel [data-language=sk]').checked,code:document.querySelector('#settings-language').textContent,
+          search:location.search,heights:[...d.querySelectorAll('.ob-seg label')].map(n=>n.getBoundingClientRect().height),over:d.querySelector('.ob-body').scrollWidth-d.querySelector('.ob-body').clientWidth}})()`;
+        let m = await page.ev(look);
+        await shoot(page, `setup-language-${width}-first`);
+        assert(m.html === 'en' && m.en && !m.sk && m.legend === `${UI.en.r8_ob_site_language} · ${UI.sk.r8_ob_site_language}` && m.skip === UI.en.r2_skip && m.stored === null && m.search === '', `first visit: ${JSON.stringify(m)}`);
+        assert(m.over <= 0 && m.heights.every((h) => h >= (width < 600 ? 44 : 36)), `segments: ${JSON.stringify(m)}`);
+        await page.click(`document.querySelector('#onboarding .ob-seg label[lang=sk]')`, 'Slovenčina');
+        await page.waitFor(`({ok:document.querySelector('#ob-title')?.textContent===${JSON.stringify(UI.sk.r2_ob1h)},why:'setup not in Slovak'})`, 5000, 'Slovak setup');
+        await settle(page);
+        m = await page.ev(look);
+        await shoot(page, `setup-language-${width}-sk`);
+        assert(m.html === 'sk' && m.sk && !m.en && m.focus === 'sk' && m.stored === 'sk' && m.flag === null && m.settingsSk && m.code === 'SK'
+          && /[?&]ui=sk/.test(m.search) && m.skip === UI.sk.r2_skip && m.start === UI.sk.r2_start && m.legend === `${UI.sk.r8_ob_site_language} · ${UI.en.r8_ob_site_language}`, `after the Slovak pick: ${JSON.stringify(m)}`);
+        assert(await page.ev(`!document.querySelector('.skipwrap small')`), 'a language pick made Skip say it discards answers');
+        await page.key('ArrowRight', 'ArrowRight', 39);
+        await page.waitFor(`({ok:document.documentElement.lang==='en'&&document.activeElement?.getAttribute('data-ob-language')==='en',why:document.documentElement.lang+' '+document.activeElement?.tagName})`, 5000, 'arrow to English');
+        await page.key('ArrowLeft', 'ArrowLeft', 37);
+        await page.waitFor(`({ok:document.documentElement.lang==='sk'&&document.activeElement?.getAttribute('data-ob-language')==='sk'&&document.querySelector('#onboarding').contains(document.activeElement),why:document.documentElement.lang+' '+document.activeElement?.tagName})`, 5000, 'arrow back to Slovak');
+        await page.click(`document.querySelector('#onboarding .skipwrap button')`, 'Skip setup');
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.documentElement.lang==='sk' && localStorage.getItem('ib-university-finder:language')==='sk' && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && !localStorage.getItem('ibuf.filters.v1')`), 'Skip lost the language or stored filters');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}`);
+        await page.waitFor(ready, 15000, 'bare reload');
+        assert(await page.ev(`location.search==='' && document.documentElement.lang==='sk' && !document.querySelector('#onboarding').open && document.querySelector('#settings-language').textContent==='SK'`), 'a bare reload is not Slovak');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // Skip over existing filters says they are kept, on the 320 px footer where
+  // Skip shares a row with Back (plan review, 2026-11-15).
+  for (const lang of ['en', 'sk']) {
+    const page = await open(320, 640, lang);
+    try {
+      await check(320, 'SL-2 setup Skip keeps', `(${lang}): reopened over answers, a change makes Skip say the filters are kept; Skip and Back share a row; nothing scrolls sideways`, async () => {
+        await page.ev(`{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}))}`);
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await settle(page);
+        assert(await page.ev(`document.querySelector('#ob-points').value==='36' && !document.querySelector('.skipwrap small')`), 'reopened setup lost the points or shows a hint unchanged');
+        await page.ev(`{const p=document.querySelector('#ob-points');p.value='37';p.dispatchEvent(new Event('input',{bubbles:true}))}`); await settle(page);
+        const m = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),b=(n)=>n.getBoundingClientRect(),sk=d.querySelector('.skipwrap .btn'),sm=sk.querySelector('small'),back=d.querySelector('.ob-foot>.btn:not(.btn-p)'),body=d.querySelector('.ob-body');
+          return {hint:sm?.textContent,desc:sk.getAttribute('aria-describedby'),name:sk.getAttribute('aria-label'),skipTop:b(sk).top,backTop:b(back).top,skipRight:b(sk).right,backLeft:b(back).left,hintRight:b(sm).right,over:body.scrollWidth-body.clientWidth,footOver:d.scrollWidth-d.clientWidth}})()`);
+        await shoot(page, `setup-skip-keep-320-${lang}`);
+        assert(m.hint === UI[lang].r8_skip_keep && m.desc === 'ob-skip-hint' && m.name === UI[lang].r2_skip, `hint: ${JSON.stringify(m)}`);
+        assert(Math.abs(m.skipTop - m.backTop) <= 1 && m.skipRight <= m.backLeft && m.hintRight <= m.skipRight + 0.5 && m.over <= 0 && m.footOver <= 0, `footer: ${JSON.stringify(m)}`);
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36'`), 'Escape did not keep the filters');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
     } finally { await page.close(); }
   }
 
@@ -5474,7 +5558,8 @@ async function runNonModalSetup(base, want) {
       await check(width,'NMO focus','non-modal semantics, Tab/Shift+Tab inside, Escape discards and returns keyboard focus, tap returns without a ring',async()=>{
         assert(await page.ev(`!document.querySelector('#onboarding').matches(':modal')&&document.querySelector('#onboarding').getAttribute('aria-modal')==='true'&&document.activeElement.id==='ob-title'`),'Setup still native-modal or missing semantics/focus');
         await page.key('Tab','Tab',9);
-        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .btn-p')`),'Tab missed first control');
+        // Since 2026-11-15 step 1 starts with the site-language radios: one Tab stop, the checked one.
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding input[data-ob-language="en"]:checked')`),'Tab missed first control');
         await page.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
         await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
         assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .skipwrap button')`),'Shift+Tab escaped');

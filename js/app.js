@@ -370,6 +370,8 @@ async function start() {
       // Compare covers the results, so "Show my programmes" closes it first.
       // The Compare set stays (review of PR 1, 2026-11-07).
       closeCompare: () => closeCompare(false),
+      // Setup's language question switches the page as Settings does.
+      switchLanguage,
       apply(answers) {
         // "Show all saves" ignores the filters, so My list kept showing (and
         // the done screen counted) saves the answers rule out, like a 42-point

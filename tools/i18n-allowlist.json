@@ -1263,7 +1263,18 @@
       "./faq.js",
       "#i-help",
       "ob-tools ob-help-hint",
-      "{help}"
+      "{help}",
+      "ob-uilang",
+      "legend",
+      "fieldset",
+      " · ",
+      "ob-seg",
+      "radio",
+      "ob-site-language",
+      "data-ob-language",
+      "lang",
+      "ob-skip-hint",
+      " stay"
     ],
     "js/compare-set.js": [
       "./compare.js",

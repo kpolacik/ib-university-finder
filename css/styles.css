@@ -1402,6 +1402,19 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 .skipwrap .btn.btn-q{padding-inline:11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:18px}
 .skipwrap .btn small{font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3)}
 .skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
+/* Setup step 1: the site language (Leon, 2026-11-15). Settings' segmented
+   look, not the answer chips', so it never reads as a filter. The checked
+   segment is painted here: a redrawn step has no sliding thumb. */
+.ob-uilang{border:0;margin:0;padding:0;min-width:0}
+.ob-uilang legend{padding:0;margin:0 0 8px;font-size:14px;font-weight:600;color:var(--ink)}
+.ob-uilang legend span{font-weight:400;color:var(--ink-2)}
+.ob-seg{display:inline-flex;max-width:100%;padding:3px;background:var(--hover);border-radius:9px}
+.ob-seg label{display:flex;align-items:center;justify-content:center;min-width:128px;min-height:36px;padding:0 14px;border-radius:6px;cursor:pointer;color:var(--ink-2);font-weight:600;white-space:nowrap}
+.ob-seg input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.ob-seg label:has(input:checked){background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--hairline)}
+.ob-seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-3px}
+@media (pointer:coarse),(max-width:599px){.ob-seg{display:flex}.ob-seg label{flex:1;min-width:0;min-height:44px}}
+.ob-step.on.stay{animation:none}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
