@@ -43,7 +43,9 @@ export function moneyRange(low, high) {
   return getLanguage() === 'sk' ? `${plain.format(low)}–${money.format(high)}` : `${money.format(low)}–${plain.format(high)}`;
 }
 
-// The Requirements block's Entrance exam row; a missing state is "Not checked yet".
+// The compare table's Entrance exam line; a missing state is "Not checked yet".
+// The detail's row is labelled "Entrance exam", so it answers Yes or No instead
+// (EXAM_ANSWER in render.js); check.mjs keeps the two in step, state by state.
 export const EXAM_TEXT = {
   get yes() { return t('entrance_exam_or_test'); },
   get waivable() { return t('entrance_exam_some_ib_applicants_can_skip_it'); },

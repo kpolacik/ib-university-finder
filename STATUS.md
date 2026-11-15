@@ -274,8 +274,8 @@ The full cell log was a one-off working file and is not kept.
 Jakub's three features now work in the redesigned page: the **My maths**
 filter (`ib_maths`), the **Entrance exam** filter (`entrance_exam`) and the
 **living-cost range** (`living_cost_min`, `living_cost_max`,
-`living_cost_source`), shown as "Living costs" in each programme's Applying
-section. The UK is shown (Leon, 2026-11-02; see Decisions). Jakub's notes on
+`living_cost_source`), shown as "Living costs" in each programme's Costs
+fold (and as the short "Living …/mo" line under the fee). The UK is shown (Leon, 2026-11-02; see Decisions). Jakub's notes on
 each country follow, then his 2026-10-26 additions for Denmark and Italy.
 
 Found while finishing the merge:
@@ -575,7 +575,7 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
-**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
+**Same-name programmes (D14).** Charles entries show the faculty in the Applying details fold, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
 
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
@@ -796,6 +796,68 @@ plans/backlog/wording.md for the translation queue.
   rows back — delete them again if you ever do.
 
 ## The look of it
+
+**Programme details, "decision first" (2026-11-15, Leon's pick F3, local
+`filter-selected-first`):** the details of a programme (the pane on wide
+screens, the part that opens under a row on phones) were rearranged so that
+what a student asks first comes first, and so the grey small print no longer
+fills the screen. From top to bottom:
+
+1. The campus photo, as a short strip (2.4 wide to 1 high; it was 16:9). A
+   university with no photo has none.
+2. The title, then one outlined panel with the three facts: IB points across
+   the top, deadline and EU fee side by side. The figures are large; the
+   green, amber and orange verdict colours fill the fact they belong to. A
+   passed deadline is the plain date, an outlined word "Passed" and "Check the
+   next cycle": not struck through, not red, not dimmed. On phones the panel is
+   left out, because the row above already shows the three facts; the full
+   points lines are repeated only when they say more than the row (two CAO
+   rounds, the HPAT, a cutoff that includes a test, or a note about your
+   points).
+3. The Apply button and the Official page button.
+4. "Before you apply", always open: entrance exam, intake, offer timing,
+   language and application fee as short label and answer pairs, then the
+   longer texts (other requirements, IB subjects, language requirement,
+   admission, general requirement, IB recognition, deadline notes) under
+   their labels. Requirements separated by " · " in the data are drawn as a
+   bulleted list. The entrance-exam answer now starts with Yes or No.
+5. Warnings (why a programme is shown although a filter could not judge it,
+   a missing official link) stay in full, right after that section.
+6. Two sections that open with a click or the Enter key: **Costs** (EU fee,
+   living costs, fee plus 12 months' living) and **Applying details**
+   (faculty, apply via, places). Closed, each shows its main value under its
+   name, for example "€14,771–24,371 a year with living". A section the
+   student opened stays open when the details are redrawn.
+7. The QS and THE ranks as one plain line, "Whole-university rank, 2027: QS 6
+   · THE 5". There is no "About the university" section (Leon). The note
+   under it appears only when a shown rank has "=": "“=” means a tied rank."
+   `SHOW_RANKINGS` in `js/config.js` still switches the line off.
+8. Save, Compare and Student life, then the photo credit.
+
+**One-line notes (Leon, 2026-11-15).** A grey note in the details is at most
+one line. A note of 36 characters or fewer is shown as it is. A longer one
+becomes a one-line blue link that says what is inside, and the full text
+opens under it; nothing was deleted. The links are: "Fee details" (always,
+under the application fee), "Deadline details" (deadline notes), "Source"
+(living costs), "How it is worked out" (the yearly estimate) and "Why there
+is no tuition fee" (Czech-taught public programmes). "your figure" and
+"national minimum, not a full budget" stay visible in front of the link,
+because they change what the figure means. Not shortened on purpose: the
+warnings in point 5, the dashed "not known" boxes with their reason, and the
+photo credit.
+
+When printing, every section and note link is opened so the paper has the
+full text, and closed again afterwards. The list row was not changed. New
+wording is in `js/i18n.js` in English and Slovak; the Slovak was written by
+an agent and needs a native read. Checks: `tools/check.mjs` (sections "PR2
+detail UI" and "Each programme renders as the detail article") and smoke
+`runPr2` ("F3 folds" opens every section from the keyboard, redraws and
+prints). Two things a successor should know: the narrow-pane layout (one
+fact per row up to a 1,269 px wide window) is a plain screen-width rule in
+`css/styles.css`, because the pane's width follows the window; and the
+check that allows only two "container" rules in the stylesheet was kept as
+it is. The design notes and mockup are in the main checkout's local
+`plans/detail-redesign-20261114/` (not in git).
 
 **Sort survives reload (2026-11-09):** Picks from the Sort menu are saved,
 including Deadline when points are set. Reloading a link or saved preferences
@@ -1343,9 +1405,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   registry A01).** A card whose deadline had gone was drawn at 65% opacity,
   which took its text to 2.7–3.6:1 contrast, below what anyone can read
   comfortably. The first one (Bocconi's World Bachelor, 1 November) would have
-  dimmed on 2 November. The dimming is gone. Since the redesign the deadline
-  cell says "Passed, check next cycle" over the struck-through date, in neutral
-  ink, never red. `check.mjs` fails if a passed or selected row gets an opacity
+  dimmed on 2 November. The dimming is gone. The details show the plain date
+  with an outlined word "Passed" and "Check the next cycle", in neutral ink,
+  never red and (since 2026-11-15) not struck through there; the list row
+  still strikes the date and says "passed". `check.mjs` fails if a passed or selected row gets an opacity
   again.
 
 - **Cards left out what nobody knew (fixed 2026-10-26, registry R01, R03, R04,

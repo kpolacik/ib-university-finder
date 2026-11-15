@@ -881,9 +881,9 @@ html{overflow-anchor:none}
 .d-title{font-size:var(--fs-18);font-weight:700;line-height:24px}
 .d-title .deg{white-space:nowrap;margin-left:0;font-size:15px;font-weight:400;color:var(--ink-2)}
 
-/* Cells: plain text unless the cell carries a verdict (§6.6). */
-.d-cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-.d-cells .c-pts{grid-column:1/-1}
+/* Cells: plain text unless the cell carries a verdict (§6.6). The list row
+   uses them; the detail's facts panel ("Detail, decision first" at the end of
+   this file) shares the label, figure, verdict and fill classes. */
 .cell{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:8px 10px;border-radius:var(--r-cell);font-size:var(--fs-14);line-height:20px}
 .lab{font-size:var(--fs-12);font-weight:600;line-height:16px;color:var(--ink-2)}
 /* --ink-2 on the time fill is 4.70:1, so its text stays at least 13 px. */
@@ -915,17 +915,22 @@ html{overflow-anchor:none}
 .plines li{font-variant-numeric:tabular-nums}
 .plines b{font-weight:700;margin-right:0;white-space:nowrap}
 
-/* Requirements | Applying. */
-.two{display:grid;gap:16px}
-.d-sec>h3{margin-bottom:2px;font-size:var(--fs-14);font-weight:700}
-/* Labels above their text, one reading column (redesign revisions): long
-   admissions paragraphs no longer squeeze into a value column beside a label. */
-.kv{display:block;font-size:15px;line-height:22px}
-.kv dt{margin:0;padding:10px 0 2px;border-top:1px solid var(--hairline);font-size:var(--fs-13);font-weight:600;line-height:18px;color:var(--ink-2)}
-.kv dt:first-child{border-top:0;padding-top:4px}
-.kv dd{margin:0;padding:0 0 6px}
+/* Sections are separated by space and a heading, not a rule per row. */
+.d-sec>h3{margin-bottom:10px;font-size:var(--fs-16);line-height:22px;font-weight:700}
+/* Label | value for short answers (a word, a month, a figure); a sentence
+   pasted from a university page stacks under its label across the full width
+   (.kv-long), so long admissions paragraphs never squeeze into a value column
+   beside a label. The dt/dd pairs sit straight in the dl with no wrapper and
+   no display:contents: the grid places them. Labels are regular grey and
+   short answers semibold, so the answers are what the eye lands on. */
+.kv{display:grid;grid-template-columns:minmax(7rem,38%) minmax(0,1fr);gap:10px 14px;font-size:15px;line-height:22px}
+.kv dt{font-size:var(--fs-14);color:var(--ink-2)}
+.kv dd{min-width:0;font-weight:600;color:var(--ink)}
+.kv .kv-long{grid-column:1/-1}
+.kv dt.kv-long{margin-bottom:-8px}
+.kv dd.kv-long{font-weight:400}
 .kv dd p+p{margin-top:4px}
-.kv-none{font-size:15px;line-height:22px}
+.kv-none{margin-bottom:10px;font-size:15px;line-height:22px}
 /* "Not published" / "Not checked yet": unknown is not "none" and must not
    read like it. */
 .unk-t{display:inline;padding:0;border:0;font-size:var(--fs-14);font-weight:400;line-height:20px;color:var(--ink-2);white-space:nowrap}
@@ -996,8 +1001,6 @@ html{overflow-anchor:none}
      letter lines up with the end of the dates and fees under it. */
   .cols .r{justify-self:end;flex-direction:row-reverse}
   .detail{padding:16px 24px 20px}
-  .d-cells{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
-  .d-cells .c-pts{grid-column:auto}
 }
 
 /* Facts to the right only when the list itself is at least 900 px wide: the
@@ -1049,8 +1052,6 @@ html{overflow-anchor:none}
   .goto:focus{left:auto;right:12px;bottom:8px;z-index:2;padding:4px 8px;background:var(--panel)}
   .pane{display:block;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);box-shadow:var(--shadow)}
   .pane .detail{padding:16px 20px 20px;border:0;border-radius:0}
-  .pane .d-cells{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"pts pts" "ddl fee"}
-  .pane .d-cells .c-pts{grid-column:1/-1}
   .r-main{padding-right:0}
   /* No chevron track once rows no longer open in place. */
   @container (min-width: 800px) {
@@ -2372,14 +2373,14 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   .kv dt, .kv dd, .note { break-inside: avoid; }
 
   /* A printed link is useless without its address, and the address must wrap. */
-  .d-foot .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
-  .d-foot .btn-p::after {
+  .d-actions .btn-p { display: block; height: auto; padding: 0; border: 0; background: none; color: var(--ink); white-space: normal; }
+  .d-actions .btn-p::after {
     content: " — " attr(href);
     font-weight: 400;
     font-size: 0.85em;
     word-break: break-all;
   }
-  .d-foot svg, .d-foot .lnk { display: none; }
+  .d-actions svg, .d-foot svg, .d-foot .lnk { display: none; }
 }
 
 /* One detail-level control and quiet notes keep source-language context local. */
@@ -2409,19 +2410,157 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
 /* University media and application facts in the detail only. */
 .d-photo{margin:0}
-.ph-frame{aspect-ratio:16/9;overflow:hidden;border-radius:8px;border:1px solid var(--hairline);background:var(--hover)}
+.ph-frame{aspect-ratio:2.4/1;overflow:hidden;border-radius:8px;border:1px solid var(--hairline);background:var(--hover)}
 .ph-frame img{display:block;width:100%;height:100%;object-fit:cover}
 .d-src,.rk-note{margin:0;font-size:var(--fs-12);line-height:17px;color:var(--ink-2);overflow-wrap:anywhere}
 .d-src{border-top:1px solid var(--hairline);padding-top:8px}
 .d-src a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
-.d-rank>h3{margin-bottom:6px}
-.rk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
-.rk{display:grid;gap:2px;align-content:start;min-width:0}
-.rk .fig{font-size:var(--fs-18);line-height:24px}
-.rk-none{font-size:var(--fs-14);line-height:20px;color:var(--ink-2)}
-.rk-note{margin-top:8px}
 .d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}
 .d-actions .btn.btn-apply{white-space:normal;text-align:center;justify-content:center;line-height:20px;height:auto;min-height:var(--ctl);padding-block:8px}
 .btn-apply .ic{flex:none}
 
 @media print{.d-actions .btn.btn-apply{min-height:0;text-align:left;padding-block:0}}
+
+/* ---------------------------------------------------------------------------
+   Detail, "decision first" (Leon's pick F3, 2026-11-15).
+   On screen: campus photo as a short strip, title, one panel with the three
+   facts, the apply buttons, "Before you apply" (always open), two folds
+   (Costs, Applying details), the rankings line, Save / Compare, photo credit.
+   Colour is still only for verdicts and blue only for interaction: the fold
+   and note summaries are interactive, so they are the only new blue.
+   Type: title 20/26 700 · key figure 24/30 600 · date 18/26 600 ·
+   section 16/22 700 · value 15/22 · label and small print 13–14 px --ink-2. */
+.detail{gap:24px}
+/* The title and facts come first in the DOM (heading navigation, reading
+   order); the photo is drawn above them. Nothing in it is focusable, so the
+   Tab order is unchanged. A university with no photo simply has none. */
+.d-photo{order:-1;margin-bottom:-12px}
+.d-head{gap:4px}
+.d-title{font-size:20px;line-height:26px;letter-spacing:-.005em}
+.d-uni{font-weight:600;color:var(--ink)}
+.d-facts,.d-apply,.d-rank,.detail>.d-foot{margin-top:-8px}
+.d-must{padding-top:4px}
+/* In the phone slot the apply buttons follow the photo (or start the slot),
+   not the facts panel, so they keep their full distance. */
+.expand-inner .d-apply{margin-top:0}
+
+/* The three facts in one hairline panel: points across the top, deadline and
+   fee side by side. Figures are figures (digits are what a scanning eye
+   catches); the verdict fills from the list row colour the whole fact. */
+.d-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--hairline);border-radius:10px;overflow:hidden}
+.d-facts>.fact{grid-area:auto;position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:12px 14px 13px}
+.d-facts>.c-pts{grid-column:1/-1;border-bottom:1px solid var(--hairline)}
+.d-facts>.c-ddl{border-right:1px solid var(--hairline)}
+.fact>.lab{font-size:var(--fs-13);font-weight:400;line-height:18px}
+.fact .fig{display:block}
+.fact-num,.fact.is-one .plines b{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.fact-unit,.fact.is-one .pl-q{font-size:var(--fs-14);line-height:20px;font-weight:400;color:var(--ink-2)}
+.fact-date{font-size:18px;line-height:26px}
+.fact .plines li{font-size:15px;line-height:22px}
+.fact .plines b{font-size:18px;line-height:24px;font-weight:600}
+.fact.is-one .plines li{font-weight:600}
+.fact-sub{font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
+/* An unknown fact is a dashed box inset in its part of the panel, never a
+   second border on the panel's own edge. */
+.d-facts>.fact.v-unk{border:0;padding:12px 14px 13px}
+.d-facts>.c-pts.v-unk{border-bottom:1px solid var(--hairline)}
+.d-facts>.c-ddl.v-unk{border-right:1px solid var(--hairline)}
+.fact.v-unk::after{content:"";position:absolute;inset:4px;border:1.5px dashed var(--ink-3);border-radius:6px;pointer-events:none}
+.fact.v-unk .fig,.fact.v-unk .plines li{font-size:15px;line-height:22px;font-weight:600;color:var(--ink-2)}
+/* Passed: the plain date in ink and a neutral outlined word. Nothing struck
+   through, nothing dimmed, no colour (A01). */
+.d-tag{display:inline-block;padding:0 6px;border:1px solid var(--edge);border-radius:var(--r-cell);font-size:var(--fs-12);line-height:18px;font-weight:600;color:var(--ink);white-space:nowrap}
+.fact-tagline{display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px 6px;margin-top:2px}
+/* The pane is clamp(300px,26vw,380px) wide, so it is 330 px or narrower up to
+   a 1269 px window: there, one fact per row and cost labels above their
+   figures. A media query, not a container query: the pane's width follows the
+   window alone, and the list and the detail footer stay the only containers. */
+@media (min-width: 1200px) and (max-width: 1269.98px){
+  .d-facts{grid-template-columns:minmax(0,1fr)}
+  .d-facts>.c-ddl,.d-facts>.c-ddl.v-unk{border-right:0;border-bottom:1px solid var(--hairline)}
+}
+
+/* An unknown inside a value, a summary or a line: the dashed box, in words.
+   It may wrap: "Assessment required; IB equivalent unverified" is wider than
+   a 300 px pane. */
+.detail :is(dd,.fold-g,.rk,.plines) .unk-t{display:inline-block;padding:0 6px;border:1.5px dashed var(--ink-3);border-radius:var(--r-cell);font-size:var(--fs-13);line-height:20px;font-weight:600;color:var(--ink-2);white-space:normal}
+/* " · "-separated alternatives, drawn as the list they are. */
+.detail .d-list{display:grid;gap:2px;padding-left:1.1em;list-style:disc}
+.d-list li::marker{color:var(--ink-2)}
+
+/* Folds: native <details>. The summary is a real heading with the fold's
+   headline value under it, so a closed fold still answers its question. */
+.d-fold{margin-top:-8px;border-top:1px solid var(--hairline)}
+.d-fold+.d-fold{margin-top:-24px}
+.d-must+.d-fold,.notes+.d-fold{margin-top:0}
+.d-fold:last-of-type{border-bottom:1px solid var(--hairline)}
+.d-fold>summary{display:grid;grid-template-columns:minmax(0,1fr) 14px;align-items:center;gap:2px 12px;min-height:48px;padding:10px 2px;cursor:pointer;list-style:none}
+.d-fold>summary::-webkit-details-marker{display:none}
+.d-fold>summary::after{content:"";grid-column:2;grid-row:1 / span 2;justify-self:center;width:7px;height:7px;margin-top:-4px;border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);transform:rotate(45deg)}
+.d-fold[open]>summary::after{margin-top:4px;transform:rotate(-135deg)}
+.d-fold>summary:hover .fold-t{color:var(--accent)}
+.d-fold>summary:focus-visible,.d-note-more>summary:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:var(--r-cell)}
+.fold-t{grid-column:1;grid-row:1;font-size:var(--fs-16);line-height:22px;font-weight:700;color:var(--ink)}
+.fold-g{grid-column:1;grid-row:2;font-size:var(--fs-14);line-height:20px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+/* Open, the body says it in full, so the headline value steps aside. */
+.d-fold[open]>summary .fold-g{display:none}
+.d-fold>.kv{margin:2px 0 16px}
+.d-fold>.english-note{margin:-4px 0 16px}
+
+/* Costs: label left, figure right, and each figure's one-line note under the
+   pair across the full width. The note lives inside the dd, so the dl stays
+   plain dt/dd pairs. The label floats: the figure sits on its first line, the
+   note clears it (a two-line label never runs into the note), and a figure
+   too wide for the rest of the line drops under the label by itself. */
+.kv-costs{display:block}
+.kv-costs dt{float:left;clear:left;max-width:55%;padding-right:12px}
+.kv-costs dd{text-align:right;font-variant-numeric:tabular-nums}
+.kv-costs dd::after{content:"";display:block;clear:left}
+.kv-costs dd+dt,.kv-costs dd+dt+dd{margin-top:12px}
+.kv-costs .d-note{clear:left}
+@media (min-width: 1200px) and (max-width: 1269.98px), (max-width: 345px){
+  .kv-costs dt{float:none;max-width:none;padding-right:0}
+  .kv-costs dd{text-align:left}
+  .kv-costs dd+dt+dd{margin-top:0}
+}
+
+/* A grey note is one line. Anything longer is a one-line link (a native
+   <details>) whose label says what is inside; the full text opens under it.
+   The summary is interactive, so it is blue; the text inside is plain grey. */
+.d-note{font-size:var(--fs-13);line-height:19px;font-weight:400;color:var(--ink-2);text-align:left}
+.dd-note.d-note{margin-top:2px}
+.d-note-more>summary{display:inline-flex;align-items:center;gap:4px;min-height:24px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.d-note-more>summary::-webkit-details-marker{display:none}
+.d-note-more>summary::after{content:"";width:6px;height:6px;margin:0 2px 0 4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.d-note-more[open]>summary::after{transform:rotate(-135deg) translateY(-1px)}
+.d-note-more>summary:hover{color:var(--accent-press)}
+.d-note-body{margin:2px 0 4px;padding-left:10px;border-left:2px solid var(--hairline)}
+.d-note-body p+p{margin-top:4px}
+.d-note-more{display:inline-block}
+.d-note-more[open]{display:block}
+/* Deadline notes carry facts (a time of day, a test date), so their text is
+   in ink, not grey; the one-line rule is the same. */
+.d-note-facts{font-size:inherit;line-height:inherit;color:var(--ink)}
+.d-note-facts .d-note-more>summary{font-size:var(--fs-13);line-height:19px}
+.d-note-facts .d-note-body{font-size:var(--fs-14);line-height:21px}
+
+/* Rankings: one quiet line under the folds, never louder than the facts. */
+.d-rank{display:grid;gap:2px}
+.rk-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;font-size:var(--fs-13);line-height:20px;color:var(--ink-2)}
+.rk-items{display:inline-flex;flex-wrap:wrap;gap:0 14px}
+.rk{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.rk .fig{font-size:var(--fs-14);line-height:20px}
+.rk .rk-src{gap:2px;min-height:24px}
+.detail .rk-src .ic{width:12px;height:12px}
+.detail .rk .rk-none{padding:0 5px;font-size:var(--fs-12);line-height:18px}
+
+/* Paper has no clicks: every fold and note link prints open. app.js opens
+   them in beforeprint (Safari ignores ::details-content); this is the
+   fallback where the pseudo-element exists. */
+@media print{
+  .detail details::details-content{content-visibility:visible;display:block}
+  .d-fold>summary::after,.d-note-more>summary::after{display:none}
+  .d-note-more>summary{color:var(--ink);text-decoration:none}
+  .fact{background:none}
+  .fact .verd,.fact .ic{color:var(--ink)}
+}

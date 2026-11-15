@@ -11,9 +11,9 @@ import { pointsLines, pointsShort } from './points.js';
 import { activeFilterCount, DEADLINE_WINDOWS, EXAM_OPTIONS, pointsBucket, pointsNote, roundTwoOnly, REVERSE_SORTS, selectedFirst } from './filters.js';
 import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
-// The detail's wording for the exam, the countdown, money and the yearly
-// estimate lives in compare.js, so the compare table can't say it differently.
-import { money, moneyRange, EXAM_TEXT, countdown, yearlyLine, visibleFacts } from './compare.js';
+// The detail's wording for the countdown, money and the yearly estimate lives
+// in compare.js, so the compare table can't say it differently.
+import { money, moneyRange, countdown, yearlyLine, visibleFacts } from './compare.js';
 
 const longDate = dateFormatter({
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -103,20 +103,29 @@ function filterOverview(state, savedCount) {
   box.append(legend); return box;
 }
 
-// The full entry for one programme (design spec §6.7). The pane has the full
-// head and cells; the slot keeps the full points lines and other facts.
+// The full entry for one programme, laid out "decision first" (Leon's pick
+// F3, 2026-11-15): what a student asks first comes first. On screen the order
+// is photo, title, the three facts, the way to apply, "Before you apply"
+// (always open: everything that can decide whether you can apply), then two
+// folds for what can wait (costs, applying details), the rankings line, the
+// save and compare buttons and the photo credit.
+// In the DOM the title and facts come before the photo, so heading navigation
+// and a screen reader start with the programme; CSS (order:-1) draws the photo
+// above them. The phone slot has no head or facts panel: the row above it
+// already shows them.
 export function renderDetail(row, state, { slot = false, saved, inCompare, showRankings = SHOW_RANKINGS } = {}) {
   const article = el('article', 'detail');
   // Passed rows are never dimmed (A01). Containment belongs to li.item.
   if (row.deadlinePassed) article.classList.add('is-past');
   if (row.isSample) article.classList.add('is-sample');
 
-  if (row.imageFile) article.append(photoBlock(row));
+  // My points: why an unknown row is shown, and when a cutoff is reached only
+  // with HL Maths 4+ or only on Round 2 (pointsNote in filters.js).
+  const pointsSays = pointsNote(row, state);
 
   if (slot) {
-    const points = el('div', 'd-pts');
-    points.append(el('p', 'lab', t('ib_points')), pointsList(row));
-    article.append(points);
+    const points = slotPoints(row, pointsSays);
+    if (points) article.append(points);
   } else {
     // --- head ----------------------------------------------------------------
     const head = el('header', 'd-head');
@@ -140,35 +149,40 @@ export function renderDetail(row, state, { slot = false, saved, inCompare, showR
     title.append(el('span', 'visually-hidden', ','), document.createTextNode(' '), degree);
     // A "?" city is unknown, not irrelevant, so it is said rather than dropped.
     const city = row.cityUnknown ? t('city_not_published') : (!row.city || row.city === '?' ? t('city_unknown') : row.city);
-    const place = [city, facetLabel(row.country)].filter(Boolean).join(', ');
+    const where = [city, facetLabel(row.country)].filter(Boolean).join(', ');
     // The title comes first so heading navigation reads it first; CSS draws the
-    // place line above it, as the design has it.
-    head.append(title, el('p', 'd-place', [row.university, place].filter(Boolean).join(' · ')));
+    // place line above it, as the design has it. The university is the one
+    // part of that line in ink: it is the name students look for.
+    const place = el('p', 'd-place');
+    place.append(el('span', 'd-uni', row.university));
+    if (where) place.append(document.createTextNode(` · ${where}`));
+    head.append(title, place);
     article.append(head);
 
-    // --- the three cells -------------------------------------------------------
-    const cells = el('div', 'd-cells');
-    cells.append(pointsCell(row, state), deadlineCell(row), feeCell(row, { state }));
-    article.append(cells);
+    // --- the three facts -------------------------------------------------------
+    const facts = el('div', 'd-facts');
+    facts.append(pointsFact(row, state), deadlineFact(row), feeFact(row, state));
+    article.append(facts);
   }
 
-  if (showRankings && row.rankingsYear) article.append(rankBlock(row));
+  if (row.imageFile) article.append(photoBlock(row));
 
-  // --- Requirements | Applying -----------------------------------------------
-  const two = el('div', 'two');
-  two.append(requirementsSection(row));
-  const applying = applyingSection(row, state);
-  if (applying) two.append(applying);
-  article.append(two);
+  // --- the way to apply, straight after the facts ------------------------------
+  const apply = applyActions(row);
+  if (apply) article.append(apply);
 
-  // --- notes, after the facts -------------------------------------------------
-  // My points: why an unknown row is shown, and when a cutoff is reached only
-  // with HL Maths 4+ or only on Round 2 (pointsNote in filters.js). The cell
-  // carries the short verdict; the full sentence is said once, here (spec §0:
-  // §6.7 outranks the mockup, which merged the two).
-  const pointsSays = pointsNote(row, state);
+  article.append(beforeYouApply(row));
+
+  // --- notes, after what every applicant must read ------------------------------
+  // The points fact carries the short verdict; the full sentence is said
+  // once, here. These are warnings, so they are never folded or shortened.
   const said = notes(row, state, pointsSays);
   if (said) article.append(said);
+
+  article.append(costsFold(row, state), applyingFold(row, state));
+
+  // Not a fold of its own: it is one line (Leon, 2026-11-15).
+  if (showRankings && row.rankingsYear) article.append(rankLine(row));
 
   const foot = footer(row, saved, inCompare);
   if (foot) article.append(foot);
@@ -181,7 +195,7 @@ export function renderDetail(row, state, { slot = false, saved, inCompare, showR
 function newUnknown(unknown) { return unknownTag(t(unknown ? 'not_published' : 'not_checked_yet')); }
 
 function recognitionRow(list, row) {
-  reqRow(list, t('ib_recognition'), [row.ibRecognition ? dataValue('ib_recognition', row.ibRecognition) : newUnknown(row.recognitionUnknown)]);
+  reqRow(list, t('ib_recognition'), [row.ibRecognition ? dataValue('ib_recognition', row.ibRecognition) : newUnknown(row.recognitionUnknown)], true);
 }
 
 function photoBlock(row) {
@@ -209,20 +223,31 @@ function photoCredit(row) {
   return credit;
 }
 
-function rankBlock(row) {
-  const section = el('section', 'd-sec d-rank'), grid = el('div', 'rk-grid');
-  section.append(el('h3', '', t('rankings')));
+// Whole-university QS/THE ranks in one quiet line: they are facts about the
+// university, not the programme, so they sit below the programme's own facts
+// and never louder than them. The label says whose rank it is, so no sentence
+// repeats it. "Not listed" (the table has no row for this university) and
+// "Not published" (we hold no valid figure) stay different.
+function rankLine(row) {
+  const section = el('section', 'd-sec d-rank'), line = el('p', 'rk-line'), items = el('span', 'rk-items');
+  line.append(el('span', 'rk-lab', t('rank_line', { year: row.rankingsYear })), document.createTextNode(' '));
+  let tied = false;
   for (const [source, rank, url] of [
     ['QS', row.qsRank, 'https://www.topuniversities.com/world-university-rankings'],
     ['THE', row.theRank, `https://www.timeshighereducation.com/world-university-rankings/${row.rankingsYear}/world-ranking`],
   ]) {
-    const item = el('div', 'rk');
-    item.append(el('span', 'lab', `${source} ${row.rankingsYear}`),
-      el('span', rank ? 'fig' : 'rk-none', rank || (rank === '' ? t('rank_not_listed', { source, year: row.rankingsYear }) : t('not_published'))),
-      externalLink('lnk', t('rank_source_table', { source, year: row.rankingsYear }), url));
-    grid.append(item);
+    const item = el('span', 'rk');
+    if (rank && rank.includes('=')) tied = true;
+    item.append(externalLink('lnk rk-src', source, url), document.createTextNode(' '),
+      rank ? el('b', 'fig', rank) : el('span', 'rk-none unk-t', rank === '' ? t('rank_unlisted') : t('not_published')));
+    if (items.childElementCount) items.append(document.createTextNode(' '));
+    items.append(item);
   }
-  section.append(grid, el('p', 'rk-note', t('rank_note'))); return section;
+  line.append(items);
+  section.append(line);
+  // Only when a shown rank is tied; a range such as 326–350 reads as itself.
+  if (tied) section.append(el('p', 'rk-note', t('rank_tie_note')));
+  return section;
 }
 
 function applyDestination(row) {
@@ -236,15 +261,25 @@ function applyDestination(row) {
   return { label: t('apply_btn_system', { system }) + suffix, closed: system + suffix };
 }
 
+// One fact in the panel under the title: a small label, then the figure.
+function factBox(kind, label) {
+  const box = el('div', `fact ${kind}`);
+  box.append(el('span', 'lab', label));
+  return box;
+}
+
 // Points lines come from pointsLines (js/points.js), shared with the CSV
 // export, one line each so a two-round cutoff reads as two. The verdict is
 // from pointsBucket, the same test the filter uses, so they cannot disagree.
-function pointsCell(row, state) {
-  const cell = el('div', 'cell c-pts');
-  cell.append(el('span', 'lab', t('ib_points')));
-  cell.append(pointsList(row));
-
+function pointsFact(row, state) {
+  const box = factBox('c-pts', t('ib_points'));
   const bucket = pointsBucket(row, state);
+  // With My points empty an unknown figure is a dashed box around the words;
+  // the whole fact is dashed only when it is also the verdict on your points.
+  box.append(pointsList(row, { boxed: row.ibPointsMin === null && bucket !== 'unknown' }));
+  // A single line is the figure students scan for; two rounds stay a list.
+  if (pointsLines(row).length === 1) box.classList.add('is-one');
+
   let fill = '';
   let mark = '';
   let verdict = '';
@@ -257,27 +292,40 @@ function pointsCell(row, state) {
     [fill, mark] = ['v-unk', 'm-unk'];
     if (row.ibPointsMin !== null) verdict = t('cutoff_may_include_test_marks');
     else verdict = pointsShort(row).unknown.verdict;
-  } else if (bucket === null && row.ibPointsMin === null) {
-    // My points empty: the dashed box and the line already say it is unknown.
-    fill = 'v-unk';
   }
-  if (fill) cell.classList.add(fill);
-  if (verdict) cell.append(el('span', `verd m ${mark}`, verdict));
-  return cell;
+  if (fill) box.classList.add(fill);
+  if (verdict) box.append(el('span', `verd m ${mark}`, verdict));
+  return box;
 }
 
-function pointsList(row) {
+// The phone slot sits under a row that already shows the points. It repeats
+// them only when the full lines say more than the row's short figure: two CAO
+// rounds, the HPAT ranking, a cutoff that hides a test score, or a points note.
+function slotPoints(row, pointsSays) {
+  const more = pointsLines(row).length > 1 || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified
+    || pointsSays !== null;
+  if (!more) return null;
+  const points = el('div', 'd-pts');
+  points.append(el('p', 'lab', t('ib_points')), pointsList(row));
+  return points;
+}
+
+function pointsList(row, { boxed = false } = {}) {
   const list = el('ul', 'plines');
   // Safari and VoiceOver drop list semantics from a list without markers.
   list.setAttribute('role', 'list');
   for (const line of pointsLines(row)) {
     const item = el('li');
     if (line.number === null) {
-      item.textContent = line.qualifier;
+      if (boxed) item.append(unknownTag(line.qualifier));
+      else item.textContent = line.qualifier;
     } else {
-      // The space after the number is real text, so reading and copying the
-      // line gives "≈ 38 IB points, …", not "≈ 38IB points".
-      item.append(el('b', '', line.number), document.createTextNode(` ${line.unit}, ${line.qualifier}`));
+      // The line still reads and copies as "≈ 38 IB points, …" with a real
+      // space after the number. Only the eye skips the unit: the label above
+      // already says "IB points".
+      const rest = el('span', 'pl-q');
+      rest.append(document.createTextNode(' '), el('span', 'visually-hidden', `${line.unit}, `), document.createTextNode(line.qualifier));
+      item.append(el('b', '', line.number), rest);
     }
     list.append(item);
   }
@@ -337,7 +385,7 @@ function renderRow(row, state, wide, shortlist, headings, compare) {
   const chevron = el('span', 'chev');
   chevron.setAttribute('aria-hidden', 'true');
   chevron.append(icon('i-chevron', 'ic'));
-  body.append(main, rowPointsCell(row, state), deadlineCell(row, { compact: true }), feeCell(row, { compact: true, state }));
+  body.append(main, rowPointsCell(row, state), deadlineCell(row), feeCell(row, state));
   // The requirements run under the facts across the whole row, never clipped.
   const line = rowRequirements(row);
   if (line) body.append(line);
@@ -442,45 +490,60 @@ export function renderCountShort(node, lead) {
   return true;
 }
 
-function deadlineCell(row, { compact = false } = {}) {
-  const cell = el(compact ? 'p' : 'div', 'cell c-ddl');
+// The list row's deadline cell. The detail has its own (deadlineFact).
+function deadlineCell(row) {
+  const cell = el('p', 'cell c-ddl');
   cell.append(el('span', 'lab', t('deadline')));
   if (!row.deadline) {
     cell.classList.add('v-unk');
     cell.append(el('span', 'fig', t('not_published')));
     return cell;
   }
-  const date = (compact ? shortDate : longDate).format(row.deadline);
-  if (compact) {
-    const fig = el('span', 'fig');
-    if (row.deadlinePassed) { cell.classList.add('v-past'); fig.append(el('s', '', date)); }
-    else { fig.textContent = date; if (row.isUrgent) cell.classList.add('v-time'); }
-    cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : countdown(row.daysUntilDeadline).toLowerCase()));
-  } else if (row.deadlinePassed) {
-    // Neutral, never red and never dimmed: it is still a fact worth reading.
-    cell.classList.add('v-past');
-    const fig = el('span', 'fig');
-    fig.append(el('s', '', date));
-    cell.append(el('span', 'verd', t('passed_check_next_cycle')), fig);
+  const date = shortDate.format(row.deadline);
+  const fig = el('span', 'fig');
+  if (row.deadlinePassed) { cell.classList.add('v-past'); fig.append(el('s', '', date)); }
+  else { fig.textContent = date; if (row.isUrgent) cell.classList.add('v-time'); }
+  cell.append(fig, el('span', 'verd', row.deadlinePassed ? t('r2_passed') : countdown(row.daysUntilDeadline).toLowerCase()));
+  return cell;
+}
+
+// The detail's deadline: the date as a figure, then what it means for you.
+function deadlineFact(row) {
+  const box = factBox('c-ddl', t('deadline'));
+  if (!row.deadline) {
+    box.classList.add('v-unk');
+    box.append(el('span', 'fig', t('not_published')));
+    return box;
+  }
+  box.append(el('span', 'fig fact-date', shortDate.format(row.deadline)));
+  if (row.deadlinePassed) {
+    // Neutral, never red, never dimmed and never struck through: the date is
+    // still a fact worth reading (A01). A word in an outlined tag says it has
+    // passed, in the same ink as everything else.
+    box.classList.add('v-past');
+    const line = el('span', 'fact-sub fact-tagline');
+    line.append(el('span', 'd-tag', t('passed_tag')), document.createTextNode(` ${t('check_next_cycle')}`));
+    box.append(line);
   } else if (row.isUrgent) {
-    cell.classList.add('v-time');
+    box.classList.add('v-time');
     const verd = el('span', 'verd');
     verd.append(icon('i-clock', 'ic'), document.createTextNode(countdown(row.daysUntilDeadline)));
-    cell.append(verd, el('span', 'fig', date));
+    box.append(verd);
   } else {
-    cell.append(el('span', 'fig', date));
+    box.append(el('span', 'fact-sub', countdown(row.daysUntilDeadline)));
   }
-  return cell;
+  return box;
 }
 
 // Blank is not zero: a null fee is "Not published", a 0 is a real claim.
 // Under the fee, the monthly living cost, so the two read side by side; with
 // Max yearly cost set, the verdict on the year (budgetFit, the filter's own test).
-function feeCell(row, { compact = false, state = null } = {}) {
-  const cell = el(compact ? 'p' : 'div', 'cell c-fee');
-  // The compact row has no "/ year" on the figure, so where the column headings
+// This is the list row's cell; the detail has its own (feeFact).
+function feeCell(row, state) {
+  const cell = el('p', 'cell c-fee');
+  // The row has no "/ year" on the figure, so where the column headings
   // are hidden its label has to say it (review round 2).
-  cell.append(el('span', 'lab', t(compact ? 'r2_fee_heading' : 'eu_fee')));
+  cell.append(el('span', 'lab', t('r2_fee_heading')));
   const cost = yearlyCost(row, state?.myLiving ?? null);
   const fit = budgetFit(cost, state?.maxBudget ?? null);
   if (fit === 'maybe') {
@@ -500,17 +563,41 @@ function feeCell(row, { compact = false, state = null } = {}) {
     fig.append(document.createTextNode(`${money.format(0)} `), zero);
   } else {
     fig.append(document.createTextNode(money.format(row.tuitionEu)));
-    if (!compact) fig.append(document.createTextNode(' '), el('small', '', t('year')));
   }
   cell.append(fig);
+  cell.append(el('small', 'q liv', livingShort(cost)));
+  return cell;
+}
+
+// The detail's fee: the figure, what it rests on, then the budget verdict.
+function feeFact(row, state) {
+  const box = factBox('c-fee', t('eu_fee'));
+  const cost = yearlyCost(row, state?.myLiving ?? null);
+  const fig = el('span', 'fig');
+  if (row.tuitionEu === null) {
+    box.classList.add('v-unk');
+    fig.textContent = t('not_published');
+  } else {
+    // "€0 No tuition fee": the zero is a real claim, so it is said in words too.
+    fig.append(el('span', 'fact-num', money.format(row.tuitionEu)),
+      el('span', 'fact-unit', ` ${t(row.tuitionEu === 0 ? 'no_tuition_fee' : 'year')}`));
+  }
+  box.append(fig);
   // The Irish figure is the Free Fees student contribution plus levy, not the
   // larger "EU fee" some course pages print. Only said beside a real figure:
   // under "Not published" it would read as a fee we do not have.
-  if (!compact && row.country === 'Ireland' && row.tuitionEu !== null) {
-    cell.append(el('small', 'q', t('student_contribution_levy')));
+  if (row.country === 'Ireland' && row.tuitionEu !== null) {
+    box.append(el('span', 'fact-sub', t('student_contribution_levy')));
   }
-  cell.append(el('small', 'q liv', livingShort(cost)));
-  return cell;
+  box.append(el('span', 'fact-sub liv', livingShort(cost)));
+  const fit = budgetFit(cost, state?.maxBudget ?? null);
+  if (fit === 'maybe') {
+    box.classList.add('v-cond');
+    box.append(el('span', 'verd m m-cond', t('may_exceed_your_budget')));
+  } else if (fit === 'unknown') {
+    box.append(el('span', 'verd m m-unk', t('yearly_cost_unknown')));
+  }
+  return box;
 }
 
 // The living cost in a few words for the fee cell: "Living €900–1,200/mo",
@@ -523,11 +610,61 @@ function livingShort(cost) {
   return t('living_mo', { value1: moneyRange(cost.monthlyMin, cost.monthlyMax) });
 }
 
-// The block this whole site exists for. Each kind of requirement on its own
-// row, and a row only appears when there is something to say.
-function requirementsSection(row) {
-  const section = el('section', 'd-sec');
-  section.append(el('h3', '', t('requirements')));
+// A grey note in the detail is at most one line (Leon, 2026-11-15: "the
+// MASSIVE block of disclaimer text … make it one line or disappear"). A note
+// of NOTE_MAX characters or fewer stays as that line. A longer one becomes a
+// one-line link, a native <details> whose summary names what is inside, with
+// the full text under it when opened: nothing is deleted. `lead` is a short
+// qualifier that changes what a figure means ("your figure", "national
+// minimum, not a full budget"); it always stays visible, before the link.
+// `always` puts even a short note behind the link (the fee's value column is
+// too narrow for any sentence).
+const NOTE_MAX = 36;
+const textOf = (node) => (typeof node === 'string' ? node : node.textContent);
+function noteLine(nodes, label, { lead = null, always = false, paragraphs = false } = {}) {
+  nodes = nodes.filter(Boolean);
+  const text = nodes.map(textOf).join(' ').trim();
+  if (!text && !lead) return null;
+  const box = el('div', 'd-note');
+  const fill = (target) => nodes.forEach((node, i) => {
+    if (paragraphs) { const p = el('p'); p.append(node); target.append(p); }
+    else { if (i) target.append(document.createTextNode(' ')); target.append(node); }
+  });
+  if (lead) box.append(el('span', 'd-note-lead', lead));
+  if (!text) return box;
+  if (!lead && !always && text.length <= NOTE_MAX) { fill(box); return box; }
+  const more = el('details', 'd-note-more');
+  const body = el('div', 'd-note-body');
+  fill(body);
+  more.append(el('summary', '', label), body);
+  if (lead) box.append(document.createTextNode(' '));
+  box.append(more);
+  return box;
+}
+
+// " · " already separates alternatives in the data; draw them as a list, so a
+// run of requirements is not one wall of text. A translated value stays one
+// run: the "Show the English original" toggle needs one node to sit under.
+function listify(value) {
+  const text = value.textContent;
+  if (!text.includes(' · ') || value.querySelector('[data-english]')) return value;
+  const list = el('ul', 'd-list');
+  // An untranslated value keeps lang="en" (pronunciation) and its marker,
+  // which detailOriginals reads to add "In English, as published".
+  if (value.querySelector('[data-untranslated]')) { list.lang = 'en'; list.setAttribute('data-untranslated', ''); }
+  for (const part of text.split(' · ')) list.append(el('li', '', part));
+  return list;
+}
+
+// "Before you apply": always open, never a fold. Everything that can decide
+// whether you can apply, or what applying costs you up front. Short answers
+// (a word, a month, a figure) are label | value rows and come first; sentences
+// from university pages stack under their label. Which is which is decided by
+// field, never by text length, so long paragraphs never squeeze into a value
+// column and the layout does not jump between programmes.
+function beforeYouApply(row) {
+  const section = el('section', 'd-sec d-must');
+  section.append(el('h3', '', t('before_you_apply')));
 
   const nothingAtAll = row.ibPointsMin === null &&
                        row.noSubjectsRequired &&
@@ -545,128 +682,262 @@ function requirementsSection(row) {
     const sentence = t('no_ib_subject_requirements_general_requirement_language_requirement', { value1: '\u0000' }).split('\u0000');
     const text = el('p', 'kv-none');
     text.append(sentence[0], row.baselineRequirement ? dataValue('baseline_requirement', baseline) : baseline[0].toUpperCase() + baseline.slice(1), sentence[1]);
-    const recognition = el('dl', 'kv');
-    recognitionRow(recognition, row);
-    section.append(text, recognition);
-    return section;
+    section.append(text);
   }
 
   const list = el('dl', 'kv');
-
-  // --- admission ---------------------------------------------------------
-  // First, because it frames the rest: a points figure means something
-  // different under open entry, a CAO ranking and a Czech entrance exam.
-  if (row.admission.length) {
-    reqRow(list, t('admission'), [dataValue('admission', row.admission.join(' · '))]);
-  } else if (row.admissionUnknown) {
-    // A "?" route is not "no route": it exists and differs from the default,
-    // but is unpublished. Same tag as the Subjects row's "Not checked yet".
-    reqRow(list, t('admission'), [unknownTag(t('not_published'))]);
-  }
 
   // --- entrance exam -----------------------------------------------------
   // The admission line names the exam; this row answers the yes/no question
   // the exam filter asks, so the entry and the filter never disagree
-  // (Jakub's entrance_exam column, upstream 2026-10-27).
-  reqRow(list, t('entrance_exam'), [EXAM_TEXT[row.entranceExam] ?? unknownTag(t('not_checked_yet'))]);
+  // (Jakub's entrance_exam column, upstream 2026-10-27). The label already
+  // says "Entrance exam", so the answer starts with Yes or No.
+  reqRow(list, t('entrance_exam'), [EXAM_ANSWER[row.entranceExam] ?? unknownTag(t('not_checked_yet'))]);
 
-  // --- subjects ----------------------------------------------------------
-  // "none" is the university saying there are none; blank is nobody checked.
-  if (row.noSubjectsRequired) {
-    reqRow(list, t('ib_subjects'), [t('none_required')]);
-  } else if (row.ibSubjects) {
-    reqRow(list, t('ib_subjects'), [dataValue('ib_subjects', row.ibSubjects)]);
-  } else {
-    reqRow(list, t('ib_subjects'), [unknownTag(t('not_checked_yet'))]);
-  }
+  // One short item ("ESAT") is an answer; several are a list further down.
+  const others = row.otherRequirements;
+  const oneShort = others.length === 1 && others[0].length <= 32;
+  if (oneShort) reqRow(list, t('other_requirements'), [dataValue('other_requirements', others[0])]);
 
-  if (row.otherRequirements.length) {
-    reqRow(list, t('other_requirements'), [dataValue('other_requirements', row.otherRequirements.join(' · '))]);
-  }
-
-  // --- English -----------------------------------------------------------
-  // Always shown. Leaving the row out made 608 cards look as if there were no
-  // language requirement, when nobody had looked (R01). "?" means it differs
-  // from the university's and is unpublished, as on the Admission row.
-  if (row.englishRequirement.length) {
-    reqRow(list, t('language_requirement'), [dataValue('english_requirement', row.englishRequirement.join(' · '))]);
-  } else if (row.englishUnknown) {
-    reqRow(list, t('language_requirement'), [unknownTag(t('not_published'))]);
-  } else {
-    reqRow(list, t('language_requirement'), [unknownTag(t('not_checked_yet'))]);
-  }
-
-  // --- general -----------------------------------------------------------
-  // What every applicant's diploma must clear, from the universities tab. It
-  // used to appear only inside nothingAtAll, which no real row reaches, so 29
-  // universities' baselines were never shown (R03). The stored text starts
-  // lowercase; the UI capitalises it in either general requirement. A blank
-  // baseline shows nothing: six Irish ones are blank on purpose (STATUS).
-  if (row.baselineRequirement) {
-    const general = row.baselineRequirement;
-    reqRow(list, t('general_requirement'), [dataValue('baseline_requirement', general)]);
-  }
-
-  recognitionRow(list, row);
-  section.append(list);
-  return section;
-}
-
-function applyingSection(row, state) {
-  const list = el('dl', 'kv');
-  if (row.faculty) reqRow(list, t('faculty'), [row.faculty.name]);
-  const deadlineNotes = [];
-  if (row.deadlinePassed) deadlineNotes.push(t('check_the_official_admissions_page_for_the_next_cycle'));
-  // On Irish rows this is the CAO sentence the points lines were read from.
-  if (row.deadlineNotes) deadlineNotes.push(dataValue('deadline_notes', row.deadlineNotes));
-  if (deadlineNotes.length) reqRow(list, t('deadline_notes'), deadlineNotes.map((text) => { const p = el('p'); p.append(text); return p; }));
-  const cost = yearlyCost(row, state?.myLiving ?? null);
-  // A monthly range with whose estimate it is (Jakub's living_cost_* columns).
-  const universityLiving = row.livingCostMin === null ? null : el('span');
-  if (universityLiving) {
-    universityLiving.append(t('month', { value1: moneyRange(row.livingCostMin, row.livingCostMax) }));
-    if (row.livingCostSource) universityLiving.append(' · ', dataValue('living_cost_source', row.livingCostSource));
-    if (livingIsFloor(row.livingCostSource)) universityLiving.append(' · ', floorLabel());
-  }
-  if (cost.personal) {
-    // The student's own figure, said as theirs, with what it replaced.
-    reqRow(list, t('living_costs'), [personalLiving(cost, universityLiving)]);
-  } else if (universityLiving) {
-    reqRow(list, t('living_costs'), [universityLiving]);
-  }
-  // Only with a living figure: without one there is no year to add up, and
-  // the fee cell already says "Living cost not published".
-  if (cost.monthlyMin !== null) reqRow(list, t('fee_12_months_living_estimate'), [yearlyText(row, cost)]);
-  if (row.languages.length) {
-    const language = el('span', '', row.languages.map(facetLabel).join(', '));
-    if (row.country === 'Czechia' && row.languages.includes('Czech') && row.tuitionEu === 0) {
-      language.append(el('span', 'dd-note', t('r2_czech_free')));
-    }
-    reqRow(list, t('language'), [language]);
-  }
-  if (row.applicationSystem) reqRow(list, t('apply_via'), [dataValue('application_system', row.applicationSystem)]);
-  const fee = el('span');
-  fee.append(row.appFee != null ? (row.appFee === 0 ? t('app_fee_none') : money.format(row.appFee)) : newUnknown(row.appFeeUnknown));
-  if (row.appFeeNote) { const note = el('span', 'dd-note'); note.append(dataValue('app_fee_note', row.appFeeNote)); fee.append(note); }
-  fee.append(el('span', 'dd-note', t('app_fee_profile')));
-  reqRow(list, t('app_fee'), [fee]);
-  const places = row.placesKind === 'open' ? t('places_no_fixed_limit')
-    : row.places != null ? `${formatCount(row.places)}${row.placesKind === 'past_intake' ? '' : ` · ${t(`places_kind_${row.placesKind}`)}`} · ${row.placesYear || t('places_year_not_published')}`
-    : newUnknown(row.placesUnknown);
-  reqRow(list, t(row.placesKind === 'past_intake' ? 'places_kind_past_intake' : 'places'), [places]);
   const months = row.intakeMonths || [];
   reqRow(list, t('intake'), [months.length ? months.map(month => dateFormatter({ month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2027, month - 1, 1)))).join(' · ') : newUnknown(row.intakeUnknown)]);
   reqRow(list, t('offer_timing'), [row.ibOffer ? t(`offer_${row.ibOffer}`) : newUnknown(row.offerUnknown)]);
 
-  const section = el('section', 'd-sec');
-  section.append(el('h3', '', t('applying')), list);
+  if (row.languages.length) {
+    const language = el('span', '', row.languages.map(facetLabel).join(', '));
+    if (row.country === 'Czechia' && row.languages.includes('Czech') && row.tuitionEu === 0) {
+      const why = noteLine([document.createTextNode(t('r2_czech_free'))], t('why_no_fee'));
+      why.classList.add('dd-note');
+      language.append(why);
+    }
+    reqRow(list, t('language'), [language]);
+  }
+
+  // The fee's note can carry a condition (an extra test fee, who it applies
+  // to), so it is always one click away, right under the figure.
+  const fee = el('span');
+  fee.append(row.appFee != null ? (row.appFee === 0 ? t('app_fee_none') : money.format(row.appFee)) : newUnknown(row.appFeeUnknown));
+  const feeNote = noteLine([row.appFeeNote ? dataValue('app_fee_note', row.appFeeNote) : null, document.createTextNode(t('app_fee_profile'))],
+    t('fee_details'), { always: true });
+  feeNote.classList.add('dd-note');
+  fee.append(feeNote);
+  reqRow(list, t('app_fee'), [fee]);
+
+  if (others.length && !oneShort) {
+    reqRow(list, t('other_requirements'), [listify(dataValue('other_requirements', others.join(' · ')))], true);
+  }
+
+  if (!nothingAtAll) {
+    // --- subjects ----------------------------------------------------------
+    // "none" is the university saying there are none; blank is nobody checked.
+    if (row.noSubjectsRequired) {
+      reqRow(list, t('ib_subjects'), [t('none_required')], true);
+    } else if (row.ibSubjects) {
+      reqRow(list, t('ib_subjects'), [dataValue('ib_subjects', row.ibSubjects)], true);
+    } else {
+      reqRow(list, t('ib_subjects'), [unknownTag(t('not_checked_yet'))], true);
+    }
+
+    // --- English -----------------------------------------------------------
+    // Always shown. Leaving the row out made 608 cards look as if there were no
+    // language requirement, when nobody had looked (R01). "?" means it differs
+    // from the university's and is unpublished, as on the Admission row.
+    if (row.englishRequirement.length) {
+      reqRow(list, t('language_requirement'), [listify(dataValue('english_requirement', row.englishRequirement.join(' · ')))], true);
+    } else if (row.englishUnknown) {
+      reqRow(list, t('language_requirement'), [unknownTag(t('not_published'))], true);
+    } else {
+      reqRow(list, t('language_requirement'), [unknownTag(t('not_checked_yet'))], true);
+    }
+
+    // --- admission ---------------------------------------------------------
+    // It frames the points figure, which means something different under open
+    // entry, a CAO ranking and a Czech entrance exam.
+    if (row.admission.length) {
+      reqRow(list, t('admission'), [dataValue('admission', row.admission.join(' · '))], true);
+    } else if (row.admissionUnknown) {
+      // A "?" route is not "no route": it exists and differs from the default,
+      // but is unpublished. Same tag as the Subjects row's "Not checked yet".
+      reqRow(list, t('admission'), [unknownTag(t('not_published'))], true);
+    }
+
+    // --- general -----------------------------------------------------------
+    // What every applicant's diploma must clear, from the universities tab. It
+    // used to appear only inside nothingAtAll, which no real row reaches, so 29
+    // universities' baselines were never shown (R03). The stored text starts
+    // lowercase; the UI capitalises it in either general requirement. A blank
+    // baseline shows nothing: six Irish ones are blank on purpose (STATUS).
+    if (row.baselineRequirement) {
+      const general = row.baselineRequirement;
+      reqRow(list, t('general_requirement'), [dataValue('baseline_requirement', general)], true);
+    }
+  }
+
+  // Never folded: recognition can carry a condition (review of the mockup).
+  recognitionRow(list, row);
+
+  // --- deadline notes ------------------------------------------------------
+  // One line, like every note (Leon, 2026-11-15): short notes are shown as
+  // they are, longer ones sit behind "Deadline details" in full.
+  const deadlineNotes = [];
+  if (row.deadlinePassed) deadlineNotes.push(document.createTextNode(t('check_the_official_admissions_page_for_the_next_cycle')));
+  // On Irish rows this is the CAO sentence the points lines were read from.
+  if (row.deadlineNotes) deadlineNotes.push(dataValue('deadline_notes', row.deadlineNotes));
+  const deadlineNote = noteLine(deadlineNotes, t('deadline_details'), { paragraphs: true });
+  if (deadlineNote) {
+    deadlineNote.classList.add('d-note-facts');
+    reqRow(list, t('deadline_notes'), [deadlineNote], true);
+  }
+
+  section.append(list);
   return section;
 }
 
-// The yearly estimate (yearlyLine in compare.js) as a node: an unknown total
-// gets the dashed "Not known" box, then says which half is missing.
-function yearlyText(row, cost) {
-  return lineNode(yearlyLine(row, cost));
+// The Entrance exam row's answers; a missing state is "Not checked yet".
+const EXAM_ANSWER = {
+  get yes() { return t('exam_yes'); },
+  get waivable() { return t('exam_waivable'); },
+  get no() { return t('exam_no'); },
+};
+
+// A fold: a native <details>, so it opens from the keyboard with no script.
+// The summary holds a real h3 (heading navigation reaches every fold) and the
+// fold's headline value on a second line, so a closed fold still says the
+// one thing most students want from it. `key` remembers that the student
+// opened it, so a rebuilt pane or a row scrolled away and back keeps it open.
+function fold(row, state, key, title, gist, body) {
+  const details = el('details', 'd-sec d-fold');
+  const summary = el('summary');
+  summary.append(el('h3', 'fold-t', title));
+  if (gist) {
+    const line = el('span', 'fold-g');
+    // The comma is for a screen reader, which reads title and value in one go.
+    line.append(el('span', 'visually-hidden', ', '), gist);
+    summary.append(line);
+  }
+  details.append(summary, body);
+  state.openFolds ??= new Set();
+  const id = `${row.id} ${key}`;
+  if (state.openFolds.has(id)) details.open = true;
+  details.addEventListener('toggle', () => {
+    // Print opens every fold for the paper and closes it again (app.js);
+    // that is not the student's choice, so it is not remembered.
+    if (details.getAttribute('data-print-open') !== null) return;
+    if (details.open) state.openFolds.add(id); else state.openFolds.delete(id);
+  });
+  return details;
+}
+
+// Costs, folded: the fee and the monthly living range are already in the
+// facts panel. The summary names what its figure covers. Figures line up on
+// the right and every figure keeps its source, one line each (noteLine).
+function costsFold(row, state) {
+  const cost = yearlyCost(row, state?.myLiving ?? null);
+  const list = el('dl', 'kv kv-costs');
+  const costRow = (label, figure, sub) => {
+    const value = [el('span', 'cost-fig')];
+    value[0].append(figure);
+    if (sub) value.push(sub);
+    reqRow(list, label, value);
+  };
+
+  // EU fee: blank is not zero.
+  costRow(t('eu_fee'), row.tuitionEu === null ? unknownTag(t('not_published'))
+    : row.tuitionEu === 0 ? `${money.format(0)} · ${t('no_tuition_fee')}` : `${money.format(row.tuitionEu)} ${t('year')}`,
+    row.country === 'Ireland' && row.tuitionEu !== null ? noteLine([document.createTextNode(t('student_contribution_levy'))], t('note_source')) : null);
+
+  // Living: a monthly range with whose estimate it is (Jakub's living_cost_*
+  // columns). The student's own figure says so; a national minimum says "from".
+  let living = unknownTag(t('not_published'));
+  let livingNote = null;
+  if (cost.monthlyMin !== null) {
+    living = t('month', { value1: cost.personal ? money.format(cost.monthlyMin)
+      : cost.floor ? t('from', { value1: money.format(cost.monthlyMin) }) : moneyRange(cost.monthlyMin, cost.monthlyMax) });
+    const universityLiving = row.livingCostMin === null ? null : el('span');
+    if (universityLiving) {
+      universityLiving.append(t('month', { value1: moneyRange(row.livingCostMin, row.livingCostMax) }));
+      if (row.livingCostSource) universityLiving.append(' · ', dataValue('living_cost_source', row.livingCostSource));
+      if (livingIsFloor(row.livingCostSource)) universityLiving.append(' · ', floorLabel());
+    }
+    // The student's own figure, said as theirs, with what it replaced.
+    if (cost.personal) livingNote = noteLine([personalLiving(cost, universityLiving)], t('note_source'), { lead: t('your_figure') });
+    else if (row.livingCostSource) {
+      livingNote = noteLine([dataValue('living_cost_source', row.livingCostSource)], t('note_source'),
+        { lead: livingIsFloor(row.livingCostSource) ? floorLabel() : null });
+    }
+  }
+  costRow(t('living_costs'), living, livingNote);
+
+  // A year: always shown. An unknown total gets the dashed "Not known" box and
+  // says which half is missing (yearlyLine in compare.js, the compare table's
+  // own words).
+  const line = yearlyLine(row, cost);
+  let gist;
+  if (line.segments) {
+    const [first, ...rest] = line.segments;
+    const how = el('span');
+    rest.forEach((part, i) => {
+      if (i) how.append(' · ');
+      how.append(part.field ? dataValue(part.field, part.text) : part.text);
+    });
+    costRow(t('fee_12_months_living_estimate'), first.text,
+      noteLine(rest.length ? [how] : [], t('how_worked_out'), { lead: cost.floor ? floorLabel() : cost.personal ? t('your_figure') : null }));
+    const range = cost.floor ? t('from', { value1: money.format(cost.low) }) : moneyRange(cost.low, cost.high);
+    gist = el('span', '', t(cost.personal ? 'gist_year_yours' : 'gist_year', { range }));
+    // A national minimum is not a budget; the closed fold says so too.
+    if (cost.floor) gist.append(` · ${floorLabel()}`);
+  } else {
+    const why = (line.text || '').trim();
+    costRow(t('fee_12_months_living_estimate'), unknownTag(line.tag), why ? el('div', 'd-note', why) : null);
+    gist = el('span');
+    gist.append(unknownTag(line.tag), document.createTextNode(line.text || ''));
+  }
+  return fold(row, state, 'costs', t('costs'), gist, list);
+}
+
+// Applying details, folded: where the application goes and how many get in.
+// The Apply button above already carries the system; this is the reference.
+function applyingFold(row, state) {
+  const list = el('dl', 'kv');
+  if (row.faculty) reqRow(list, t('faculty'), [row.faculty.name]);
+  const via = applyVia(row);
+  if (via) reqRow(list, t('apply_via'), [via]);
+  const places = placesValue(row);
+  reqRow(list, t('places'), [places]);
+  // Places are always in the summary, unknown included, so a closed fold
+  // never drops them. The system joins them only when it is a name ("UCAS ·
+  // code A100"): some universities describe theirs in a sentence, which made
+  // the closed fold four lines tall.
+  const gist = el('span');
+  if (via && via.textContent.length <= GIST_VIA_MAX) gist.append(`${via.textContent} · `);
+  gist.append(`${t('places')}: `, typeof places === 'string' ? places : unknownTag(places.textContent));
+  return fold(row, state, 'applying', t('applying_details'), gist, list);
+}
+
+const GIST_VIA_MAX = 24;
+
+// The application system as the data names it, else the one the apply link
+// or code points at, with the course code a student has to type in.
+function applyVia(row) {
+  const systems = { ucas: 'UCAS', cao: 'CAO', studielink: 'Studielink', uni_assist: 'uni-assist' };
+  const node = el('span');
+  if (row.applicationSystem) node.append(dataValue('application_system', row.applicationSystem));
+  else if (systems[row.applyLinkKind]) node.append(systems[row.applyLinkKind]);
+  else if (row.applyCode) node.append(row.applyCode.split(':')[0]);
+  else return null;
+  const code = row.applyCode?.slice(row.applyCode.indexOf(':') + 1);
+  if (code) node.append(t('apply_code_suffix', { code }));
+  return node;
+}
+
+// How many places, and what kind of number it is: a capacity, an EU quota or
+// last year's intake are three different promises.
+function placesValue(row) {
+  if (row.placesKind === 'open') return t('places_no_fixed_limit');
+  if (row.places == null) return newUnknown(row.placesUnknown);
+  const count = formatCount(row.places);
+  if (row.placesKind === 'past_intake') return row.placesYear ? t('places_past', { count, year: row.placesYear }) : t('places_past_noyear', { count });
+  return `${t(row.placesKind === 'eu_quota' ? 'places_eu' : 'places_capacity', { count })} · ${row.placesYear || t('places_year_not_published')}`;
 }
 
 // One compare.js line as a node: plain text, or the dashed unknown box with
@@ -688,10 +959,13 @@ function lineNode(line) {
   return node;
 }
 
-// Never called with an empty label, so no dt is ever empty (A05).
-function reqRow(dl, label, nodes) {
-  dl.append(el('dt', '', label));
-  const dd = el('dd');
+// Never called with an empty label, so no dt is ever empty (A05). The dl
+// holds plain dt/dd pairs with no wrapper (the grid places them), so a
+// screen reader still pairs each label with its value. `long` stacks the
+// value under its label across the full width.
+function reqRow(dl, label, nodes, long = false) {
+  dl.append(el('dt', long ? 'kv-long' : '', label));
+  const dd = el('dd', long ? 'kv-long' : '');
   dd.append(...nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n)));
   dl.append(dd);
 }
@@ -739,9 +1013,10 @@ function notes(row, state, pointsSays) {
   return box.childElementCount ? box : null;
 }
 
-function footer(row, saved, inCompare) {
-  const foot = el('footer', 'd-foot');
-  const actions = el('div', 'd-actions');
+// The way to apply and the official page, straight after the facts: "where do
+// I apply" is the question that follows "can I, by when, how much".
+function applyActions(row) {
+  const actions = el('div', 'd-actions d-apply');
 
   // data.js already ran these through safeUrl and stored null or a normalised
   // href, so there is nothing left to validate here.
@@ -755,10 +1030,16 @@ function footer(row, saved, inCompare) {
   if (row.officialUrl && row.officialUrl !== row.applyUrl) {
     // 1240 links all named "Official admissions page" are useless in a screen
     // reader's links list, so a hidden part says whose page it is (A04).
-    const identity = row.identity?.text || row.faculty?.name;
-    actions.append(externalLink(row.applyUrl ? 'btn btn-official' : 'btn btn-p', t('official_admissions_page'), row.officialUrl,
-      t('for', { value1: row.programme, value2: row.university, value3: identity ? ` · ${identity}` : '' })));
+    actions.append(externalLink(row.applyUrl ? 'btn btn-official' : 'btn btn-p', t('official_admissions_page'), row.officialUrl, hiddenName));
   }
+  return actions.childElementCount ? actions : null;
+}
+
+// Save, Compare, Student life and who checked the row: what you do once you
+// have read the entry, so it comes after it.
+function footer(row, saved, inCompare) {
+  const foot = el('footer', 'd-foot');
+  const actions = el('div', 'd-actions');
   if (typeof saved === 'boolean') actions.append(saveButton(row, saved));
   if (typeof inCompare === 'boolean') actions.append(compareButton(row, inCompare));
   if (actions.childElementCount) foot.append(actions);
@@ -1240,11 +1521,14 @@ function detailOriginals(article, id, state) {
     sync();
   });
   sync();
-  // Under the title, never above it: at the top of the pane the button sat
-  // beneath the × close (review round 2).
-  const head = article.querySelector('.d-head');
-  if (head) head.after(button);
-  else { const photo = article.querySelector('.d-photo'); if (photo) photo.after(button); else article.insertBefore(button, article.firstChild); }
+  // After the apply buttons (else the facts, else the slot's points): under
+  // the title, never above it, where it sat beneath the pane's × close
+  // (review round 2), and never inside a fold, where a closed fold would hide
+  // the one control that reveals the originals.
+  const direct = (name) => [...article.children].find((child) => child.classList.contains(name));
+  const anchor = direct('d-apply') ?? direct('d-photo') ?? direct('d-facts') ?? direct('d-pts');
+  if (anchor) anchor.after(button);
+  else article.insertBefore(button, article.firstChild);
 }
 
 function personalLiving(cost, universityLiving) {

@@ -982,7 +982,7 @@ async function interactions(page, at, want) {
           const title = pane?.querySelector('.pane-body .d-title');
           if (!title || title.id !== 'p-' + ${JSON.stringify(id)}) return { why: 'the pane does not show the clicked programme' };
           const p = ${visible('#pane')}; if (!p.ok) return p;
-          return { ok: true, a: (${linkInfo})(pane.querySelector('.pane-body .d-foot a.btn-p')) };
+          return { ok: true, a: (${linkInfo})(pane.querySelector('.pane-body .d-apply a.btn-p')) };
         })()`
       : `(() => {
           const li = ${item};
@@ -992,7 +992,7 @@ async function interactions(page, at, want) {
           if (!slot) return { why: 'no open details under the row' };
           const r = slot.getBoundingClientRect();
           if (!r.width || r.height < 20) return { why: 'the details are not visible' };
-          return { ok: true, a: (${linkInfo})(slot.querySelector('.d-foot a.btn-p')) };
+          return { ok: true, a: (${linkInfo})(slot.querySelector('.d-apply a.btn-p')) };
         })()`;
     const { a } = await page.waitFor(details, 5000, 'the details');
     assert(a, 'no "Official admissions page" link in the details');
@@ -2051,26 +2051,30 @@ async function runBatch2C(base) {
         await page.waitFor(`({ok:innerWidth===${width},why:'viewport changing'})`, 3000, 'viewport');
         await page.ev(`window.__smokeLanguage('${ui}');window.scrollTo(0,0)`);
         const detail = width >= 1200 ? '#pane .pane-body' : '#results>li.item .expand';
-        // Batch 3 · A (Leon's Q3): the official link takes the first row; Save and
-        // Compare are an equal pair under it, the pane included. Since the
-        // alignment fixes the pair stacks when its labels do not fit side by side.
-        await check(width, 'R4H', 'detail: official link full width, then Save and Compare as an equal pair, side by side or stacked (' + ui + ')', async () => {
+        // Batch 3 · A (Leon's Q3): the official link takes a full row; Save and
+        // Compare are an equal pair, the pane included. Since the alignment fixes
+        // the pair stacks when its labels do not fit side by side. Detail F3
+        // (2026-11-15): the link is its own group straight after the facts and
+        // the pair sits in the footer, so the link is above the pair, not 8 px
+        // over it; each group is still checked for width, height and overflow.
+        await check(width, 'R4H', 'detail: official link full width near the top, Save and Compare as an equal pair in the footer, side by side or stacked (' + ui + ')', async () => {
           await page.click(`document.querySelector('#results>li.item button.open')`, 'first programme');
-          await page.waitFor(`({ok:!!document.querySelector('${detail} .d-actions'),why:'detail not open'})`, 5000, 'detail actions');
+          await page.waitFor(`({ok:!!document.querySelector('${detail} .d-foot .d-actions'),why:'detail not open'})`, 5000, 'detail actions');
           const m = await page.ev(`(()=>{
-            const group=document.querySelector('${detail} .d-actions'), outer=group.getBoundingClientRect();
-            const buttons=[...group.children], [link,a,b]=buttons.map(n=>n.getBoundingClientRect());
+            const top=document.querySelector('${detail} .d-apply'), group=document.querySelector('${detail} .d-foot>.d-actions'), outer=group.getBoundingClientRect(), topBox=top.getBoundingClientRect();
+            const links=[...top.children], buttons=[...group.children], link=links.at(-1).getBoundingClientRect(), [a,b]=buttons.map(n=>n.getBoundingClientRect());
+            const must=document.querySelector('${detail} .d-must').getBoundingClientRect();
             const side=Math.abs(a.top-b.top)<1;
             // Alignment fixes: a detail too narrow for both labels stacks the pair, full width.
             const stacked=Math.abs(a.left-b.left)<1&&Math.abs(a.width-outer.width)<=1&&b.top>=a.bottom;
-            return {full:Math.abs(link.width-outer.width),below:a.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
-              gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:buttons.some(n=>n.scrollWidth>n.clientWidth+1),
-              order:buttons.length===3&&buttons[0].matches('a.btn-p')&&buttons[1].matches('button.save')&&buttons[2].matches('button.cmpb'),
-              separate:!group.querySelector('.lnk,.ok,.tag'),
+            return {full:Math.abs(link.width-topBox.width),sameWidth:Math.abs(topBox.width-outer.width),below:a.top-link.bottom,beforeMust:must.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
+              gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:[...links,...buttons].some(n=>n.scrollWidth>n.clientWidth+1),
+              order:links.length>=1&&links.every(n=>n.matches('a.btn'))&&links.some(n=>n.matches('a.btn-p'))&&buttons.length===2&&buttons[0].matches('button.save')&&buttons[1].matches('button.cmpb'),
+              separate:!group.querySelector('.lnk,.ok,.tag')&&!top.querySelector('button,.lnk,.ok,.tag'),
               pageOverflow:document.documentElement.scrollWidth>innerWidth};
           })()`);
-          assert(m.order && m.separate && m.full <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
-          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12) && m.below >= 8 && m.below <= 12, JSON.stringify(m));
+          assert(m.order && m.separate && m.full <= 1 && m.sameWidth <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
+          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12) && m.below > 0 && m.beforeMust > 0, JSON.stringify(m));
           if ([390, 800, 1400].includes(width)) {
             await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
           }
@@ -2109,12 +2113,24 @@ async function runBatch2C(base) {
         assert(await page.ev(`(()=>{
           const dt=[...document.querySelectorAll('#pane dt')].find(d=>d.textContent===${JSON.stringify(lang)});
           const dd=dt?.nextElementSibling;
-          const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
-          return !!n &&
-            [...document.querySelectorAll('#pane dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}) &&
+          // Detail F3: the note is a one-line link; the whole text is inside it.
+          const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note .d-note-body')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
+          return !!n && n.closest('details').open===false && !n.checkVisibility() &&
+            [...document.querySelectorAll('#pane dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})) &&
             !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
             !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
         })()`), 'Czech note missing from the Language row, fee profile note missing, or Language help remains');
+        // The link opens from the keyboard and shows the note under it, inside the pane.
+        const opened = await page.ev(`(async()=>{
+          const dt=[...document.querySelectorAll('#pane dt')].find(d=>d.textContent===${JSON.stringify(lang)});
+          const more=dt.nextElementSibling.querySelector('.dd-note details'), summary=more.querySelector('summary');
+          summary.focus(); summary.click();
+          await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+          const body=more.querySelector('.d-note-body').getBoundingClientRect(), pane=document.querySelector('#pane .detail').getBoundingClientRect();
+          return {open:more.open,focus:document.activeElement===summary,shown:body.height>0&&body.top>=summary.getBoundingClientRect().bottom-1,inside:body.left>=pane.left&&body.right<=pane.right+1,
+            line:summary.getBoundingClientRect().height,tab:summary.tabIndex};
+        })()`);
+        assert(opened.open && opened.focus && opened.shown && opened.inside && opened.line >= 24 && opened.tab === 0, 'Czech note link did not open in place ' + JSON.stringify(opened));
         await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
       });
     } finally { await page.close(); }
@@ -2143,9 +2159,9 @@ async function runBatch2C(base) {
             const dt=[...pane.querySelectorAll('dt')].find(d=>d.textContent===${JSON.stringify(lang)});
             const dd=dt?.nextElementSibling;
             return {foot:!!pane.querySelector('.d-foot'),
-              profile:[...pane.querySelectorAll('dd .dd-note')].some(x=>x.textContent===${JSON.stringify(profile)}),
+              profile:[...pane.querySelectorAll('dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})),
               czechAnywhere:[...pane.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)})),
-              czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.startsWith(${JSON.stringify(note)}))}
+              czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)}))}
           })()`);
           assert(m.foot && m.profile && !m.czechAnywhere && !m.czechInLanguage, 'unexpected Czech note or missing fee profile note ' + JSON.stringify(m));
           if (ui === 'en') await screenshot(page, shots + '/' + name + '-en.png', '#pane .d-foot');
@@ -3259,8 +3275,9 @@ async function runAlignListCompare(base) {
             await page.ev(TEXT);
             // PR 2 can put an Apply link before the official-admissions link, so the
             // pair is found by what it is (button.save, button.cmpb), never by position;
-            // every link in the row is still checked for split words.
-            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-actions'),kids=[...g.children],links=kids.filter(x=>x.tagName==='A'),a=g.querySelector(':scope>button.save'),b=g.querySelector(':scope>button.cmpb');
+            // every link is still checked for split words. Detail F3: the links are
+            // the top action group (.d-apply), the pair is the footer's.
+            const m = await page.ev(`(()=>{const g=document.querySelector('${detail} .d-foot>.d-actions'),kids=[...g.children],links=[...document.querySelectorAll('${detail} .d-apply>a')],a=g.querySelector(':scope>button.save'),b=g.querySelector(':scope>button.cmpb');
               const parts={save:a,cmpb:b,saveText:a?.querySelector('.save-t'),cmpbText:b?.querySelector('.cmpb-w'),saveIcon:a?.querySelector('.ic'),cmpbIcon:b?.querySelector('.ic')};
               const missing=Object.keys(parts).filter(k=>!parts[k]);
               if(missing.length)return {missing,children:kids.map(x=>x.tagName+'.'+x.className)};
@@ -6307,20 +6324,35 @@ async function runPr2(base) {
           if(image) await image.decode();
           const {SHOW_RANKINGS}=await import('./js/config.js');
           const box=image?.getBoundingClientRect(), frame=image?.parentElement.getBoundingClientRect();
-          return {text:d.textContent, first:d.firstElementChild.className,last:d.lastElementChild.className,
+          // Detail F3: what is drawn, top to bottom (the photo is first on screen
+          // though the title and facts come before it in the DOM).
+          const drawn=[...d.children].filter(n=>n.getClientRects().length).sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top).map(n=>['d-photo','d-pts','d-head','d-facts','d-apply','detail-originals','d-must','notes','d-fold','d-rank','d-foot','d-src'].find(c=>n.classList.contains(c))||n.className);
+          const overlaps=[...d.children].filter(n=>n.getClientRects().length).sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top).some((n,i,all)=>i&&n.getBoundingClientRect().top<all[i-1].getBoundingClientRect().bottom-0.5);
+          return {text:d.textContent, first:drawn[0],last:d.lastElementChild.className,drawn,overlaps,
             image:!!image,loaded:!image||image.naturalWidth===640&&image.naturalHeight===360,
-            ratio:!image||Math.abs(frame.width/frame.height-16/9)<0.02,
+            ratio:!image||Math.abs(frame.width/frame.height-2.4)<0.03,
             overflow:d.scrollWidth>d.clientWidth+1||document.documentElement.scrollWidth>innerWidth+1,
-            slot:!!d.querySelector('.d-pts'), ranks:!!d.querySelector('.d-rank'),flag:SHOW_RANKINGS,
+            pane:!!d.querySelector('.d-facts')&&!!d.querySelector('.d-head'),slotPoints:d.querySelectorAll('.d-pts').length,
+            folds:[...d.querySelectorAll('details.d-fold')].map(f=>[f.open,f.querySelector('summary h3')?.textContent,f.querySelector('summary').getBoundingClientRect().height>=44]),
+            notes:[...d.querySelectorAll('details.d-note-more')].every(n=>!n.open&&n.querySelector('summary').getBoundingClientRect().height>=24),
+            headings:[...d.querySelectorAll('h2,h3')].map(h=>h.tagName).join(''),
+            originalsInDetails:!!d.querySelector('details .detail-originals'),
+            ranks:!!d.querySelector('.d-rank'),rankInFold:!!d.querySelector('details .d-rank'),flag:SHOW_RANKINGS,
             apply:d.querySelector('.btn-apply')?.getAttribute('href')||null,
             primary:!!d.querySelector('.btn-apply.btn-p'), action:d.querySelector('.btn-apply')?.textContent,
             official:d.querySelector('.d-actions a:not(.btn-apply)')?.getAttribute('href')||null,creditLinks:d.querySelectorAll('.d-src a').length};
         })()`);
-        assert(facts.slot === (width === 390), 'wrong slot/pane layout');
+        assert(facts.pane === (width !== 390) && facts.slotPoints <= (width === 390 ? 1 : 0), 'wrong slot/pane layout');
+        // Photo, title, facts, apply, Before you apply, [notes], Costs, Applying details, [rank line], footer, credit.
+        const order = ['d-photo', 'd-pts', 'd-head', 'd-facts', 'd-apply', 'detail-originals', 'd-must', 'notes', 'd-fold', 'd-rank', 'd-foot', 'd-src'];
+        const places = facts.drawn.map((name) => order.indexOf(name));
+        assert(!places.includes(-1) && places.every((at, i) => !i || at >= places[i - 1]) && !facts.overlaps, `detail drawn out of order or overlapping: ${facts.drawn}`);
+        assert(JSON.stringify(facts.folds) === JSON.stringify([[false, 'Costs', true], [false, 'Applying details', true]]) && facts.notes, `folds ${JSON.stringify(facts.folds)} or a note link is open or under 24 px`);
+        assert(facts.headings === (width === 390 ? 'H3H3H3' : 'H2H3H3H3') && !facts.originalsInDetails && !facts.rankInFold, `heading outline ${facts.headings}, or the originals button or rank line is inside a fold`);
         assert(!facts.overflow, 'horizontal overflow');
         assert(facts.ranks === !!(facts.flag && row.rankingsYear), 'ranking flag DOM mismatch');
-        assert(facts.image === !!row.imageFile && facts.loaded && facts.ratio, 'photo missing, unloadable or not 16:9');
-        if (row.imageFile) assert(facts.first === 'd-photo' && facts.last === 'd-src' && facts.creditLinks === 2, 'photo first / linked credit last');
+        assert(facts.image === !!row.imageFile && facts.loaded && facts.ratio, 'photo missing, unloadable or not the 2.4:1 strip');
+        if (row.imageFile) assert(facts.first === 'd-photo' && facts.last === 'd-src' && facts.creditLinks === 2, 'photo drawn first / linked credit last');
         else assert(facts.last !== 'd-src', 'credit without photo');
         for (const label of ['IB recognition', 'Application fee', 'Intake', 'Offer timing']) assert(facts.text.includes(label), `missing ${label}`);
         assert(facts.apply === row.applyUrl && facts.official === (row.officialUrl !== row.applyUrl ? row.officialUrl : null), 'apply URL / official fallback mismatch');
@@ -6340,6 +6372,9 @@ async function runPr2(base) {
         await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         try {
           assert(await page.ev(`(()=>{const d=window.__pr2print.querySelector('.detail');return ['.d-photo','.d-src'].every(s=>{const e=d.querySelector(s);return e&&getComputedStyle(e).display!=='none'&&e.getBoundingClientRect().height>0})&&d.lastElementChild.className==='d-src'})()`), 'print photo or credit hidden');
+          // Detail F3: with no script at all (this slot was added after beforeprint
+          // could run), the CSS fallback still prints every fold and note open.
+          assert(await page.ev(`(()=>{const all=[...window.__pr2print.querySelectorAll('details')];return all.length>=3&&all.every(x=>!x.open&&[...x.children].slice(1).some(c=>c.checkVisibility()&&c.getBoundingClientRect().height>0))})()`), 'a closed fold or note link is hidden in print');
         } finally {
           await page.send('Emulation.setEmulatedMedia', { media: '' });
           await page.ev(`window.__pr2print.remove()`);
@@ -6356,8 +6391,54 @@ async function runPr2(base) {
           window.__pr2detail.replaceWith(unknown);window.__pr2detail=unknown;
           return {rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
         })()`);
-        assert(result.rank.includes('Not listed in THE 2027') && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
+        assert(/^Whole-university rank, 2027/.test(result.rank) && /THE\s*\(opens in a new tab\)\s*Not listed/.test(result.rank) && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
         assert(result.noYear && result.unknown >= 5 && result.flat, 'missing year / unknown fixture');
+      });
+      await check(where, 'F3 folds', 'folds and note links open from the keyboard, stay inside the detail, and the choice survives a redraw', async () => {
+        const id = ids[0];
+        const selector = width === 390 ? `li[data-id="${id}"] .detail` : '#pane .detail';
+        await page.send('Page.navigate', { url: base + '?ui=en&q=' + encodeURIComponent(rows.find(r => r.id === id).programme) });
+        await mountProgramme(page, id);
+        await page.click(`document.querySelector('li[data-id="${id}"] button.open')`, id);
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('details.d-fold'),why:'detail not open'})`, 5000, 'F3 detail');
+        const state = `(()=>{const d=document.querySelector(${JSON.stringify(selector)}),R=d.getBoundingClientRect();
+          const wide=[...d.querySelectorAll('*')].filter(n=>!n.closest('.visually-hidden')&&!n.closest('details:not([open])>:not(summary)')).filter(n=>{const r=n.getBoundingClientRect();return r.width&&(r.right>R.right+0.5||r.left<R.left-0.5)}).map(n=>n.className||n.tagName);
+          return {open:[...d.querySelectorAll('details')].map(x=>x.open),wide,page:document.documentElement.scrollWidth>innerWidth+1,
+            gist:[...d.querySelectorAll('details.d-fold')].map(f=>f.querySelector('.fold-g').getClientRects().length>0),
+            bodies:[...d.querySelectorAll('details')].map(x=>[...x.children].slice(1).some(c=>c.checkVisibility()))}})()`;
+        const before = await page.ev(state);
+        assert(before.open.every((open) => !open) && before.bodies.every((shown) => !shown) && before.gist.every(Boolean) && !before.wide.length, `closed state ${JSON.stringify(before)}`);
+        // Every summary, in order, with the keyboard: Enter on a focused summary.
+        const count = before.open.length;
+        for (let i = 0; i < count; i++) {
+          await page.ev(`document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details>summary')[${i}].focus({preventScroll:true})`);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+        }
+        await page.waitFor(`({ok:[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details')].every(x=>x.open),why:'a summary did not open on Enter'})`, 5000, 'all open');
+        const after = await page.ev(state);
+        assert(after.bodies.every(Boolean) && after.gist.every((shown) => !shown) && !after.wide.length && !after.page, `open state ${JSON.stringify(after)}`);
+        if (width !== 390) {
+          // The pane is redrawn when another row is picked and this one again:
+          // the two folds the student opened stay open; note links start closed.
+          await page.click(`document.querySelector('#pane-close')`, 'close the pane');
+          await page.waitFor(`({ok:!document.querySelector('#pane .detail'),why:'pane still shows the programme'})`, 5000, 'pane closed');
+          await page.click(`document.querySelector('li[data-id="${id}"] button.open')`, 'pick again');
+          await page.waitFor(`({ok:!!document.querySelector('#pane .detail details.d-fold'),why:'pane not redrawn'})`, 5000, 'pane again');
+          const again = await page.ev(`[[...document.querySelectorAll('#pane .detail details.d-fold')].map(x=>x.open),[...document.querySelectorAll('#pane .detail details.d-note-more')].some(x=>x.open)]`);
+          assert(JSON.stringify(again) === JSON.stringify([[true, true], false]), `fold memory after a redraw ${JSON.stringify(again)}`);
+        }
+        // Print: every fold and note link is open on paper, and the page is as it was afterwards.
+        await page.ev(`document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')[1].open=false`);
+        await page.ev(`new Promise(r=>setTimeout(r,80))`);
+        const openBefore = await page.ev(`[...document.querySelectorAll('.detail details')].map(x=>x.open)`);
+        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        let printed;
+        try { printed = await page.ev(`[[...document.querySelectorAll('.detail details')].map(x=>x.open),document.querySelectorAll('.detail details').length]`); }
+        finally { await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
+        await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('details.d-fold'),why:'detail gone after print'})`, 5000, 'after print');
+        const openAfter = await page.ev(`[[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')].map(x=>x.open),document.querySelectorAll('[data-print-open]').length]`);
+        assert(printed[1] > 0 && printed[0].every(Boolean), `print left a fold or note closed: ${JSON.stringify(printed)}`);
+        assert(JSON.stringify(openAfter) === JSON.stringify([[true, false], 0]), `after print the folds are ${JSON.stringify(openAfter)}, were ${JSON.stringify(openBefore)}`);
       });
       await check(where, 'PR2 SK', 'inherited recognition and fee translations reveal English originals', async () => {
         await page.send('Page.navigate', { url: base + '?ui=sk&q=' + encodeURIComponent(rows.find(r => r.id === ids[0]).programme) });

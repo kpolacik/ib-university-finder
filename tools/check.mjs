@@ -218,7 +218,12 @@ function* nodesOf(node) {
 const findAll = (root, test) => [...nodesOf(root)].filter(test);
 const byClass = (root, name) => findAll(root, (n) => n.classList.contains(name));
 const byTag = (root, tag) => findAll(root, (n) => n.tagName === tag);
-// Every dt label with its dd, across both lists of a detail.
+// The full text behind a one-line note link ("Fee details", "Source", …), or
+// null when the value has no such link.
+const noteBody = (node) => (node ? byClass(node, 'd-note-body')[0] ?? null : null);
+const noteLink = (node) => (node ? byTag(node, 'summary')[0]?.textContent ?? null : null);
+// Every dt label with its dd, across every list of a detail (Before you
+// apply and the two folds).
 const kvOf = (article) => {
   const out = {};
   for (const dl of byClass(article, 'kv')) {
@@ -338,22 +343,29 @@ section('PR2 detail UI');
     check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
   }
   const inheritedFacts = kvOf(draw(inherited));
-  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent.includes('No application feedefaultFor EU citizens with an IB Diploma.')
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feeFee detailsdefault For EU citizens with an IB Diploma.'
+    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'default For EU citizens with an IB Diploma.'
     && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
   check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
   const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
   const explicitFacts = kvOf(draw(explicit));
-  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12own') && !explicitFacts['Application fee'].textContent.includes('default')
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12Fee detailsown ') && !explicitFacts['Application fee'].textContent.includes('default')
     && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
-    && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 · capacity · 2027/28');
+    && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 places · 2027/28');
   const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
-  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent.includes('Not checked yetAdmission test fee: EUR 35 (TOL).'));
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetFee detailsAdmission test fee: EUR 35 (TOL). For EU citizens with an IB Diploma.'
+    && byClass(kvOf(noteOnly)['Application fee'], 'unk-t')[0]?.textContent === 'Not checked yet');
   const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
   check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
   const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
   for (const slot of [false,true]) {
     const detail = draw(photo, { slot }), image = byTag(detail,'img')[0], credit = detail.lastChild;
-    check(`PR2 photo and last credit in ${slot ? 'printable slot' : 'pane'}`, detail.children[0].className === 'd-photo'
+    // F3: the title and facts come first in the DOM and CSS draws the photo above
+    // them (order:-1); the slot has no head, so its photo is the first child.
+    check(`PR2 photo drawn first and credit last in ${slot ? 'printable slot' : 'pane'}`,
+      (slot ? detail.children[0].className === 'd-photo'
+        : detail.children.map((n) => n.className).slice(0, 3).join() === 'd-head,d-facts,d-photo')
+      && /\.d-photo\{order:-1;/.test(read('css/styles.css')) && /\.ph-frame\{aspect-ratio:2\.4\/1;/.test(read('css/styles.css'))
       && image.getAttribute('width') === '640' && image.getAttribute('height') === '360' && image.getAttribute('decoding') === 'async'
       && image.alt === 'Test: campus photo' && credit.className === 'd-src'
       && credit.textContent.includes('A long author name intact') && credit.textContent.includes('Campus ž photo') && credit.textContent.endsWith('cropped')
@@ -374,11 +386,83 @@ section('PR2 detail UI');
   check('PR2 absent image has no photo or credit', !byClass(draw(pr2Blank),'d-photo').length && !byClass(draw(pr2Blank),'d-src').length);
   check('PR2 ranks forced off have no DOM', !byClass(draw(photo,{showRankings:false}),'d-rank').length);
   const ranks = draw({ ...photo, qsRank: '', theRank: null }, { showRankings: true });
+  // F3 (Leon, 2026-11-15): the ranks are one unfolded line after the two folds,
+  // labelled as the whole university's; there is no "About the university" fold.
   check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
-    && ranks.textContent.includes('Not listed in QS 2027') && ranks.textContent.includes('Not published')
-    && byClass(ranks,'d-rank')[0].textContent.includes(UI.en.rank_note)
+    && byClass(ranks,'rk-lab')[0]?.textContent === 'Whole-university rank, 2027'
+    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS (opens in a new tab) Not listed|THE (opens in a new tab) Not published'
+    && byClass(byClass(ranks,'d-rank')[0],'unk-t').length === 2 && !byClass(ranks,'rk-note').length
     && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
     && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
+  check('F3 the rank line is a plain line straight after the two folds, never a fold and with no heading', (() => {
+    const at = ranks.children.findIndex((n) => n.classList.contains('d-rank')), line = ranks.children[at];
+    return line.tagName === 'section' && ranks.children[at - 1].classList.contains('d-fold') && ranks.children[at - 2].classList.contains('d-fold')
+      && byTag(ranks, 'details').filter((n) => n.classList.contains('d-fold')).length === 2
+      && !byTag(line, 'h3').length && !byTag(line, 'details').length && !byTag(line, 'summary').length
+      && !('about_university' in UI.en) && !('rank_note' in UI.en);
+  })());
+  equal('F3 the tie note appears only when a shown rank has "="; a range or a plain rank has none',
+    [['=12', '45'], ['12', '=45'], ['326–350', '401-500'], ['6', '5'], ['', null]].map(([qsRank, theRank]) =>
+      byClass(draw({ ...photo, qsRank, theRank }, { showRankings: true }), 'rk-note').map((n) => n.textContent).join()),
+    ['“=” means a tied rank.', '“=” means a tied rank.', '', '', '']);
+  // The folds are native <details>: closed by default, remembered once the
+  // student opens one (a redrawn pane or a row scrolled away and back keeps
+  // it), but never because print opened it for the paper.
+  check('F3 a fold the student opened stays open on a redraw; one that print opened is not remembered', withStubDocument(() => {
+    const state = noFilters();
+    const folds = (detail) => byTag(detail, 'details').filter((d) => d.classList.contains('d-fold'));
+    const first = renderDetail(photo, state);
+    const [costs, applying] = folds(first);
+    if (costs.open || applying.open) return false;
+    costs.open = true; costs.dispatchEvent({ type: 'toggle', bubbles: false });
+    applying.setAttribute('data-print-open', ''); applying.open = true; applying.dispatchEvent({ type: 'toggle', bubbles: false });
+    const second = folds(renderDetail(photo, state));
+    const other = folds(renderDetail({ ...photo, id: 'another-programme' }, state));
+    if (!(second[0].open === true && !second[1].open && !other[0].open && !other[1].open)) return false;
+    second[0].open = false; second[0].dispatchEvent({ type: 'toggle', bubbles: false });
+    return !folds(renderDetail(photo, state))[0].open && !folds(renderDetail(photo, noFilters()))[0].open;
+  }));
+  {
+    const app = read('js/app.js'), sheet = read('css/styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const before = app.slice(app.indexOf("window.addEventListener('beforeprint'"), app.indexOf("window.addEventListener('afterprint'"));
+    check('F3 print opens every fold and note link after the rows are mounted, marks them, and closes exactly those afterwards; CSS is the fallback',
+      before.indexOf('flushRows()') >= 0 && before.indexOf('openDetailsForPrint()') > before.indexOf('flushRows()')
+      && /function openDetailsForPrint\(\) \{\s*for \(const details of document\.querySelectorAll\('\.detail details:not\(\[open\]\)'\)\) \{\s*details\.setAttribute\('data-print-open', ''\);\s*details\.open = true;/.test(app)
+      && /function closeDetailsAfterPrint\(\) \{\s*for \(const details of document\.querySelectorAll\('\.detail details\[data-print-open\]'\)\) \{\s*details\.open = false;\s*details\.removeAttribute\('data-print-open'\);/.test(app)
+      && /function afterPrint\(\) \{\s*printing = false;\s*closeDetailsAfterPrint\(\);/.test(app)
+      && /@media print\{\s*\.detail details::details-content\{content-visibility:visible;display:block\}/.test(sheet));
+    // Found while building F3: a two-line cost label ran into the note under its
+    // figure. The note clears the floated label, and every dd ends with a clear.
+    check('F3 costs: the note clears its label, with no wrapper, display:contents or new container',
+      /\.kv-costs dt\{float:left;clear:left;/.test(sheet) && /\.kv-costs \.d-note\{clear:left\}/.test(sheet)
+      && /\.kv-costs dd::after\{content:"";display:block;clear:left\}/.test(sheet)
+      && !/display\s*:\s*contents/.test(sheet) && (sheet.match(/container(?:-type)?\s*:/g) ?? []).length === 2);
+    // Found while building F3 (all 3,966 rows drawn at a 320 px pane): the
+    // dashed "Assessment required; IB equivalent unverified" box did not wrap
+    // and ran 9 rows out of the pane. .unk-t is nowrap for the list row.
+    check('F3 a dashed unknown box inside the detail may wrap',
+      /\.detail :is\(dd,\.fold-g,\.rk,\.plines\) \.unk-t\{[^}]*white-space:normal\}/.test(sheet));
+    // Found while building F3: a new key reused the name of an existing one
+    // ("deadline_passed"), and the later entry silently won.
+    const source = read('js/i18n.js'), enAt = source.indexOf('  en: {'), skAt = source.indexOf('  sk: {');
+    const twice = [source.slice(enAt, skAt), source.slice(skAt)].flatMap((block) => {
+      const keys = [...block.matchAll(/^    "([\w-]+)":/gm)].map((m) => m[1]);
+      return keys.filter((key, i) => keys.indexOf(key) !== i);
+    });
+    equal('i18n.js defines no key twice in either language', twice, []);
+    equal('F3 the passed tag and the list group keep their own words', [UI.en.passed_tag, UI.en.deadline_passed, UI.sk.passed_tag, UI.sk.deadline_passed],
+      ['Passed', 'Deadline passed', 'Uplynul', 'Termín uplynul']);
+  }
+  equal('F3 the Applying details summary always names the places; a system joins them only when it is a short name',
+    [{ applicationSystem: 'Studielink', places: 650, placesKind: 'capacity', placesYear: '' },
+      { applicationSystem: 'An admission information system described in one long sentence', placesKind: 'open' },
+      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true }].map((extra) => {
+      const detail = draw({ ...pr2Blank, ...extra });
+      const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Applying details');
+      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via'].textContent];
+    }), [[', Studielink · Places: 650 places · year not published', 'Studielink'],
+      [', Places: No fixed limit', 'An admission information system described in one long sentence'],
+      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100']]);
   const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
   check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
   const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
@@ -400,15 +484,20 @@ section('PR2 detail UI');
   check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
   for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
   const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
-  check('PR2 historical places says past intake and year', historical['past intake']?.textContent === '42 · 2026');
+  check('PR2 historical places says past intake and year', historical.Places?.textContent === '42 admitted in 2026'
+    && kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:''})).Places.textContent === '42 admitted (year not published)');
   check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
-    && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 · EU quota · year not published');
+    && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 EU places · year not published');
   i18n.setLanguage('sk',{setItem(){}});
   i18n.setDataTranslations([{field:'ib_recognition_default',en:'recognised',sk:'Uznané'}, {field:'app_fee_note_default',en:'default',sk:'Poznámka'}]);
   const sk = draw(photo,{slot:true});
-  check('PR2 SK months, default translations and originals below photo', kvOf(sk)['Začiatok štúdia'].textContent === 'september · február'
-    && kvOf(sk)['Uznanie IB'].textContent.includes('Uznané') && sk.children[0].className === 'd-photo'
-    && sk.children[1].className === 'detail-originals' && sk.lastChild.className === 'd-src');
+  // F3: the originals button follows the apply buttons (after the photo), and is
+  // never inside a fold or a note link, where a closed <details> would hide it.
+  check('PR2 SK months, default translations and originals after the top actions, outside every fold', kvOf(sk)['Začiatok štúdia'].textContent === 'september · február'
+    && kvOf(sk)['Uznanie IB'].textContent.includes('Uznané')
+    && sk.children.slice(0, 3).map((n) => n.className).join() === 'd-photo,d-actions d-apply,detail-originals'
+    && byClass(sk,'detail-originals').length === 1 && !byTag(sk,'details').some((d) => byClass(d,'detail-originals').length)
+    && sk.lastChild.className === 'd-src');
   const originalButton = byClass(sk,'detail-originals')[0];
   originalButton.dispatchEvent({type:'click'});
   check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
@@ -693,8 +782,10 @@ check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
 // stage 2 moved it to the detail: no rule on a passed article or cell sets
 // opacity, and a passed row's article and cell carry the classes and words.
 const css = read('css/styles.css');
+const ruleBodyOf = (source, selector) => [...source.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([, sel]) => sel.split(',').map((x) => x.trim()).includes(selector)).map(([, , body]) => body).join(';');
 const renderDetailSrc = renderSrc.slice(renderSrc.indexOf('export function renderDetail'),
-  renderSrc.indexOf('\nfunction pointsCell'));
+  renderSrc.indexOf('\nfunction newUnknown'));
 const { programmes: pastRows } = await load(uniT, 'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by\n'
   + 'p-past,t,Past programme,2026-03-31,https://example.org,2026-08-14,AI-DRAFT\n');
 const pastDetail = detailOf(pastRows[0]);
@@ -703,7 +794,10 @@ const dimmingRules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)
 check('past-deadline details are not dimmed',
   dimmingRules.length === 0 && renderDetailSrc.includes("classList.add('is-past')")
     && pastDetail.classList.contains('is-past') && byClass(pastDetail, 'c-ddl')[0]?.classList.contains('v-past')
-    && byClass(pastDetail, 'c-ddl')[0]?.textContent.includes('Passed, check next cycle'), dimmingRules.join(', '));
+    // F3: the plain date, an outlined "Passed" tag and "Check the next cycle"; nothing struck through.
+    && byClass(pastDetail, 'c-ddl')[0]?.textContent === 'Deadline31 Mar 2026Passed Check the next cycle'
+    && byClass(byClass(pastDetail, 'c-ddl')[0], 'd-tag')[0]?.textContent === 'Passed' && !byTag(pastDetail, 's').length
+    && !/color/.test(ruleBodyOf(css, '.d-tag').replace(/color:var\(--ink\)/, '')) && /border:1px solid var\(--edge\)/.test(ruleBodyOf(css, '.d-tag')), dimmingRules.join(', '));
 
 // ------------------------------------------------------ application system
 
@@ -2802,12 +2896,29 @@ function detailProblems(row, state, slot = false) {
   const out = [];
   const a = withStubDocument(() => renderDetail(row, state, { slot }));
   const say = (what) => out.push(`${row.id}: ${what}`);
-  const head = a.children[row.imageFile ? 1 : 0];
+  // F3: the head is the first child even with a photo (CSS draws the photo
+  // above it), and the facts panel follows it.
+  const head = a.children[0];
   const title = head?.children[0];
   if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
   if (!slot && (!head?.classList.contains('d-head') || title?.tagName !== 'h2')) say('heading is not first in .d-head');
   if (!slot && (title?.id !== `p-${row.id}` || a.getAttribute('aria-labelledby') !== title?.id)) say('not named by its title');
-  if (slot && (!head?.classList.contains('d-pts') || byClass(a, 'd-head').length || byClass(a, 'd-cells').length || byTag(a, 'h2').length || a.getAttribute('aria-labelledby'))) say('slot repeats head or cells');
+  if (!slot && (!a.children[1]?.classList.contains('d-facts') || byClass(a, 'd-facts').length !== 1 || byClass(a, 'fact').length !== 3)) say('the three facts do not follow the head');
+  // The slot never repeats the head or the facts panel; its own points block,
+  // when it has one, is the first child.
+  const slotPoints = byClass(a, 'd-pts');
+  if (slot && (byClass(a, 'd-head').length || byClass(a, 'd-facts').length || byTag(a, 'h2').length || a.getAttribute('aria-labelledby')
+    || slotPoints.length > 1 || (slotPoints.length === 1 && head !== slotPoints[0]))) say('slot repeats head or facts');
+  if (!slot && slotPoints.length) say('pane has the slot points block');
+  // Folds and note links are native <details> with a summary first; each fold's
+  // summary holds one h3, so the outline is title, Before you apply, Costs,
+  // Applying details. The originals button is never inside one.
+  const folds = byTag(a, 'details').filter((d) => d.classList.contains('d-fold'));
+  if (byTag(a, 'details').some((d) => d.children[0]?.tagName !== 'summary' || d.children.length < 2 || byClass(d, 'detail-originals').length
+    || !(d.classList.contains('d-fold') || d.classList.contains('d-note-more')))) say('a details has no summary first, no body, or hides the originals button');
+  if (folds.length !== 2 || folds.some((d) => byTag(d.children[0], 'h3').length !== 1 || d.open)) say('not two closed folds with a heading each');
+  if (byTag(a, 'h3').map((h) => h.textContent).join('|') !== 'Before you apply|Costs|Applying details') say(`headings ${byTag(a, 'h3').map((h) => h.textContent).join('|')}`);
+  if (byTag(a, 'details').some((d) => d.classList.contains('d-note-more') && (d.open || !d.children[0].textContent.trim()))) say('a note link is open or unnamed');
   for (const dl of byTag(a, 'dl')) {
     const kids = dl.children;
     if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
@@ -2817,14 +2928,22 @@ function detailProblems(row, state, slot = false) {
   if (empty.length) say(`empty ${empty.map((n) => `${n.tagName}.${n.className}`).join(' ')}`);
   const note = filtersMod.pointsNote(row, state);
   const pnotes = byClass(a, 'pnote');
-  const two = a.children.findIndex((c) => c.classList?.contains('two'));
+  // After "Before you apply" and before the folds: a warning is never folded away.
+  const must = a.children.findIndex((c) => c.classList?.contains('d-must'));
   const notesAt = a.children.findIndex((c) => c.classList?.contains('notes'));
+  const firstFold = a.children.findIndex((c) => c.classList?.contains('d-fold'));
+  if (must < 0 || firstFold < must) say('Before you apply is missing or after a fold');
   if (note === null ? pnotes.length !== 0
-    : !(pnotes.length === 1 && pnotes[0].textContent === note && pnotes[0].parent === a.children[notesAt] && notesAt > two)) {
+    : !(pnotes.length === 1 && pnotes[0].textContent === note && pnotes[0].parent === a.children[notesAt] && notesAt > must && notesAt < firstFold)) {
     say(`points note ${JSON.stringify(note)} not said exactly once after the facts`);
   }
-  const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
-  if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
+  // The pane always has the full points lines. The slot sits under a row that
+  // shows the points, so it repeats them only when they say more than the row.
+  const wantLines = pts.pointsLines(row).map(pts.pointsLineText);
+  const lineLists = byClass(a, 'plines');
+  const lines = lineLists[0]?.children.map((li) => li.textContent) ?? null;
+  const slotSaysMore = wantLines.length > 1 || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified || note !== null;
+  if (lineLists.length > 1 || (slot && !slotSaysMore ? lines !== null : JSON.stringify(lines) !== JSON.stringify(wantLines))) say(`lines ${JSON.stringify(lines)}`);
   // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
   const feeText = (node) => typeof node === 'string' ? node
     : node.classList.contains('dd-note') ? '' : node.children.map(feeText).join('');
@@ -2917,39 +3036,51 @@ check('every fixture row renders cleanly with My points empty and at 36',
   [noFilters(), fstate(36)].flatMap((st) => fxs.flatMap((r) => detailProblems(r, st).out)).slice(0, 6).join('\n        '));
 
 // EU fee: blank is not zero.
-equal('EU fee: €2,500 / year, "€0 · No tuition fee", and "Not published" (dashed) for blank and "?"',
+equal('EU fee: €2,500 / year, "€0 No tuition fee", and "Not published" (dashed) for blank and "?"',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => {
     const cell = cellOf(fxDetail(id), 'c-fee');
     return [cell.children[0].textContent, byClass(cell, 'fig')[0].textContent, fillOf(cell)];
-  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
+  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
 
 check('Irish detail fees explain contribution plus levy, with no extra label in compact rows or other countries',
   byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levyLiving €1,100/mo'
     && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution')
     // Never under "Not published": that would describe a fee we do not have.
     && !byClass(detailOf({ ...fxRow('fx-fee-blank'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
-// Deadline: long date, urgent with the clock, passed (neutral, struck) and none.
-equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published',
+// Deadline (F3): the short date as the figure, then what it means: a plain
+// countdown, the urgent clock, or for a passed date a neutral "Passed" tag
+// with "Check the next cycle" (never struck, never red), and none.
+equal('Deadline fact: plain, 34 days, tomorrow, today, passed and not published',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
     const cell = cellOf(fxDetail(id), 'c-ddl');
     const verd = byClass(cell, 'verd')[0];
     const clock = byTag(cell, 'use').some((u) => u.getAttribute('href') === '#i-clock');
-    return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length];
+    return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length,
+      byClass(cell, 'fact-sub')[0]?.textContent ?? null, byClass(cell, 'd-tag')[0]?.textContent ?? null];
   }), [
-    ['', null, '1 February 2027', false, 0],
-    ['v-time', 'In 34 days', '17 September 2026', true, 0],
-    ['v-time', 'Tomorrow', '15 August 2026', true, 0],
-    ['v-time', 'Today', '14 August 2026', true, 0],
-    ['v-past', 'Passed, check next cycle', '31 March 2026', false, 1],
-    ['v-unk', null, 'Not published', false, 0],
+    ['', null, '1 Feb 2027', false, 0, 'In 171 days', null],
+    ['v-time', 'In 34 days', '17 Sept 2026', true, 0, null, null],
+    ['v-time', 'Tomorrow', '15 Aug 2026', true, 0, null, null],
+    ['v-time', 'Today', '14 Aug 2026', true, 0, null, null],
+    ['v-past', null, '31 Mar 2026', false, 0, 'Passed Check the next cycle', 'Passed'],
+    ['v-unk', null, 'Not published', false, 0, null, null],
   ]);
-check('a passed row says "Check the official admissions page for the next cycle." under Applying, before its deadline notes',
-  kvOf(fxDetail('fx-passed'))['Deadline notes']?.children[0]?.textContent === 'Check the official admissions page for the next cycle.'
+// Leon, 2026-11-15: deadline notes follow the one-line rule. 36 characters or
+// fewer are shown as they are; longer ones sit in full behind "Deadline details".
+check('a passed row says "Check the official admissions page for the next cycle." first inside Deadline details',
+  noteLink(kvOf(fxDetail('fx-passed'))['Deadline notes']) === 'Deadline details'
+    && noteBody(kvOf(fxDetail('fx-passed'))['Deadline notes'])?.children[0]?.textContent === 'Check the official admissions page for the next cycle.'
     && !kvOf(fxDetail('fx-plain'))['Deadline notes']);
-check('Irish deadline notes keep the CAO sentence in Applying', (() => {
+check('Irish deadline notes keep the whole CAO sentence inside Deadline details', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
-  return kvOf(detailOf(row))['Deadline notes']?.textContent === row.deadlineNotes && /TR033/.test(row.deadlineNotes);
+  const dd = kvOf(detailOf(row))['Deadline notes'];
+  return noteBody(dd)?.textContent === row.deadlineNotes && dd.textContent === `Deadline details${row.deadlineNotes}` && /TR033/.test(row.deadlineNotes);
 })());
+equal('one-line rule: a note of 36 characters stays as it is, 37 becomes a link with the full text inside, nothing is cut',
+  ['x'.repeat(36), 'y'.repeat(37)].map((deadlineNotes) => {
+    const dd = kvOf(detailOf({ ...fxRow('fx-plain'), deadlineNotes }))['Deadline notes'];
+    return [dd.textContent === deadlineNotes, byTag(dd, 'details').length, noteLink(dd), noteBody(dd)?.textContent === deadlineNotes];
+  }), [[true, 0, null, false], [false, 1, 'Deadline details', true]]);
 
 // Points lines: every form pointsLines can write, with a real space after the number.
 const lineRows = [...kinds, fxRow('fx-test-score')];
@@ -2957,7 +3088,9 @@ const lineProblems = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[
   const line = pts.pointsLines(row)[i];
   const b = byTag(li, 'b')[0];
   const ok = li.textContent === pts.pointsLineText(line)
-    && (line.number === null ? !b : b.textContent === line.number && li.children[1] === ` ${line.unit}, ${line.qualifier}`);
+    // The unit is there for a reader and a copy; only the eye skips it (the label says "IB points").
+    && (line.number === null ? !b : b.textContent === line.number && li.children[1].textContent === ` ${line.unit}, ${line.qualifier}`
+      && byClass(li.children[1], 'visually-hidden')[0]?.textContent === `${line.unit}, ` && li.children[1].children[0] === ' ');
   return ok ? null : `${row.id}: ${JSON.stringify(li.textContent)}`;
 })).filter(Boolean);
 const renderedLines = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[0].children.map((li) => li.textContent));
@@ -2974,7 +3107,9 @@ const verdictOf = (row, state) => {
   const a = detailOf(row, state);
   const cell = cellOf(a, 'c-pts');
   const verd = byClass(cell, 'verd');
-  return [fillOf(cell), verd.length ? `${verd[0].className}: ${verd[0].textContent}` : null,
+  // F3: with My points empty an unknown figure is a dashed box around its words
+  // ("boxed"), not a dashed fill on the whole fact.
+  return [fillOf(cell) || (byClass(cell, 'unk-t').length ? 'boxed' : ''), verd.length ? `${verd[0].className}: ${verd[0].textContent}` : null,
     byClass(a, 'pnote')[0]?.textContent ?? null, byClass(cell, 'pnote').length];
 };
 equal('verdict matrix: cell fill, short verdict, full note after the facts (never in the cell)', [
@@ -3002,7 +3137,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
   ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
   ['', null, null, 0],
-  ['v-unk', null, null, 0],
+  ['boxed', null, null, 0],
 ]);
 // Cutoffs 519 (Round 1) and 498 (Round 2). On the CAO's 2027 IB table 35 is
 // worth 486 (511 with the bonus, which reaches Round 2 only) and 36 is worth
@@ -3023,8 +3158,9 @@ equal('Subjects: "None required" for none, a dashed "Not checked yet" for blank'
     const dd = kvOf(fxDetail(id))['IB subjects'];
     return [dd.textContent, byClass(dd, 'unk-t').length];
   }), [['None required', 0], ['Not checked yet', 1]]);
-equal('Admission and Other join their items with " · "; "?" admission is a dashed "Not published"',
-  [kvOf(fxDetail('fx-admission')).Admission.textContent, kvOf(fxDetail('fx-other'))['Other requirements'].textContent,
+// F3: " · "-separated Other requirements are drawn as the list they are.
+equal('Admission joins its items with " · ", Other requirements are a list; "?" admission is a dashed "Not published"',
+  [kvOf(fxDetail('fx-admission')).Admission.textContent, byTag(kvOf(fxDetail('fx-other'))['Other requirements'], 'li').map((li) => li.textContent).join(' · '),
     byClass(kvOf(fxDetail('fx-admission-q')).Admission, 'unk-t')[0]?.textContent, Boolean(kvOf(fxDetail('fx-plain')).Admission)],
   ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
 equal('a "?" Language requirement is a dashed "Not published"',
@@ -3041,7 +3177,9 @@ check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general'))['G
 check('an unchecked Applying section names the four new unknown facts',
   (() => {
     const a = fxDetail('fx-no-applying');
-    return byClass(a, 'd-sec').length === 2 && ['Application fee', 'Places', 'Intake', 'Offer timing'].every(k => kvOf(a)[k]?.textContent.includes('Not checked yet'));
+    // Before you apply plus the two folds; this fixture has no rankings year.
+    return byClass(a, 'd-sec').map((n) => n.tagName).join() === 'section,details,details'
+      && ['Application fee', 'Places', 'Intake', 'Offer timing'].every(k => byClass(kvOf(a)[k], 'unk-t')[0]?.textContent === 'Not checked yet');
   })());
 equal('Applying: living costs, taught in and apply via',
   ['Living costs', 'Language', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
@@ -3072,9 +3210,10 @@ check('the tuition note appears for an unknown fee only while Max fee is set',
       && !notesOf(knownRow, exam).includes(examNote) && !notesOf(unknownRow, noFilters()).includes(examNote)
       && !notesOf(unknownRow, maths).includes(examNote), JSON.stringify(notesOf(unknownRow, exam)));
   const examRowText = (entranceExam) => kvOf(detailOf({ ...plainRow, entranceExam }))['Entrance exam']?.textContent;
-  equal('the Entrance exam row shows its three texts, and "Not checked yet" when nobody has checked',
+  // F3: the label already says "Entrance exam", so the answer starts with Yes or No.
+  equal('the Entrance exam row shows its three answers, and "Not checked yet" when nobody has checked',
     ['yes', 'waivable', 'no', null].map(examRowText),
-    ['Entrance exam or test', 'Entrance exam — some IB applicants can skip it', 'No entrance exam', 'Not checked yet']);
+    ['Yes, an exam or test', 'Yes, some IB applicants can skip it', 'No', 'Not checked yet']);
 }
 check('no official link: a strong note, no button, and the row is still rendered',
   (() => {
@@ -3390,7 +3529,7 @@ check('all fixture slots render cleanly, including every short points form', [no
 check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `Details for ${row.programme}`
-    && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-cells').length;
+    && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-facts').length && !byClass(slot, 'fact').length;
 }));
 check('row button name separates degree and keeps Czech pronunciation', (() => {
   const row = live.find((p) => p.id === 'muni-anthropology'), item = rowOf(row), b = byClass(item, 'open')[0], degree = byClass(item, 'deg')[0];
@@ -3605,9 +3744,12 @@ check('sort marks: one fixed 14x14 SVG box, the active heading changes colour no
 check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
   /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
     && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
-    && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.pane .d-cells', desktopQuery))
-    && /grid-template-areas:"pts pts" "ddl fee"/.test(paneRule('.pane .d-cells', desktopQuery))
-    && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery)));
+    // F3: the facts are one panel, points across the top, deadline and fee side
+    // by side; up to a 1269 px window (pane 330 px or less) one fact per row.
+    && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.d-facts'))
+    && /grid-area:auto/.test(paneRule('.d-facts>.fact')) && /grid-column:1\/-1/.test(paneRule('.d-facts>.c-pts'))
+    && /grid-template-columns:minmax\(0,1fr\)$/.test(paneRule('.d-facts', '(min-width: 1200px) and (max-width: 1269.98px)'))
+    && !/\.d-cells\b/.test(cssRules));
 check('selected tint and left accent follow hover, focus inset and goto colours are explicit',
   /background:var\(--accent-tint\);box-shadow:inset 3px 0 0 var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
     && cssRules.lastIndexOf('.is-sel>.row') > cssRules.indexOf('.row:hover')
@@ -3650,7 +3792,7 @@ check('pane reuse removes old content, keeps stable nodes and resolves every nam
     const title = byTag(body, 'h2');
     if (expected === 'content') {
       if (!heading.hidden || title.length !== 1 || title[0].id !== `p-${row.id}` || pane.getAttribute('aria-labelledby') !== title[0].id
-        || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-cells').length !== 1) return false;
+        || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-facts').length !== 1) return false;
     } else if (heading.hidden || title.length !== (expected === 'empty' ? 1 : 0) || pane.getAttribute('aria-labelledby') !== 'pane-h'
       || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} does not match your filters`)
         || byTag(body, 'span')[0]?.lang !== 'cs'))
@@ -3673,13 +3815,13 @@ check('pane overview renders every active filter including numeric budgets witho
   return mode === 'empty' && body.textContent.includes('€15,000') && body.textContent.includes('Ireland')
     && body.textContent.includes('My list · 2 saved') && byClass(body, 'detail').length === 0;
 }));
-check('all live pane details have exactly one full heading, head and cells', typeof renderPane === 'function' && withStubDocument(() => {
+check('all live pane details have exactly one full heading, head and facts panel', typeof renderPane === 'function' && withStubDocument(() => {
   const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
   heading.id = 'pane-h'; pane.append(heading, body);
   return live.every((row) => {
     renderPane({ pane, heading, body }, row, true, noFilters());
     return byTag(body, 'h2').length === 1 && byTag(body, 'h2')[0].id === `p-${row.id}`
-      && byClass(body, 'd-head').length === 1 && byClass(body, 'd-cells').length === 1;
+      && byClass(body, 'd-head').length === 1 && byClass(body, 'd-facts').length === 1 && byClass(body, 'fact').length === 3;
   });
 }));
 check('wide and narrow live rows use their own ARIA without selection decoration', withStubDocument(() => [false, true].every((wide) => {
@@ -5785,8 +5927,10 @@ check('option search names its group naturally and shares the clear action with 
 equal('IB points labels match in the row, pane and slot',
   [byClass(rowOf(fxRow('fx-plain')), 'c-pts')[0].children[0].textContent,
     byClass(fxDetail('fx-plain'), 'c-pts')[0].children[0].textContent,
-    withStubDocument(() => byClass(renderSlot(fxRow('fx-plain'), noFilters()), 'lab')[0].textContent)],
-  ['IB points', 'IB points', 'IB points']);
+    // The slot repeats the points only when they say more than the row (two rounds here).
+    withStubDocument(() => byClass(byClass(renderSlot(kinds.find((r) => r.id === 'ie-two'), noFilters()), 'd-pts')[0], 'lab')[0].textContent),
+    withStubDocument(() => byClass(renderSlot(fxRow('fx-plain'), noFilters()), 'd-pts').length)],
+  ['IB points', 'IB points', 'IB points', 0]);
 const issuesDetail = new ChromeNode('details'), issuesSummary = new ChromeNode('summary'), issuesList = new ChromeNode('ul');
 const { renderIssues: wordingIssues } = await import('../js/render.js');
 withStubDocument(() => wordingIssues(issuesDetail, issuesSummary, issuesList, ['one', 'two']));
@@ -5903,25 +6047,52 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
       livingLine(rowsAt[3])],
     ['Living €900–1,200/mo', 'Living: your €800/mo', 'Living: your €0/mo', 'Living from €957/mo', 'Living cost not published']);
   const YEAR = 'Fee + 12 months\' living (estimate)';
-  const kvText = (row, state, key = YEAR) => kvOf(detailOf(row, { ...noFilters(), ...state }))[key]?.textContent ?? null;
+  // F3: each cost is a figure with a one-line note under it. The note is the
+  // source as it stands when it is 36 characters or fewer, else a link
+  // ("Source", "How it is worked out") with the full text inside; a qualifier
+  // that changes what the figure means ("your figure", the national-minimum
+  // label) stays visible before the link. [figure, visible qualifier, link, text].
+  const costOf = (row, state, key = YEAR) => {
+    const dd = kvOf(detailOf(row, { ...noFilters(), ...state }))[key];
+    if (!dd) return null;
+    return [byClass(dd, 'cost-fig')[0].textContent, byClass(dd, 'd-note-lead')[0]?.textContent ?? null, noteLink(dd),
+      (noteBody(dd) ?? byClass(dd, 'd-note')[0])?.textContent ?? null];
+  };
   equal('detail: the yearly estimate as a range with its source',
-    [kvText(rowsAt[0]), kvText(fxRow('fx-plain')), kvText(rowsAt[4])],
-    ['€12,800–16,400 a year · university\'s estimate', '€15,700 a year', '€10,800–14,400 a year · university\'s estimate']);
+    [costOf(rowsAt[0]), costOf(fxRow('fx-plain')), costOf(rowsAt[4])],
+    [['€12,800–16,400 a year', null, null, 'university\'s estimate'], ['€15,700 a year', null, null, null], ['€10,800–14,400 a year', null, null, 'university\'s estimate']]);
   equal('detail: your own living figure replaces the estimate, said as yours, including where none was published',
-    [kvText(rowsAt[0], { myLiving: 800 }), kvText(rowsAt[0], { myLiving: 800 }, 'Living costs'),
-      kvText(fxRow('fx-no-applying'), { myLiving: 500 }), kvText(fxRow('fx-no-applying'), { myLiving: 500 }, 'Living costs')],
-    ['€11,600 a year · your €800/month', 'Your €800 / month (replacing €900–1,200 / month · university\'s estimate)',
-      '€8,500 a year · your €500/month', 'Your €500 / month (no university estimate)']);
-  equal('detail: an unknown fee says so; no living figure means no yearly row',
-    [kvText(rowsAt[2]), kvText(rowsAt[3]), kvText(fxRow('fx-fee-blank'), { myLiving: 500 })],
-    ['Not known because the EU fee is not published', null, 'Not known because the EU fee is not published']);
+    [costOf(rowsAt[0], { myLiving: 800 }), costOf(rowsAt[0], { myLiving: 800 }, 'Living costs'),
+      costOf(fxRow('fx-no-applying'), { myLiving: 500 }), costOf(fxRow('fx-no-applying'), { myLiving: 500 }, 'Living costs')],
+    [['€11,600 a year', 'your figure', 'How it is worked out', 'your €800/month'],
+      ['€800 / month', 'your figure', 'Source', 'Your €800 / month (replacing €900–1,200 / month · university\'s estimate)'],
+      ['€8,500 a year', 'your figure', 'How it is worked out', 'your €500/month'],
+      ['€500 / month', 'your figure', 'Source', 'Your €500 / month (no university estimate)']]);
+  // F3 always shows the Living and yearly rows: with no living figure they are a
+  // dashed unknown that says which half is missing, instead of no row at all.
+  equal('detail: an unknown fee says so; no living figure is a dashed unknown that names what is missing',
+    [costOf(rowsAt[2]), costOf(rowsAt[3]), costOf(rowsAt[3], {}, 'Living costs'), costOf(fxRow('fx-fee-blank'), { myLiving: 500 })],
+    [['Not known', null, null, 'because the EU fee is not published'], ['Not known', null, null, 'because living costs are not published'],
+      ['Not published', null, null, null], ['Not known', null, null, 'because the EU fee is not published']]);
+  check('detail: every unknown cost figure is the dashed tag',
+    [[rowsAt[2], YEAR], [rowsAt[3], YEAR], [rowsAt[3], 'Living costs'], [rowsAt[2], 'EU fee']].every(([row, key]) =>
+      byClass(byClass(kvOf(detailOf(row))[key], 'cost-fig')[0], 'unk-t').length === 1));
   const ukRow = { ...base, country: 'United Kingdom', tuitionEu: 38000, livingCostMin: 1401, livingCostMax: 1401,
     livingCostSource: 'national estimate (UK student visa), £1,171 a month',
     deadlineNotes: 'International fee: £33,500 a year, shown here in euros at the ECB rate of 29 October 2026.' };
   equal('detail: a UK visa figure reads "from", is labelled a national minimum, and keeps the £ conversion',
-    [kvText(ukRow), kvText(ukRow, {}, 'Living costs')],
-    [`from €54,812 a year · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`,
-      `€1,401 / month · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL}`]);
+    [costOf(ukRow), costOf(ukRow, {}, 'Living costs')],
+    [['from €54,812 a year', FLOOR_LABEL, 'How it is worked out',
+      `national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`],
+    ['from €1,401 / month', FLOOR_LABEL, 'Source', 'national estimate (UK student visa), £1,171 a month']]);
+  // The closed fold still says the one figure most students want from it.
+  equal('F3 the Costs fold summary: the yearly range, "your living cost", the national-minimum label, or a dashed unknown with the reason',
+    [[rowsAt[0], {}], [rowsAt[0], { myLiving: 800 }], [ukRow, {}], [rowsAt[2], {}]].map(([row, state]) => {
+      const fold = byTag(detailOf(row, { ...noFilters(), ...state }), 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Costs');
+      const gist = byClass(fold.children[0], 'fold-g')[0];
+      return [gist.textContent, byClass(gist, 'unk-t').length];
+    }), [[', €12,800–16,400 a year with living', 0], [', €11,600 a year with your living cost', 0],
+      [`, from €54,812 a year with living · ${FLOOR_LABEL}`, 0], [', Not known because the EU fee is not published', 1]]);
   const notesOf = (row, state) => byClass(detailOf(row, { ...noFilters(), ...state }), 'note').map((n) => n.textContent);
   equal('detail notes: unknown cost not filtered; crossing and floor explain "may exceed"; within says nothing',
     [notesOf(rowsAt[2], { maxBudget: 12800 }), notesOf(rowsAt[0], { maxBudget: 12800 }), notesOf(ukRow, { maxBudget: 60000 }), notesOf(rowsAt[0], { maxBudget: 20000 })],
@@ -6131,10 +6302,23 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     // And the detail prints the very same words.
     const row = sample[0];
     const words = compareTable([row, row], noFilters()).find((x) => x.key === 'yearly').cells[0].lines[0].text;
-    equal('compare and the detail print the same yearly estimate', kvOf(detailOf(row))['Fee + 12 months\' living (estimate)'].textContent, words);
+    // F3: the detail shows the figure, with the rest of the same line under it
+    // (as it stands, or behind "How it is worked out"). Put back together, the
+    // words are still compare's, so the two cannot disagree.
+    const yearDd = kvOf(detailOf(row))['Fee + 12 months\' living (estimate)'];
+    const yearRest = (noteBody(yearDd) ?? byClass(yearDd, 'd-note')[0])?.textContent;
+    equal('compare and the detail print the same yearly estimate', [byClass(yearDd, 'cost-fig')[0].textContent, yearRest].filter(Boolean).join(' · '), words);
+    // F3: the detail's row is labelled "Entrance exam", so it answers Yes or No;
+    // compare has no such label and keeps its full line. Both read the same
+    // field, state by state, and both say "Not checked yet" for a blank.
     const examRow = live.find((r) => r.entranceExam === 'waivable');
-    equal('compare and the detail print the same entrance-exam line', kvOf(detailOf(examRow))['Entrance exam'].textContent,
-      compareTable([examRow, examRow], noFilters()).find((x) => x.key === 'exam').cells[0].lines[0].text);
+    equal('compare and the detail answer the entrance-exam question from the same field, state by state',
+      ['yes', 'waivable', 'no', null].map((entranceExam) => {
+        const one = { ...examRow, entranceExam };
+        const line = compareTable([one, one], noFilters()).find((x) => x.key === 'exam').cells[0].lines[0];
+        return [kvOf(detailOf(one))['Entrance exam'].textContent, `${line.tag ?? ''}${line.text ?? ''}`];
+      }), [['Yes, an exam or test', 'Entrance exam or test'], ['Yes, some IB applicants can skip it', 'Entrance exam — some IB applicants can skip it'],
+        ['No', 'No entrance exam'], ['Not checked yet', 'Not checked yet']]);
   }
   {
     const within = live.find((r) => r.pointsKind !== 'cutoff' && r.ibPointsMin !== null && r.ibPointsMin <= 36);
@@ -6846,7 +7030,11 @@ section('SK/EN interface and data translations');
     i18n.setDataTranslations([]);
     const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), noFilters());
     i18n.setDataTranslations(skRows);
-    return !detail.querySelector('.detail-originals') && detail.querySelectorAll('.english-note').length === 2;
+    // One note per section that holds untranslated text: Before you apply always does here.
+    const untranslated = detail.querySelectorAll('.d-sec').filter((section) => section.querySelector('[data-untranslated]'));
+    return !detail.querySelector('.detail-originals') && untranslated.length >= 1 && untranslated[0].classList.contains('d-must')
+      && detail.querySelectorAll('.english-note').length === untranslated.length
+      && untranslated.every((section) => section.lastChild.classList.contains('english-note'));
   }));
   equal('free-text inventory counts programme rows separately from missing strings',
     translationInventory([], [{ ib_subjects: 'HL Maths', other_requirements: 'none', deadline_notes: 'A note' }, { ib_subjects: 'HL Maths' }], []).freeText,
@@ -7174,9 +7362,13 @@ check('C1 print resets the detail actions to a plain left-aligned link',
   // Batch 3 · A: the detail also carries the compare button (Leon's compare
   // icon on every programme), so the actions are official, save, compare.
   const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false, inCompare: false }));
-  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0];
-  equal('C1 actions contain official, then save, then compare', actions.children.map((n) => [n.tagName, n.className]),
-    [['a', 'btn btn-p'], ['button', 'btn save'], ['button', 'btn cmpb']]);
+  // F3: the official link moved up, straight after the facts; Save and Compare
+  // stay in the footer, after everything there is to read.
+  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0], top = byClass(detail, 'd-apply')[0];
+  equal('C1 the official link is the top action; the footer actions are save, then compare',
+    [top.children.map((n) => [n.tagName, n.className]), actions.children.map((n) => [n.tagName, n.className]),
+      ['d-facts', 'd-apply', 'd-must', 'd-foot'].map((name) => detail.children.findIndex((n) => n.classList.contains(name))).every((at, i, all) => at >= 0 && (!i || at > all[i - 1]))],
+    [[['a', 'btn btn-p']], [['button', 'btn save'], ['button', 'btn cmpb']], true]);
   check('C1 Student life and provenance stay outside actions',
     actions.parent === foot && byClass(foot, 'lnk')[0]?.parent === foot && byClass(foot, 'ok')[0]?.parent === foot);
   const solo = withStubDocument(() => renderDetail({ ...row, officialUrl: null }, noFilters(), { saved: false }));
@@ -7211,8 +7403,9 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
     {
       const free = detailOf(czech), languageDd = kvOf(free)[t('language')];
       check('C3 free Czech note is a .dd-note inside the Language row, beside the fee profile note (' + lang + ')',
-        byClass(languageDd, 'dd-note').some((n) => n.textContent.startsWith(note)) && byClass(free, 'dd-note').length > 1
-        && byClass(kvOf(free)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+        // F3: both notes are one-line links with the whole text inside.
+        byClass(languageDd, 'dd-note').some((n) => noteLink(n) === t('why_no_fee') && noteBody(n).textContent === note) && byClass(free, 'dd-note').length > 1
+        && byClass(kvOf(free)[t('app_fee')], 'dd-note').some((n) => noteLink(n) === t('fee_details') && noteBody(n).textContent.endsWith(t('app_fee_profile'))));
     }
     for (const [name, row] of [
       ['English taught', { ...czech, languages: ['English'] }],
@@ -7228,7 +7421,7 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
       // The Czech wording must be absent from the Language row while the other notes stay.
       const languageDd = kvOf(detail)[t('language')];
       check('C3 ' + name + ' (' + lang + '): other fee/profile notes are drawn, so a bare .dd-note test cannot mean "Czech note"',
-        byClass(detail, 'dd-note').length > 0 && byClass(kvOf(detail)[t('app_fee')], 'dd-note').some((n) => n.textContent === t('app_fee_profile')));
+        byClass(detail, 'dd-note').length > 0 && byClass(kvOf(detail)[t('app_fee')], 'dd-note').some((n) => noteBody(n)?.textContent.endsWith(t('app_fee_profile'))));
       check('C3 ' + name + ' (' + lang + '): the Language row has no Czech tuition note',
         !languageDd || !byClass(languageDd, 'dd-note').some((n) => n.textContent.includes(note)));
     }
@@ -7326,14 +7519,16 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
   {
     const both = withStubDocument(() => renderDetail({ ...rows[0], applyUrl: 'https://example.org/apply', applyLinkKind: 'programme', applyCode: '',
       officialUrl: 'https://example.org/official', deadlinePassed: false }, noFilters(), { saved: false, inCompare: false }));
-    const group = byClass(both, 'd-actions')[0], kids = group.children;
+    // F3: the links are the top action group, Save and Compare the footer's.
+    const groups = byClass(both, 'd-actions'), group = groups[1], kids = groups.flatMap((g) => g.children);
     equal('A2 detail with Apply and official links: links first, then Save, then Compare',
       kids.map((n) => [n.tagName, n.classList.contains('save') ? 'save' : n.classList.contains('cmpb') ? 'cmpb' : n.classList.contains('btn-apply') ? 'apply' : 'official']),
       [['a', 'apply'], ['a', 'official'], ['button', 'save'], ['button', 'cmpb']]);
     check('A2 with two links, positional [link, save, compare] would pick the official link as Save, so the smoke finds buttons by class',
-      kids[1].tagName === 'a' && byTag(group, 'button').filter((n) => n.classList.contains('save')).length === 1
+      kids[1].tagName === 'a' && groups.length === 2 && groups[0].classList.contains('d-apply') && group.parent.classList.contains('d-foot')
+      && byTag(group, 'button').filter((n) => n.classList.contains('save')).length === 1
       && byTag(group, 'button').filter((n) => n.classList.contains('cmpb')).length === 1
-      && byTag(group, 'a').length === 2 && !/\[l,\s*a,\s*b\]\s*=\s*\[\.\.\.g\.children\]/.test(read('tools/smoke.mjs')));
+      && byTag(groups[0], 'a').length === 2 && !byTag(group, 'a').length && !/\[l,\s*a,\s*b\]\s*=\s*\[\.\.\.g\.children\]/.test(read('tools/smoke.mjs')));
   }
   check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
     /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)

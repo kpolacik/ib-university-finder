@@ -327,6 +327,7 @@ async function start() {
     printFlushed = !compareOpen;
     printScrollY = window.scrollY;
     if (printFlushed) flushRows();
+    openDetailsForPrint();
     syncTray();
   });
   window.addEventListener('afterprint', afterPrint);
@@ -2015,8 +2016,28 @@ function isPrinting() {
   return printing || printQuery.matches;
 }
 
+// Paper has no clicks, so every fold and note link in a detail prints open.
+// Done here, after the rows are mounted, because Safari ignores the CSS
+// fallback (::details-content). The mark lets the fold's own toggle listener
+// (render.js) tell this from the student opening it, and afterPrint() close
+// exactly the ones opened here.
+function openDetailsForPrint() {
+  for (const details of document.querySelectorAll('.detail details:not([open])')) {
+    details.setAttribute('data-print-open', '');
+    details.open = true;
+  }
+}
+
+function closeDetailsAfterPrint() {
+  for (const details of document.querySelectorAll('.detail details[data-print-open]')) {
+    details.open = false;
+    details.removeAttribute('data-print-open');
+  }
+}
+
 function afterPrint() {
   printing = false;
+  closeDetailsAfterPrint();
   // The tray's room at the foot of the page first, or the restored position
   // is clamped by its height on phones. A tray that stays hidden gives the
   // room back (wireTray keeps it during print).

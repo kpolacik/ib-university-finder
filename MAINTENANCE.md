@@ -440,8 +440,8 @@ The photo and credit also print. Incomplete credits suppress the photo.
 **Rankings are shown (since 2026-11-14).** `qs_rank` and `the_rank` hold the published
 display value: `62`, `=218`, `201–250` (en dash), or `1201+`. No invented ranks,
 zero, `Reporter`, or `?`. A rank needs a four-digit `rankings_year` (`2027`).
-With a year and blank rank, the panel says "Not listed in QS/THE 2027";
-without a year it omits the whole block. When you load a new edition, confirm
+With a year and blank rank, the rank line says "Not listed" beside QS or THE;
+without a year it omits the whole line. When you load a new edition, confirm
 the name matches against the full QS and THE tables first: a missed match must
 not become a false "Not listed" claim (STATUS.md records the 2027 check). To
 hide rankings, set `SHOW_RANKINGS` to `false` in `js/config.js`. Checks cover
