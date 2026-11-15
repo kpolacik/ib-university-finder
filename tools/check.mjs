@@ -222,6 +222,25 @@ const byTag = (root, tag) => findAll(root, (n) => n.tagName === tag);
 // null when the value has no such link.
 const noteBody = (node) => (node ? byClass(node, 'd-note-body')[0] ?? null : null);
 const noteLink = (node) => (node ? byTag(node, 'summary')[0]?.textContent ?? null : null);
+// "In English, as published by the university." sits next to English the
+// student can see: one notice at the end of a section that shows untranslated
+// text; when a section's only English is inside closed note links, one notice
+// inside each such note instead, and none on the section.
+const englishNoteProblems = (detail) => byClass(detail, 'd-sec').flatMap((section) => {
+  const english = findAll(section, (n) => n.getAttribute('data-untranslated') !== null);
+  const visible = english.filter((n) => !n.closest('.d-note-body'));
+  const own = section.children.filter((n) => typeof n !== 'string' && n.classList.contains('english-note')).length;
+  const bodies = byClass(section, 'd-note-body');
+  const out = [];
+  if (own !== (visible.length ? 1 : 0)) out.push(`${section.className}: ${own} section notices for ${visible.length} visible English texts`);
+  for (const body of bodies) {
+    const has = findAll(body, (n) => n.getAttribute('data-untranslated') !== null).length > 0;
+    const notes = byClass(body, 'english-note').length;
+    if (notes !== (has && !visible.length ? 1 : 0)) out.push(`${section.className}: a note link has ${notes} notices`);
+  }
+  if (byClass(section, 'english-note').length > own + bodies.length) out.push(`${section.className}: a notice is somewhere else`);
+  return out;
+});
 // Every dt label with its dd, across every list of a detail (Before you
 // apply and the two folds).
 const kvOf = (article) => {
@@ -343,18 +362,29 @@ section('PR2 detail UI');
     check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
   }
   const inheritedFacts = kvOf(draw(inherited));
-  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feeFee detailsdefault For EU citizens with an IB Diploma.'
-    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'default For EU citizens with an IB Diploma.'
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feedefaultFee detailsFor EU citizens with an IB Diploma.'
+    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'For EU citizens with an IB Diploma.'
     && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
   check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
   const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
   const explicitFacts = kvOf(draw(explicit));
-  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12Fee detailsown ') && !explicitFacts['Application fee'].textContent.includes('default')
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12ownFee details') && !explicitFacts['Application fee'].textContent.includes('default')
     && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
     && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 places · 2027/28');
   const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
-  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetFee detailsAdmission test fee: EUR 35 (TOL). For EU citizens with an IB Diploma.'
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetAdmission test fee: EUR 35 (TOL).Fee detailsFor EU citizens with an IB Diploma.'
     && byClass(kvOf(noteOnly)['Application fee'], 'unk-t')[0]?.textContent === 'Not checked yet');
+  // Review of 5bb123d: the fee's own note was always folded, so six Austrian rows
+  // hid their only known charge ("Admission test: 50 EUR." under an unchecked
+  // fee) behind "Fee details". A note of 36 characters or fewer is a plain line;
+  // a longer one and the profile sentence stay behind the link.
+  equal('fee note: 36 characters or fewer is a plain line outside the link, 37 is inside it; the profile sentence is always inside',
+    ['Admission test: 50 EUR.', 'x'.repeat(36), 'y'.repeat(37), ''].map((appFeeNote) => {
+      const dd = kvOf(draw({ ...pr2Blank, appFeeNote }))['Application fee'];
+      const plain = byClass(dd, 'd-note').filter((n) => !byTag(n, 'details').length).map((n) => n.textContent).join('|');
+      return [plain, noteLink(dd), noteBody(dd).textContent];
+    }), [['Admission test: 50 EUR.', 'Fee details', 'For EU citizens with an IB Diploma.'], ['x'.repeat(36), 'Fee details', 'For EU citizens with an IB Diploma.'],
+      ['', 'Fee details', `${'y'.repeat(37)} For EU citizens with an IB Diploma.`], ['', 'Fee details', 'For EU citizens with an IB Diploma.']]);
   const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
   check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
   const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
@@ -390,8 +420,13 @@ section('PR2 detail UI');
   // labelled as the whole university's; there is no "About the university" fold.
   check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
     && byClass(ranks,'rk-lab')[0]?.textContent === 'Whole-university rank, 2027'
-    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS (opens in a new tab) Not listed|THE (opens in a new tab) Not published'
-    && byClass(byClass(ranks,'d-rank')[0],'unk-t').length === 2 && !byClass(ranks,'rk-note').length
+    // Review of 5bb123d: "Not listed" is a checked fact, so plain words; only
+    // "Not published" is an unknown and wears the dashed box. Each link's hidden
+    // name says it is that year's table.
+    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS, 2027 table (opens in a new tab) Not listed|THE, 2027 table (opens in a new tab) Not published'
+    && byClass(ranks,'rk-none').map(n => `${n.textContent}:${n.classList.contains('unk-t')}`).join('|') === 'Not listed:false|Not published:true'
+    && byTag(byClass(ranks,'d-rank')[0],'a').every(a => byClass(a,'visually-hidden')[0]?.textContent === ', 2027 table (opens in a new tab)')
+    && !byClass(ranks,'rk-note').length
     && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
     && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
   check('F3 the rank line is a plain line straight after the two folds, never a fold and with no heading', (() => {
@@ -442,6 +477,16 @@ section('PR2 detail UI');
     // and ran 9 rows out of the pane. .unk-t is nowrap for the list row.
     check('F3 a dashed unknown box inside the detail may wrap',
       /\.detail :is\(dd,\.fold-g,\.rk,\.plines\) \.unk-t\{[^}]*white-space:normal\}/.test(sheet));
+    // Review of 5bb123d: the rank links and note links were pinned at 24 px, which
+    // undid the 44 px touch target (--tap, S16). They keep a 24 px line and take
+    // the full hit height back with a negative margin, like .cmp-t .lnk.
+    check('F3 rank links and note links keep the --tap hit height on a 24 px line',
+      /\.rk \.rk-src\{gap:2px;min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\)\}/.test(sheet)
+      && /\.d-note-more>summary\{[^}]*min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\);/.test(sheet)
+      && !/min-height:24px/.test(sheet.slice(sheet.indexOf('.detail{gap:24px}'))));
+    check('F3 "Not listed" is plain grey words; only a rank that is also .unk-t gets the dashed box',
+      /\.rk \.rk-none\{font-size:var\(--fs-13\);line-height:20px;color:var\(--ink-2\)\}/.test(sheet)
+      && /\.detail \.rk \.rk-none\.unk-t\{/.test(sheet) && !/\.rk-none\{[^}]*(?:border|dashed)/.test(sheet));
     // Found while building F3: a new key reused the name of an existing one
     // ("deadline_passed"), and the later entry silently won.
     const source = read('js/i18n.js'), enAt = source.indexOf('  en: {'), skAt = source.indexOf('  sk: {');
@@ -453,16 +498,20 @@ section('PR2 detail UI');
     equal('F3 the passed tag and the list group keep their own words', [UI.en.passed_tag, UI.en.deadline_passed, UI.sk.passed_tag, UI.sk.deadline_passed],
       ['Passed', 'Deadline passed', 'Uplynul', 'Termín uplynul']);
   }
-  equal('F3 the Applying details summary always names the places; a system joins them only when it is a short name',
+  // Leon, 2026-11-15: "Places: 650 places" repeated itself. A value that says
+  // what it is stands alone; "No fixed limit" and an unknown keep the label.
+  equal('F3 the Applying details summary always names the places, labelled only where the value alone is unclear; a system joins them only when it is a short name',
     [{ applicationSystem: 'Studielink', places: 650, placesKind: 'capacity', placesYear: '' },
       { applicationSystem: 'An admission information system described in one long sentence', placesKind: 'open' },
-      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true }].map((extra) => {
+      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true },
+      { places: 42, placesKind: 'past_intake', placesYear: '2026' }, { places: 5, placesKind: 'eu_quota', placesYear: '2027/28' }, {}].map((extra) => {
       const detail = draw({ ...pr2Blank, ...extra });
       const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Applying details');
-      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via'].textContent];
-    }), [[', Studielink · Places: 650 places · year not published', 'Studielink'],
+      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via']?.textContent ?? null];
+    }), [[', Studielink · 650 places · year not published', 'Studielink'],
       [', Places: No fixed limit', 'An admission information system described in one long sentence'],
-      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100']]);
+      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100'],
+      [', 42 admitted in 2026', null], [', 5 EU places · 2027/28', null], [', Places: Not checked yet', null]]);
   const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
   check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
   const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
@@ -486,6 +535,12 @@ section('PR2 detail UI');
   const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
   check('PR2 historical places says past intake and year', historical.Places?.textContent === '42 admitted in 2026'
     && kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:''})).Places.textContent === '42 admitted (year not published)');
+  // Review of 5bb123d: the count was passed already formatted, so the plural
+  // form was never chosen. No live row has 1–4 places today.
+  equal('places choose their plural form by the number (en)',
+    [1, 3, 5, 1500].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' })).Places.textContent)),
+    [['1 place · 2026', '1 EU place · 2026', '1 admitted in 2026'], ['3 places · 2026', '3 EU places · 2026', '3 admitted in 2026'],
+      ['5 places · 2026', '5 EU places · 2026', '5 admitted in 2026'], ['1,500 places · 2026', '1,500 EU places · 2026', '1,500 admitted in 2026']]);
   check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
     && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 EU places · year not published');
   i18n.setLanguage('sk',{setItem(){}});
@@ -502,6 +557,79 @@ section('PR2 detail UI');
   originalButton.dispatchEvent({type:'click'});
   check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
   check('PR2 missing new translation labels its section', byClass(draw({...pr2Blank,ibRecognition:'Untranslated recognition'}),'english-note').length === 1);
+  equal('places choose their plural form by the number (sk)',
+    [1, 3, 5].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' }))['Počet miest'].textContent)),
+    [['1 miesto · 2026', '1 miesto pre EÚ · 2026', '1 prijatý v roku 2026'], ['3 miesta · 2026', '3 miesta pre EÚ · 2026', '3 prijatí v roku 2026'],
+      ['5 miest · 2026', '5 miest pre EÚ · 2026', '5 prijatých v roku 2026']]);
+  equal('places without a year keep the plural form (sk)',
+    [1, 2, 7].map((places) => kvOf(draw({ ...pr2Blank, places, placesKind: 'past_intake', placesYear: '' }))['Počet miest'].textContent),
+    ['1 prijatý (rok nezverejnený)', '2 prijatí (rok nezverejnený)', '7 prijatých (rok nezverejnený)']);
+  equal('"your figure" in Slovak', UI.sk.your_figure, 'tvoj údaj');
+  equal('Applying summary in Slovak: no repeated "Počet miest"; the label stays for no limit and for an unknown',
+    [{ places: 650, placesKind: 'capacity', placesYear: '' }, { placesKind: 'open' }, {}].map((extra) => {
+      const fold = byTag(draw({ ...pr2Blank, ...extra }), 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+      return byClass(fold, 'fold-g')[0].textContent;
+    }), [', 650 miest · rok nezverejnený', ', Počet miest: Bez pevného limitu', ', Počet miest: Zatiaľ neoverené']);
+  // Review of 5bb123d: the notice was added to "Before you apply" even when the
+  // only English was inside a closed note link, so it pointed at nothing visible.
+  {
+    const long = 'An untranslated fee note that is longer than thirty-six characters.';
+    const hidden = draw({ ...pr2Blank, appFeeNote: long });
+    const must = byClass(hidden, 'd-must')[0], body = noteBody(kvOf(hidden)[UI.sk.app_fee]);
+    check('English only inside a note link: the notice is inside that note, not on the section',
+      body.textContent === `${long} ${UI.sk.app_fee_profile}${UI.sk.untranslated_section}` && byClass(body, 'english-note').length === 1
+      && body.lastChild.classList.contains('english-note') && byClass(must, 'english-note').length === 1 && !englishNoteProblems(hidden).length,
+      englishNoteProblems(hidden).join('; '));
+    const shown = draw({ ...pr2Blank, appFeeNote: 'Admission test: 50 EUR.', deadlineNotes: long });
+    check('English the student can see: one notice at the end of the section, none inside its note links',
+      byClass(shown, 'd-must')[0].lastChild.classList.contains('english-note') && byClass(shown, 'english-note').length === 1
+      && !byClass(shown, 'd-note-body').some((b) => byClass(b, 'english-note').length) && !englishNoteProblems(shown).length,
+      englishNoteProblems(shown).join('; '));
+    const two = draw({ ...pr2Blank, appFeeNote: long, deadlineNotes: `${long} Twice.` });
+    check('English inside two note links of one section: a notice in each', byClass(two, 'd-note-body').filter((b) => byClass(b, 'english-note').length === 1).length === 2
+      && byClass(two, 'english-note').length === 2 && !englishNoteProblems(two).length, englishNoteProblems(two).join('; '));
+  }
+  // Review of 5bb123d: a translated multi-part requirement stayed one " · "
+  // paragraph in Slovak while English drew a list.
+  {
+    const listOf = (translations, otherRequirements) => {
+      i18n.setDataTranslations(translations);
+      const detail = draw({ ...pr2Blank, otherRequirements });
+      const dd = kvOf(detail)[UI.sk.other_requirements];
+      // The hidden English original (a .data-original span) is left out of the text and the lang count.
+      const original = (n) => n.classList.contains('data-original');
+      return { detail, dd, items: byTag(dd, 'li').map((li) => [findAll(li, (n) => n.getAttribute('data-english') !== null || n.getAttribute('data-untranslated') !== null || (n.parent === li && !original(n)))
+        .map((n) => n.children.filter((c) => typeof c === 'string').join('')).join(''),
+      findAll(li, (n) => n.getAttribute('data-english') !== null).map((n) => n.getAttribute('data-english')).join(),
+      findAll(li, (n) => n.lang === 'en' && !original(n)).length]) };
+    };
+    const mixed = listOf([{ field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one item per requirement; a translated item keeps its English, an untranslated one keeps lang="en"',
+      mixed.items, [['Portfólio', 'Portfolio', 0], ['Interview in English', '', 1]]);
+    byClass(mixed.detail, 'detail-originals')[0].dispatchEvent({ type: 'click' });
+    check('Slovak list: "Show the English original" reveals the original inside its own item',
+      byTag(mixed.dd, 'li')[0].textContent === 'PortfólioPortfolio' && byClass(byTag(mixed.dd, 'li')[0], 'data-original').every((n) => !n.hidden && n.lang === 'en')
+      && !byClass(byTag(mixed.dd, 'li')[1], 'data-original').length);
+    const whole = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor v angličtine' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one translation covering two items is split with its English, item by item',
+      whole.items, [['Portfólio', 'Portfolio', 0], ['Pohovor v angličtine', 'Interview in English', 0]]);
+    const uneven = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor · v angličtine' }], ['Portfolio', 'Interview in English']);
+    check('Slovak list: when the English does not split the same way, the whole original goes under the list',
+      uneven.items.length === 3 && uneven.items.every((item) => item[1] === '') && byClass(uneven.dd, 'd-list-box')[0]?.getAttribute('data-english') === 'Portfolio · Interview in English'
+      && byClass(uneven.dd, 'd-list-box')[0].lastChild.classList.contains('data-original'));
+    i18n.setDataTranslations([]);
+  }
+  // Review of 5bb123d: the closed Applying fold copied an untranslated system as
+  // plain text, so a Slovak screen reader read English words as Slovak.
+  {
+    const detail = draw({ ...pr2Blank, applicationSystem: 'Direct', applyCode: 'UCAS:A100' });
+    const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+    const gist = byClass(fold.children[0], 'fold-g')[0];
+    equal('Applying summary in Slovak: the untranslated system keeps lang="en", the code suffix does not, and there is one notice for the fold',
+      [findAll(gist, (n) => n.lang === 'en').map((n) => n.textContent), findAll(gist, (n) => n.getAttribute('data-untranslated') !== null).length,
+        gist.textContent.startsWith(', Direct · kód A100 · '), byClass(fold, 'english-note').length],
+      [['Direct'], 0, true, 1]);
+  }
   i18n.initLanguage('',{getItem:()=> 'en'}); i18n.setDataTranslations([]);
 }
 
@@ -2942,7 +3070,12 @@ function detailProblems(row, state, slot = false) {
   const wantLines = pts.pointsLines(row).map(pts.pointsLineText);
   const lineLists = byClass(a, 'plines');
   const lines = lineLists[0]?.children.map((li) => li.textContent) ?? null;
-  const slotSaysMore = wantLines.length > 1 || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified || note !== null;
+  // Review of 5bb123d: the row's cell shortens a CAO cutoff to "≈39 R1" and,
+  // under a verdict, drops "with HL Maths 4+", so the slot must say the full
+  // lines. It may leave them out only when the one line is exactly what the row
+  // says: a plain minimum or "No minimum published", with no points note.
+  const plainLine = wantLines.length === 1 && (/^\d+ IB points, minimum$/.test(wantLines[0]) || wantLines[0] === 'No minimum published');
+  const slotSaysMore = !plainLine || note !== null;
   if (lineLists.length > 1 || (slot && !slotSaysMore ? lines !== null : JSON.stringify(lines) !== JSON.stringify(wantLines))) say(`lines ${JSON.stringify(lines)}`);
   // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
   const feeText = (node) => typeof node === 'string' ? node
@@ -3526,6 +3659,23 @@ for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
 }
 check('all fixture slots render cleanly, including every short points form', [noFilters(), fstate(36), fstate(36, true), fstate(37)].every((st) =>
   [...fxs, ...kinds, ...bk].filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => !detailProblems(r, st, true).out.length)));
+{
+  const slotPointsOf = (id, state) => {
+    const row = live.find((p) => p.id === id);
+    const slot = withStubDocument(() => renderSlot(row, state));
+    return [byClass(slot, 'd-pts')[0]?.textContent ?? null, byClass(rowOf(row, state), 'c-pts')[0].textContent];
+  };
+  const bonus = ['tcd-engineering-with-management', 'tcd-management-science-and-informa', 'tcd-mathematics', 'dcu-ba-global-business-usa'];
+  check('phone slot: a single-round 601–625 cutoff says "with HL Maths 4+" although the row, under its verdict, does not',
+    bonus.every((id) => [fstate(44, true), noFilters()].every((state) => /^IB points≈ \d+ IB points, Round 1 cutoff, 2026, with HL Maths 4\+$/.test(slotPointsOf(id, state)[0])))
+      && bonus.some((id) => !slotPointsOf(id, fstate(44, true))[1].includes('HL Maths')), JSON.stringify(slotPointsOf(bonus[0], fstate(44, true))));
+  equal('phone slot: every single-round CAO cutoff keeps its round and year, which the row shortens to "R1"',
+    slotPointsOf('tcd-business-studies-and-german', noFilters()), ['IB points≈ 39 IB points, Round 1 cutoff, 2026', 'IB points≈39 R1']);
+  check('phone slot: all 356 single-round CAO cutoff rows have their points block',
+    live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1).length > 300
+      && live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1)
+        .every((p) => byClass(withStubDocument(() => renderSlot(p, noFilters())), 'plines').length === 1));
+}
 check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `Details for ${row.programme}`
@@ -6083,8 +6233,11 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
   equal('detail: a UK visa figure reads "from", is labelled a national minimum, and keeps the £ conversion',
     [costOf(ukRow), costOf(ukRow, {}, 'Living costs')],
     [['from €54,812 a year', FLOOR_LABEL, 'How it is worked out',
-      `national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`],
+      // Review of 5bb123d: the national-minimum label is said once, before the link.
+      'national estimate (UK student visa), £1,171 a month · converted from £ at the ECB rate of 29 October 2026'],
     ['from €1,401 / month', FLOOR_LABEL, 'Source', 'national estimate (UK student visa), £1,171 a month']]);
+  equal('detail: the national-minimum label appears once in the yearly row and once in the living row',
+    ['Living costs', YEAR].map((key) => kvOf(detailOf(ukRow))[key].textContent.split(FLOOR_LABEL).length - 1), [1, 1]);
   // The closed fold still says the one figure most students want from it.
   equal('F3 the Costs fold summary: the yearly range, "your living cost", the national-minimum label, or a dashed unknown with the reason',
     [[rowsAt[0], {}], [rowsAt[0], { myLiving: 800 }], [ukRow, {}], [rowsAt[2], {}]].map(([row, state]) => {
@@ -7024,17 +7177,26 @@ section('SK/EN interface and data translations');
     if (!originalsLabel(next, true) || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
     next.dispatchEvent({ type: 'click' });
     return originalsLabel(next, false) && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
-      && detail.querySelectorAll('.d-sec').every((section) => section.querySelectorAll('.english-note').length === (section.querySelector('[data-untranslated]') ? 1 : 0));
+      && !englishNoteProblems(detail).length;
   }));
-  check('detail without translated values hides the toggle but labels untranslated sections', withStubDocument(() => {
+  // Review of 5bb123d: this used to compare the notice count with a count taken
+  // the same way as the code does. The sections are now named: with no
+  // translations at all, tud-cse shows English in Before you apply (its
+  // requirements), Costs (living_cost_source, "national estimate (Study in
+  // NL)", short enough to be a visible line) and Applying details (Studielink).
+  equal('detail without translated values hides the toggle and puts one notice at the end of each section that shows English', withStubDocument(() => {
     i18n.setDataTranslations([]);
-    const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), noFilters());
+    const row = live.find((r) => r.id === 'tud-cse');
+    const detail = renderModuleForI18n.renderDetail(row, noFilters());
     i18n.setDataTranslations(skRows);
-    // One note per section that holds untranslated text: Before you apply always does here.
-    const untranslated = detail.querySelectorAll('.d-sec').filter((section) => section.querySelector('[data-untranslated]'));
-    return !detail.querySelector('.detail-originals') && untranslated.length >= 1 && untranslated[0].classList.contains('d-must')
-      && detail.querySelectorAll('.english-note').length === untranslated.length
-      && untranslated.every((section) => section.lastChild.classList.contains('english-note'));
+    return [Boolean(detail.querySelector('.detail-originals')), row.livingCostSource, row.applicationSystem,
+      detail.querySelectorAll('.d-sec').filter((section) => section.lastChild.classList.contains('english-note')).map((section) => section.querySelector('h3').textContent),
+      detail.querySelectorAll('.english-note').length, englishNoteProblems(detail)];
+  }), [false, 'national estimate (Study in NL)', 'Studielink', [i18n.t('before_you_apply'), i18n.t('costs'), i18n.t('applying_details')], 3, []]);
+  check('every live row in Slovak puts its English notices next to visible English or inside the note that holds it', withStubDocument(() => {
+    const bad = live.flatMap((row) => englishNoteProblems(renderModuleForI18n.renderDetail(row, noFilters())).map((p) => `${row.id} ${p}`));
+    const inside = live.filter((row) => renderModuleForI18n.renderDetail(row, noFilters()).querySelectorAll('.d-note-body .english-note').length).length;
+    return bad.length === 0 && inside > 0;
   }));
   equal('free-text inventory counts programme rows separately from missing strings',
     translationInventory([], [{ ib_subjects: 'HL Maths', other_requirements: 'none', deadline_notes: 'A note' }, { ib_subjects: 'HL Maths' }], []).freeText,

@@ -954,7 +954,11 @@
       "rk-line",
       "rk-none unk-t",
       "summary",
-      "toggle"
+      "toggle",
+      ".d-note-body",
+      "d-list-box",
+      "d-note dd-note",
+      "rk-none"
     ],
     "js/shortlist.js": [
       "./cost.js",

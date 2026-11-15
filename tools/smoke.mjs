@@ -1155,7 +1155,15 @@ async function runI18n(base) {
         assert(await page.ev(`![...document.querySelectorAll('#results .row')].some(n => n.querySelector('.data-en, .data-original, .detail-originals'))`), 'rows contain EN markers');
         let result = await page.ev(status);
         assert(result.count >= 2 && result.pressed === 'false' && result.allOff, 'originals should start hidden');
-        assert(await page.ev(`[...document.querySelectorAll('${detail} .d-sec')].every(s => s.querySelectorAll('.english-note').length === (s.querySelector('[data-untranslated]') ? 1 : 0))`), 'section notes are missing or repeated');
+        // One notice at the end of a section that shows untranslated text; when a
+        // section's only English is inside closed note links, one inside each of
+        // those notes instead (review of 5bb123d).
+        assert(await page.ev(`[...document.querySelectorAll('${detail} .d-sec')].every(s => {
+          const english=[...s.querySelectorAll('[data-untranslated]')], visible=english.filter(n=>!n.closest('.d-note-body'));
+          const own=[...s.children].filter(n=>n.classList.contains('english-note')).length, bodies=[...s.querySelectorAll('.d-note-body')];
+          return own===(visible.length?1:0) && bodies.every(b=>b.querySelectorAll('.english-note').length===(b.querySelector('[data-untranslated]')&&!visible.length?1:0))
+            && s.querySelectorAll('.english-note').length<=own+bodies.length;
+        })`), 'section notes are missing or repeated');
         assert(await page.ev(`[...document.querySelectorAll('.deg .data-value')].filter(n => n.textContent === 'BSc').every(n => !n.querySelector('[data-english], [data-untranslated], button'))`), 'equal degree has markers');
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-off.png`);
         await page.ev(`document.querySelector('${button}').click()`);
@@ -2063,20 +2071,45 @@ async function runBatch2C(base) {
           const m = await page.ev(`(()=>{
             const top=document.querySelector('${detail} .d-apply'), group=document.querySelector('${detail} .d-foot>.d-actions'), outer=group.getBoundingClientRect(), topBox=top.getBoundingClientRect();
             const links=[...top.children], buttons=[...group.children], link=links.at(-1).getBoundingClientRect(), [a,b]=buttons.map(n=>n.getBoundingClientRect());
+            // The gaps of the F3 layout, measured between drawn blocks: what sits
+            // above the links, what follows them, and what sits above the footer.
+            const blocks=[...top.parentElement.children].filter(n=>n.getClientRects().length);
+            const aboveOf=(el)=>{const t=el.getBoundingClientRect().top;return blocks.filter(n=>n!==el&&n.getBoundingClientRect().bottom<=t+0.5).sort((x,y)=>y.getBoundingClientRect().bottom-x.getBoundingClientRect().bottom)[0]||null};
+            const belowOf=(el)=>{const b=el.getBoundingClientRect().bottom;return blocks.filter(n=>n!==el&&n.getBoundingClientRect().top>=b-0.5).sort((x,y)=>x.getBoundingClientRect().top-y.getBoundingClientRect().top)[0]||null};
+            const kind=(n)=>n?['d-photo','d-pts','d-head','d-facts','d-apply','detail-originals','d-must','notes','d-fold','d-rank','d-foot','d-src'].find(c=>n.classList.contains(c))||n.className:null;
+            const foot=group.parentElement, topAbove=aboveOf(top), topBelow=belowOf(top), footAbove=aboveOf(foot);
             const must=document.querySelector('${detail} .d-must').getBoundingClientRect();
             const side=Math.abs(a.top-b.top)<1;
             // Alignment fixes: a detail too narrow for both labels stacks the pair, full width.
             const stacked=Math.abs(a.left-b.left)<1&&Math.abs(a.width-outer.width)<=1&&b.top>=a.bottom;
-            return {full:Math.abs(link.width-topBox.width),sameWidth:Math.abs(topBox.width-outer.width),below:a.top-link.bottom,beforeMust:must.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
+            return {full:Math.abs(link.width-topBox.width),sameWidth:Math.abs(topBox.width-outer.width),below:a.top-link.bottom,beforeMust:must.top-link.bottom,
+              topAbove:kind(topAbove),topGap:topAbove?topBox.top-topAbove.getBoundingClientRect().bottom:null,
+              topBelow:kind(topBelow),nextGap:topBelow.getBoundingClientRect().top-topBox.bottom,
+              footAbove:kind(footAbove),footGap:foot.getBoundingClientRect().top-footAbove.getBoundingClientRect().bottom,
+              linkGaps:links.slice(1).map((n,i)=>n.getBoundingClientRect().top-links[i].getBoundingClientRect().bottom),widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
               gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:[...links,...buttons].some(n=>n.scrollWidth>n.clientWidth+1),
               order:links.length>=1&&links.every(n=>n.matches('a.btn'))&&links.some(n=>n.matches('a.btn-p'))&&buttons.length===2&&buttons[0].matches('button.save')&&buttons[1].matches('button.cmpb'),
               separate:!group.querySelector('.lnk,.ok,.tag')&&!top.querySelector('button,.lnk,.ok,.tag'),
               pageOverflow:document.documentElement.scrollWidth>innerWidth};
           })()`);
           assert(m.order && m.separate && m.full <= 1 && m.sameWidth <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
-          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12) && m.below > 0 && m.beforeMust > 0, JSON.stringify(m));
+          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12), JSON.stringify(m));
+          // The old single block had the pair 8–12 px under the link. The two groups
+          // now have their own fixed distances: the links are 16 px under the facts
+          // panel (pane), 12 px under the photo or 24 px under the points block
+          // (phone slot), or start the slot; two links are 10 px apart; the next
+          // block (the originals button in Slovak, else "Before you apply") follows
+          // at 24 px; the footer sits 16 px under whatever precedes it.
+          const near = (value, want) => Math.abs(value - want) <= 1;
+          const topWant = { 'd-facts': 16, 'd-photo': 12, 'd-pts': 24 };
+          assert(m.topAbove === null ? width < 1200 : m.topAbove in topWant && near(m.topGap, topWant[m.topAbove]), `gap above the links ${JSON.stringify(m)}`);
+          assert(m.topAbove !== 'd-facts' || width >= 1200, `facts panel in a slot ${JSON.stringify(m)}`);
+          assert(m.linkGaps.every((gap) => near(gap, 10)) && ['detail-originals', 'd-must'].includes(m.topBelow) && near(m.nextGap, 24), `gaps between and under the links ${JSON.stringify(m)}`);
+          assert(['d-fold', 'd-rank'].includes(m.footAbove) && near(m.footGap, 16) && m.below > 0 && m.beforeMust > 0, `gap above the footer ${JSON.stringify(m)}`);
           if ([390, 800, 1400].includes(width)) {
-            await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
+            // Both groups this check is about: the links near the top, the pair in the footer.
+            await screenshot(page, shots + '/actions-links-' + width + '-' + ui + '.png', detail + ' .d-apply');
+            await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-foot>.d-actions');
           }
         });
         if ([1024, 1199, 1200, 1280].includes(width)) {
@@ -2116,7 +2149,7 @@ async function runBatch2C(base) {
           // Detail F3: the note is a one-line link; the whole text is inside it.
           const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note .d-note-body')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
           return !!n && n.closest('details').open===false && !n.checkVisibility() &&
-            [...document.querySelectorAll('#pane dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})) &&
+            [...document.querySelectorAll('#pane dd .dd-note .d-note-body')].some(x=>x.textContent.includes(${JSON.stringify(profile)})) &&
             !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
             !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
         })()`), 'Czech note missing from the Language row, fee profile note missing, or Language help remains');
@@ -2130,7 +2163,7 @@ async function runBatch2C(base) {
           return {open:more.open,focus:document.activeElement===summary,shown:body.height>0&&body.top>=summary.getBoundingClientRect().bottom-1,inside:body.left>=pane.left&&body.right<=pane.right+1,
             line:summary.getBoundingClientRect().height,tab:summary.tabIndex};
         })()`);
-        assert(opened.open && opened.focus && opened.shown && opened.inside && opened.line >= 24 && opened.tab === 0, 'Czech note link did not open in place ' + JSON.stringify(opened));
+        assert(opened.open && opened.focus && opened.shown && opened.inside && opened.line >= 28 && opened.tab === 0, 'Czech note link did not open in place ' + JSON.stringify(opened));
         await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
       });
     } finally { await page.close(); }
@@ -2159,7 +2192,7 @@ async function runBatch2C(base) {
             const dt=[...pane.querySelectorAll('dt')].find(d=>d.textContent===${JSON.stringify(lang)});
             const dd=dt?.nextElementSibling;
             return {foot:!!pane.querySelector('.d-foot'),
-              profile:[...pane.querySelectorAll('dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})),
+              profile:[...pane.querySelectorAll('dd .dd-note .d-note-body')].some(x=>x.textContent.includes(${JSON.stringify(profile)})),
               czechAnywhere:[...pane.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)})),
               czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)}))}
           })()`);
@@ -6334,7 +6367,9 @@ async function runPr2(base) {
             overflow:d.scrollWidth>d.clientWidth+1||document.documentElement.scrollWidth>innerWidth+1,
             pane:!!d.querySelector('.d-facts')&&!!d.querySelector('.d-head'),slotPoints:d.querySelectorAll('.d-pts').length,
             folds:[...d.querySelectorAll('details.d-fold')].map(f=>[f.open,f.querySelector('summary h3')?.textContent,f.querySelector('summary').getBoundingClientRect().height>=44]),
-            notes:[...d.querySelectorAll('details.d-note-more')].every(n=>!n.open&&n.querySelector('summary').getBoundingClientRect().height>=24),
+            notes:[...d.querySelectorAll('details.d-note-more')].every(n=>!n.open&&n.querySelector('summary').getBoundingClientRect().height>=${width === 390 ? 44 : 28}),
+            rankLinks:[...d.querySelectorAll('.rk-src')].every(a=>a.getBoundingClientRect().height>=${width === 390 ? 44 : 28}),
+            rankLine:[...d.querySelectorAll('.rk-line')].every(p=>p.getBoundingClientRect().height<=(p.querySelector('.rk-items').getBoundingClientRect().top>p.querySelector('.rk-lab').getBoundingClientRect().bottom-1?52:28)),
             headings:[...d.querySelectorAll('h2,h3')].map(h=>h.tagName).join(''),
             originalsInDetails:!!d.querySelector('details .detail-originals'),
             ranks:!!d.querySelector('.d-rank'),rankInFold:!!d.querySelector('details .d-rank'),flag:SHOW_RANKINGS,
@@ -6347,7 +6382,7 @@ async function runPr2(base) {
         const order = ['d-photo', 'd-pts', 'd-head', 'd-facts', 'd-apply', 'detail-originals', 'd-must', 'notes', 'd-fold', 'd-rank', 'd-foot', 'd-src'];
         const places = facts.drawn.map((name) => order.indexOf(name));
         assert(!places.includes(-1) && places.every((at, i) => !i || at >= places[i - 1]) && !facts.overlaps, `detail drawn out of order or overlapping: ${facts.drawn}`);
-        assert(JSON.stringify(facts.folds) === JSON.stringify([[false, 'Costs', true], [false, 'Applying details', true]]) && facts.notes, `folds ${JSON.stringify(facts.folds)} or a note link is open or under 24 px`);
+        assert(JSON.stringify(facts.folds) === JSON.stringify([[false, 'Costs', true], [false, 'Applying details', true]]) && facts.notes && facts.rankLinks && facts.rankLine, `folds ${JSON.stringify(facts.folds)}, or a note link is open, or a note or rank link is under the ${width === 390 ? 44 : 28} px hit height, or the rank line grew`);
         assert(facts.headings === (width === 390 ? 'H3H3H3' : 'H2H3H3H3') && !facts.originalsInDetails && !facts.rankInFold, `heading outline ${facts.headings}, or the originals button or rank line is inside a fold`);
         assert(!facts.overflow, 'horizontal overflow');
         assert(facts.ranks === !!(facts.flag && row.rankingsYear), 'ranking flag DOM mismatch');
@@ -6389,9 +6424,11 @@ async function runPr2(base) {
           const missingYear=renderDetail({...row,rankingsYear:''},paramsToState(''),{showRankings:true});
           const unknown=renderDetail({...row,appFee:null,appFeeNote:'',places:null,placesKind:'',intakeMonths:[],ibRecognition:'',ibOffer:'',appFeeUnknown:true,placesUnknown:true,intakeUnknown:true,recognitionUnknown:true,offerUnknown:true},paramsToState(''),{slot:${width === 390}});
           window.__pr2detail.replaceWith(unknown);window.__pr2detail=unknown;
-          return {rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
+          const tag=(text)=>{const n=[...ranks.querySelectorAll('.rk-none')].find(x=>x.textContent===text);return n?(getComputedStyle(n).borderTopStyle==='dashed'?'boxed':'plain'):'absent'};
+          const forced=renderDetail({...row,theRank:null},paramsToState(''),{showRankings:true}).querySelector('.d-rank .rk-none.unk-t');
+          return {listed:tag('Not listed'),published:forced?.textContent==='Not published'?'boxed':'absent',rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
         })()`);
-        assert(/^Whole-university rank, 2027/.test(result.rank) && /THE\s*\(opens in a new tab\)\s*Not listed/.test(result.rank) && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
+        assert(/^Whole-university rank, 2027/.test(result.rank) && /THE, 2027 table\s*\(opens in a new tab\)\s*Not listed/.test(result.rank) && result.listed === 'plain'&& result.published === 'boxed' && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
         assert(result.noYear && result.unknown >= 5 && result.flat, 'missing year / unknown fixture');
       });
       await check(where, 'F3 folds', 'folds and note links open from the keyboard, stay inside the detail, and the choice survives a redraw', async () => {
@@ -6431,13 +6468,23 @@ async function runPr2(base) {
         await page.ev(`document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')[1].open=false`);
         await page.ev(`new Promise(r=>setTimeout(r,80))`);
         const openBefore = await page.ev(`[...document.querySelectorAll('.detail details')].map(x=>x.open)`);
-        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        // Print media and the beforeprint hook together, as a real print has them
+        // (review of 5bb123d: each used to be tested alone). On paper the pane is
+        // hidden, so what must be readable is every fold and note of an open slot.
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         let printed;
-        try { printed = await page.ev(`[[...document.querySelectorAll('.detail details')].map(x=>x.open),document.querySelectorAll('.detail details').length]`); }
-        finally { await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
+        try {
+          await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+          try {
+            printed = await page.ev(`(()=>{const all=[...document.querySelectorAll('.detail details')], slot=all.filter(x=>x.closest('.expand'));
+              return [all.map(x=>x.open),all.length,slot.length,slot.every(x=>[...x.children].slice(1).some(c=>c.checkVisibility()&&c.getBoundingClientRect().height>0)),
+                slot.every(x=>getComputedStyle(x.querySelector('summary'),'::after').display==='none')]})()`);
+          } finally { await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
         await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('details.d-fold'),why:'detail gone after print'})`, 5000, 'after print');
         const openAfter = await page.ev(`[[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')].map(x=>x.open),document.querySelectorAll('[data-print-open]').length]`);
         assert(printed[1] > 0 && printed[0].every(Boolean), `print left a fold or note closed: ${JSON.stringify(printed)}`);
+        assert(width === 390 ? printed[2] > 0 && printed[3] && printed[4] : printed[2] === 0, `in print media the slot's folds and notes are ${JSON.stringify(printed.slice(2))}`);
         assert(JSON.stringify(openAfter) === JSON.stringify([[true, false], 0]), `after print the folds are ${JSON.stringify(openAfter)}, were ${JSON.stringify(openBefore)}`);
       });
       await check(where, 'PR2 SK', 'inherited recognition and fee translations reveal English originals', async () => {

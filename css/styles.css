@@ -2526,16 +2526,18 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
 /* A grey note is one line. Anything longer is a one-line link (a native
    <details>) whose label says what is inside; the full text opens under it.
-   The summary is interactive, so it is blue; the text inside is plain grey. */
+   The summary is interactive, so it is blue; the text inside is plain grey.
+   The link is one 24 px line with the full hit height (--tap), like .rk-src. */
 .d-note{font-size:var(--fs-13);line-height:19px;font-weight:400;color:var(--ink-2);text-align:left}
 .dd-note.d-note{margin-top:2px}
-.d-note-more>summary{display:inline-flex;align-items:center;gap:4px;min-height:24px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.d-note-more>summary{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap);margin-block:calc((24px - var(--tap)) / 2);font-weight:600;color:var(--accent);cursor:pointer;list-style:none;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
 .d-note-more>summary::-webkit-details-marker{display:none}
 .d-note-more>summary::after{content:"";width:6px;height:6px;margin:0 2px 0 4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
 .d-note-more[open]>summary::after{transform:rotate(-135deg) translateY(-1px)}
 .d-note-more>summary:hover{color:var(--accent-press)}
 .d-note-body{margin:2px 0 4px;padding-left:10px;border-left:2px solid var(--hairline)}
 .d-note-body p+p{margin-top:4px}
+.d-note-body>.english-note{margin-top:4px;font-size:inherit}
 .d-note-more{display:inline-block}
 .d-note-more[open]{display:block}
 /* Deadline notes carry facts (a time of day, a test date), so their text is
@@ -2550,9 +2552,14 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .rk-items{display:inline-flex;flex-wrap:wrap;gap:0 14px}
 .rk{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .rk .fig{font-size:var(--fs-14);line-height:20px}
-.rk .rk-src{gap:2px;min-height:24px}
+/* The line stays 24 px tall, but the links keep the full hit height (--tap:
+   44 px on phones and touch screens, S16): the extra is taken back with a
+   negative margin, as in the compare table. */
+.rk .rk-src{gap:2px;min-height:var(--tap);margin-block:calc((24px - var(--tap)) / 2)}
 .detail .rk-src .ic{width:12px;height:12px}
-.detail .rk .rk-none{padding:0 5px;font-size:var(--fs-12);line-height:18px}
+/* "Not listed" is a checked fact, so plain words; "Not published" is the dashed box. */
+.rk .rk-none{font-size:var(--fs-13);line-height:20px;color:var(--ink-2)}
+.detail .rk .rk-none.unk-t{padding:0 5px;font-size:var(--fs-12);line-height:18px}
 
 /* Paper has no clicks: every fold and note link prints open. app.js opens
    them in beforeprint (Safari ignores ::details-content); this is the

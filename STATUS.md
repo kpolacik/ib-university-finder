@@ -811,9 +811,11 @@ fills the screen. From top to bottom:
    passed deadline is the plain date, an outlined word "Passed" and "Check the
    next cycle": not struck through, not red, not dimmed. On phones the panel is
    left out, because the row above already shows the three facts; the full
-   points lines are repeated only when they say more than the row (two CAO
-   rounds, the HPAT, a cutoff that includes a test, or a note about your
-   points).
+   points lines are repeated whenever they say anything the row does not:
+   every CAO cutoff (the row shortens it to "≈39 R1" and can drop "with HL
+   Maths 4+"), the HPAT, a cutoff that includes a test, or a note about your
+   points. Only a plain "38 minimum" or "no minimum published" is not
+   repeated.
 3. The Apply button and the Official page button.
 4. "Before you apply", always open: entrance exam, intake, offer timing,
    language and application fee as short label and answer pairs, then the
@@ -826,25 +828,40 @@ fills the screen. From top to bottom:
 6. Two sections that open with a click or the Enter key: **Costs** (EU fee,
    living costs, fee plus 12 months' living) and **Applying details**
    (faculty, apply via, places). Closed, each shows its main value under its
-   name, for example "€14,771–24,371 a year with living". A section the
-   student opened stays open when the details are redrawn.
+   name, for example "€14,771–24,371 a year with living" or "Studielink · 650
+   places · year not published" (the word "Places:" is added only for "No
+   fixed limit" and for an unknown). A section the student opened stays open
+   when the details are redrawn.
 7. The QS and THE ranks as one plain line, "Whole-university rank, 2027: QS 6
    · THE 5". There is no "About the university" section (Leon). The note
    under it appears only when a shown rank has "=": "“=” means a tied rank."
+   "Not listed" is plain words (we checked the table); only "Not published"
+   is in a dashed box.
    `SHOW_RANKINGS` in `js/config.js` still switches the line off.
 8. Save, Compare and Student life, then the photo credit.
 
 **One-line notes (Leon, 2026-11-15).** A grey note in the details is at most
 one line. A note of 36 characters or fewer is shown as it is. A longer one
 becomes a one-line blue link that says what is inside, and the full text
-opens under it; nothing was deleted. The links are: "Fee details" (always,
-under the application fee), "Deadline details" (deadline notes), "Source"
+opens under it; nothing was deleted. The links are: "Fee details" (always
+under the application fee, for the sentence saying whose fee it is; the
+programme's own fee note follows the 36-character rule, so "Admission test:
+50 EUR." is a plain line above the link), "Deadline details" (deadline
+notes), "Source"
 (living costs), "How it is worked out" (the yearly estimate) and "Why there
 is no tuition fee" (Czech-taught public programmes). "your figure" and
 "national minimum, not a full budget" stay visible in front of the link,
 because they change what the figure means. Not shortened on purpose: the
 warnings in point 5, the dashed "not known" boxes with their reason, and the
 photo credit.
+
+In Slovak, "V angličtine, ako to uvádza univerzita." stands at the end of a
+section that shows English text; when the only English is inside a closed
+note link, the sentence is inside that note instead. Requirements separated
+by " · " are a bulleted list in Slovak too, and each item keeps its own
+English original for the "show the original" button. The small links (note
+links, QS, THE) keep the 44 px touch height on phones although their line is
+24 px tall.
 
 When printing, every section and note link is opened so the paper has the
 full text, and closed again afterwards. The list row was not changed. New
