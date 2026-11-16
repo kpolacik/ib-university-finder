@@ -1,161 +1,148 @@
 # CLAUDE.md — IB University Finder
 
-## What this is
+A static single-page site where IB students filter European bachelor
+programmes by entry requirements, deadlines, tuition and language. The users
+are a Slovak school cohort, all EU citizens. A student may plan a real
+application around a fact shown here, so a wrong fact costs them: show an
+unknown as unknown, never as a guess.
 
-A single-page static site that helps IB students find European bachelor
-programmes, filtering on entry requirements, deadlines, tuition and language.
-The users are a Slovak school cohort of about 30, all EU citizens, so EU fees
-are the only fees shown. The UK is shown too (Leon, 2026-11-02, reversing the
-fork's earlier exclusion): its `tuition_eu` is the international fee, which is
-what EU students pay there now. The data covers 12 countries, 283 universities
-and about 3,970 programmes (recount from `data/*.csv`; STATUS.md "State"
-has the table). Each programme has one row in
-`data/programmes.csv`, joined to `data/universities.csv` by `university_id`.
-The browser loads the CSVs (or the published Google Sheet once
-`js/config.js` has the URLs), and falls back to `data/fallback.json` if those
-fail. Someone may plan a real application around what this site says. When a
-fact is wrong, the student pays for it.
+No build and no dependencies: plain ES modules, and Node scripts that use only
+built-ins. Ask before adding a framework, bundler, `package.json` or npm
+package, because someone who doesn't code has to maintain this.
 
-**No build, no dependencies.** It is plain ES modules plus Node scripts that
-use only built-ins. Ask before adding a framework, a bundler, `package.json`
-or any npm package. Somebody who doesn't code has to be able to maintain it.
+The fuller record: `STATUS.md` (state, known gaps, decisions, past bugs; row
+counts under "State"), `MAINTENANCE.md` (every column's rules, for non-coders),
+`README.md`.
 
-Read these first: `STATUS.md` (current state, known gaps, decisions, past bugs),
-`MAINTENANCE.md` (the column rules, written for non-coders), `README.md`.
+## What is live, and who decides
 
-## Commands (run locally; `.github/workflows/checks.yml` also runs check and contrast on GitHub)
+- `origin` is Jakub's repo, `kpolacik/ib-university-finder`, and its `main` is
+  the live GitHub Pages site. Local branches are staging; branches pushed to
+  `origin` carry PRs for Jakub. Nothing reaches students until a PR merges.
+- Product and display choices are Leon's alone; don't hold them for Jakub.
+  Registry items marked `decision` wait for Leon.
+- Don't reopen anything under STATUS.md "Decisions already made, so they are
+  not relitigated" unless Leon asks. Jakub's data and choices win over the old
+  fork's decisions (Leon, 2026-11-02, at the upstream merge).
+
+## Where the data lives
+
+- `data/universities.csv` and `data/programmes.csv` are the source, joined by
+  `university_id`. The page loads them (or the published Google Sheet, once
+  `js/config.js` has its URLs) and falls back to `data/fallback.json` if
+  those fail. `data/i18n/sk.csv` holds the Slovak text for data values.
+- Agents change these CSVs with a script that lists every change, never by
+  hand. Jakub commits to `main` often, mostly to `data/programmes.csv`, so
+  `git fetch origin` and merge `origin/main` before a large data edit.
+- `data/fallback.json` is written by `tools/make-snapshot.mjs`; don't
+  hand-edit it.
+- Never open or save a CSV in Excel: it mangles dates and `€ — ·`.
+- `data/sample-*.csv` are invented fixtures for `check.mjs`, never real data.
+
+## Commands
 
 ```bash
-node tools/serve.mjs [port]     # dev server, no-store caching; default http://localhost:8765
-node tools/check.mjs            # must end "All checks passed"
-node tools/smoke.mjs            # real Chrome smoke test; needs Node >=22
-node tools/check-contrast.mjs   # run after any colour-token change; never lower the minimum
-node tools/make-snapshot.mjs    # REWRITES data/fallback.json from the CSVs
+node tools/serve.mjs [port]     # dev server, http://localhost:8765, nothing cached
+node tools/check.mjs            # must end "All checks passed."
+node tools/check-contrast.mjs   # after any colour change; scores both themes
+node tools/lint-data.mjs        # data mistakes and changed ids against HEAD
+node tools/smoke.mjs --only=runFaqPanel   # real Chrome, one section; Node 22+
+node tools/make-snapshot.mjs    # rewrites data/fallback.json from the CSVs
 ```
 
-- Use `serve.mjs` instead of `python -m http.server`. Python's server lets
-  the browser serve stale CSS (see STATUS.md, "Running it").
-- `make-snapshot.mjs` ignores every argument, so `--help` will also rewrite
-  `fallback.json`. Run it on purpose after a data change and commit the
-  result with it, so the snapshot matches the CSVs.
-- Testing happens on this machine. Jakub's `main` is the live GitHub Pages
-  site, so nothing reaches students until a PR is merged into `main`.
+- `smoke.mjs` runs the whole suite (about 19 minutes) on any argument it
+  doesn't recognise, `--help` included. Pick sections with `--only=runA,runB`
+  (function names; a wrong name lists the valid ones) or a `--…-only` flag
+  from its header comment. Without Chrome it prints SKIP unless
+  `--require-chrome`.
+- `make-snapshot.mjs` ignores its arguments, so `--help` rewrites
+  `fallback.json` too. Run it after a CSV change and commit both together.
+- Use `serve.mjs`, not `python -m http.server`, which lets the browser show
+  stale CSS.
+- GitHub (`.github/workflows/checks.yml`) runs `check.mjs` and
+  `check-contrast.mjs` on every push and PR, and the full smoke on PRs only.
 
-## Data rules you must not break
+## Data rules
 
-The column rules are in MAINTENANCE.md and the parsing is in `js/data.js`.
-`tools/check.mjs` tests most of these rules.
+MAINTENANCE.md has every column's rules; `js/data.js` parses them and
+`tools/check.mjs` tests most of them.
 
-- **Blank / `?` / value** (`inheritNumber`, `inheritText` in `js/data.js`).
-  A blank cell inherits the university default. `?` means "differs from the
-  university, value unknown" and **never inherits** (the card shows "Not
-  published"). A value overrides the default. This applies to `tuition_eu`,
-  `tuition_noneu`, `english_requirement`, `admission` and `city`.
+- **Blank, `?`, value** (`inheritNumber`, `inheritText` in `js/data.js`). Blank
+  inherits the university default. `?` means "differs from the university,
+  value unknown": it never inherits and the card says "Not published". A value
+  overrides. Applies to `tuition_eu`, `tuition_noneu`, `english_requirement`,
+  `admission`, `city` and `application_system`.
 - **Blank is not zero.** `0` tuition is a real "No tuition fee" claim.
-- **`ib_subjects`: `none` ≠ blank** (`js/data.js` ~L185, MAINTENANCE.md).
-  `none` means the university says there are no subject requirements. Blank
-  means nobody has checked. An importer that can't parse a page must write
-  blank. Write `none` only when there is positive evidence (the Trinity/UCD
-  capped-regex bugs in STATUS.md). If a capture needs a bound, end it at a
-  terminator, never at a character count.
-- **`ib_points_min` is a number only**, and only what the university
-  publishes (or the CAO, for Irish rows). Never take it from comparison
-  sites. Czech rows leave it blank (admission is by entrance exam).
-- **Irish points are last year's CAO cutoffs (converted), not minimums.**
-  UCD is the exception: its figure is UCD's published IB minimum. All
-  conversion goes through `convertCutoff` in `tools/lib/ireland.mjs`:
-  - A plain 601–625 cutoff assumes the 25-point HL Maths bonus. The card
-    says "needs HL Maths 4+" (decision Q13).
-  - HPAT Medicine shows the CAO's 480-point minimum (35 IB), ranked with
-    the HPAT (decision Q12).
+- **`none` is not blank** in `ib_subjects` and `ib_maths`. `none` means the
+  university says there is no requirement; blank means nobody has checked. An
+  importer that can't parse a page writes blank; write `none` only on positive
+  evidence. A regex capture that needs a bound ends at a terminator, not a
+  character count (the Trinity and UCD bugs in STATUS.md).
+- **Unknown never hides a programme.** Every filter shows unknown values and
+  labels them (`js/filters.js`). In `ib_maths` and `entrance_exam`, `?` and
+  blank are both unknown.
+- **`ib_points_min`** is a number, and only what the university publishes (or
+  the CAO, for Irish rows), never a comparison site's figure. Czech rows leave
+  it blank: admission is by entrance exam.
+- **Irish points are last year's CAO cutoffs, converted, not minimums.** UCD
+  is the exception: its figure is UCD's published IB minimum. Every conversion
+  goes through `convertCutoff` in `tools/lib/ireland.mjs`; cutoffs and their
+  `AQA`/`#`/`*` markers come from the CAO (`tools/lib/cao-points.mjs`).
+  - A plain 601–625 cutoff assumes the 25-point HL Maths bonus, and the card
+    says it needs HL Maths 4+ (Q13).
+  - HPAT Medicine shows the CAO's 480-point minimum (Q12).
   - A cutoff above 625 that includes a test stays blank and says so.
-  - A lower `#` cutoff stays blank when its CAO code is in `TEST_IN_CUTOFF`
-    or `TEST_UNVERIFIED` (`js/points.js`, D27); other `#` courses convert.
-  Cutoffs come from the CAO, with its `AQA`/`#`/`*` markers
-  (`tools/lib/cao-points.mjs`, STATUS.md decisions).
-- **Irish fee = Free Fees figure** (student contribution plus levy). Don't use
-  the bigger "EU fee" a page prints (STATUS.md).
-- **Unknown never hides a programme.** Filters show unknown values and label
-  them (`js/filters.js`, README "Design decisions"). That includes the
-  "My maths" filter (`ib_maths`: `?` or blank is unknown, `none` is no
-  requirement) and the "Entrance exam" filter (`entrance_exam`: `yes`,
-  `waivable`, `no`, `?`/blank unknown). Living costs are a range:
-  `living_cost_min`, `living_cost_max`, `living_cost_source`.
-- **Every row has an `official_url`** that passes `safeUrl` (http(s) only).
-  A row that fails is reported, not quietly dropped. `check.mjs` asserts this
-  on the real data.
-- **`verified_by` is a human signature.** `AI-DRAFT` means it was gathered
-  automatically and nobody has checked it (every row is AI-DRAFT today).
-  `SAMPLE` means invented fixture data and triggers a red banner. Never put
-  initials there for someone. Don't load `data/sample-*.csv` as real data.
-- **Never change a `programme_id` or `university_id`** after the row exists.
-- Lists use ` · ` (`BULLET`); `subject_area`/`language` use `;` with the
-  fixed subject vocabulary in MAINTENANCE.md. Dates are `YYYY-MM-DD`.
+  - A `#` cutoff stays blank when its CAO code is in `TEST_IN_CUTOFF` or
+    `TEST_UNVERIFIED` (`js/points.js`, D27); other `#` courses convert.
+- **Irish fee is the Free Fees figure** (student contribution plus levy), not
+  the larger "EU fee" a page prints.
+- **UK `tuition_eu` is the international fee**, which EU students pay there.
+  Only EU fees are shown; non-EU tuition is not collected.
+- **Every row has an `official_url`** that passes `safeUrl` (http(s) only). A
+  row that fails is reported, never quietly dropped.
+- **`verified_by` is a person's signature.** `AI-DRAFT` means gathered
+  automatically and unchecked; an agent writes only that, never initials.
+  `SAMPLE` marks invented fixture rows and triggers a red banner.
+- **Never change a `programme_id` or `university_id`** once the row exists.
 - Don't invent scores or rankings. `student_life_url` is only ever a link.
-- Never open or save the CSVs in Excel (it mangles dates and `€ — ·`).
+- Lists use ` · ` (`BULLET`). `subject_area` and `language` use `;`, with the
+  fixed subject vocabulary in MAINTENANCE.md. Dates are `YYYY-MM-DD`.
 
-## Importers and maintenance scripts
+## Importers and scripts
 
-- `tools/import-*.mjs` write `tools/<uni>-rows.csv` and **rebuild rows from
-  scratch**, which undoes hand corrections made since. Only re-run one to
-  refresh a university, then merge by hand and diff carefully.
-- `tools/update-cao-points.mjs` updates Irish rows **in place**. Use it, not
-  the Irish importers, for the yearly CAO refresh.
+- `tools/import-*.mjs` rebuild a university's rows from scratch into
+  `tools/<uni>-rows.csv`, which undoes hand corrections made since. Re-run one
+  only to refresh that university, merge its rows into the CSV with a script
+  that lists every change, and read that list before writing. ČVUT's needs
+  `node --use-system-ca`.
+- `tools/update-cao-points.mjs` updates Irish rows in place. Use it, not the
+  Irish importers, for the yearly CAO refresh. Dry run unless `--apply`.
 - `tools/merge-italy-denmark.mjs` and `tools/apply-verification-2026-10-25.mjs`
-  are one-off records. **Don't re-run them.** A merge re-run would undo the
-  corrected Bocconi fees (registry D12).
-- ČVUT importer needs `node --use-system-ca`.
-- **Every bug fix gets a regression check in `tools/check.mjs`.**
-- Work lives in Jakub's repo (`origin` = `kpolacik/ib-university-finder`,
-  since 2026-11-03; Leon's fork is retired). Local branches are staging,
-  branches pushed to `origin` carry PRs for Jakub, and `main` is live.
-  Jakub commits to `main` often, mostly to `data/programmes.csv`: run
-  `git fetch origin` and merge `origin/main` before any large data edit.
+  are one-off records. Don't re-run them: the merge would undo the corrected
+  Bocconi fees (D12).
+- Every bug fix gets a regression check in `tools/check.mjs`.
+
+## Design rules
+
+Full rules: STATUS.md "The look of it".
+
+- Colours live only in the light `:root` tokens in `css/styles.css` and the
+  one approved screen-only dark override. Colour is for verdicts and blue is
+  for interaction (STATUS.md has the country-identity exception).
+- Never lower a minimum in `check-contrast.mjs`. `--edge-soft` (3:1 in both
+  themes) is only for the off switch and the unset slider thumb.
+- Saved state (`js/saved-state.js`): any recognised filter or sort parameter,
+  or `?list=`, means URL state plus defaults, never merged with storage.
+  `?ui=` alone still restores saved filters. Opening a URL must not overwrite
+  saved preferences. Clear all keeps the separate onboarding flag.
 
 ## Plans and the issue registry
 
-`/plans` holds agent plans. `plans/audit-issues.md` is the issue registry
-(IDs like D01, P01, L01), merged from the two audits in `plans/scan/`. Plans
-use registry IDs, never their own numbering, and update the `State` column
-when work is planned, fixed or dropped. Items marked `decision` are product
-calls: wait for the user.
-
-## Decisions already made
-
-See STATUS.md "Decisions already made, so they are not relitigated". Don't
-reopen any of them unless the user asks. The most load-bearing:
-
-- One row per programme, two tabs joined by `university_id`
-- Unknown never hides a programme
-- `none` and blank are different; `?` never inherits
-- Irish fee is the Free Fees figure (contribution + levy)
-- Irish points are CAO cutoffs, UCD the exception; cutoffs come from the CAO
-- Jakub's data and choices win over the fork's older decisions (Leon, 2026-11-02, at the upstream merge); the UK is shown
-- The save button and shortlist are back (Leon, 2026-11-03): My list with groups, Compare (its own set of up to 4) and `?list=` share links; non-EU tuition not collected
-
-The visual direction (one summary row per programme, colour only for
-verdicts, IBM Plex Sans, light and dark, following the system by default) is
-under STATUS.md "The look of it"; the round 1 build spec is `plans/design-round1/design-spec.md`. Round 2 is specified
-in `plans/design-round2/proposal.md`, with mockup v4 in
-`plans/design-round2/mockup.html`; its later Leon decisions override the mockup.
-Most of `plans/` is local only (excluded in this clone's `.git/info/exclude`);
-only `plans/scan/` and `plans/backlog/` are in git, so on another machine
-STATUS.md is the record for the rest.
-
-- Colours belong only in the light `:root` tokens in `css/styles.css` and the one
-  approved screen-only dark override. `check-contrast.mjs` scores both themes.
-  Colour is only for verdicts; blue is only for interaction (see STATUS.md for the
-  country-identity exception).
-- Keep one global soft-outline rule: `--edge-soft` must reach at least 3:1
-  on the active panel in either theme, used only on the off switch and unset
-  slider thumb. No grey outline when on/set: the accent fill/ring supplies contrast. Never lower
-  `check-contrast.mjs`'s minimum.
-- Saved-state precedence is proposal §11 (`js/saved-state.js`): any recognised
-  filter/sort parameter or `?list=` means URL state plus defaults, never merged
-  with storage. `?ui=` alone still restores saved filters. Opening a URL must
-  not overwrite saved preferences; later explicit edits may. The onboarding
-  flag is separate, and Clear all keeps it while removing saved filters.
-  Sticky-header and scroll-target rules (A07) are under STATUS.md "The look of it".
+`plans/audit-issues.md` is the issue registry (IDs such as D01, P01, L01).
+Plans use its IDs, never their own numbering, and update its `State` column
+when work is planned, fixed or dropped. Only `plans/scan/` and
+`plans/backlog/` are in git; the rest of `plans/` exists only in Leon's
+checkout, so anything that must outlive it goes in STATUS.md.
 
 ## Workflow profile
 
@@ -166,11 +153,10 @@ Consequential boundaries: merging into or pushing to `main` (the live GitHub Pag
 
 ## Style
 
-- Docs are plain language, written for a successor who doesn't code. Update
-  STATUS.md when the state changes. Don't copy its content into new files.
-- Comments explain **why** (what went wrong, what a source page says, which
-  trap it avoids), following the existing header comments in `tools/` and `js/`.
-- Commit messages: follow the existing history (`git log --oneline -20`).
-  That means a plain sentence-case imperative summary, often naming the
-  university or row ("Drop the Italian track from…", "Bocconi: 2027/28 fee
-  is published…"). Don't use Conventional Commits prefixes (`feat:`, `docs:`).
+- Docs are plain language for a successor who doesn't code. Update STATUS.md
+  when the state changes; don't copy its content into new files.
+- Comments explain why (what went wrong, what a source page says, which trap
+  the code avoids), like the header comments in `tools/` and `js/`.
+- Commit messages: a plain sentence-case imperative summary, often naming the
+  university or row ("Drop the Italian track from…"). No Conventional Commits
+  prefixes (`feat:`, `docs:`).

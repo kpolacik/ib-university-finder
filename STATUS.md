@@ -8,6 +8,174 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
+`filter-selected-first` worktree contains the detail-only facts, application
+actions, credited campus photos and Slovak translations from Waves 2–4.
+Rankings are on (`SHOW_RANKINGS = true`, Leon, 2026-11-14; see below). PR 2 follows the CSV path,
+before the database switch-over. Wave 5 adds real-data CAO/URL/photo acceptance
+checks and the targetable browser section
+`node tools/smoke.mjs --only=runPr2 --require-chrome`: 390 px slots and 1280 px
+panes, light and dark, real application and fee edge cases, isolated unknown
+and forced-ranking fixtures, Slovak inherited text/reveal, and print media.
+Maintenance rules are in MAINTENANCE.md under "Detail facts added in PR 2".
+Wave 5 targeted smoke passed: 56 checks in 44.4 seconds (Node 26.13.0).
+Lint passed with 0 errors / 215 warnings; all 150 contrast pairs passed;
+`i18n-missing.mjs` exited 0 with no MISSING for the four new translation
+fields (993 unrelated missing strings / 4 orphan translations remain).
+`git diff --check` passed.
+
+**Wave 6 fast gate corrected:** the PR 2 CAO assertion now accepts UCD's
+published IB minimum without a cutoff sentence only when the whole note is
+`UCD's stated minimum: NN IB points.`, NN is 24–45 and matches the row's
+`ib_points_min`, the university is UCD, and its code has the CAO DN format.
+When a CAO sentence exists, its code must still match. Other missing or
+malformed notes fail. Regression checks cover code mismatches, non-UCD notes,
+missing/malformed/out-of-range UCD minimums, point mismatches, malformed codes
+and contradictory/malformed appended cutoff text. No data or product parser
+changed. `node tools/check.mjs` now ends `All checks passed.` (Node 26.13.0).
+Wave 6 targeted smoke passed: 56 checks in 44.2 seconds.
+Wave 6 lint again passed with 0 errors / 215 warnings; all 150 contrast pairs
+passed; i18n exited 0 with no MISSING for the four new fields (993 unrelated
+missing strings / 4 orphan translations remain). Diff whitespace check passed.
+All photo checks passed: 281 referenced JPEGs, 640 × 360, at most 128 KiB,
+complete credits, no orphan files; Humak and UCN remain deliberately absent.
+
+Persistent browser captures and gate logs are in the ignored local directory
+`plans/pr2-review-20261113/`: the four real mockup rows at 390 px slot and
+1280 px pane widths, light/dark (16 PNGs); labelled unknown and blank fixtures
+at both widths; labelled forced-on rankings fixtures with Not listed and source
+links; and an EUR print slot with photo credit. Full-detail captures use a tall
+viewport to include the final credit, with no product style changes. Fixture
+values exist only in the throwaway browser. Preview snapshots timed out twice;
+the permitted native Chrome/CDP fallback saved the PNGs. Capture waits for
+slot animation completion; the first clipped capture was replaced.
+
+First full smoke (Node 26.1.0, Chrome; log `plans/pr2-final-gates-20261113/08-smoke-full.log`)
+ran 844 checks in 1125.2 s: all 56 PR 2 checks passed and 24 failed, from two
+smoke assumptions the PR 2 detail additions had broken, not from product code.
+(1) `runBatch2C` R4J wanted no `#pane .dd-note` on paid-Czech and non-Czech rows,
+but PR 2 draws the fee-profile `.dd-note` on every detail; it now looks for the
+Czech tuition wording in the Language row (English and Slovak), keeps the fee
+profile note as a required positive, and the negatives run in both languages.
+(2) `runAlignListCompare` "AL detail pair" took `[link, save, compare]` by
+position; the new Apply link comes first, so it threw at all 11 widths in both
+languages (22 failures). It now finds `button.save` and `button.cmpb` by class,
+fails with the missing part named, and checks every link in the row for split
+words. `tools/check.mjs` has a regression for each (C3 and A2). Repair gates
+(ignored `plans/pr2-smoke-repair-20261113/`): check.mjs passes; targeted
+`--only=runBatch2C,runAlignListCompare,runPr2` passed 182 checks in 150.4 s.
+
+The smoke repair is committed as `e4e5550`. Its full corrective run passed
+846 checks in 1138.6 s, exit 0 (Node 26.1.0, Chrome 157.0.8103.51), on a clean
+committed tree. Check, lint (0 errors / 215 warnings), all 150 contrast pairs,
+importer self-tests and the four-field translation inventory passed too.
+Logs: `plans/pr2-full-retry-20261113/`. Two earlier importer/snapshot passes
+were byte-identical to the committed data; evidence is in
+`plans/pr2-final-gates-20261113/`.
+
+Independent Opus xhigh (claude2) and Astra xhigh (codex2) reviews found the
+same non-Commons credit bug. The CEU Flickr and Reading Geograph picks are
+approved; the renderer now preserves their recorded work titles instead of
+showing "undefined". Pane/slot regressions and a check over every real credit
+cover it. The photo coverage gate now permits newly added universities without
+photos while retaining a majority guard, deliberate Humak/UCN omissions, and
+all per-file and orphan checks. Zero ranks are rejected by the parser and
+importer. The THE table link follows its edition, historical intake wording
+is no longer repeated, the places-year documentation permits historic years,
+and the browser assertion checks the actual official link. Rankings remain off.
+Code-only rows retain the approved official-page fallback; no portal is invented.
+The review-repair full smoke ran on `cb9a9a3`: 830 of 846 passed and 16 failed
+because its stricter official-link selector required a class that exists only
+when there is also an Apply action. The correction selects the non-Apply
+anchor and compares its exact URL, including the shared-destination case;
+regressions cover primary, secondary and shared official/apply layouts.
+All other gates and 31 refreshed captures passed; CEU and Reading now each
+have four additional phone/desktop, light/dark captures with full titles.
+The corrected retry on `84106b8` passed all 846 smoke checks in 1131.6 s,
+exit 0 (Node 26.1.0, Chrome 157.0.8103.51). Its targeted PR 2 run passed
+56 checks; all fast gates passed with 0 lint errors / 215 warnings, all 150
+contrast pairs, and no MISSING entries for the four new text fields.
+The committed tree stayed clean and all four data hashes still matched the
+repeatability evidence. Final logs: `plans/pr2-official-final-retry-20261113/`.
+The 31 current PNGs and their manifest are in `plans/pr2-review-20261113/`;
+the previous 23 captures are preserved in its `before-wave7/` subdirectory.
+Earlier repair logs:
+`plans/pr2-review-final-gates-20261113/`.
+The PR and merge follow passing checks and resolved material findings; no
+Verify Implementation handoff is required.
+
+**CI smoke timeout in `NMS reduced motion` (2026-11-14).** On PR #9
+(`cbfead7`, run `43492558022`), `NMS reduced motion` timed out after 20 s at
+390 px and 320 px waiting for `Runtime.evaluate`. `runNonModalSheet` in
+`tools/smoke.mjs` turned on 4× CPU throttling before `NMS timing` and only
+turned it off when closing the tab, so `NMS reduced motion` still ran at 4×
+CPU while `beforeprint` mounted all 3,966 programmes and three full layout
+passes ran across them (it was already 49 s per width on GitHub before PR #9).
+`NMS timing` now resets CPU throttling back to 1× in its own `finally` block,
+and `tools/check.mjs` guards that reset. Separate non-blocking cleanup left
+for later: `wireCompactHeader` (`js/round2.js`) reads and writes CSS variables
+alternately on `body` during full-list print transitions.
+
+**CI smoke failure in `theme first frame` (2026-11-14).** On PR #9
+(`dea2141`, run `43643902346`, twice) and earlier on PR #8 (`43293708240` at
+5 s), the very first check (`light saved on dark system`) never set
+`window.__themeFrame` within 15 s while `Runtime.evaluate` kept answering and
+later checks passed immediately. `runTheme` in `tools/smoke.mjs` checked only
+`document.body` (~2.7 KB into `index.html`) and `link.sheet` before calling
+`getComputedStyle(document.querySelector('.listp'))`, even though `.listp` sits
+~40 KB later; when CSS loaded before the HTML parser reached `.listp` (reproduced
+on unsplit localhost under 6×/8× CPU throttling), `getComputedStyle(null)` threw
+`TypeError`, killing the `requestAnimationFrame` loop while `waitFor` hid the
+exception behind `"waiting for first CSS-ready frame"`. `runTheme` now captures
+the first CSS-ready `body` palette immediately, keeps polling until `.listp` is
+parsed, asserts `!diag.error` and `!page.exceptions.length`, and prints `rAF`
+count, `visibilityState`, DOM readiness and exceptions if waiting ever fails
+again (`tools/check.mjs` pins the fix).
+
+**CI smoke failure in `A14` at 390 px (2026-11-14).** On PR #9 (`babbf6d`,
+run `43650077084`), `A14` could not find the compare toggle of the second
+saved programme (`humak-youth-work-community-wellbeing`) for 5 s. It failed
+the same way on this computer every time, so it was not a flake, and the site
+was not broken. The two Humak programmes have the nearest deadline, so they
+are the first two rows. On a phone `A9` opens the first one in place and it
+stays open in My list. Switching the rankings on (`1472635`) made that open
+row 170 px taller (2,042 → 2,212 px). The list only keeps rows in the page up
+to two screens below the screen (`WINDOW_SCREENS` in `js/app.js`); from the top
+of the page that limit is 2,198 px into the list, so the second saved row,
+which now starts at 2,212 px, became an empty placeholder until someone
+scrolls towards it. Scrolling 400 px brings it back, as designed. `A14`
+clicked the first toggle (which scrolls to the top) and then looked for the
+second row without scrolling. It now scrolls down a screen at a time until
+the row is in the page before clicking, and still fails if scrolling never
+brings the row back (`tools/check.mjs` pins the fix). With the rankings
+served as off, the old `A14` passed again, which confirms the cause.
+
+**Rankings switched on (2026-11-14, Leon).** The flag had stayed off because
+nobody had checked the automatic name matches. Two agents then compared all
+283 universities with the full QS 2027 table (1,504 entries) and the full THE
+2027 table (3,146 entries, 849 of them unranked "Reporter" rows): every stored
+rank is right (157 QS, 162 THE) and every blank is a real absence (126 QS,
+121 THE), with no missed match. Spot checks by hand agreed. Most blanks are
+universities of applied sciences and specialist schools (Bocconi, CBS,
+Karolinska for QS), which the whole-university tables leave out; Utrecht and
+Leipzig are not in THE. QS prints ranges with a hyphen; the data keeps an en
+dash, like the THE column. No person has read the tables row by row. Repeat
+the comparison when the 2028 editions replace these.
+
+Known research residue remains, without a data fix in this wave: VŠE
+`vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
+requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
+engineering's EUR 50 fee are unapplied. Some university intake defaults were
+inferred from one programme. Roughly 1–2% of unsampled integrated-master
+`degree_type` values may be imprecise. Cattolica's English recognition text was corrected
+through the importer to May 2027 exams / July 2027 results. The 287 new Slovak
+translations are covered; 993 unrelated missing strings remain. Review also
+identified fee-note limitations to revisit against sources: two OTH programmes
+inherit EUR 75 but their own non-EU fee note hides the university's uni-assist
+explanation; `unipd-tmps` has its own EUR 60 fee and does not inherit the
+university CISIA test-fee note. The documented fee-note inheritance rule is
+unchanged; these source/data follow-ups were not repaired in the UI wave.
+
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px
 header (also 56 px when compact), two filter rows with custom sliders, a
@@ -44,6 +212,41 @@ languages. CSV headings follow the language, data cells stay English.
 IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
+
+**Setup asks the site language** (Leon, 2026-11-15; local branch
+`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+with "Site language · Jazyk stránky": Slovenčina or English, each written in
+its own language, the one in force already chosen (address, then this
+browser's choice, then English, as before). Picking one switches setup and the
+page behind it at once, exactly as the Settings radios do: it is saved in this
+browser, the Settings radios follow it, the address gets `ui=`, and it never
+touches saved filters or the setup flag. It is not a setup answer, so Skip and
+Esc keep it. It looks like the Settings switch, not like the answer chips, and
+step 4's teaching-language question is now headed "Taught in" / "Jazyk
+výučby", so the two cannot be mixed up. Code: `languageField` in
+`js/onboarding.js`.
+
+**Skip setup says only what is true** (Leon, 2026-11-15, "take a look at this
+on each setup page"). Its grey second line used to say "Discards these
+answers" on every step, also on step 1 where nothing is asked, and when setup
+was reopened over existing filters, which Skip keeps. Now it has five states,
+set by how setup opened and whether an answer has changed since: opened with
+no filters at all (a first visit), unchanged: "Shows all programmes" /
+"Zobrazí všetky programy"; opened without setup answers, changed: "Discards
+these answers"; opened over answers, changed: "Keeps your filters" / "Tvoje
+filtre ostanú"; opened over answers, unchanged: no line; opened with only
+other filters (a search, a city) or in My list, unchanged: no line. Screen
+readers hear the name "Skip setup" and the line as its description.
+The label glides between centred (no line) and raised (a line under it), both
+ways, and the line fades and rises in; a change of words cross-fades (Leon,
+same day). Every line the setup can show sits in the button from the start in
+one grid cell, so the button, Back, Next and the dialog never move; only
+transform and opacity change, 120–160 ms with a 60 ms stagger so label and
+line never cross, and nothing moves under reduced motion. Code: `syncSkip` in
+`js/onboarding.js`. The language radios count as one Tab stop in setup's
+focus trap. Checks: check.mjs "Setup step 1 asks the site language…", "Skip's
+hint…" and "Skip on a first visit / reopened / over a search / in My list…";
+smoke SL-1, SL-2 and SL-3 (the motion, frame by frame) in `runAlignChromeSetup`.
 
 
 3,966 programmes · 283 universities · 12 countries, counted from `data/*.csv` on 2026-11-12, right after the research rows were added (the table below is the same count by country; its Notes column still describes the older rows). Recount with a small node script if you need the figure again; don't trust this line after a data change.
@@ -106,8 +309,8 @@ The full cell log was a one-off working file and is not kept.
 Jakub's three features now work in the redesigned page: the **My maths**
 filter (`ib_maths`), the **Entrance exam** filter (`entrance_exam`) and the
 **living-cost range** (`living_cost_min`, `living_cost_max`,
-`living_cost_source`), shown as "Living costs" in each programme's Applying
-section. The UK is shown (Leon, 2026-11-02; see Decisions). Jakub's notes on
+`living_cost_source`), shown as "Living costs" in each programme's Costs
+fold (and as the short "Living …/mo" line under the fee). The UK is shown (Leon, 2026-11-02; see Decisions). Jakub's notes on
 each country follow, then his 2026-10-26 additions for Denmark and Italy.
 
 Found while finishing the merge:
@@ -407,7 +610,7 @@ ids of same-named programmes (five "General Medicine") between faculties.
 Czechia breaks down as Charles 165, Masaryk 145, ČVUT 46, VUT 42, VŠE 26.
 Full-time bachelor and long-cycle master's (medicine, law, pharmacy) only.
 
-**Same-name programmes (D14).** Charles entries show the faculty in Applying, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
+**Same-name programmes (D14).** Charles entries show the faculty in the Applying details fold, in search and on every row's sub-line (U2, 2026-11-02). Where the displayed facts still leave entries indistinguishable, stable catalogue-entry numbers and a note point readers to the official pages. Other unique-title rows keep their existing layout. The note that Czech-taught study at public universities is free for any nationality, and that each university sets its own language requirement, is no longer in the Language filter (Leon, 2026-11-05: "so it's like the rest"). It now sits in a programme's details, in the Language row, and only on Czech-taught programmes at Czech universities whose EU fee is 0 (`js/render.js`, text `r2_czech_free`; U5 checks the filter has no note).
 
 Every card now has an **Admission** line (added 2026-10-24, Jakub's call):
 how the place is decided — open entry, numerus fixus, a selective
@@ -472,7 +675,8 @@ plans/backlog/wording.md for the translation queue.
    English A 3 HL / 4 SL, English B or Ab Initio 4 HL / 6 SL (4 at either level
    if the IB was taken through English) — the same rule UCD, UCC and Trinity
    carry. DCU's IELTS line (6.5, no component below 6.0) is added alongside.
-   The guide is the 2026-entry edition and DCU says it is under review.
+   The guide was the 2026-entry edition and DCU says it is under review; the
+   2027-entry edition (November 2026) gives the same IB English grades.
 
    UCD's fees are no longer a hole, though its page is still broken: the "EU
    Undergraduate Fees 2026/27" page says *"Fees published for the Colleges
@@ -494,9 +698,20 @@ plans/backlog/wording.md for the translation queue.
    `tools/update-cao-points.mjs`, which updates Irish rows in place rather
    than re-running the importers; notes rewritten 2026-10-26 to quote both
    rounds, figures unchanged). Re-run it each August when the CAO
-   replaces the table. The IB→points conversion is CAO's 2026 table (45/44 →
-   600 … 24 → 350, +25 for HL Maths 4+), checked against the published image;
-   the 2027 table is not out yet.
+   replaces the table. The IB→points conversion is the CAO's **2027** table
+   (since 2026-11-13): 45/44 → 600, 43 → 594, 42 → 577, 41 → 566 … 36 → 502,
+   35 → 486 … 24 → 360, +25 for HL Maths 4+. It is Table 2 on page 92 of the
+   CAO's *Entry requirements criteria for EU/EFTA/UK Applicants … for 2027
+   entry* (November 2026, linked from www.cao.ie/euefta). The 2026 table it
+   replaced gave fewer points for every total from 41 down (24 → 350), so
+   211 Irish figures dropped by one IB point (three by two); none became
+   blank, the HL Maths bonus rule is worded as before, and HPAT Medicine's
+   480-point minimum is still 35. A 2027 applicant is scored with the 2027
+   table, so last year's cutoffs are converted with it. Each November, when
+   the next guide comes out, copy its table into `js/points.js` (and the
+   copy in `tools/check.mjs`), then run
+   `node tools/update-cao-points.mjs --reconvert` (a dry run that lists every
+   change), read the list, add `--apply`, and run `node tools/make-snapshot.mjs`.
 8. ~~Living costs~~ — filled on 2026-10-26 for the 47 universities of the time
    (see *Living costs* under Decisions); every university added since carries
    a figure too. Re-check them each autumn with the rest.
@@ -616,6 +831,85 @@ plans/backlog/wording.md for the translation queue.
   rows back — delete them again if you ever do.
 
 ## The look of it
+
+**Programme details, "decision first" (2026-11-15, Leon's pick F3, local
+`filter-selected-first`):** the details of a programme (the pane on wide
+screens, the part that opens under a row on phones) were rearranged so that
+what a student asks first comes first, and so the grey small print no longer
+fills the screen. From top to bottom:
+
+1. The campus photo, as a short strip (2.4 wide to 1 high; it was 16:9). A
+   university with no photo has none.
+2. The title, then one outlined panel with the three facts: IB points across
+   the top, deadline and EU fee side by side. The figures are large; the
+   green, amber and orange verdict colours fill the fact they belong to. A
+   passed deadline is the plain date, an outlined word "Passed" and "Check the
+   next cycle": not struck through, not red, not dimmed. On phones the panel is
+   left out, because the row above already shows the three facts; the full
+   points lines are repeated whenever they say anything the row does not:
+   every CAO cutoff (the row shortens it to "≈39 R1" and can drop "with HL
+   Maths 4+"), the HPAT, a cutoff that includes a test, or a note about your
+   points. Only a plain "38 minimum" or "no minimum published" is not
+   repeated.
+3. The Apply button and the Official page button.
+4. "Before you apply", always open: entrance exam, intake, offer timing,
+   language and application fee as short label and answer pairs, then the
+   longer texts (other requirements, IB subjects, language requirement,
+   admission, general requirement, IB recognition, deadline notes) under
+   their labels. Requirements separated by " · " in the data are drawn as a
+   bulleted list. The entrance-exam answer now starts with Yes or No.
+5. Warnings (why a programme is shown although a filter could not judge it,
+   a missing official link) stay in full, right after that section.
+6. Two sections that open with a click or the Enter key: **Costs** (EU fee,
+   living costs, fee plus 12 months' living) and **Applying details**
+   (faculty, apply via, places). Closed, each shows its main value under its
+   name, for example "€14,771–24,371 a year with living" or "Studielink · 650
+   places · year not published" (the word "Places:" is added only for "No
+   fixed limit" and for an unknown). A section the student opened stays open
+   when the details are redrawn.
+7. The QS and THE ranks as one plain line, "Whole-university rank, 2027: QS 6
+   · THE 5". There is no "About the university" section (Leon). The note
+   under it appears only when a shown rank has "=": "“=” means a tied rank."
+   "Not listed" is plain words (we checked the table); only "Not published"
+   is in a dashed box.
+   `SHOW_RANKINGS` in `js/config.js` still switches the line off.
+8. Save, Compare and Student life, then the photo credit.
+
+**One-line notes (Leon, 2026-11-15).** A grey note in the details is at most
+one line. A note of 36 characters or fewer is shown as it is. A longer one
+becomes a one-line blue link that says what is inside, and the full text
+opens under it; nothing was deleted. The links are: "Fee details" (always
+under the application fee, for the sentence saying whose fee it is; the
+programme's own fee note follows the 36-character rule, so "Admission test:
+50 EUR." is a plain line above the link), "Deadline details" (deadline
+notes), "Source"
+(living costs), "How it is worked out" (the yearly estimate) and "Why there
+is no tuition fee" (Czech-taught public programmes). "your figure" and
+"national minimum, not a full budget" stay visible in front of the link,
+because they change what the figure means. Not shortened on purpose: the
+warnings in point 5, the dashed "not known" boxes with their reason, and the
+photo credit.
+
+In Slovak, "V angličtine, ako to uvádza univerzita." stands at the end of a
+section that shows English text; when the only English is inside a closed
+note link, the sentence is inside that note instead. Requirements separated
+by " · " are a bulleted list in Slovak too, and each item keeps its own
+English original for the "show the original" button. The small links (note
+links, QS, THE) keep the 44 px touch height on phones although their line is
+24 px tall.
+
+When printing, every section and note link is opened so the paper has the
+full text, and closed again afterwards. The list row was not changed. New
+wording is in `js/i18n.js` in English and Slovak; the Slovak was written by
+an agent and needs a native read. Checks: `tools/check.mjs` (sections "PR2
+detail UI" and "Each programme renders as the detail article") and smoke
+`runPr2` ("F3 folds" opens every section from the keyboard, redraws and
+prints). Two things a successor should know: the narrow-pane layout (one
+fact per row up to a 1,269 px wide window) is a plain screen-width rule in
+`css/styles.css`, because the pane's width follows the window; and the
+check that allows only two "container" rules in the stylesheet was kept as
+it is. The design notes and mockup are in the main checkout's local
+`plans/detail-redesign-20261114/` (not in git).
 
 **Sort survives reload (2026-11-09):** Picks from the Sort menu are saved,
 including Deadline when points are set. Reloading a link or saved preferences
@@ -1163,9 +1457,10 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
   registry A01).** A card whose deadline had gone was drawn at 65% opacity,
   which took its text to 2.7–3.6:1 contrast, below what anyone can read
   comfortably. The first one (Bocconi's World Bachelor, 1 November) would have
-  dimmed on 2 November. The dimming is gone. Since the redesign the deadline
-  cell says "Passed, check next cycle" over the struck-through date, in neutral
-  ink, never red. `check.mjs` fails if a passed or selected row gets an opacity
+  dimmed on 2 November. The dimming is gone. The details show the plain date
+  with an outlined word "Passed" and "Check the next cycle", in neutral ink,
+  never red and (since 2026-11-15) not struck through there; the list row
+  still strikes the date and says "passed". `check.mjs` fails if a passed or selected row gets an opacity
   again.
 
 - **Cards left out what nobody knew (fixed 2026-10-26, registry R01, R03, R04,
@@ -1434,8 +1729,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
   PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and
   EN/SK button, System default and per-browser choice. Settings radios replace
-  the language pill; tapping the shown language no longer flips it. Asking the
-  language in setup is backlog work, not part of this change.
+  the language pill; tapping the shown language no longer flips it. Setup asks
+  the site language on step 1 since 2026-11-15 (see *State*).
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
   “Decided” and “Later changes vs mockup v4”):

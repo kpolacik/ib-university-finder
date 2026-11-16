@@ -397,9 +397,10 @@
     <section aria-labelledby="results-h" tabindex="-1">
       <h2 class="visually-hidden" id="results-h" data-i18n="programmes_2">Programmes</h2>
       <div class="listp">
-        <!-- The Sort select shows while the list is narrower than 900 px; the
-             column headings below replace it from there (CSS container query),
-             so exactly one sort control is visible at any width. -->
+        <!-- The Sort pick-list shows at every width. From 900 px of list the
+             column headings below also sort, and the pick-list stays so Best
+             match (which has no heading) can be chosen and is seen when active;
+             both read and write the same state (app.js, syncSort). -->
         <div class="fld f-sort">
           <!-- The pick-list is the same one the filters use. The hidden select
                stays the single source of the sort value: choosing an option

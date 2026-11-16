@@ -70,6 +70,11 @@ live for students.
   shows under "max €3,000", with a line saying why. My maths and Entrance exam
   hide only programmes that state they don't fit; one nobody has checked stays
   and says it was not filtered.
+- **Ticked options lead the pick-lists.** Subject area, Country, Language, City
+  and Degree type put what you ticked at the top each time the list opens, never
+  while it is open, so nothing moves under your finger. The rest keep their
+  order, and unticking puts a value back in its place on the next open. Sort
+  keeps its fixed order.
 - **Your IB points hide only what is out of reach.** With My IB points set,
   programmes that need more points than you have are hidden; for Irish courses
   that counts the HL Maths bonus, so those stay. Every other row says whether it

@@ -19,7 +19,7 @@ import {
 import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
-  appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
+  appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
   setSaved, setInCompare, renderCompare,
 } from './render.js';
 
@@ -327,6 +327,7 @@ async function start() {
     printFlushed = !compareOpen;
     printScrollY = window.scrollY;
     if (printFlushed) flushRows();
+    openDetailsForPrint();
     syncTray();
   });
   window.addEventListener('afterprint', afterPrint);
@@ -370,6 +371,8 @@ async function start() {
       // Compare covers the results, so "Show my programmes" closes it first.
       // The Compare set stays (review of PR 1, 2026-11-07).
       closeCompare: () => closeCompare(false),
+      // Setup's language question switches the page as Settings does.
+      switchLanguage,
       apply(answers) {
         // "Show all saves" ignores the filters, so My list kept showing (and
         // the done screen counted) saves the answers rule out, like a 42-point
@@ -2015,8 +2018,28 @@ function isPrinting() {
   return printing || printQuery.matches;
 }
 
+// Paper has no clicks, so every fold and note link in a detail prints open.
+// Done here, after the rows are mounted, because Safari ignores the CSS
+// fallback (::details-content). The mark lets the fold's own toggle listener
+// (render.js) tell this from the student opening it, and afterPrint() close
+// exactly the ones opened here.
+function openDetailsForPrint() {
+  for (const details of document.querySelectorAll('.detail details:not([open])')) {
+    details.setAttribute('data-print-open', '');
+    details.open = true;
+  }
+}
+
+function closeDetailsAfterPrint() {
+  for (const details of document.querySelectorAll('.detail details[data-print-open]')) {
+    details.open = false;
+    details.removeAttribute('data-print-open');
+  }
+}
+
 function afterPrint() {
   printing = false;
+  closeDetailsAfterPrint();
   // The tray's room at the foot of the page first, or the restored position
   // is clamped by its height on phones. A tray that stays hidden gives the
   // room back (wireTray keeps it during print).
@@ -2563,7 +2586,27 @@ function wireDropdowns() {
     for (const d of dom.dropdowns) if (d !== except) d.open = false;
   };
   for (const d of dom.dropdowns) {
-    d.addEventListener('toggle', () => { if (d.open) closeAll(d); });
+    // Ticked options go to the top as the list opens, never while it is open.
+    // The click runs before the browser opens it, so there is no flash of the
+    // old order; the toggle covers opening by find-in-page or a script. Only
+    // the five tick-lists are reordered: Sort's order carries meaning and the
+    // single-value lists have no ticks, so both are left alone.
+    // `sorted` is true from the sort until the list is seen closed, so a toggle
+    // event that arrives late (it is queued, not instant) never reorders a list
+    // someone has already started ticking.
+    let sorted = false;
+    const ticked = () => {
+      sorted = true;
+      const box = [dom.subjects, dom.countries, dom.languages, dom.degrees, dom.cities].find((list) => d.contains(list));
+      if (box) showSelectedFirst(box);
+    };
+    d.querySelector('summary')?.addEventListener('click', () => { if (!d.open) ticked(); });
+    d.addEventListener('change', () => { sorted = true; });
+    d.addEventListener('toggle', () => {
+      if (!d.open) { sorted = false; return; }
+      if (!sorted) ticked();
+      closeAll(d);
+    });
     // Tabbing past the last option left the panel open over the next control
     // (A06). A null relatedTarget is left alone: Safari does not focus a
     // clicked checkbox, so focus "leaves" to nothing on every tick.

@@ -185,6 +185,7 @@ function build(universityRows, programmeRows, today) {
     }
     universities.set(id, {
       id,
+      newFields: parseNewUniversity(row, issues, t('universities_row', { value1: row.__row })),
       name: text(row.name),
       city: text(row.city),
       country: text(row.country),
@@ -273,6 +274,7 @@ function build(universityRows, programmeRows, today) {
       subjectAreas,
       languages: list(row.language),
 
+      ...parseNewFields(row, uni.newFields, issues, where),
       universityId: uni.id,
       university: uni.name,
       // Satellite campuses: University College Roosevelt is in Middelburg, not
@@ -582,6 +584,106 @@ function signer(raw, issues, where) {
   const value = text(raw);
   if (value === '') issues.push(t('verified_by_is_blank_shown_as_not_checked_use_ai_draft_until_you_per', { value1: where }));
   return value;
+}
+
+// Normalize the detail-only columns without changing the legacy filter inputs.
+// Validate defaults once, including universities with no programme rows.
+function newField(raw, name, valid, issues, where, allowUnknown = false) {
+  const value = text(raw);
+  if (!value) return { value: '', unknown: false };
+  if (value === UNKNOWN && allowUnknown) return { value: '', unknown: true };
+  if (!valid(value)) {
+    newFieldIssue(name, value, issues, where);
+    return { value: '', unknown: true };
+  }
+  return { value, unknown: false };
+}
+
+function newFieldIssue(name, value, issues, where) {
+  issues.push(t('invalid_value_treated_as_unknown', { value1: `${where} ${name}`, value2: value }));
+}
+
+const wholeEuros = v => /^[0-9]{1,9}$/.test(v);
+const intakeValue = v => /^(?:[1-9]|1[0-2])(?: · (?:[1-9]|1[0-2]))*$/.test(v);
+const offerValue = v => ['predicted', 'final'].includes(v);
+const knownText = v => v !== UNKNOWN;
+
+function parseNewUniversity(row, issues, where) {
+  const checked = (name, valid = knownText) => newField(row[name], name, valid, issues, where);
+  const appFee = checked('app_fee_default', wholeEuros);
+  const appFeeNote = checked('app_fee_note_default');
+  if (appFee.value !== '' && Number(appFee.value) === 0 && !appFeeNote.value) {
+    newFieldIssue('app_fee_default', row.app_fee_default, issues, where);
+    appFee.value = ''; appFee.unknown = true;
+  }
+  const rankingsYear = checked('rankings_year', v => /^\d{4}$/.test(v));
+  const rank = name => {
+    const result = checked(name, v => /^(?:=?\d+|\d+–\d+|\d+\+)$/.test(v) && v.match(/\d+/g).every(n => Number(n) > 0));
+    if (result.value && !rankingsYear.value) {
+      newFieldIssue(name, result.value, issues, where);
+      result.unknown = true;
+    }
+    return result.unknown ? null : result.value;
+  };
+  const qsRank = rank('qs_rank'), theRank = rank('the_rank');
+  const image = checked('image_file', v => v === `img/universities/${text(row.university_id)}.jpg`);
+  const imageAuthor = checked('image_author').value;
+  const imageLicence = checked('image_licence').value;
+  const imageLicenceUrl = url(row.image_licence_url, issues, `${where} image_licence_url`);
+  const imageSourceUrl = url(row.image_source_url, issues, `${where} image_source_url`);
+  const imageCreditComplete = !!(image.value && imageLicence && imageLicenceUrl && imageSourceUrl && (imageAuthor || /^(?:Public domain|CC0)$/i.test(imageLicence)));
+  if (image.value && !imageCreditComplete) newFieldIssue('image_file', image.value, issues, where);
+  return {
+    appFee, appFeeNote,
+    intake: checked('intake_months_default', intakeValue),
+    recognition: checked('ib_recognition_default'), offer: checked('ib_offer_default', offerValue),
+    applyUrl: url(row.apply_url_default, issues, `${where} apply_url_default`),
+    shared: {
+      qsRank, theRank, rankingsYear: rankingsYear.value,
+      // No image is exposed without the metadata needed to credit it.
+      imageFile: imageCreditComplete ? image.value : '', imageCreditComplete,
+      imageAuthor, imageLicence, imageLicenceUrl, imageSourceUrl,
+    },
+  };
+}
+
+function parseNewFields(row, uni, issues, where) {
+  const checked = (name, valid = knownText, allowUnknown = false) => newField(row[name], name, valid, issues, where, allowUnknown);
+  const pair = (name, fallback, valid) => text(row[name]) ? checked(name, valid, true) : { ...fallback };
+  const fee = pair('app_fee', uni.appFee, wholeEuros);
+  const note = checked('app_fee_note');
+  const appFeeNote = text(row.app_fee_note) ? note.value : (!text(row.app_fee) ? uni.appFeeNote.value : '');
+  if (text(row.app_fee) && fee.value !== '' && Number(fee.value) === 0 && !note.value) {
+    newFieldIssue('app_fee', row.app_fee, issues, where);
+    fee.value = ''; fee.unknown = true;
+  }
+  const intake = pair('intake_months', uni.intake, intakeValue);
+  const recognition = pair('ib_recognition', uni.recognition, knownText);
+  const offer = pair('ib_offer', uni.offer, offerValue);
+  const places = checked('places', v => /^[0-9]+$/.test(v) && Number.isSafeInteger(Number(v)) && Number(v) >= 1, true);
+  const kind = checked('places_kind', v => ['capacity', 'eu_quota', 'past_intake', 'open'].includes(v));
+  const year = checked('places_year', v => /^\d{4}(?:\/\d{2})?$/.test(v));
+  const badCombination = (kind.value === 'open' && text(row.places)) || (kind.value && kind.value !== 'open' && !places.value) || (places.value && !kind.value);
+  if (badCombination || places.unknown || kind.unknown || year.unknown) {
+    if (badCombination && !kind.unknown && (!places.unknown || text(row.places) === UNKNOWN)) newFieldIssue('places', `${text(row.places)} ${text(row.places_kind)}`, issues, where);
+    places.value = ''; places.unknown = true; kind.value = '';
+  }
+  // A malformed explicit URL must never fall through to the default portal.
+  const applyUrl = text(row.apply_url) ? url(row.apply_url, issues, `${where} apply_url`) : uni.applyUrl;
+  const code = checked('apply_code', v => /^(UCAS|CAO|SE):\S+$/.test(v)).value;
+  let applyLinkKind = code ? code.split(':')[0].toLowerCase() : '';
+  if (!applyLinkKind && applyUrl) {
+    const host = new URL(applyUrl).hostname.toLowerCase();
+    const hosts = [['ucas.com', 'ucas'], ['cao.ie', 'cao'], ['studielink.nl', 'studielink'], ['uni-assist.de', 'uni_assist'], ['universityadmissions.se', 'se'], ['antagning.se', 'se'], ['studyinfo.fi', 'studyinfo'], ['opintopolku.fi', 'studyinfo']];
+    applyLinkKind = hosts.find(([domain]) => host === domain || host.endsWith(`.${domain}`))?.[1] || (text(row.apply_url) ? 'programme' : 'university');
+  }
+  return {
+    ...uni.shared, applyUrl, applyCode: code, applyLinkKind,
+    appFee: fee.value === '' ? null : Number(fee.value), appFeeUnknown: fee.unknown, appFeeNote,
+    places: places.value === '' ? null : Number(places.value), placesUnknown: places.unknown, placesKind: kind.value, placesYear: year.value,
+    intakeMonths: intake.value ? intake.value.split(BULLET).map(Number) : [], intakeUnknown: intake.unknown,
+    ibRecognition: recognition.value, recognitionUnknown: recognition.unknown, ibOffer: offer.value, offerUnknown: offer.unknown,
+  };
 }
 
 function inheritNumber(raw, fallback, issues, label) {

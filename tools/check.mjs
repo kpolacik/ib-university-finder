@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -193,7 +193,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -218,7 +218,31 @@ function* nodesOf(node) {
 const findAll = (root, test) => [...nodesOf(root)].filter(test);
 const byClass = (root, name) => findAll(root, (n) => n.classList.contains(name));
 const byTag = (root, tag) => findAll(root, (n) => n.tagName === tag);
-// Every dt label with its dd, across both lists of a detail.
+// The full text behind a one-line note link ("Fee details", "Source", …), or
+// null when the value has no such link.
+const noteBody = (node) => (node ? byClass(node, 'd-note-body')[0] ?? null : null);
+const noteLink = (node) => (node ? byTag(node, 'summary')[0]?.textContent ?? null : null);
+// "In English, as published by the university." sits next to English the
+// student can see: one notice at the end of a section that shows untranslated
+// text; when a section's only English is inside closed note links, one notice
+// inside each such note instead, and none on the section.
+const englishNoteProblems = (detail) => byClass(detail, 'd-sec').flatMap((section) => {
+  const english = findAll(section, (n) => n.getAttribute('data-untranslated') !== null);
+  const visible = english.filter((n) => !n.closest('.d-note-body'));
+  const own = section.children.filter((n) => typeof n !== 'string' && n.classList.contains('english-note')).length;
+  const bodies = byClass(section, 'd-note-body');
+  const out = [];
+  if (own !== (visible.length ? 1 : 0)) out.push(`${section.className}: ${own} section notices for ${visible.length} visible English texts`);
+  for (const body of bodies) {
+    const has = findAll(body, (n) => n.getAttribute('data-untranslated') !== null).length > 0;
+    const notes = byClass(body, 'english-note').length;
+    if (notes !== (has && !visible.length ? 1 : 0)) out.push(`${section.className}: a note link has ${notes} notices`);
+  }
+  if (byClass(section, 'english-note').length > own + bodies.length) out.push(`${section.className}: a notice is somewhere else`);
+  return out;
+});
+// Every dt label with its dd, across every list of a detail (Before you
+// apply and the two folds).
 const kvOf = (article) => {
   const out = {};
   for (const dl of byClass(article, 'kv')) {
@@ -294,6 +318,410 @@ check('blank rejected', safeUrl('   ') === null);
 check('a link with a user name or password is rejected (https://www.ucd.ie@evil.example/)',
   [safeUrl('https://www.ucd.ie@evil.example/'), safeUrl('https://a@b.example/'), safeUrl('https://user:pw@example.org/')]
     .every((v) => v === null));
+
+section('PR2 parser');
+const pr2Csv = (objects) => {
+  const keys = [...new Set(objects.flatMap(Object.keys))];
+  return keys.join(',') + '\n' + objects.map(obj => keys.map(k => `"${String(obj[k] ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n';
+};
+const pr2Fixture = async (u = {}, p = {}) => load(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', ...u }]),
+  pr2Csv([{ programme_id: 'p', university_id: 'u', programme: 'Test', application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', ...p }])
+);
+const pr2Defaults = { app_fee_default: '0', app_fee_note_default: 'default', intake_months_default: '9 · 2', ib_recognition_default: 'recognised', ib_offer_default: 'final', rankings_year: '2027' };
+let pr2 = await pr2Fixture(pr2Defaults);
+let pr2row = pr2.programmes[0];
+check('PR2 inherits defaults and zero', pr2row.appFee === 0 && pr2row.appFeeNote === 'default' && pr2row.intakeMonths.join(',') === '9,2' && pr2row.ibRecognition === 'recognised' && pr2row.ibOffer === 'final' && pr2row.qsRank === '');
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?', places: '?' }); pr2row = pr2.programmes[0];
+check('PR2 unknown overrides defaults', pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.recognitionUnknown && pr2row.offerUnknown && pr2row.placesUnknown && !pr2row.appFeeNote);
+pr2 = await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' }); pr2row = pr2.programmes[0];
+check('PR2 explicit values override', pr2row.appFee === 12 && pr2row.appFeeNote === 'own' && pr2row.places === 5 && pr2row.placesKind === 'capacity' && pr2row.ibOffer === 'predicted' && pr2row.ibRecognition === 'own' && pr2row.intakeMonths[0] === 1);
+pr2 = await pr2Fixture({ ...pr2Defaults, qs_rank: 'bad', image_file: '../bad', image_source_url: 'javascript:bad' }, { app_fee: '1.2', intake_months: '13', ib_offer: 'bad', places: '0', places_kind: 'open', apply_code: 'BAD:x' }); pr2row = pr2.programmes[0];
+check('PR2 invalid values report issues and become unknown', pr2.meta.issues.length >= 7 && pr2row.qsRank === null && !pr2row.imageFile && !pr2row.imageSourceUrl && pr2row.appFeeUnknown && pr2row.intakeUnknown && pr2row.offerUnknown && pr2row.placesUnknown);
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo'], ['ucas.com.evil.test','programme']]) {
+  pr2 = await pr2Fixture({}, { apply_url: `https://sub.${host}/` });
+  check(`PR2 apply host ${host}`, pr2.programmes[0].applyLinkKind === kind);
+}
+pr2 = await pr2Fixture({ apply_url_default: 'https://example.org' }, { apply_code: 'CAO:ABC' });
+check('PR2 code wins over inherited URL', pr2.programmes[0].applyLinkKind === 'cao');
+pr2 = await pr2Fixture({ app_fee_default: 'bad', ib_offer_default: '?' });
+check('PR2 invalid defaults inherit unknown', pr2.programmes[0].appFeeUnknown && pr2.programmes[0].offerUnknown);
+
+// Malformed defaults must be diagnosed even when every programme overrides them.
+const pr2Blank = (await pr2Fixture()).programmes[0];
+for (const [key, value] of Object.entries({ appFee: null, appFeeNote: '', places: null, placesKind: '', placesYear: '', intakeMonths: [], ibRecognition: '', ibOffer: '', qsRank: '', theRank: '', rankingsYear: '', imageFile: '', imageAuthor: '', imageLicence: '', applyCode: '', applyLinkKind: '' })) {
+  equal(`PR2 missing ${key}`, pr2Blank[key], value);
+}
+section('PR2 detail UI');
+{
+  const draw = (row, options = {}) => withStubDocument(() => renderDetail(row, noFilters(), options));
+  const inherited = (await pr2Fixture(pr2Defaults)).programmes[0];
+  const unknown = (await pr2Fixture(pr2Defaults, { app_fee: '?', app_fee_note: 'Test fee only', places: '?', intake_months: '?', ib_recognition: '?', ib_offer: '?' })).programmes[0];
+  for (const [name, row, expected] of [['blank', pr2Blank, 'Not checked yet'], ['unknown', unknown, 'Not published']]) {
+    const facts = kvOf(draw(row));
+    check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
+  }
+  const inheritedFacts = kvOf(draw(inherited));
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feedefaultFee detailsFor EU citizens with an IB Diploma.'
+    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'For EU citizens with an IB Diploma.'
+    && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
+  check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
+  const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
+  const explicitFacts = kvOf(draw(explicit));
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12ownFee details') && !explicitFacts['Application fee'].textContent.includes('default')
+    && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
+    && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 places · 2027/28');
+  const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetAdmission test fee: EUR 35 (TOL).Fee detailsFor EU citizens with an IB Diploma.'
+    && byClass(kvOf(noteOnly)['Application fee'], 'unk-t')[0]?.textContent === 'Not checked yet');
+  // Review of 5bb123d: the fee's own note was always folded, so six Austrian rows
+  // hid their only known charge ("Admission test: 50 EUR." under an unchecked
+  // fee) behind "Fee details". A note of 36 characters or fewer is a plain line;
+  // a longer one and the profile sentence stay behind the link.
+  equal('fee note: 36 characters or fewer is a plain line outside the link, 37 is inside it; the profile sentence is always inside',
+    ['Admission test: 50 EUR.', 'x'.repeat(36), 'y'.repeat(37), ''].map((appFeeNote) => {
+      const dd = kvOf(draw({ ...pr2Blank, appFeeNote }))['Application fee'];
+      const plain = byClass(dd, 'd-note').filter((n) => !byTag(n, 'details').length).map((n) => n.textContent).join('|');
+      return [plain, noteLink(dd), noteBody(dd).textContent];
+    }), [['Admission test: 50 EUR.', 'Fee details', 'For EU citizens with an IB Diploma.'], ['x'.repeat(36), 'Fee details', 'For EU citizens with an IB Diploma.'],
+      ['', 'Fee details', `${'y'.repeat(37)} For EU citizens with an IB Diploma.`], ['', 'Fee details', 'For EU citizens with an IB Diploma.']]);
+  const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
+  check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
+  const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
+  for (const slot of [false,true]) {
+    const detail = draw(photo, { slot }), image = byTag(detail,'img')[0], credit = detail.lastChild;
+    // F3: the title and facts come first in the DOM and CSS draws the photo above
+    // them (order:-1); the slot has no head, so its photo is the first child.
+    check(`PR2 photo drawn first and credit last in ${slot ? 'printable slot' : 'pane'}`,
+      (slot ? detail.children[0].className === 'd-photo'
+        : detail.children.map((n) => n.className).slice(0, 3).join() === 'd-head,d-facts,d-photo')
+      && /\.d-photo\{order:-1;/.test(read('css/styles.css')) && /\.ph-frame\{aspect-ratio:2\.4\/1;/.test(read('css/styles.css'))
+      && image.getAttribute('width') === '640' && image.getAttribute('height') === '360' && image.getAttribute('decoding') === 'async'
+      && image.alt === 'Test: campus photo' && credit.className === 'd-src'
+      && credit.textContent.includes('A long author name intact') && credit.textContent.includes('Campus ž photo') && credit.textContent.endsWith('cropped')
+      && byTag(credit,'a').length === 2);
+  }
+  for (const [imageSourceUrl, title] of [
+    ['https://www.flickr.com/photos/ssomkuti/48578075597/', 'Central European University, Vienna'],
+    ['https://www.geograph.org.uk/photo/7929879', 'Foxhill House'],
+  ]) for (const slot of [false, true]) {
+    const credit = byClass(draw({ ...photo, imageSourceUrl }, { slot }), 'd-src')[0];
+    const links = byTag(credit, 'a');
+    check(`PR2 non-Commons title and complete credit ${imageSourceUrl} slot=${slot}`,
+      links.length === 2 && links[1].children.filter(n => typeof n === 'string').join('') === title && links[1].href === imageSourceUrl
+      && credit.textContent.includes(photo.imageAuthor) && credit.textContent.includes(photo.imageLicence)
+      && credit.textContent.endsWith('cropped') && !credit.textContent.includes('undefined'));
+  }
+  check('PR2 public-domain credit preserves title with fallback author', byClass(draw({...photo,imageAuthor:'',imageLicence:'CC0'}),'d-src')[0].textContent.startsWith('Photo: author not recorded'));
+  check('PR2 absent image has no photo or credit', !byClass(draw(pr2Blank),'d-photo').length && !byClass(draw(pr2Blank),'d-src').length);
+  check('PR2 ranks forced off have no DOM', !byClass(draw(photo,{showRankings:false}),'d-rank').length);
+  const ranks = draw({ ...photo, qsRank: '', theRank: null }, { showRankings: true });
+  // F3 (Leon, 2026-11-15): the ranks are one unfolded line after the two folds,
+  // labelled as the whole university's; there is no "About the university" fold.
+  check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
+    && byClass(ranks,'rk-lab')[0]?.textContent === 'Whole-university rank, 2027'
+    // Review of 5bb123d: "Not listed" is a checked fact, so plain words; only
+    // "Not published" is an unknown and wears the dashed box. Each link's hidden
+    // name says it is that year's table.
+    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS, 2027 table (opens in a new tab) Not listed|THE, 2027 table (opens in a new tab) Not published'
+    && byClass(ranks,'rk-none').map(n => `${n.textContent}:${n.classList.contains('unk-t')}`).join('|') === 'Not listed:false|Not published:true'
+    && byTag(byClass(ranks,'d-rank')[0],'a').every(a => byClass(a,'visually-hidden')[0]?.textContent === ', 2027 table (opens in a new tab)')
+    && !byClass(ranks,'rk-note').length
+    && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
+    && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
+  check('F3 the rank line is a plain line straight after the two folds, never a fold and with no heading', (() => {
+    const at = ranks.children.findIndex((n) => n.classList.contains('d-rank')), line = ranks.children[at];
+    return line.tagName === 'section' && ranks.children[at - 1].classList.contains('d-fold') && ranks.children[at - 2].classList.contains('d-fold')
+      && byTag(ranks, 'details').filter((n) => n.classList.contains('d-fold')).length === 2
+      && !byTag(line, 'h3').length && !byTag(line, 'details').length && !byTag(line, 'summary').length
+      && !('about_university' in UI.en) && !('rank_note' in UI.en);
+  })());
+  equal('F3 the tie note appears only when a shown rank has "="; a range or a plain rank has none',
+    [['=12', '45'], ['12', '=45'], ['326–350', '401-500'], ['6', '5'], ['', null]].map(([qsRank, theRank]) =>
+      byClass(draw({ ...photo, qsRank, theRank }, { showRankings: true }), 'rk-note').map((n) => n.textContent).join()),
+    ['“=” means a tied rank.', '“=” means a tied rank.', '', '', '']);
+  // The folds are native <details>: closed by default, remembered once the
+  // student opens one (a redrawn pane or a row scrolled away and back keeps
+  // it), but never because print opened it for the paper.
+  check('F3 a fold the student opened stays open on a redraw; one that print opened is not remembered', withStubDocument(() => {
+    const state = noFilters();
+    const folds = (detail) => byTag(detail, 'details').filter((d) => d.classList.contains('d-fold'));
+    const first = renderDetail(photo, state);
+    const [costs, applying] = folds(first);
+    if (costs.open || applying.open) return false;
+    costs.open = true; costs.dispatchEvent({ type: 'toggle', bubbles: false });
+    applying.setAttribute('data-print-open', ''); applying.open = true; applying.dispatchEvent({ type: 'toggle', bubbles: false });
+    const second = folds(renderDetail(photo, state));
+    const other = folds(renderDetail({ ...photo, id: 'another-programme' }, state));
+    if (!(second[0].open === true && !second[1].open && !other[0].open && !other[1].open)) return false;
+    second[0].open = false; second[0].dispatchEvent({ type: 'toggle', bubbles: false });
+    return !folds(renderDetail(photo, state))[0].open && !folds(renderDetail(photo, noFilters()))[0].open;
+  }));
+  {
+    const app = read('js/app.js'), sheet = read('css/styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const before = app.slice(app.indexOf("window.addEventListener('beforeprint'"), app.indexOf("window.addEventListener('afterprint'"));
+    check('F3 print opens every fold and note link after the rows are mounted, marks them, and closes exactly those afterwards; CSS is the fallback',
+      before.indexOf('flushRows()') >= 0 && before.indexOf('openDetailsForPrint()') > before.indexOf('flushRows()')
+      && /function openDetailsForPrint\(\) \{\s*for \(const details of document\.querySelectorAll\('\.detail details:not\(\[open\]\)'\)\) \{\s*details\.setAttribute\('data-print-open', ''\);\s*details\.open = true;/.test(app)
+      && /function closeDetailsAfterPrint\(\) \{\s*for \(const details of document\.querySelectorAll\('\.detail details\[data-print-open\]'\)\) \{\s*details\.open = false;\s*details\.removeAttribute\('data-print-open'\);/.test(app)
+      && /function afterPrint\(\) \{\s*printing = false;\s*closeDetailsAfterPrint\(\);/.test(app)
+      && /@media print\{\s*\.detail details::details-content\{content-visibility:visible;display:block\}/.test(sheet));
+    // Found while building F3: a two-line cost label ran into the note under its
+    // figure. The note clears the floated label, and every dd ends with a clear.
+    check('F3 costs: the note clears its label, with no wrapper, display:contents or new container',
+      /\.kv-costs dt\{float:left;clear:left;/.test(sheet) && /\.kv-costs \.d-note\{clear:left\}/.test(sheet)
+      && /\.kv-costs dd::after\{content:"";display:block;clear:left\}/.test(sheet)
+      && !/display\s*:\s*contents/.test(sheet) && (sheet.match(/container(?:-type)?\s*:/g) ?? []).length === 2);
+    // Found while building F3 (all 3,966 rows drawn at a 320 px pane): the
+    // dashed "Assessment required; IB equivalent unverified" box did not wrap
+    // and ran 9 rows out of the pane. .unk-t is nowrap for the list row.
+    check('F3 a dashed unknown box inside the detail may wrap',
+      /\.detail :is\(dd,\.fold-g,\.rk,\.plines\) \.unk-t\{[^}]*white-space:normal\}/.test(sheet));
+    // Review of 5bb123d: the rank links and note links were pinned at 24 px, which
+    // undid the 44 px touch target (--tap, S16). They keep a 24 px line and take
+    // the full hit height back with a negative margin, like .cmp-t .lnk.
+    check('F3 rank links and note links keep the --tap hit height on a 24 px line',
+      /\.rk \.rk-src\{gap:2px;min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\)\}/.test(sheet)
+      && /\.d-note-more>summary\{[^}]*min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\);/.test(sheet)
+      && !/min-height:24px/.test(sheet.slice(sheet.indexOf('.detail{gap:24px}'))));
+    check('F3 "Not listed" is plain grey words; only a rank that is also .unk-t gets the dashed box',
+      /\.rk \.rk-none\{font-size:var\(--fs-13\);line-height:20px;color:var\(--ink-2\)\}/.test(sheet)
+      && /\.detail \.rk \.rk-none\.unk-t\{/.test(sheet) && !/\.rk-none\{[^}]*(?:border|dashed)/.test(sheet));
+    // Found while building F3: a new key reused the name of an existing one
+    // ("deadline_passed"), and the later entry silently won.
+    const source = read('js/i18n.js'), enAt = source.indexOf('  en: {'), skAt = source.indexOf('  sk: {');
+    const twice = [source.slice(enAt, skAt), source.slice(skAt)].flatMap((block) => {
+      const keys = [...block.matchAll(/^    "([\w-]+)":/gm)].map((m) => m[1]);
+      return keys.filter((key, i) => keys.indexOf(key) !== i);
+    });
+    equal('i18n.js defines no key twice in either language', twice, []);
+    equal('F3 the passed tag and the list group keep their own words', [UI.en.passed_tag, UI.en.deadline_passed, UI.sk.passed_tag, UI.sk.deadline_passed],
+      ['Passed', 'Deadline passed', 'Uplynul', 'Termín uplynul']);
+  }
+  // Leon, 2026-11-15: "Places: 650 places" repeated itself. A value that says
+  // what it is stands alone; "No fixed limit" and an unknown keep the label.
+  equal('F3 the Applying details summary always names the places, labelled only where the value alone is unclear; a system joins them only when it is a short name',
+    [{ applicationSystem: 'Studielink', places: 650, placesKind: 'capacity', placesYear: '' },
+      { applicationSystem: 'An admission information system described in one long sentence', placesKind: 'open' },
+      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true },
+      { places: 42, placesKind: 'past_intake', placesYear: '2026' }, { places: 5, placesKind: 'eu_quota', placesYear: '2027/28' }, {}].map((extra) => {
+      const detail = draw({ ...pr2Blank, ...extra });
+      const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Applying details');
+      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via']?.textContent ?? null];
+    }), [[', Studielink · 650 places · year not published', 'Studielink'],
+      [', Places: No fixed limit', 'An admission information system described in one long sentence'],
+      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100'],
+      [', 42 admitted in 2026', null], [', 5 EU places · 2027/28', null], [', Places: Not checked yet', null]]);
+  const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
+  check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
+  const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
+  const invalidRanks = byClass(draw(zeroRank, { showRankings: true }), 'd-rank')[0];
+  check('PR2 zero ranks render unknown instead of a published figure', !byClass(invalidRanks, 'fig').length && byClass(invalidRanks, 'rk-none').every(n => n.textContent === 'Not published'));
+  check('PR2 no rankings year omits block even with flag on', !byClass(draw({...photo,rankingsYear:''},{showRankings:true}),'d-rank').length);
+  const applied = {...pr2Blank, applyUrl:'https://www.cao.ie/apply', applyCode:'CAO:TR028', applyLinkKind:'cao'};
+  const action = byClass(draw(applied),'btn-apply')[0];
+  check('PR2 apply uses actual URL, code, primary style and accessible identity', action.href === applied.applyUrl && action.classList.contains('btn-p') && action.textContent.includes('Apply via CAO · TR028') && action.textContent.includes(applied.programme) && action.target === '_blank' && action.rel === 'noopener noreferrer');
+  check('PR2 code alone creates no application action', !byClass(draw({...applied,applyUrl:null}),'btn-apply').length && byTag(byClass(draw({...applied,applyUrl:null}),'d-actions')[0],'a').length === 1);
+  for (const applyUrl of [null, applied.applyUrl, applied.officialUrl]) {
+    const actions = byClass(draw({ ...applied, applyUrl }), 'd-actions')[0];
+    const official = byTag(actions, 'a').filter(a => !a.classList.contains('btn-apply'));
+    check(`PR2 official destination survives primary, secondary and shared-link layouts ${applyUrl}`,
+      applyUrl === applied.officialUrl ? official.length === 0 && byClass(actions, 'btn-apply')[0]?.href === applied.officialUrl
+        : official.length === 1 && official[0].href === applied.officialUrl);
+  }
+  const closed = byClass(draw({...applied,deadlinePassed:true}),'btn-apply')[0];
+  check('PR2 passed cycle demotes apply and keeps full grid span', !closed.classList.contains('btn-p') && closed.textContent.startsWith('This cycle has closed · CAO · TR028') && read('css/styles.css').includes('.d-actions>a.btn-apply,.d-actions>a.btn-official{grid-column:1/-1}'));
+  for (const [host,kind] of [['antagning.se','se'],['universityadmissions.se','se'],['opintopolku.fi','studyinfo'],['studyinfo.fi','studyinfo']]) check(`PR2 portal label follows actual ${host}`, byClass(draw({...applied,applyUrl:`https://${host}/`,applyCode:'',applyLinkKind:kind}),'btn-apply')[0].textContent.startsWith(`Apply via ${host}`));
+  const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
+  check('PR2 historical places says past intake and year', historical.Places?.textContent === '42 admitted in 2026'
+    && kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:''})).Places.textContent === '42 admitted (year not published)');
+  // Review of 5bb123d: the count was passed already formatted, so the plural
+  // form was never chosen. No live row has 1–4 places today.
+  equal('places choose their plural form by the number (en)',
+    [1, 3, 5, 1500].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' })).Places.textContent)),
+    [['1 place · 2026', '1 EU place · 2026', '1 admitted in 2026'], ['3 places · 2026', '3 EU places · 2026', '3 admitted in 2026'],
+      ['5 places · 2026', '5 EU places · 2026', '5 admitted in 2026'], ['1,500 places · 2026', '1,500 EU places · 2026', '1,500 admitted in 2026']]);
+  check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
+    && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 EU places · year not published');
+  i18n.setLanguage('sk',{setItem(){}});
+  i18n.setDataTranslations([{field:'ib_recognition_default',en:'recognised',sk:'Uznané'}, {field:'app_fee_note_default',en:'default',sk:'Poznámka'}]);
+  const sk = draw(photo,{slot:true});
+  // F3: the originals button follows the apply buttons (after the photo), and is
+  // never inside a fold or a note link, where a closed <details> would hide it.
+  check('PR2 SK months, default translations and originals after the top actions, outside every fold', kvOf(sk)['Začiatok štúdia'].textContent === 'september · február'
+    && kvOf(sk)['Uznanie IB'].textContent.includes('Uznané')
+    && sk.children.slice(0, 3).map((n) => n.className).join() === 'd-photo,d-actions d-apply,detail-originals'
+    && byClass(sk,'detail-originals').length === 1 && !byTag(sk,'details').some((d) => byClass(d,'detail-originals').length)
+    && sk.lastChild.className === 'd-src');
+  const originalButton = byClass(sk,'detail-originals')[0];
+  originalButton.dispatchEvent({type:'click'});
+  check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
+  check('PR2 missing new translation labels its section', byClass(draw({...pr2Blank,ibRecognition:'Untranslated recognition'}),'english-note').length === 1);
+  equal('places choose their plural form by the number (sk)',
+    [1, 3, 5].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' }))['Počet miest'].textContent)),
+    [['1 miesto · 2026', '1 miesto pre EÚ · 2026', '1 prijatý v roku 2026'], ['3 miesta · 2026', '3 miesta pre EÚ · 2026', '3 prijatí v roku 2026'],
+      ['5 miest · 2026', '5 miest pre EÚ · 2026', '5 prijatých v roku 2026']]);
+  equal('places without a year keep the plural form (sk)',
+    [1, 2, 7].map((places) => kvOf(draw({ ...pr2Blank, places, placesKind: 'past_intake', placesYear: '' }))['Počet miest'].textContent),
+    ['1 prijatý (rok nezverejnený)', '2 prijatí (rok nezverejnený)', '7 prijatých (rok nezverejnený)']);
+  equal('"your figure" in Slovak', UI.sk.your_figure, 'tvoj údaj');
+  equal('Applying summary in Slovak: no repeated "Počet miest"; the label stays for no limit and for an unknown',
+    [{ places: 650, placesKind: 'capacity', placesYear: '' }, { placesKind: 'open' }, {}].map((extra) => {
+      const fold = byTag(draw({ ...pr2Blank, ...extra }), 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+      return byClass(fold, 'fold-g')[0].textContent;
+    }), [', 650 miest · rok nezverejnený', ', Počet miest: Bez pevného limitu', ', Počet miest: Zatiaľ neoverené']);
+  // Review of 5bb123d: the notice was added to "Before you apply" even when the
+  // only English was inside a closed note link, so it pointed at nothing visible.
+  {
+    const long = 'An untranslated fee note that is longer than thirty-six characters.';
+    const hidden = draw({ ...pr2Blank, appFeeNote: long });
+    const must = byClass(hidden, 'd-must')[0], body = noteBody(kvOf(hidden)[UI.sk.app_fee]);
+    check('English only inside a note link: the notice is inside that note, not on the section',
+      body.textContent === `${long} ${UI.sk.app_fee_profile}${UI.sk.untranslated_section}` && byClass(body, 'english-note').length === 1
+      && body.lastChild.classList.contains('english-note') && byClass(must, 'english-note').length === 1 && !englishNoteProblems(hidden).length,
+      englishNoteProblems(hidden).join('; '));
+    const shown = draw({ ...pr2Blank, appFeeNote: 'Admission test: 50 EUR.', deadlineNotes: long });
+    check('English the student can see: one notice at the end of the section, none inside its note links',
+      byClass(shown, 'd-must')[0].lastChild.classList.contains('english-note') && byClass(shown, 'english-note').length === 1
+      && !byClass(shown, 'd-note-body').some((b) => byClass(b, 'english-note').length) && !englishNoteProblems(shown).length,
+      englishNoteProblems(shown).join('; '));
+    const two = draw({ ...pr2Blank, appFeeNote: long, deadlineNotes: `${long} Twice.` });
+    check('English inside two note links of one section: a notice in each', byClass(two, 'd-note-body').filter((b) => byClass(b, 'english-note').length === 1).length === 2
+      && byClass(two, 'english-note').length === 2 && !englishNoteProblems(two).length, englishNoteProblems(two).join('; '));
+  }
+  // Review of 5bb123d: a translated multi-part requirement stayed one " · "
+  // paragraph in Slovak while English drew a list.
+  {
+    const listOf = (translations, otherRequirements) => {
+      i18n.setDataTranslations(translations);
+      const detail = draw({ ...pr2Blank, otherRequirements });
+      const dd = kvOf(detail)[UI.sk.other_requirements];
+      // The hidden English original (a .data-original span) is left out of the text and the lang count.
+      const original = (n) => n.classList.contains('data-original');
+      return { detail, dd, items: byTag(dd, 'li').map((li) => [findAll(li, (n) => n.getAttribute('data-english') !== null || n.getAttribute('data-untranslated') !== null || (n.parent === li && !original(n)))
+        .map((n) => n.children.filter((c) => typeof c === 'string').join('')).join(''),
+      findAll(li, (n) => n.getAttribute('data-english') !== null).map((n) => n.getAttribute('data-english')).join(),
+      findAll(li, (n) => n.lang === 'en' && !original(n)).length]) };
+    };
+    const mixed = listOf([{ field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one item per requirement; a translated item keeps its English, an untranslated one keeps lang="en"',
+      mixed.items, [['Portfólio', 'Portfolio', 0], ['Interview in English', '', 1]]);
+    byClass(mixed.detail, 'detail-originals')[0].dispatchEvent({ type: 'click' });
+    check('Slovak list: "Show the English original" reveals the original inside its own item',
+      byTag(mixed.dd, 'li')[0].textContent === 'PortfólioPortfolio' && byClass(byTag(mixed.dd, 'li')[0], 'data-original').every((n) => !n.hidden && n.lang === 'en')
+      && !byClass(byTag(mixed.dd, 'li')[1], 'data-original').length);
+    const whole = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor v angličtine' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one translation covering two items is split with its English, item by item',
+      whole.items, [['Portfólio', 'Portfolio', 0], ['Pohovor v angličtine', 'Interview in English', 0]]);
+    const uneven = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor · v angličtine' }], ['Portfolio', 'Interview in English']);
+    check('Slovak list: when the English does not split the same way, the whole original goes under the list',
+      uneven.items.length === 3 && uneven.items.every((item) => item[1] === '') && byClass(uneven.dd, 'd-list-box')[0]?.getAttribute('data-english') === 'Portfolio · Interview in English'
+      && byClass(uneven.dd, 'd-list-box')[0].lastChild.classList.contains('data-original'));
+    i18n.setDataTranslations([]);
+  }
+  // Review of 5bb123d: the closed Applying fold copied an untranslated system as
+  // plain text, so a Slovak screen reader read English words as Slovak.
+  {
+    const detail = draw({ ...pr2Blank, applicationSystem: 'Direct', applyCode: 'UCAS:A100' });
+    const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+    const gist = byClass(fold.children[0], 'fold-g')[0];
+    equal('Applying summary in Slovak: the untranslated system keeps lang="en", the code suffix does not, and there is one notice for the fold',
+      [findAll(gist, (n) => n.lang === 'en').map((n) => n.textContent), findAll(gist, (n) => n.getAttribute('data-untranslated') !== null).length,
+        gist.textContent.startsWith(', Direct · kód A100 · '), byClass(fold, 'english-note').length],
+      [['Direct'], 0, true, 1]);
+  }
+  i18n.initLanguage('',{getItem:()=> 'en'}); i18n.setDataTranslations([]);
+}
+
+for (const key of ['appFeeUnknown', 'placesUnknown', 'intakeUnknown', 'recognitionUnknown', 'offerUnknown']) equal(`PR2 blank ${key}`, pr2Blank[key], false);
+for (const [field, value, output, unknown] of [
+  ['app_fee', '-1', 'appFee', 'appFeeUnknown'], ['app_fee', '1.0', 'appFee', 'appFeeUnknown'],
+  ['app_fee', '1,000', 'appFee', 'appFeeUnknown'], ['app_fee', '1000000000', 'appFee', 'appFeeUnknown'],
+  ['intake_months', '0', 'intakeMonths', 'intakeUnknown'], ['intake_months', '13', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '09', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9·2', 'intakeMonths', 'intakeUnknown'],
+  ['intake_months', '9;2', 'intakeMonths', 'intakeUnknown'], ['intake_months', '9 · ', 'intakeMonths', 'intakeUnknown'],
+  ['ib_offer', 'conditional', 'ibOffer', 'offerUnknown'], ['ib_recognition', '?', 'ibRecognition', 'recognitionUnknown'],
+]) {
+  const parsed = await pr2Fixture(pr2Defaults, { [field]: value });
+  check(`PR2 invalid or unknown ${field} ${value} blocks default`, parsed.programmes[0][unknown] && JSON.stringify(parsed.programmes[0][output]) === JSON.stringify(pr2Blank[output]) && (value === '?' || parsed.meta.issues.length > 0));
+}
+for (const field of ['app_fee', 'intake_months', 'ib_recognition', 'ib_offer', 'app_fee_note', 'apply_url']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: field === 'apply_url' ? 'https://example.org' : field === 'app_fee' ? '12' : field === 'intake_months' ? '9' : field === 'ib_offer' ? 'final' : 'own' });
+  check(`PR2 invalid ${field} default diagnosed despite override`, parsed.meta.issues.some(s => s.includes(`${field}_default`)));
+}
+for (const [p, expectedFee, expectedNote, unknown] of [
+  [{}, 0, 'default', false], [{ app_fee_note: 'own' }, 0, 'own', false],
+  [{ app_fee: '12' }, 12, '', false], [{ app_fee: '?' }, null, '', true],
+  [{ app_fee: '?', app_fee_note: 'test fee only' }, null, 'test fee only', true],
+  [{ app_fee: '0', app_fee_note: 'free' }, 0, 'free', false],
+  [{ app_fee: '0' }, null, '', true],
+]) {
+  const parsed = (await pr2Fixture(pr2Defaults, p)).programmes[0];
+  equal(`PR2 fee-note coupling ${JSON.stringify(p)}`, [parsed.appFee, parsed.appFeeNote, parsed.appFeeUnknown], [expectedFee, expectedNote, unknown]);
+}
+const noteOnly = (await pr2Fixture({}, { app_fee_note: 'test fee only' })).programmes[0];
+equal('PR2 note-only row survives unknown fee', [noteOnly.appFee, noteOnly.appFeeNote], [null, 'test fee only']);
+for (const kind of ['capacity', 'eu_quota', 'past_intake', 'open']) {
+  const parsed = await pr2Fixture({}, { places: kind === 'open' ? '' : '12', places_kind: kind, places_year: '2027' });
+  equal(`PR2 valid places ${kind}`, [parsed.programmes[0].places, parsed.programmes[0].placesKind, parsed.meta.issues], [kind === 'open' ? null : 12, kind, []]);
+}
+for (const p of [{ places: '0' }, { places: '1.5' }, { places: '-1' }, { places: '1e2' }, { places: '9007199254740992' }, { places: '12' }, { places_kind: 'capacity' }, { places: '?', places_kind: 'open' }, { places: '12', places_kind: 'open' }, { places_kind: 'bad' }, { places_year: '2027-28' }, { places_year: '?' }]) {
+  const parsed = await pr2Fixture({}, p);
+  check(`PR2 malformed places ${JSON.stringify(p)}`, parsed.meta.issues.length > 0 && parsed.programmes[0].placesUnknown && parsed.programmes[0].places === null && !parsed.programmes[0].placesKind);
+}
+for (const rank of ['62', '=218', '201–250', '1201+']) {
+  const parsed = await pr2Fixture({ rankings_year: '2027', qs_rank: rank, the_rank: rank });
+  equal(`PR2 valid rank ${rank}`, [parsed.programmes[0].qsRank, parsed.programmes[0].theRank, parsed.meta.issues], [rank, rank, []]);
+}
+for (const u of [{ rankings_year: '2027', qs_rank: '0' }, { rankings_year: '2027', qs_rank: '=0' }, { rankings_year: '2027', qs_rank: '0+' }, { rankings_year: '2027', qs_rank: '0–10' }, { rankings_year: '2027', the_rank: '10–0' }, { qs_rank: '?' }, { qs_rank: 'Reporter' }, { the_rank: '201-250' }, { qs_rank: '62', rankings_year: '' }, { qs_rank: '62', rankings_year: '2027/28' }]) {
+  const parsed = await pr2Fixture(u);
+  check(`PR2 invalid rank ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && (u.the_rank ? parsed.programmes[0].theRank : parsed.programmes[0].qsRank) === null);
+}
+for (const [code, kind] of [['UCAS:H401', 'ucas'], ['CAO:TR028', 'cao'], ['SE:LNU-F3536', 'se']]) {
+  for (const apply_url of ['', 'https://studielink.nl/apply']) {
+    const parsed = (await pr2Fixture({}, { apply_code: code, apply_url })).programmes[0];
+    equal(`PR2 code precedence ${code} ${apply_url}`, [parsed.applyCode, parsed.applyLinkKind, parsed.applyUrl], [code, kind, apply_url || null]);
+  }
+}
+for (const code of ['?', 'ucas:H401', 'UCAS:', 'CAO:TR 028', 'BAD:123']) {
+  const parsed = await pr2Fixture({}, { apply_code: code });
+  check(`PR2 malformed code ${code}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyCode && !parsed.programmes[0].applyLinkKind && !parsed.programmes[0].applyUrl);
+}
+for (const [host, kind] of [['ucas.com','ucas'], ['cao.ie','cao'], ['studielink.nl','studielink'], ['uni-assist.de','uni_assist'], ['antagning.se','se'], ['universityadmissions.se','se'], ['studyinfo.fi','studyinfo'], ['opintopolku.fi','studyinfo']]) {
+  for (const hostname of [host, `sub.${host}`, `${host}.evil.test`, `evil${host}`]) {
+    equal(`PR2 exact host boundary ${hostname}`, (await pr2Fixture({}, { apply_url: `https://${hostname}/` })).programmes[0].applyLinkKind, hostname === host || hostname === `sub.${host}` ? kind : 'programme');
+  }
+}
+for (const apply_url of ['?', 'javascript:alert(1)', 'data:text/plain,test', 'https://ucas.com@evil.test/', '//ucas.com', 'ucas.com']) {
+  const parsed = await pr2Fixture({ apply_url_default: 'https://ucas.com/' }, { apply_url });
+  check(`PR2 invalid explicit URL blocks inheritance ${apply_url}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].applyUrl && !parsed.programmes[0].applyLinkKind);
+}
+equal('PR2 fallback URL is university kind', (await pr2Fixture({ apply_url_default: 'https://example.org' })).programmes[0].applyLinkKind, 'university');
+equal('PR2 application_system cannot invent portal', (await pr2Fixture({ application_system: 'UCAS' }, { application_system: 'CAO' })).programmes[0].applyLinkKind, '');
+const pr2Photo = { image_file: 'img/universities/u.jpg', image_author: 'Author', image_licence: 'CC BY-SA 4.0', image_licence_url: 'https://creativecommons.org/licenses/by-sa/4.0/', image_source_url: 'https://commons.wikimedia.org/wiki/File:Campus.jpg' };
+check('PR2 complete photo exposes credit', (await pr2Fixture(pr2Photo)).programmes[0].imageCreditComplete === true);
+for (const u of [{ image_file: '../u.jpg' }, { image_file: 'img/universities/other.jpg' }, { image_file: 'https://example.org/u.jpg' }, { image_file: '?' }, { image_author: '' }, { image_licence: '' }, { image_licence_url: '' }, { image_source_url: 'javascript:bad' }, { image_source_url: 'https://commons.wikimedia.org@evil.test/' }]) {
+  const parsed = await pr2Fixture({ ...pr2Photo, ...u });
+  check(`PR2 unsafe or incomplete photo ${JSON.stringify(u)}`, parsed.meta.issues.length > 0 && !parsed.programmes[0].imageFile && !parsed.programmes[0].imageCreditComplete);
+}
+for (const image_licence of ['Public domain', 'CC0']) check(`PR2 ${image_licence} permits missing author`, (await pr2Fixture({ ...pr2Photo, image_licence, image_author: '' })).programmes[0].imageCreditComplete);
+
+const pr2Unused = sheetsModule.readSheets(
+  pr2Csv([{ university_id: 'u', name: 'Test', country: 'Test', verified_by: 'AI-DRAFT', app_fee_default: 'bad' }, { university_id: 'unused', name: 'Unused', country: 'Test', verified_by: 'AI-DRAFT', ib_offer_default: '?' }]),
+  pr2Csv(['a', 'b'].map(programme_id => ({ programme_id, university_id: 'u', programme: programme_id, application_deadline: '', official_url: 'https://example.org', verified_by: 'AI-DRAFT', app_fee: '12' })))
+);
+check('PR2 defaults are validated once even when unused or overridden', pr2Unused.issues.length === 2 && pr2Unused.issues.some(s => s.includes('app_fee_default')) && pr2Unused.issues.some(s => s.includes('ib_offer_default')));
+for (const field of ['qs_rank', 'the_rank', 'rankings_year', 'image_file', 'image_author', 'image_licence', 'image_licence_url', 'image_source_url']) check(`PR2 university forbids ? in ${field}`, (await pr2Fixture({ [field]: '?' })).meta.issues.length > 0);
+for (const field of ['app_fee', 'intake_months', 'ib_offer']) {
+  const parsed = await pr2Fixture({ [`${field}_default`]: 'bad' });
+  const flag = { app_fee: 'appFeeUnknown', intake_months: 'intakeUnknown', ib_offer: 'offerUnknown' }[field];
+  check(`PR2 invalid inherited ${field} stays unknown`, parsed.programmes[0][flag] && parsed.meta.issues.length === 1);
+}
+const pr2BadZero = await pr2Fixture({ app_fee_default: '0' });
+check('PR2 default zero requires its own note', pr2BadZero.programmes[0].appFee === null && pr2BadZero.programmes[0].appFeeUnknown && pr2BadZero.meta.issues.length === 1);
+for (const field of ['app_fee_note', 'apply_url']) check(`PR2 invalid ${field} default without inheritance still diagnosed`, (await pr2Fixture({ [`${field}_default`]: '?' }, { [field]: 'own' })).meta.issues.some(s => s.includes(`${field}_default`)));
+equal('PR2 every month keeps its stated order', (await pr2Fixture({}, { intake_months: Array.from({ length: 12 }, (_, i) => i + 1).join(' · ') })).programmes[0].intakeMonths, Array.from({ length: 12 }, (_, i) => i + 1));
+check('PR2 safe non-Commons source remains a usable credit URL', (await pr2Fixture({ ...pr2Photo, image_source_url: 'https://www.flickr.com/photos/author/123/' })).programmes[0].imageCreditComplete);
 
 // ---------------------------------------------- inherit / override / unknown
 
@@ -482,8 +910,10 @@ check('the provenance line uses isChecked, not the old AI-DRAFT-only test',
 // stage 2 moved it to the detail: no rule on a passed article or cell sets
 // opacity, and a passed row's article and cell carry the classes and words.
 const css = read('css/styles.css');
+const ruleBodyOf = (source, selector) => [...source.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .filter(([, sel]) => sel.split(',').map((x) => x.trim()).includes(selector)).map(([, , body]) => body).join(';');
 const renderDetailSrc = renderSrc.slice(renderSrc.indexOf('export function renderDetail'),
-  renderSrc.indexOf('\nfunction pointsCell'));
+  renderSrc.indexOf('\nfunction newUnknown'));
 const { programmes: pastRows } = await load(uniT, 'programme_id,university_id,programme,application_deadline,official_url,last_verified,verified_by\n'
   + 'p-past,t,Past programme,2026-03-31,https://example.org,2026-08-14,AI-DRAFT\n');
 const pastDetail = detailOf(pastRows[0]);
@@ -492,7 +922,10 @@ const dimmingRules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)
 check('past-deadline details are not dimmed',
   dimmingRules.length === 0 && renderDetailSrc.includes("classList.add('is-past')")
     && pastDetail.classList.contains('is-past') && byClass(pastDetail, 'c-ddl')[0]?.classList.contains('v-past')
-    && byClass(pastDetail, 'c-ddl')[0]?.textContent.includes('Passed, check next cycle'), dimmingRules.join(', '));
+    // F3: the plain date, an outlined "Passed" tag and "Check the next cycle"; nothing struck through.
+    && byClass(pastDetail, 'c-ddl')[0]?.textContent === 'Deadline31 Mar 2026Passed Check the next cycle'
+    && byClass(byClass(pastDetail, 'c-ddl')[0], 'd-tag')[0]?.textContent === 'Passed' && !byTag(pastDetail, 's').length
+    && !/color/.test(ruleBodyOf(css, '.d-tag').replace(/color:var\(--ink\)/, '')) && /border:1px solid var\(--edge\)/.test(ruleBodyOf(css, '.d-tag')), dimmingRules.join(', '));
 
 // ------------------------------------------------------ application system
 
@@ -1307,7 +1740,7 @@ const { lintData, compareIds, formatReport } = await import(new URL('./lint-data
 const lintToday = new Date(2026, 10, 2, 15);
 const lintUniHeader = parseCsv(read('data/universities.csv'))[0];
 const lintProgHeader = parseCsv(read('data/programmes.csv'))[0];
-const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT' };
+const lintUni = { university_id: 'test', name: 'Test University', country: 'Netherlands', verified_by: 'AI-DRAFT', rankings_year: '2027' };
 const lintProg = { programme_id: 'test-maths', university_id: 'test', programme: 'Mathematics', official_url: 'https://test.nl/maths', verified_by: 'AI-DRAFT' };
 const lintCsv = (header, rows) => [header, ...rows.map((row) => header.map((key) => row[key] ?? ''))]
   .map((row) => row.map((v) => '"' + String(v).replaceAll('"', '""') + '"').join(',')).join('\n');
@@ -1358,9 +1791,21 @@ const lintCases = [
 for (const [name, changes, expected] of lintCases) {
   equal(`T05 ${name}`, lintRules(lintFixture({ programmes: [{ ...lintProg, ...changes }] })), expected);
 }
-for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths']) {
+for (const column of ['tuition_eu', 'tuition_noneu', 'english_requirement', 'admission', 'city', 'degree_type', 'application_system', 'entrance_exam', 'ib_maths', 'app_fee', 'places', 'intake_months', 'ib_recognition', 'ib_offer']) {
   equal(`T05 ? is meaningful in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), []);
 }
+// PR 2 adds data columns before the detail parser/rendering work lands.
+for (const column of ['app_fee_note', 'places_kind', 'places_year', 'apply_code', 'apply_url']) {
+  equal(`PR2 ? is invalid in ${column}`, lintRules(lintFixture({ programmes: [{ ...lintProg, [column]: '?' }] })), ['error:site', 'error:unknown-misuse']);
+}
+equal('PR2 apply URL rejects a comparison site', lintRules(lintFixture({ programmes: [{ ...lintProg, apply_url: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 default apply URL rejects a comparison site', lintRules(lintFixture({ universities: [{ ...lintUni, apply_url_default: 'https://www.bachelorsportal.com/apply' }] })), ['error:comparison-site']);
+equal('PR2 missing rankings year warns without blocking', lintRules(lintFixture({ universities: [{ ...lintUni, rankings_year: '' }] })), ['warning:rankings-unchecked']);
+const importSelfTest = spawnSync(process.execPath, [join(root, 'tools/add-new-data-types.mjs'), '--self-test'], { encoding: 'utf8' });
+check('PR2 importer conversion and refusal self-tests pass', importSelfTest.status === 0 && importSelfTest.stdout.includes('Import self-tests passed.'));
+const pr2Uni = csvToObjects(read('data/universities.csv')).rows.find((r) => r.university_id === 'unicatt');
+const pr2Sk = csvToObjects(read('data/i18n/sk.csv')).rows;
+check('PR2 Cattolica recognition has corrected timing and Slovak translation', pr2Uni?.ib_recognition_default?.includes('Final scores from the May 2027 session are sent directly from IBO to Cattolica when released in July 2027') && pr2Sk.some((r) => r.field === 'ib_recognition_default' && r.en === pr2Uni.ib_recognition_default && r.sk.includes('Konečné výsledky z májového termínu 2027 posiela IBO priamo na Cattolica po ich zverejnení v júli 2027')));
 equal('T05 ? is never a university unknown state', lintRules(lintFixture({ universities: [{ ...lintUni, city: '?' }] })), ['error:unknown-misuse']);
 equal('T05 duplicate header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'city'] })), ['error:header-dup']);
 equal('T05 unknown header', lintRules(lintFixture({ progHeader: [...lintProgHeader, 'offical_url'] })), ['warning:header-extra']);
@@ -1722,6 +2167,93 @@ check('data/fallback.json matches the CSVs exactly',
   'the saved copy is out of date: run  node tools/make-snapshot.mjs  and commit data/fallback.json with the CSVs');
 
 console.log(`        ${live.length} programmes across ${new Set(live.map((p) => p.university)).size} universities`);
+
+// PR2 acceptance uses the shipped CSVs and JPEG bytes, not parser fixtures.
+section('PR2 real-data acceptance');
+{
+  const universities = csvRows('data/universities.csv'), programmes = csvRows('data/programmes.csv');
+  const { parseCaoSentence } = await import('../js/points.js');
+  const irish = new Set(universities.filter(u => u.country === 'Ireland').map(u => u.university_id));
+  const caoCodeAgrees = p => {
+    if (!p.apply_code?.startsWith('CAO:')) return true;
+    const cao = parseCaoSentence(p.deadline_notes);
+    if (cao) return p.apply_code === `CAO:${cao.code}`;
+    // UCD publishes its own IB minimum, not a converted CAO cutoff (CLAUDE.md).
+    // Only the complete minimum-only note qualifies; extra/malformed CAO text fails.
+    const minimum = /^UCD's stated minimum: (\d{2}) IB points\.$/.exec(p.deadline_notes || '');
+    return p.university_id === 'ucd' && /^CAO:DN\d{3}$/.test(p.apply_code)
+      && !!minimum && Number(minimum[1]) >= 24 && Number(minimum[1]) <= 45
+      && String(p.ib_points_min) === minimum[1];
+  };
+  const minimumOnly = { university_id: 'ucd', apply_code: 'CAO:DN670', ib_points_min: '39',
+    deadline_notes: "UCD's stated minimum: 39 IB points." };
+  check('PR2 accepts a matching UCD published minimum without a cutoff', caoCodeAgrees(minimumOnly));
+  const cutoff = '2026 CAO cutoff: 544 points (code DN670).';
+  check('PR2 still compares UCD CAO sentences when present', caoCodeAgrees({ ...minimumOnly, deadline_notes: cutoff }));
+  for (const [name, change] of [
+    ['genuine code mismatch', { apply_code: 'CAO:DN671', deadline_notes: cutoff }],
+    ['non-UCD missing notes', { university_id: 'tcd', apply_code: 'CAO:TR001', deadline_notes: '' }],
+    ['non-UCD minimum note', { university_id: 'tcd' }],
+    ['UCD missing notes', { deadline_notes: '' }],
+    ['UCD malformed minimum', { deadline_notes: "UCD's stated minimum: thirty-nine IB points." }],
+    ['UCD out-of-range minimum', { ib_points_min: '46', deadline_notes: "UCD's stated minimum: 46 IB points." }],
+    ['UCD minimum mismatch', { ib_points_min: '38' }],
+    ['UCD malformed code', { apply_code: 'CAO:DN' }],
+    ['UCD contradictory cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: 544 points (code DN671).' }],
+    ['UCD malformed cutoff', { deadline_notes: minimumOnly.deadline_notes + ' 2026 CAO cutoff: unknown.' }],
+  ]) check(`PR2 rejects ${name}`, !caoCodeAgrees({ ...minimumOnly, ...change }));
+  const mismatches = programmes.filter(p => irish.has(p.university_id) && !caoCodeAgrees(p));
+  check('PR2 Irish apply codes agree with CAO sentences or a matching UCD minimum-only note', !mismatches.length, mismatches.map(p => p.programme_id).join(', '));
+  for (const [rows, fields] of [[universities, ['apply_url_default', 'image_licence_url', 'image_source_url']], [programmes, ['apply_url']]]) {
+    for (const field of fields) {
+      const bad = rows.filter(r => r[field] && !safeUrl(r[field]));
+      check(`PR2 real ${field} URLs are safe`, !bad.length, bad.map(r => r.university_id).join(', '));
+    }
+  }
+  // Read JPEG Start Of Frame markers; no image package or platform utility needed.
+  const jpegSize = bytes => {
+    if (bytes.readUInt16BE(0) !== 0xffd8) return null;
+    let at = 2;
+    while (at + 4 <= bytes.length && bytes[at] === 0xff) {
+      const marker = bytes[at + 1], length = bytes.readUInt16BE(at + 2);
+      if ([0xc0, 0xc1, 0xc2].includes(marker) && length >= 7 && at + 9 <= bytes.length)
+        return [bytes.readUInt16BE(at + 7), bytes.readUInt16BE(at + 5)];
+      if (length < 2) return null;
+      at += 2 + length;
+    }
+    return null;
+  };
+  const photos = universities.filter(u => u.image_file), errors = [];
+  for (const u of photos) {
+    const id = u.university_id, path = `img/universities/${id}.jpg`;
+    if (u.image_file !== path || !existsSync(join(root, path))) { errors.push(`${id}: path/file`); continue; }
+    const bytes = readFileSync(join(root, path));
+    if (JSON.stringify(jpegSize(bytes)) !== '[640,360]') errors.push(`${id}: JPEG dimensions`);
+    // 128 KiB allows normal JPEG variation around the approximately 120 KB target.
+    if (bytes.length > 128 * 1024) errors.push(`${id}: ${bytes.length} bytes`);
+    if (!u.image_licence || !safeUrl(u.image_licence_url) || !safeUrl(u.image_source_url)) errors.push(`${id}: incomplete credit`);
+    if (!u.image_author && !/^(Public domain|CC0)$/i.test(u.image_licence)) errors.push(`${id}: missing author`);
+    if (/@|\bmail\b/i.test(u.image_author) || u.image_author.length > 160) errors.push(`${id}: unsafe/long author`);
+  }
+  check('PR2 photos have exact paths, 640×360 JPEGs, bounded size and complete clean credits', !errors.length, errors.join('\n'));
+  const referenced = new Set(photos.map(u => u.image_file));
+  const orphans = readdirSync(join(root, 'img/universities')).filter(f => !referenced.has(`img/universities/${f}`));
+  check('PR2 photo folder has no orphan files', !orphans.length, orphans.join(', '));
+  // Catch a lost photo column while allowing new universities to arrive without a photo.
+  const enoughPhotos = rows => rows.filter(u => u.image_file).length >= 0.8 * rows.length;
+  check('PR2 most universities retain photos', enoughPhotos(universities), `${photos.length} of ${universities.length}`);
+  check('PR2 a newly added university may have no photo', enoughPhotos([...universities, { university_id: 'new-university', image_file: '' }]));
+  check('PR2 photo coverage still catches a lost column', !enoughPhotos(universities.map(u => ({ ...u, image_file: '' }))));
+  check('PR2 Humak and UCN deliberately have no photo', ['humak', 'ucn'].every(id => universities.some(u => u.university_id === id && !u.image_file)));
+  const badTitles = photos.filter(u => {
+    const row = live.find(p => p.universityId === u.university_id);
+    if (!row) return true;
+    const credit = withStubDocument(() => byClass(renderDetail(row, noFilters()), 'd-src')[0]);
+    const title = credit && byTag(credit, 'a')[1]?.children.filter(n => typeof n === 'string').join('');
+    return !title || title === 'undefined';
+  });
+  check('PR2 every real photo renders a non-empty work title', !badTitles.length, badTitles.map(u => u.university_id).join(', '));
+}
 
 // ---------------------------------------------------------------- importers
 
@@ -2097,7 +2629,34 @@ check('update-cao-points.mjs rebuilds notes with rebuildNote and keeps no OLD li
 // One conversion, in js/points.js, for the tools and the browser.
 check('tools/lib/ireland.mjs takes lowestIB from js/points.js (the same function)', ie.lowestIB === pts.lowestIB);
 check('the IB table is only in js/points.js', !/\[45, 600\]/.test(read('tools/lib/ireland.mjs')) && pts.TABLE[0][1] === 600);
-equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 497, 350, null, null]);
+equal('caoPointsFor: 45, 36, 24 and outside the table', [45, 36, 24, 23, 46].map(pts.caoPointsFor), [600, 502, 360, null, null]);
+// The CAO's 2027-entry table (Guidelines-EU-EFTA-UK-2027.pdf, page 92, Table
+// 2), copied here from the printed page so a slip in js/points.js shows up.
+// The 2026 table gave 24 → 350; a stale table would put most Irish figures
+// one point too high.
+equal('TABLE is the CAO 2027 IB table as printed (45 → 600 … 24 → 360)', pts.TABLE, [
+  [45, 600], [44, 600], [43, 594], [42, 577], [41, 566], [40, 554], [39, 542], [38, 530],
+  [37, 519], [36, 502], [35, 486], [34, 475], [33, 463], [32, 452], [31, 433], [30, 421],
+  [29, 410], [28, 399], [27, 389], [26, 378], [25, 369], [24, 360]]);
+equal('2027 conversion at the edges: 360 → 24, 361 → 25, 502 → 36, 503 → 37, 600 → 44, 601 → 42 with the bonus, 626 → none, HPAT → 35',
+  [cc(360).ib, cc(361).ib, cc(502).ib, cc(503).ib, cc(600).ib, cc(601).ib, cc(601).notes.includes(ie.BONUS_ONLY), cc(626).ib,
+    cc(null, { hpat: true }).ib, cc(300).ib],
+  [24, 25, 36, 37, 44, 42, true, null, 35, 24]);
+{
+  // Every Irish row except UCD (whose figure is UCD's own) must hold
+  // convertCutoff of the latest round recorded in its CAO sentence, so a table
+  // change can't leave stored figures behind (run
+  // `node tools/update-cao-points.mjs --reconvert` after changing TABLE).
+  const stale = live.filter(isIrish).filter((p) => !p.id.startsWith('ucd-') && caoOf(p)).filter((p) => {
+    const c = caoOf(p);
+    const last = c.rounds.at(-1);
+    const hpat = ie.HPAT_CODES.has(c.code);
+    const conv = cc(!last || last.aqa ? null : last.points, { test: p.otherRequirements.includes(CAO_TEST) || hpat, hpat, code: c.code });
+    return conv.ib !== p.ibPointsMin;
+  });
+  check('no Irish row (UCD aside) stores a figure that differs from convertCutoff of its recorded cutoff', stale.length === 0,
+    stale.slice(0, 10).map((p) => `${p.id} ${p.ibPointsMin}`).join(', '));
+}
 const disagree = [];
 for (let n = 300; n <= 760; n++) {
   for (const test of [false, true]) {
@@ -2195,8 +2754,8 @@ const d27Prog = [
   head,
   d27Row('ie-added', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
   d27Row('ie-unver', 'tcd', 24, '2026 CAO cutoff: Round 1 300 points (code CK114).', dataMod.CAO_TEST),
-  d27Row('ie-sep', 'tcd', 28, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
-  d27Row('ie-nomark', 'tcd', 26, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
+  d27Row('ie-sep', 'tcd', 27, '2026 CAO cutoff: Round 1 389 points (code LM103).', dataMod.CAO_TEST),
+  d27Row('ie-nomark', 'tcd', 25, '2026 CAO cutoff: Round 1 363 points (code CK112).'),
   d27Row('ucd-listed', 'ucd', 30, "UCD's stated minimum: 30 IB points. 2026 CAO cutoff: Round 1 363 points (code CK112).", dataMod.CAO_TEST),
   d27Row('nl-listed', 'nl', 30, '2026 CAO cutoff: Round 1 363 points (code CK112).', dataMod.CAO_TEST),
 ].join('\n') + '\n';
@@ -2210,8 +2769,8 @@ equal('D27 figure, flags and card line per row',
   }),
   [[null, true, false, 'Cutoff includes a test score'],
     [null, false, true, 'Assessment required; IB equivalent unverified'],
-    [28, false, false, '≈ 28 IB points, Round 1 cutoff, 2026'],
-    [26, false, false, '≈ 26 IB points, Round 1 cutoff, 2026'],
+    [27, false, false, '≈ 27 IB points, Round 1 cutoff, 2026'],
+    [25, false, false, '≈ 25 IB points, Round 1 cutoff, 2026'],
     [30, false, false, '30 IB points, minimum'],
     [30, false, false, '30 IB points, minimum']]);
 equal('D27 compact figure says why there is none',
@@ -2278,7 +2837,7 @@ equal('pointsKind: Irish cutoffs, UCD/HPAT/non-Irish minimums, blank none',
   ['ie-two', 'ie-legacy', 'ucd-x', 'ie-hpat', 'nl-min', 'ie-blank'].map((id) => kindOf(id)?.pointsKind),
   ['cutoff', 'cutoff', 'minimum', 'minimum', 'minimum', null]);
 equal('pointsLines for each kind', Object.fromEntries(kinds.map((p) => [p.id, linesOf(p)])), {
-  'ie-two': ['≈ 38 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
+  'ie-two': ['≈ 37 IB points, Round 1 cutoff, 2026', '≈ 36 IB points, Round 2 cutoff, 2026'],
   'ie-one': ['≈ 37 IB points, Round 1 cutoff, 2026'],
   'ie-bonus': ['≈ 44 IB points, Round 1 cutoff, 2026, with HL Maths 4+'],
   'ie-above-r1': ['Round 1 cutoff, 2026: above what any IB total can reach', '≈ 44 IB points, Round 2 cutoff, 2026'],
@@ -2325,13 +2884,13 @@ section('HL Maths 4+ tick and the split count (Q5, Q3, D28)');
 // labels and the count, never which rows are shown; unknown never hides.
 const bucketProg = [
   head,
-  kindRow('c-497', 'tcd', 36, '2026 CAO cutoff: Round 1 497 points (code TR101).'),
+  kindRow('c-502', 'tcd', 36, '2026 CAO cutoff: Round 1 502 points (code TR101).'),
   kindRow('c-625', 'tcd', 44, `2026 CAO cutoff: Round 1 625 points (code TR102). ${ie.BONUS_ONLY}`),
   kindRow('c-test-520', 'tcd', 38, '2026 CAO cutoff: Round 1 520 points (code TR103).', dataMod.CAO_TEST),
   kindRow('c-test-560', 'tcd', 40, '2026 CAO cutoff: Round 1 560 points (code TR104).', dataMod.CAO_TEST),
-  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 497 points (code TR105).'),
-  kindRow('c-r2-maths', 'tcd', 38, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
-  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 497 points, Round 2 520 points (code TR107).'),
+  kindRow('c-r2', 'tcd', 36, '2026 CAO cutoff: Round 1 520 points, Round 2 502 points (code TR105).'),
+  kindRow('c-r2-maths', 'tcd', 37, '2026 CAO cutoff: Round 1 530 points, Round 2 515 points (code TR106).'),
+  kindRow('c-r2-higher', 'tcd', 38, '2026 CAO cutoff: Round 1 502 points, Round 2 520 points (code TR107).'),
   kindRow('ucd-33', 'ucd', 33, "UCD's stated minimum: 33 IB points. 2026 CAO cutoff: Round 1 600 points (code DN101)."),
   kindRow('ie-hpat35', 'tcd', 35, `2026 CAO cutoff: Round 1 738 points (code TR051). ${dataMod.HPAT_NOTE}`),
   kindRow('nl-37', 'nl', 37, ''),
@@ -2341,12 +2900,12 @@ const { programmes: bk, meta: bkMeta } = await load(kindUni, bucketProg);
 check('the bucket fixture parses cleanly', bkMeta.issues.length === 0, JSON.stringify(bkMeta.issues));
 const fstate = (my, maths = false) => ({ ...filtersMod.createFilterState(), myIbPoints: my, hlMaths: maths });
 const buckets = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsBucket(p, fstate(my, maths))]));
-equal('buckets at 36 (497 CAO points), unticked', buckets(36, false), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
+equal('buckets at 36 (502 CAO points), unticked', buckets(36, false), {
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'maths', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'maths', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 36, ticked: the bonus counts, nothing new is hidden or shown', buckets(36, true), {
-  'c-497': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
+  'c-502': 'within', 'c-625': 'hidden', 'c-test-520': 'within', 'c-test-560': 'unknown', 'c-r2': 'within',
   'c-r2-maths': 'within', 'c-r2-higher': 'within', 'ucd-33': 'within', 'ie-hpat35': 'within', 'nl-37': 'hidden', blank: 'unknown',
 });
 equal('buckets at 44 (600): a 601–625 cutoff is only with HL Maths 4+ unticked, within ticked',
@@ -2359,7 +2918,7 @@ check('a higher Round 2 does not raise the bar: the lower round (Round 1) decide
   filtersMod.lowerRound(bk.find((p) => p.id === 'c-r2-higher').cao).round === 1);
 const notes = (my, maths) => Object.fromEntries(bk.map((p) => [p.id, filtersMod.pointsNote(p, fstate(my, maths))]));
 equal('card notes at 36, unticked', notes(36, false), {
-  'c-497': null, 'c-625': null,
+  'c-502': null, 'c-625': null,
   'c-test-520': 'Within your IB points only with HL Maths 4+.',
   'c-test-560': 'Not compared with your IB points: the cutoff may include a test, interview, portfolio or audition.',
   'c-r2': 'Within your IB points on the Round 2 cutoff, not Round 1.',
@@ -2367,7 +2926,7 @@ equal('card notes at 36, unticked', notes(36, false), {
   'c-r2-higher': null, 'ucd-33': null, 'ie-hpat35': null, 'nl-37': null,
   blank: 'Not compared with your IB points: no IB figure.',
 });
-equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (522 ≥ 520) but not of c-r2-maths (530)',
+equal('card notes at 36, ticked: the bonus reaches Round 1 of c-r2 (527 ≥ 520) but not of c-r2-maths (530)',
   [notes(36, true)['c-r2'], notes(36, true)['c-r2-maths'], notes(36, true)['c-test-520']],
   [null, 'Within your IB points on the Round 2 cutoff, not Round 1.', null]);
 const visible = (my, maths) => applyFilters(bk, fstate(my, maths)).map((p) => p.id);
@@ -2384,7 +2943,7 @@ equal('pointsSummary at 36, unticked and ticked', [filtersMod.pointsSummary(bk, 
     [summaryIn('en'), summaryIn('sk').replace(/\u00a0|\u202f/g, ' ')], ['0 within your IB points · 1,512 can’t be compared', '0 v rámci tvojich IB bodov · 1 512 sa nedá porovnať']);
 }
 equal('pointsSummary leaves out an empty bucket and is empty without My points',
-  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-497'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
+  [filtersMod.pointsSummary(bk.filter((p) => p.id === 'c-502'), fstate(36)), filtersMod.pointsSummary(bk, filtersMod.createFilterState())],
   ['1 within your IB points', '']);
 
 // The real data, for every total a student can type.
@@ -2465,29 +3024,59 @@ function detailProblems(row, state, slot = false) {
   const out = [];
   const a = withStubDocument(() => renderDetail(row, state, { slot }));
   const say = (what) => out.push(`${row.id}: ${what}`);
+  // F3: the head is the first child even with a photo (CSS draws the photo
+  // above it), and the facts panel follows it.
   const head = a.children[0];
   const title = head?.children[0];
   if (a.tagName !== 'article' || !a.classList.contains('detail')) say('not article.detail');
   if (!slot && (!head?.classList.contains('d-head') || title?.tagName !== 'h2')) say('heading is not first in .d-head');
   if (!slot && (title?.id !== `p-${row.id}` || a.getAttribute('aria-labelledby') !== title?.id)) say('not named by its title');
-  if (slot && (!head?.classList.contains('d-pts') || byClass(a, 'd-head').length || byClass(a, 'd-cells').length || byTag(a, 'h2').length || a.getAttribute('aria-labelledby'))) say('slot repeats head or cells');
+  if (!slot && (!a.children[1]?.classList.contains('d-facts') || byClass(a, 'd-facts').length !== 1 || byClass(a, 'fact').length !== 3)) say('the three facts do not follow the head');
+  // The slot never repeats the head or the facts panel; its own points block,
+  // when it has one, is the first child.
+  const slotPoints = byClass(a, 'd-pts');
+  if (slot && (byClass(a, 'd-head').length || byClass(a, 'd-facts').length || byTag(a, 'h2').length || a.getAttribute('aria-labelledby')
+    || slotPoints.length > 1 || (slotPoints.length === 1 && head !== slotPoints[0]))) say('slot repeats head or facts');
+  if (!slot && slotPoints.length) say('pane has the slot points block');
+  // Folds and note links are native <details> with a summary first; each fold's
+  // summary holds one h3, so the outline is title, Before you apply, Costs,
+  // Applying details. The originals button is never inside one.
+  const folds = byTag(a, 'details').filter((d) => d.classList.contains('d-fold'));
+  if (byTag(a, 'details').some((d) => d.children[0]?.tagName !== 'summary' || d.children.length < 2 || byClass(d, 'detail-originals').length
+    || !(d.classList.contains('d-fold') || d.classList.contains('d-note-more')))) say('a details has no summary first, no body, or hides the originals button');
+  if (folds.length !== 2 || folds.some((d) => byTag(d.children[0], 'h3').length !== 1 || d.open)) say('not two closed folds with a heading each');
+  if (byTag(a, 'h3').map((h) => h.textContent).join('|') !== 'Before you apply|Costs|Applying details') say(`headings ${byTag(a, 'h3').map((h) => h.textContent).join('|')}`);
+  if (byTag(a, 'details').some((d) => d.classList.contains('d-note-more') && (d.open || !d.children[0].textContent.trim()))) say('a note link is open or unnamed');
   for (const dl of byTag(a, 'dl')) {
     const kids = dl.children;
     if (kids.length === 0 || kids.length % 2 || kids.some((k, i) => typeof k === 'string' || k.tagName !== (i % 2 ? 'dd' : 'dt'))) say('a dl does not alternate dt/dd');
   }
   if (byTag(a, 'dt').some((dt) => !dt.textContent.trim())) say('empty dt');
-  const empty = findAll(a, (n) => !['svg', 'use'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0);
+  const empty = findAll(a, (n) => !['svg', 'use', 'img'].includes(n.tagName) && !n.textContent.trim() && byTag(n, 'svg').length === 0 && byTag(n, 'img').length === 0);
   if (empty.length) say(`empty ${empty.map((n) => `${n.tagName}.${n.className}`).join(' ')}`);
   const note = filtersMod.pointsNote(row, state);
   const pnotes = byClass(a, 'pnote');
-  const two = a.children.findIndex((c) => c.classList?.contains('two'));
+  // After "Before you apply" and before the folds: a warning is never folded away.
+  const must = a.children.findIndex((c) => c.classList?.contains('d-must'));
   const notesAt = a.children.findIndex((c) => c.classList?.contains('notes'));
+  const firstFold = a.children.findIndex((c) => c.classList?.contains('d-fold'));
+  if (must < 0 || firstFold < must) say('Before you apply is missing or after a fold');
   if (note === null ? pnotes.length !== 0
-    : !(pnotes.length === 1 && pnotes[0].textContent === note && pnotes[0].parent === a.children[notesAt] && notesAt > two)) {
+    : !(pnotes.length === 1 && pnotes[0].textContent === note && pnotes[0].parent === a.children[notesAt] && notesAt > must && notesAt < firstFold)) {
     say(`points note ${JSON.stringify(note)} not said exactly once after the facts`);
   }
-  const lines = byClass(a, 'plines')[0]?.children.map((li) => li.textContent) ?? [];
-  if (JSON.stringify(lines) !== JSON.stringify(pts.pointsLines(row).map(pts.pointsLineText))) say(`lines ${JSON.stringify(lines)}`);
+  // The pane always has the full points lines. The slot sits under a row that
+  // shows the points, so it repeats them only when they say more than the row.
+  const wantLines = pts.pointsLines(row).map(pts.pointsLineText);
+  const lineLists = byClass(a, 'plines');
+  const lines = lineLists[0]?.children.map((li) => li.textContent) ?? null;
+  // Review of 5bb123d: the row's cell shortens a CAO cutoff to "≈39 R1" and,
+  // under a verdict, drops "with HL Maths 4+", so the slot must say the full
+  // lines. It may leave them out only when the one line is exactly what the row
+  // says: a plain minimum or "No minimum published", with no points note.
+  const plainLine = wantLines.length === 1 && (/^\d+ IB points, minimum$/.test(wantLines[0]) || wantLines[0] === 'No minimum published');
+  const slotSaysMore = !plainLine || note !== null;
+  if (lineLists.length > 1 || (slot && !slotSaysMore ? lines !== null : JSON.stringify(lines) !== JSON.stringify(wantLines))) say(`lines ${JSON.stringify(lines)}`);
   // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
   const feeText = (node) => typeof node === 'string' ? node
     : node.classList.contains('dd-note') ? '' : node.children.map(feeText).join('');
@@ -2580,39 +3169,51 @@ check('every fixture row renders cleanly with My points empty and at 36',
   [noFilters(), fstate(36)].flatMap((st) => fxs.flatMap((r) => detailProblems(r, st).out)).slice(0, 6).join('\n        '));
 
 // EU fee: blank is not zero.
-equal('EU fee: €2,500 / year, "€0 · No tuition fee", and "Not published" (dashed) for blank and "?"',
+equal('EU fee: €2,500 / year, "€0 No tuition fee", and "Not published" (dashed) for blank and "?"',
   ['fx-plain', 'fx-zero', 'fx-fee-blank', 'fx-fee-q'].map((id) => {
     const cell = cellOf(fxDetail(id), 'c-fee');
     return [cell.children[0].textContent, byClass(cell, 'fig')[0].textContent, fillOf(cell)];
-  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 · No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
+  }), [['EU fee', '€2,500 / year', ''], ['EU fee', '€0 No tuition fee', ''], ['EU fee', 'Not published', 'v-unk'], ['EU fee', 'Not published', 'v-unk']]);
 
 check('Irish detail fees explain contribution plus levy, with no extra label in compact rows or other countries',
   byClass(detailOf({ ...fxRow('fx-plain'), country: 'Ireland' }), 'c-fee')[0].textContent === 'EU fee€2,500 / yearStudent contribution + levyLiving €1,100/mo'
     && !byClass(fxDetail('fx-plain'), 'c-fee')[0].textContent.includes('Student contribution')
     // Never under "Not published": that would describe a fee we do not have.
     && !byClass(detailOf({ ...fxRow('fx-fee-blank'), country: 'Ireland' }), 'c-fee')[0].textContent.includes('Student contribution'));
-// Deadline: long date, urgent with the clock, passed (neutral, struck) and none.
-equal('Deadline cell: plain, 34 days, tomorrow, today, passed and not published',
+// Deadline (F3): the short date as the figure, then what it means: a plain
+// countdown, the urgent clock, or for a passed date a neutral "Passed" tag
+// with "Check the next cycle" (never struck, never red), and none.
+equal('Deadline fact: plain, 34 days, tomorrow, today, passed and not published',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
     const cell = cellOf(fxDetail(id), 'c-ddl');
     const verd = byClass(cell, 'verd')[0];
     const clock = byTag(cell, 'use').some((u) => u.getAttribute('href') === '#i-clock');
-    return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length];
+    return [fillOf(cell), verd?.textContent ?? null, byClass(cell, 'fig')[0].textContent, clock, byTag(cell, 's').length,
+      byClass(cell, 'fact-sub')[0]?.textContent ?? null, byClass(cell, 'd-tag')[0]?.textContent ?? null];
   }), [
-    ['', null, '1 February 2027', false, 0],
-    ['v-time', 'In 34 days', '17 September 2026', true, 0],
-    ['v-time', 'Tomorrow', '15 August 2026', true, 0],
-    ['v-time', 'Today', '14 August 2026', true, 0],
-    ['v-past', 'Passed, check next cycle', '31 March 2026', false, 1],
-    ['v-unk', null, 'Not published', false, 0],
+    ['', null, '1 Feb 2027', false, 0, 'In 171 days', null],
+    ['v-time', 'In 34 days', '17 Sept 2026', true, 0, null, null],
+    ['v-time', 'Tomorrow', '15 Aug 2026', true, 0, null, null],
+    ['v-time', 'Today', '14 Aug 2026', true, 0, null, null],
+    ['v-past', null, '31 Mar 2026', false, 0, 'Passed Check the next cycle', 'Passed'],
+    ['v-unk', null, 'Not published', false, 0, null, null],
   ]);
-check('a passed row says "Check the official admissions page for the next cycle." under Applying, before its deadline notes',
-  kvOf(fxDetail('fx-passed'))['Deadline notes']?.children[0]?.textContent === 'Check the official admissions page for the next cycle.'
+// Leon, 2026-11-15: deadline notes follow the one-line rule. 36 characters or
+// fewer are shown as they are; longer ones sit in full behind "Deadline details".
+check('a passed row says "Check the official admissions page for the next cycle." first inside Deadline details',
+  noteLink(kvOf(fxDetail('fx-passed'))['Deadline notes']) === 'Deadline details'
+    && noteBody(kvOf(fxDetail('fx-passed'))['Deadline notes'])?.children[0]?.textContent === 'Check the official admissions page for the next cycle.'
     && !kvOf(fxDetail('fx-plain'))['Deadline notes']);
-check('Irish deadline notes keep the CAO sentence in Applying', (() => {
+check('Irish deadline notes keep the whole CAO sentence inside Deadline details', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
-  return kvOf(detailOf(row))['Deadline notes']?.textContent === row.deadlineNotes && /TR033/.test(row.deadlineNotes);
+  const dd = kvOf(detailOf(row))['Deadline notes'];
+  return noteBody(dd)?.textContent === row.deadlineNotes && dd.textContent === `Deadline details${row.deadlineNotes}` && /TR033/.test(row.deadlineNotes);
 })());
+equal('one-line rule: a note of 36 characters stays as it is, 37 becomes a link with the full text inside, nothing is cut',
+  ['x'.repeat(36), 'y'.repeat(37)].map((deadlineNotes) => {
+    const dd = kvOf(detailOf({ ...fxRow('fx-plain'), deadlineNotes }))['Deadline notes'];
+    return [dd.textContent === deadlineNotes, byTag(dd, 'details').length, noteLink(dd), noteBody(dd)?.textContent === deadlineNotes];
+  }), [[true, 0, null, false], [false, 1, 'Deadline details', true]]);
 
 // Points lines: every form pointsLines can write, with a real space after the number.
 const lineRows = [...kinds, fxRow('fx-test-score')];
@@ -2620,7 +3221,9 @@ const lineProblems = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[
   const line = pts.pointsLines(row)[i];
   const b = byTag(li, 'b')[0];
   const ok = li.textContent === pts.pointsLineText(line)
-    && (line.number === null ? !b : b.textContent === line.number && li.children[1] === ` ${line.unit}, ${line.qualifier}`);
+    // The unit is there for a reader and a copy; only the eye skips it (the label says "IB points").
+    && (line.number === null ? !b : b.textContent === line.number && li.children[1].textContent === ` ${line.unit}, ${line.qualifier}`
+      && byClass(li.children[1], 'visually-hidden')[0]?.textContent === `${line.unit}, ` && li.children[1].children[0] === ' ');
   return ok ? null : `${row.id}: ${JSON.stringify(li.textContent)}`;
 })).filter(Boolean);
 const renderedLines = lineRows.flatMap((row) => byClass(detailOf(row), 'plines')[0].children.map((li) => li.textContent));
@@ -2637,11 +3240,13 @@ const verdictOf = (row, state) => {
   const a = detailOf(row, state);
   const cell = cellOf(a, 'c-pts');
   const verd = byClass(cell, 'verd');
-  return [fillOf(cell), verd.length ? `${verd[0].className}: ${verd[0].textContent}` : null,
+  // F3: with My points empty an unknown figure is a dashed box around its words
+  // ("boxed"), not a dashed fill on the whole fact.
+  return [fillOf(cell) || (byClass(cell, 'unk-t').length ? 'boxed' : ''), verd.length ? `${verd[0].className}: ${verd[0].textContent}` : null,
     byClass(a, 'pnote')[0]?.textContent ?? null, byClass(cell, 'pnote').length];
 };
 equal('verdict matrix: cell fill, short verdict, full note after the facts (never in the cell)', [
-  verdictOf(bkRow('c-497'), fstate(36)),
+  verdictOf(bkRow('c-502'), fstate(36)),
   verdictOf(bkRow('c-r2'), fstate(36)),
   verdictOf(bkRow('ie-hpat35'), fstate(36)),
   verdictOf(bkRow('c-test-520'), fstate(36)),
@@ -2651,7 +3256,7 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   verdictOf(bkRow('blank'), fstate(36)),
   verdictOf(fxRow('fx-test-score'), fstate(36)),
   verdictOf(fxRow('fx-entrance'), fstate(36)),
-  verdictOf(bkRow('c-497'), noFilters()),
+  verdictOf(bkRow('c-502'), noFilters()),
   verdictOf(bkRow('blank'), noFilters()),
 ], [
   ['v-fit', 'verd m m-fit: Within your IB points', null, 0],
@@ -2665,15 +3270,18 @@ equal('verdict matrix: cell fill, short verdict, full note after the facts (neve
   ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
   ['v-unk', 'verd m m-unk: No IB figure', 'Not compared with your IB points: no IB figure.', 0],
   ['', null, null, 0],
-  ['v-unk', null, null, 0],
+  ['boxed', null, null, 0],
 ]);
-check('TCD Computer Science reads its live band: HL Maths 4+ at 36, within on Round 2 only at 37, no invented degree', (() => {
+// Cutoffs 519 (Round 1) and 498 (Round 2). On the CAO's 2027 IB table 35 is
+// worth 486 (511 with the bonus, which reaches Round 2 only) and 36 is worth
+// 502; on the 2026 table the same band sat one point higher (36 and 37).
+check('TCD Computer Science reads its live band: HL Maths 4+ (Round 2 only) at 35, within on Round 2 only at 36, no invented degree', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
+  const at35 = verdictOf(row, fstate(35));
   const at36 = verdictOf(row, fstate(36));
-  const at37 = verdictOf(row, fstate(37));
   console.log(`        tcd-computer-science: ${pts.pointsLines(row).map(pts.pointsLineText).join(' | ')}; degree ${JSON.stringify(row.degreeType)}`);
-  return at36[0] === 'v-cond' && at36[2] === 'Within your IB points only with HL Maths 4+.'
-    && at37[0] === 'v-fit' && at37[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
+  return at35[0] === 'v-cond' && at35[2] === 'Within your IB points only with HL Maths 4+. Within your IB points on the Round 2 cutoff, not Round 1.'
+    && at36[0] === 'v-fit' && at36[2] === 'Within your IB points on the Round 2 cutoff, not Round 1.'
     && byClass(detailOf(row), 'deg').length === (row.degreeType ? 1 : 0);
 })());
 
@@ -2683,25 +3291,28 @@ equal('Subjects: "None required" for none, a dashed "Not checked yet" for blank'
     const dd = kvOf(fxDetail(id))['IB subjects'];
     return [dd.textContent, byClass(dd, 'unk-t').length];
   }), [['None required', 0], ['Not checked yet', 1]]);
-equal('Admission and Other join their items with " · "; "?" admission is a dashed "Not published"',
-  [kvOf(fxDetail('fx-admission')).Admission.textContent, kvOf(fxDetail('fx-other'))['Other requirements'].textContent,
+// F3: " · "-separated Other requirements are drawn as the list they are.
+equal('Admission joins its items with " · ", Other requirements are a list; "?" admission is a dashed "Not published"',
+  [kvOf(fxDetail('fx-admission')).Admission.textContent, byTag(kvOf(fxDetail('fx-other'))['Other requirements'], 'li').map((li) => li.textContent).join(' · '),
     byClass(kvOf(fxDetail('fx-admission-q')).Admission, 'unk-t')[0]?.textContent, Boolean(kvOf(fxDetail('fx-plain')).Admission)],
   ['Entrance exam · Can be waived', 'Portfolio · Interview', 'Not published', false]);
 equal('a "?" Language requirement is a dashed "Not published"',
   byClass(kvOf(fxDetail('fx-english-q'))['Language requirement'], 'unk-t')[0]?.textContent, 'Not published');
-check('"nothing at all" is a plain sentence and no list',
+check('"nothing at all" keeps its sentence and adds recognition',
   (() => {
     const a = fxDetail('fx-nothing');
     const req = byClass(a, 'd-sec')[0];
-    return byTag(req, 'dl').length === 0
+    return byTag(req, 'dl').length === 1 && kvOf(a)['IB recognition'].textContent === 'Not checked yet'
       && byClass(req, 'kv-none')[0]?.textContent === 'No IB subject requirements. General requirement: A school diploma equivalent to Dutch VWO. Language requirement not checked yet.';
   })());
 check('a blank baseline leaves General out', !kvOf(fxDetail('fx-no-general'))['General requirement']
   && kvOf(fxDetail('fx-plain'))['General requirement']?.textContent === 'A school diploma equivalent to Dutch VWO');
-check('an Applying section with nothing to say is left out, not drawn empty',
+check('an unchecked Applying section names the four new unknown facts',
   (() => {
     const a = fxDetail('fx-no-applying');
-    return byClass(a, 'd-sec').length === 1 && byClass(a, 'two')[0].children.length === 1;
+    // Before you apply plus the two folds; this fixture has no rankings year.
+    return byClass(a, 'd-sec').map((n) => n.tagName).join() === 'section,details,details'
+      && ['Application fee', 'Places', 'Intake', 'Offer timing'].every(k => byClass(kvOf(a)[k], 'unk-t')[0]?.textContent === 'Not checked yet');
   })());
 equal('Applying: living costs, taught in and apply via',
   ['Living costs', 'Language', 'Apply via'].map((k) => kvOf(fxDetail('fx-plain'))[k]?.textContent),
@@ -2732,9 +3343,10 @@ check('the tuition note appears for an unknown fee only while Max fee is set',
       && !notesOf(knownRow, exam).includes(examNote) && !notesOf(unknownRow, noFilters()).includes(examNote)
       && !notesOf(unknownRow, maths).includes(examNote), JSON.stringify(notesOf(unknownRow, exam)));
   const examRowText = (entranceExam) => kvOf(detailOf({ ...plainRow, entranceExam }))['Entrance exam']?.textContent;
-  equal('the Entrance exam row shows its three texts, and "Not checked yet" when nobody has checked',
+  // F3: the label already says "Entrance exam", so the answer starts with Yes or No.
+  equal('the Entrance exam row shows its three answers, and "Not checked yet" when nobody has checked',
     ['yes', 'waivable', 'no', null].map(examRowText),
-    ['Entrance exam or test', 'Entrance exam — some IB applicants can skip it', 'No entrance exam', 'Not checked yet']);
+    ['Yes, an exam or test', 'Yes, some IB applicants can skip it', 'No', 'Not checked yet']);
 }
 check('no official link: a strong note, no button, and the row is still rendered',
   (() => {
@@ -2837,7 +3449,7 @@ const rowOf = (row, state = noFilters()) => withStubDocument(() => {
 });
 const ptsShort = (row) => pts.pointsShort(row);
 const shortCases = {
-  'ie-two': [['≈38', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
+  'ie-two': [['≈37', 'R1'], ['≈36', 'R2']], 'ie-one': [['≈37', 'R1']],
   'ie-bonus': [['≈44', 'R1']], 'ie-above-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']],
   'ie-test-r1': [[null, 'R1: no IB figure'], ['≈44', 'R2']], 'ie-aqa-r2': [['≈29', 'R1'], [null, 'R2: all qualified got a place']],
   'ie-legacy': [['≈40', 'cutoff 2025']], 'ucd-x': [['33', 'minimum']],
@@ -2896,7 +3508,7 @@ const rowPoints = (row, state) => {
     byClass(c, 'fig')[0]?.textContent ?? null, byClass(c, 'r2')[0]?.textContent ?? null, byClass(c, 'q')[0]?.textContent ?? null];
 };
 equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
-  rowPoints(bkRow('c-497'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
+  rowPoints(bkRow('c-502'), fstate(36)), rowPoints(bkRow('c-r2'), fstate(36)), rowPoints(bkRow('ie-hpat35'), fstate(36)),
   rowPoints(bkRow('c-r2-maths'), fstate(36)), rowPoints(bkRow('c-test-520'), fstate(36, true)), rowPoints(bkRow('c-test-560'), fstate(36)),
   rowPoints(fxRow('fx-entrance'), noFilters()), rowPoints(bkRow('blank'), fstate(36)), rowPoints(kindOf('ie-bonus'), noFilters()),
   rowPoints(bkRow('c-625'), fstate(44)), rowPoints(bkRow('c-625'), fstate(44, true)),
@@ -2904,7 +3516,7 @@ equal('row points matrix: fit, R2, HPAT, conditional, test, null and empty', [
   ['v-fit', 'Within your IB points', '≈36 R1', null, null],
   ['v-fit', 'Within your IB points', '≈38 R1 · ≈36 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points, then HPAT', '35', null, null],
-  ['v-cond', 'Only with HL Maths 4+', '≈39 R1 · ≈38 R2', 'Round 2 cutoff only', null],
+  ['v-cond', 'Only with HL Maths 4+', '≈38 R1 · ≈37 R2', 'Round 2 cutoff only', null],
   ['v-fit', 'Within your IB points', '≈38 R1', null, null],
   ['v-unk', 'Cutoff may include test marks', '≈41 R1', null, null],
   ['v-unk', 'Entrance exam', null, null, null],
@@ -2936,12 +3548,12 @@ check('row points reason labels stay as short as the longest existing one', ['en
   i18n.setLanguage(lang, { setItem() {} });
   try { return ['r2_pts_test_in_cutoff', 'r2_pts_no_ib_figure', 'entrance_exam'].every((k) => i18n.t(k).length <= 17); } finally { i18n.setLanguage('en', { setItem() {} }); }
 }));
-check('TCD CS row reads the live figures and band at 36/36 ticked/37/empty', (() => {
+check('TCD CS row reads the live figures and band at 35/35 ticked/36/empty', (() => {
   const row = live.find((p) => p.id === 'tcd-computer-science');
   const figure = ptsShort(row).parts.map((p) => `${p.figure} ${p.label}`).join(' · ');
-  return rowPoints(row, fstate(36))[0] === 'v-cond' && rowPoints(row, fstate(36, true))[0] === 'v-fit'
-    && rowPoints(row, fstate(37))[3] === 'Round 2 cutoff only'
-    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(36))[2] === figure;
+  return rowPoints(row, fstate(35))[0] === 'v-cond' && rowPoints(row, fstate(35, true))[0] === 'v-fit'
+    && rowPoints(row, fstate(36))[3] === 'Round 2 cutoff only'
+    && rowPoints(row, noFilters())[0] === 'v-none' && rowPoints(row, fstate(35))[2] === figure;
 })());
 equal('row deadline: short plain date, countdowns, neutral passed and dashed unknown',
   ['fx-plain', 'fx-34', 'fx-tomorrow', 'fx-today', 'fx-passed', 'fx-no-deadline'].map((id) => {
@@ -3047,10 +3659,27 @@ for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
 }
 check('all fixture slots render cleanly, including every short points form', [noFilters(), fstate(36), fstate(36, true), fstate(37)].every((st) =>
   [...fxs, ...kinds, ...bk].filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => !detailProblems(r, st, true).out.length)));
+{
+  const slotPointsOf = (id, state) => {
+    const row = live.find((p) => p.id === id);
+    const slot = withStubDocument(() => renderSlot(row, state));
+    return [byClass(slot, 'd-pts')[0]?.textContent ?? null, byClass(rowOf(row, state), 'c-pts')[0].textContent];
+  };
+  const bonus = ['tcd-engineering-with-management', 'tcd-management-science-and-informa', 'tcd-mathematics', 'dcu-ba-global-business-usa'];
+  check('phone slot: a single-round 601–625 cutoff says "with HL Maths 4+" although the row, under its verdict, does not',
+    bonus.every((id) => [fstate(44, true), noFilters()].every((state) => /^IB points≈ \d+ IB points, Round 1 cutoff, 2026, with HL Maths 4\+$/.test(slotPointsOf(id, state)[0])))
+      && bonus.some((id) => !slotPointsOf(id, fstate(44, true))[1].includes('HL Maths')), JSON.stringify(slotPointsOf(bonus[0], fstate(44, true))));
+  equal('phone slot: every single-round CAO cutoff keeps its round and year, which the row shortens to "R1"',
+    slotPointsOf('tcd-business-studies-and-german', noFilters()), ['IB points≈ 39 IB points, Round 1 cutoff, 2026', 'IB points≈39 R1']);
+  check('phone slot: all 356 single-round CAO cutoff rows have their points block',
+    live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1).length > 300
+      && live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1)
+        .every((p) => byClass(withStubDocument(() => renderSlot(p, noFilters())), 'plines').length === 1));
+}
 check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `Details for ${row.programme}`
-    && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-cells').length;
+    && !indexHtml.includes(`id="${slot.id}"`) && !byClass(slot, 'd-head').length && !byClass(slot, 'd-facts').length && !byClass(slot, 'fact').length;
 }));
 check('row button name separates degree and keeps Czech pronunciation', (() => {
   const row = live.find((p) => p.id === 'muni-anthropology'), item = rowOf(row), b = byClass(item, 'open')[0], degree = byClass(item, 'deg')[0];
@@ -3232,8 +3861,26 @@ check('headings and rows share one track template, gap and inset at the 900 px l
     && /grid-template-columns:minmax\(0,1fr\) var\(--pane-w\)/.test(paneRule('.split', desktopQuery))
     && /--pane-w:clamp\(300px,26vw,380px\)/.test(cssRules) && /display:none/.test(paneRule('.chev', desktopQuery))
     && /container-type:inline-size/.test(paneRule('.listp')) && /display:grid/.test(trackRules([listQuery]).filter((r) => r.selector === '.cols').map((r) => r.body).join(';'))
-    && /display:none/.test(trackRules([listQuery]).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';'))
     && /display:none/.test(paneRule('.cols')) && /display:flex/.test(paneRule('.listp>.f-sort')));
+// The Sort strip used to be display:none at the list query, so a student who
+// clicked a column heading had no way back to Best match (it has no heading)
+// and nothing showed that it was active. It stays, at the right, above the headings.
+const sortStripStays = (rules) => {
+  const wide = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort').map((r) => r.body).join(';');
+  const box = rules.filter((r) => r.media.join('|') === listQuery).filter((r) => r.selector === '.listp>.f-sort .sort-dd').map((r) => r.body).join(';');
+  return !/display:none/.test(wide) && /justify-content:flex-end/.test(wide) && /flex:0 1 20rem/.test(box);
+};
+check('wide lists keep the Sort pick-list (right-aligned above the headings) so Best match stays reachable and visible; both controls write one state; a display:none fixture fails',
+  sortStripStays(paneCss) && !sortStripStays(cssTree(cssRules + '@container (min-width: 800px){.listp>.f-sort{display:none}}'))
+    && /<div class="fld f-sort">[\s\S]*?id="dd-sort"[\s\S]*?<div class="cols"/.test(indexHtml)
+    && /function syncSort\(\) \{[\s\S]*?renderSortOptions\(dom\.sort[\s\S]*?sortPick\(\);[\s\S]*?for \(const button of dom\.sortButtons\)/.test(appSrc)
+    && /dom\.sort\.addEventListener\('change'[\s\S]*?syncSort\(\);/.test(appSrc));
+check('the header Settings button is regular 15 px like My list, Compare and FAQ, not the 600 button weight; dropping it from the rule fails',
+  (() => {
+    const same = (source) => /#header-compare,#settings-open\{font-size:15px;font-weight:400\}/.test(source.replace(/\s+/g, ''));
+    return same(cssRules) && !same(cssRules.replace('#header-compare,#settings-open{', '#header-compare{')) && /font-weight:600/.test(ruleAt(cssRules, '.btn'))
+      && /id="settings-open"/.test(indexHtml) && /class="btn hb" id="header-compare"/.test(indexHtml);
+  })());
 check('sort marks: one fixed 14x14 SVG box, the active heading changes colour not weight, right columns put the mark first; facet and row chevrons are 16 px SVG boxes that turn whole',
   /width:14px;height:14px;margin-top:1px;flex:none/.test(paneRule('.cols .sm', '(min-width: 600px)'))
     && !/font-weight/.test(paneRule('.cols [aria-pressed=true]', '(min-width: 600px)'))
@@ -3247,9 +3894,12 @@ check('sort marks: one fixed 14x14 SVG box, the active heading changes colour no
 check('pane is hidden by default, sticky/scrollable only wide and borderless inside',
   /display:none/.test(paneRule('.pane')) && /position:sticky;top:12px;max-height:calc\(100vh - 24px\);overflow:auto/.test(paneRule('.pane', desktopQuery))
     && /border:0;border-radius:0/.test(paneRule('.pane .detail', desktopQuery))
-    && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.pane .d-cells', desktopQuery))
-    && /grid-template-areas:"pts pts" "ddl fee"/.test(paneRule('.pane .d-cells', desktopQuery))
-    && /grid-column:1\/-1/.test(paneRule('.pane .d-cells .c-pts', desktopQuery)));
+    // F3: the facts are one panel, points across the top, deadline and fee side
+    // by side; up to a 1269 px window (pane 330 px or less) one fact per row.
+    && /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/.test(paneRule('.d-facts'))
+    && /grid-area:auto/.test(paneRule('.d-facts>.fact')) && /grid-column:1\/-1/.test(paneRule('.d-facts>.c-pts'))
+    && /grid-template-columns:minmax\(0,1fr\)$/.test(paneRule('.d-facts', '(min-width: 1200px) and (max-width: 1269.98px)'))
+    && !/\.d-cells\b/.test(cssRules));
 check('selected tint and left accent follow hover, focus inset and goto colours are explicit',
   /background:var\(--accent-tint\);box-shadow:inset 3px 0 0 var\(--accent\)/.test(paneRule('.is-sel>.row', desktopQuery))
     && cssRules.lastIndexOf('.is-sel>.row') > cssRules.indexOf('.row:hover')
@@ -3292,7 +3942,7 @@ check('pane reuse removes old content, keeps stable nodes and resolves every nam
     const title = byTag(body, 'h2');
     if (expected === 'content') {
       if (!heading.hidden || title.length !== 1 || title[0].id !== `p-${row.id}` || pane.getAttribute('aria-labelledby') !== title[0].id
-        || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-cells').length !== 1) return false;
+        || byClass(body, 'd-head').length !== 1 || byClass(body, 'd-facts').length !== 1) return false;
     } else if (heading.hidden || title.length !== (expected === 'empty' ? 1 : 0) || pane.getAttribute('aria-labelledby') !== 'pane-h'
       || (expected === 'hidden' && (!body.textContent.includes(`${row.programme} does not match your filters`)
         || byTag(body, 'span')[0]?.lang !== 'cs'))
@@ -3315,13 +3965,13 @@ check('pane overview renders every active filter including numeric budgets witho
   return mode === 'empty' && body.textContent.includes('€15,000') && body.textContent.includes('Ireland')
     && body.textContent.includes('My list · 2 saved') && byClass(body, 'detail').length === 0;
 }));
-check('all live pane details have exactly one full heading, head and cells', typeof renderPane === 'function' && withStubDocument(() => {
+check('all live pane details have exactly one full heading, head and facts panel', typeof renderPane === 'function' && withStubDocument(() => {
   const pane = new ChromeNode('aside'), heading = new ChromeNode('h2'), body = new ChromeNode('div');
   heading.id = 'pane-h'; pane.append(heading, body);
   return live.every((row) => {
     renderPane({ pane, heading, body }, row, true, noFilters());
     return byTag(body, 'h2').length === 1 && byTag(body, 'h2')[0].id === `p-${row.id}`
-      && byClass(body, 'd-head').length === 1 && byClass(body, 'd-cells').length === 1;
+      && byClass(body, 'd-head').length === 1 && byClass(body, 'd-facts').length === 1 && byClass(body, 'fact').length === 3;
   });
 }));
 check('wide and narrow live rows use their own ARIA without selection decoration', withStubDocument(() => [false, true].every((wide) => {
@@ -3471,7 +4121,7 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       toCsv: (rows) => rows.map((r) => r.id).join(','), downloadCsv: (name, csv) => { context.exportedCsv = csv; },
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
-      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
+      renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {} };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
@@ -3737,6 +4387,55 @@ check('country options get an aria-hidden flag between the tick and the name; an
     }) && !byTag(plain, 'svg').length && appSrc.includes("{ flags: COUNTRY_FLAGS, forceSearch: true, counts: counts('country') }")
       && Object.entries(flags).every(([c, f]) => appSrc.includes(`${c}: '${f}'`));
   }));
+
+// Pick-lists open with ticked options first (never reordered while open).
+// Ticked values keep their own order at the top, the rest keep theirs, and
+// unticking puts a value back where it was.
+equal('selectedFirst: ticked values first in their original order, the rest after in theirs',
+  filtersMod.selectedFirst(['A', 'B', 'C', 'D', 'E'], (v) => v === 'D' || v === 'B'), ['B', 'D', 'A', 'C', 'E']);
+equal('selectedFirst: nothing ticked leaves the order alone, and the input is not changed',
+  (() => { const list = ['A', 'B', 'C']; const out = filtersMod.selectedFirst(list, () => false); return [out, list]; })(), [['A', 'B', 'C'], ['A', 'B', 'C']]);
+check('showSelectedFirst reorders a pick-list on demand, keeps the search row first and hidden options in place, and unticking restores the original order',
+  typeof showSelectedFirst === 'function' && withStubDocument(() => {
+    const names = ['Austria', 'Belgium', 'Czechia', 'Denmark', 'Estonia', 'Finland', 'Germany', 'Hungary', 'Ireland', 'Italy', 'Latvia', 'Malta', 'Norway'];
+    const parent = new ChromeNode('div'), box = new ChromeNode('div'); parent.setAttribute('aria-label', 'Country'); parent.append(box);
+    renderChips(box, names, new Set(), () => {}, { forceSearch: true });
+    const labels = () => box.children.filter((c) => c.classList.contains('option'));
+    const order = () => labels().map((l) => l.textContent);
+    const tickBox = (name, on) => { labels().find((l) => l.textContent === name).children[0].checked = on; };
+    const searchRow = box.children[0];
+    if (showSelectedFirst(box) !== false || order().join() !== names.join()) return false;
+    tickBox('Italy', true); tickBox('Czechia', true);
+    labels().find((l) => l.textContent === 'Malta').hidden = true;
+    if (showSelectedFirst(box) !== true) return false;
+    if (order().slice(0, 2).join() !== 'Czechia,Italy' || order().slice(2).join() !== names.filter((n) => n !== 'Czechia' && n !== 'Italy').join()) return false;
+    if (box.children[0] !== searchRow || !labels().find((l) => l.textContent === 'Malta').hidden) return false;
+    if (showSelectedFirst(box) !== false) return false;
+    tickBox('Italy', false); tickBox('Czechia', false);
+    return showSelectedFirst(box) === true && order().join() === names.join();
+  }));
+appCheck('actual pick-lists: a ticked option goes to the top when the list opens, not while it is open; Sort and the single-value lists are left alone', ({ run, get, fire }) => {
+  run('facets = buildFacets(allRows); drawChips();');
+  const dd = get('dd-countries'), box = get('f-countries');
+  const values = () => box.children.filter((c) => c.classList.contains('option')).map((l) => l.children[0].value);
+  const original = values(); if (original.length < 3) return false;
+  const last = box.children.filter((c) => c.classList.contains('option')).at(-1);
+  // Tick the last country with the list open: it stays where it is.
+  dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  last.children[0].checked = true; fire(last.children[0], 'change');
+  if (values().join() !== original.join()) return false;
+  // Close, then open again (the click runs before the browser opens it).
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); fire(dd.querySelector('summary'), 'click');
+  if (values()[0] !== original.at(-1) || values().slice(1).join() !== original.slice(0, -1).join()) return false;
+  // Clearing puts it back on the next open.
+  box.children.filter((c) => c.classList.contains('option')).find((l) => l.children[0].value === original.at(-1)).children[0].checked = false;
+  dd.open = false; fire(dd, 'toggle', { bubbles: false }); dd.open = true; fire(dd, 'toggle', { bubbles: false });
+  if (values().join() !== original.join()) return false;
+  // Sort opens as before: its radios are never moved, even with one checked.
+  const sort = get('dd-sort'), radios = get('sort-options'), before = radios.children.slice();
+  sort.open = true; fire(sort, 'toggle', { bubbles: false }); fire(sort.querySelector('summary'), 'click');
+  return radios.children.length === before.length && radios.children.every((node, i) => node === before[i]);
+});
 
 // Real handlers on the real markup. Each would pass with a wrong target only
 // if the app code were wrong in the same way, so every outcome is asserted.
@@ -4195,6 +4894,10 @@ const motionAllowed = {
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
+  // Leon 2026-11-15: Skip's label glides between centred and raised; its
+  // second line fades and rises. The 60 ms delay keeps the two from crossing.
+  '.skipwrap .sk-l': 'transition:transform var(--t-med) var(--ease-out) 60ms',
+  '.skipwrap .btn small': 'transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
   // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
   // 2026-11-09: the times and curve became tokens shared with the FAQ panel.
@@ -4795,6 +5498,40 @@ check('the print block has no .src-more rule: nothing renders that element, so t
   check('smoke "NMO timing" waits out the double-tap window after Finish and fails by name if a Setup close tap counts as a double-tap (GitHub read it as a blocked Filters tap)',
     /if\(action==='finish'\)\{\s*for\(let i=0;i<5;i\+\+\)\{[^\n]*\}\s*await new Promise\(r=>setTimeout\(r,800\)\);\s*\}/.test(code)
     && /window\.__obDetail=e\.detail/.test(code) && /await page\.ev\('__obDetail'\)===1/.test(code));
+  // PR #9 CI failure (2026-11-13): runNonModalSheet left 4x CPU throttling on
+  // past NMS timing into NMS reduced motion, where beforeprint/afterprint over
+  // ~4,000 rows hit the 20 s Runtime.evaluate timeout on a slower GitHub runner.
+  check('smoke "NMS timing" restores 1x CPU in a finally block before "NMS reduced motion" runs beforeprint', (() => {
+    const fn = code.slice(code.indexOf('async function runNonModalSheet('), code.indexOf('async function runNonModalSetup('));
+    const timing = fn.slice(fn.indexOf("'NMS timing'"), fn.indexOf("'NMS focus'"));
+    const afterTiming = fn.slice(fn.indexOf("'NMS focus'"), fn.lastIndexOf('finally'));
+    return /setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}[\s\S]*finally\s*\{\s*await page\.send\('Emulation\.setCPUThrottlingRate',\s*\{\s*rate:\s*1\s*\}\);\s*\}/.test(timing)
+      && !/setCPUThrottlingRate',\s*\{\s*rate:\s*4\s*\}/.test(afterTiming);
+  })());
+  // PR #8 / #9 CI failure (2026-11-12..14): runTheme's seeded rAF loop checked
+  // only document.body and link.sheet before calling getComputedStyle(.listp),
+  // so when CSS finished loading while index.html was still parsing between
+  // <body> (~2.7 KB) and .listp (~42.9 KB), getComputedStyle(null) threw and
+  // killed the rAF loop while waitFor hid the error behind a 15 s timeout.
+  check('smoke "theme first frame" snapshots the first CSS-ready body frame, waits for .listp before reading it, negates both controls separately, and surfaces rAF/exception diagnostics', (() => {
+    const fn = code.slice(code.indexOf('async function runTheme('), code.indexOf('async function chooseLanguage('));
+    const hasBodyFirst = /window\.__themeFirstBody\s*\?\?=/.test(fn) && /getComputedStyle\(document\.body\)\.backgroundColor/.test(fn);
+    const waitsListp = /const listp=document\.querySelector\('\.listp'\);\s*if\(!meta\|\|!listp\)\{requestAnimationFrame\(first\);return;\}/.test(fn);
+    const negatesSeparately = /assert\(negative \? !bodyMatches : bodyMatches/.test(fn) && /assert\(negative \? !matches : matches/.test(fn);
+    const hasDiagnostics = /window\.__themeDiag=\{/.test(fn) && /exceptions=\$\{JSON\.stringify\(page\.exceptions\)\}/.test(fn) && /!diag\?\.error && !page\.exceptions\.length/.test(fn);
+    return hasBodyFirst && waitsListp && negatesSeparately && hasDiagnostics;
+  })());
+  // PR #9 CI failure (2026-11-14, run 43650077084, 390 only): with the
+  // rankings block on, the row A9 leaves open is 2,212 px tall in My list, so
+  // from the top of the page the second saved row starts 14 px outside the
+  // window of mounted rows and is a .row-space gap until scrolled to. A14
+  // clicked its compare toggle without scrolling there first.
+  check('smoke "A14" scrolls a saved row into the mounted window, a screen at a time with a frame to redraw, before it clicks that row\'s compare toggle', (() => {
+    const a14 = code.slice(code.indexOf("'A14', 'save two stars"), code.indexOf("'A11', 'no Filters sheet"));
+    const reach = a14.slice(a14.indexOf('const reach = '), a14.indexOf('for (const id of [a, b]) {\n        await reach(id);'));
+    return /if \(row\(\)\) return \{ ok: true \};\s*scrollBy\(0, innerHeight\);\s*await new Promise\(\(ok\) => requestAnimationFrame\(\(\) => requestAnimationFrame\(ok\)\)\);\s*return \{ ok: !!row\(\),/.test(reach)
+      && /for \(const id of \[a, b\]\) \{\s*await reach\(id\);\s*await page\.click\(scale\(id\), `the compare toggle on \$\{id\}`\);\s*await page\.waitFor\(`\(\{ ok: \$\{scale\(id\)\}\.getAttribute\('aria-pressed'\) === 'true'/.test(a14);
+  })());
 }
 // The header and footer do not print, so paper had neither the site's name nor
 // the warning (the old check read a .src-more rule nothing renders any more).
@@ -5344,8 +6081,10 @@ check('option search names its group naturally and shares the clear action with 
 equal('IB points labels match in the row, pane and slot',
   [byClass(rowOf(fxRow('fx-plain')), 'c-pts')[0].children[0].textContent,
     byClass(fxDetail('fx-plain'), 'c-pts')[0].children[0].textContent,
-    withStubDocument(() => byClass(renderSlot(fxRow('fx-plain'), noFilters()), 'lab')[0].textContent)],
-  ['IB points', 'IB points', 'IB points']);
+    // The slot repeats the points only when they say more than the row (two rounds here).
+    withStubDocument(() => byClass(byClass(renderSlot(kinds.find((r) => r.id === 'ie-two'), noFilters()), 'd-pts')[0], 'lab')[0].textContent),
+    withStubDocument(() => byClass(renderSlot(fxRow('fx-plain'), noFilters()), 'd-pts').length)],
+  ['IB points', 'IB points', 'IB points', 0]);
 const issuesDetail = new ChromeNode('details'), issuesSummary = new ChromeNode('summary'), issuesList = new ChromeNode('ul');
 const { renderIssues: wordingIssues } = await import('../js/render.js');
 withStubDocument(() => wordingIssues(issuesDetail, issuesSummary, issuesList, ['one', 'two']));
@@ -5462,25 +6201,55 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
       livingLine(rowsAt[3])],
     ['Living €900–1,200/mo', 'Living: your €800/mo', 'Living: your €0/mo', 'Living from €957/mo', 'Living cost not published']);
   const YEAR = 'Fee + 12 months\' living (estimate)';
-  const kvText = (row, state, key = YEAR) => kvOf(detailOf(row, { ...noFilters(), ...state }))[key]?.textContent ?? null;
+  // F3: each cost is a figure with a one-line note under it. The note is the
+  // source as it stands when it is 36 characters or fewer, else a link
+  // ("Source", "How it is worked out") with the full text inside; a qualifier
+  // that changes what the figure means ("your figure", the national-minimum
+  // label) stays visible before the link. [figure, visible qualifier, link, text].
+  const costOf = (row, state, key = YEAR) => {
+    const dd = kvOf(detailOf(row, { ...noFilters(), ...state }))[key];
+    if (!dd) return null;
+    return [byClass(dd, 'cost-fig')[0].textContent, byClass(dd, 'd-note-lead')[0]?.textContent ?? null, noteLink(dd),
+      (noteBody(dd) ?? byClass(dd, 'd-note')[0])?.textContent ?? null];
+  };
   equal('detail: the yearly estimate as a range with its source',
-    [kvText(rowsAt[0]), kvText(fxRow('fx-plain')), kvText(rowsAt[4])],
-    ['€12,800–16,400 a year · university\'s estimate', '€15,700 a year', '€10,800–14,400 a year · university\'s estimate']);
+    [costOf(rowsAt[0]), costOf(fxRow('fx-plain')), costOf(rowsAt[4])],
+    [['€12,800–16,400 a year', null, null, 'university\'s estimate'], ['€15,700 a year', null, null, null], ['€10,800–14,400 a year', null, null, 'university\'s estimate']]);
   equal('detail: your own living figure replaces the estimate, said as yours, including where none was published',
-    [kvText(rowsAt[0], { myLiving: 800 }), kvText(rowsAt[0], { myLiving: 800 }, 'Living costs'),
-      kvText(fxRow('fx-no-applying'), { myLiving: 500 }), kvText(fxRow('fx-no-applying'), { myLiving: 500 }, 'Living costs')],
-    ['€11,600 a year · your €800/month', 'Your €800 / month (replacing €900–1,200 / month · university\'s estimate)',
-      '€8,500 a year · your €500/month', 'Your €500 / month (no university estimate)']);
-  equal('detail: an unknown fee says so; no living figure means no yearly row',
-    [kvText(rowsAt[2]), kvText(rowsAt[3]), kvText(fxRow('fx-fee-blank'), { myLiving: 500 })],
-    ['Not known because the EU fee is not published', null, 'Not known because the EU fee is not published']);
+    [costOf(rowsAt[0], { myLiving: 800 }), costOf(rowsAt[0], { myLiving: 800 }, 'Living costs'),
+      costOf(fxRow('fx-no-applying'), { myLiving: 500 }), costOf(fxRow('fx-no-applying'), { myLiving: 500 }, 'Living costs')],
+    [['€11,600 a year', 'your figure', 'How it is worked out', 'your €800/month'],
+      ['€800 / month', 'your figure', 'Source', 'Your €800 / month (replacing €900–1,200 / month · university\'s estimate)'],
+      ['€8,500 a year', 'your figure', 'How it is worked out', 'your €500/month'],
+      ['€500 / month', 'your figure', 'Source', 'Your €500 / month (no university estimate)']]);
+  // F3 always shows the Living and yearly rows: with no living figure they are a
+  // dashed unknown that says which half is missing, instead of no row at all.
+  equal('detail: an unknown fee says so; no living figure is a dashed unknown that names what is missing',
+    [costOf(rowsAt[2]), costOf(rowsAt[3]), costOf(rowsAt[3], {}, 'Living costs'), costOf(fxRow('fx-fee-blank'), { myLiving: 500 })],
+    [['Not known', null, null, 'because the EU fee is not published'], ['Not known', null, null, 'because living costs are not published'],
+      ['Not published', null, null, null], ['Not known', null, null, 'because the EU fee is not published']]);
+  check('detail: every unknown cost figure is the dashed tag',
+    [[rowsAt[2], YEAR], [rowsAt[3], YEAR], [rowsAt[3], 'Living costs'], [rowsAt[2], 'EU fee']].every(([row, key]) =>
+      byClass(byClass(kvOf(detailOf(row))[key], 'cost-fig')[0], 'unk-t').length === 1));
   const ukRow = { ...base, country: 'United Kingdom', tuitionEu: 38000, livingCostMin: 1401, livingCostMax: 1401,
     livingCostSource: 'national estimate (UK student visa), £1,171 a month',
     deadlineNotes: 'International fee: £33,500 a year, shown here in euros at the ECB rate of 29 October 2026.' };
   equal('detail: a UK visa figure reads "from", is labelled a national minimum, and keeps the £ conversion',
-    [kvText(ukRow), kvText(ukRow, {}, 'Living costs')],
-    [`from €54,812 a year · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`,
-      `€1,401 / month · national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL}`]);
+    [costOf(ukRow), costOf(ukRow, {}, 'Living costs')],
+    [['from €54,812 a year', FLOOR_LABEL, 'How it is worked out',
+      // Review of 5bb123d: the national-minimum label is said once, before the link.
+      'national estimate (UK student visa), £1,171 a month · converted from £ at the ECB rate of 29 October 2026'],
+    ['from €1,401 / month', FLOOR_LABEL, 'Source', 'national estimate (UK student visa), £1,171 a month']]);
+  equal('detail: the national-minimum label appears once in the yearly row and once in the living row',
+    ['Living costs', YEAR].map((key) => kvOf(detailOf(ukRow))[key].textContent.split(FLOOR_LABEL).length - 1), [1, 1]);
+  // The closed fold still says the one figure most students want from it.
+  equal('F3 the Costs fold summary: the yearly range, "your living cost", the national-minimum label, or a dashed unknown with the reason',
+    [[rowsAt[0], {}], [rowsAt[0], { myLiving: 800 }], [ukRow, {}], [rowsAt[2], {}]].map(([row, state]) => {
+      const fold = byTag(detailOf(row, { ...noFilters(), ...state }), 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Costs');
+      const gist = byClass(fold.children[0], 'fold-g')[0];
+      return [gist.textContent, byClass(gist, 'unk-t').length];
+    }), [[', €12,800–16,400 a year with living', 0], [', €11,600 a year with your living cost', 0],
+      [`, from €54,812 a year with living · ${FLOOR_LABEL}`, 0], [', Not known because the EU fee is not published', 1]]);
   const notesOf = (row, state) => byClass(detailOf(row, { ...noFilters(), ...state }), 'note').map((n) => n.textContent);
   equal('detail notes: unknown cost not filtered; crossing and floor explain "may exceed"; within says nothing',
     [notesOf(rowsAt[2], { maxBudget: 12800 }), notesOf(rowsAt[0], { maxBudget: 12800 }), notesOf(ukRow, { maxBudget: 60000 }), notesOf(rowsAt[0], { maxBudget: 20000 })],
@@ -5690,10 +6459,23 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     // And the detail prints the very same words.
     const row = sample[0];
     const words = compareTable([row, row], noFilters()).find((x) => x.key === 'yearly').cells[0].lines[0].text;
-    equal('compare and the detail print the same yearly estimate', kvOf(detailOf(row))['Fee + 12 months\' living (estimate)'].textContent, words);
+    // F3: the detail shows the figure, with the rest of the same line under it
+    // (as it stands, or behind "How it is worked out"). Put back together, the
+    // words are still compare's, so the two cannot disagree.
+    const yearDd = kvOf(detailOf(row))['Fee + 12 months\' living (estimate)'];
+    const yearRest = (noteBody(yearDd) ?? byClass(yearDd, 'd-note')[0])?.textContent;
+    equal('compare and the detail print the same yearly estimate', [byClass(yearDd, 'cost-fig')[0].textContent, yearRest].filter(Boolean).join(' · '), words);
+    // F3: the detail's row is labelled "Entrance exam", so it answers Yes or No;
+    // compare has no such label and keeps its full line. Both read the same
+    // field, state by state, and both say "Not checked yet" for a blank.
     const examRow = live.find((r) => r.entranceExam === 'waivable');
-    equal('compare and the detail print the same entrance-exam line', kvOf(detailOf(examRow))['Entrance exam'].textContent,
-      compareTable([examRow, examRow], noFilters()).find((x) => x.key === 'exam').cells[0].lines[0].text);
+    equal('compare and the detail answer the entrance-exam question from the same field, state by state',
+      ['yes', 'waivable', 'no', null].map((entranceExam) => {
+        const one = { ...examRow, entranceExam };
+        const line = compareTable([one, one], noFilters()).find((x) => x.key === 'exam').cells[0].lines[0];
+        return [kvOf(detailOf(one))['Entrance exam'].textContent, `${line.tag ?? ''}${line.text ?? ''}`];
+      }), [['Yes, an exam or test', 'Entrance exam or test'], ['Yes, some IB applicants can skip it', 'Entrance exam — some IB applicants can skip it'],
+        ['No', 'No entrance exam'], ['Not checked yet', 'Not checked yet']]);
   }
   {
     const within = live.find((r) => r.pointsKind !== 'cutoff' && r.ibPointsMin !== null && r.ibPointsMin <= 36);
@@ -6025,12 +6807,12 @@ appCheck('heading sort cycles include the default order, announced next state an
 // shown, as app.js's callback does; media queries default to desktop.
 // Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
 // closeCompare is counted; phone picks the narrow media query's answer.
-function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}, switchLanguage} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
-  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
     localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,openFaq(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
-  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true,switchLanguage});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
   // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
   const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
@@ -6047,17 +6829,23 @@ check('Setup uses show(), aria-modal and its own scrim, never showModal/inert/ba
     && !/html:has\([^}]*ob/.test(css) && !css.includes('dialog.ob::backdrop') && /html\.onboarding-open\{overflow:hidden\}/.test(css)
     && /z-index:80/.test(bodyOf('dialog.ob')) && /z-index:79/.test(bodyOf('.ob-scrim'));
 })());
+// Step 1's site-language radios are one Tab stop, the checked one: an
+// unchecked radio is no native stop, so Shift+Tab from English left setup and
+// a wrap could land on Slovenčina (plan review, 2026-11-15).
 appCheck('Setup traps Tab both ways, skips disabled/hidden controls and redirects stray focus', (h) => {
-  const {dialog, primary} = realSetup(h, {phone:true}), {get,fire} = h;
-  const skip=dialog.querySelector('.skipwrap button');
+  const {dialog, primary} = realSetup(h), {get,fire} = h;
+  const skip=dialog.querySelector('.skipwrap button'), radio=(code)=>dialog.querySelectorAll('input').find(n=>n.value===code);
+  if(!radio('en')?.checked || radio('sk').checked)return false;
   fire(get('ob-title'),'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary() || !stubDocument.focusOptions.focusVisible)return false;
-  fire(primary(),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==radio('en') || !stubDocument.focusOptions.focusVisible)return false;
+  fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==primary())return false;
+  fire(primary(),'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==radio('en'))return false;
+  primary().disabled=true; fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
   if(stubDocument.activeElement!==skip)return false;
   fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary())return false;
-  primary().disabled=true; fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==skip)return false;
+  if(stubDocument.activeElement!==radio('en'))return false;
   get('f-search').focus(); fire(get('f-search'),'focusin');
   return stubDocument.activeElement===get('ob-title') && dialog.open;
 });
@@ -6113,6 +6901,112 @@ appCheck('real onboarding handlers: clicking through with no answers shows the n
     && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
     && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
+// Setup asks the site language on step 1 (backlog language-in-setup, built
+// 2026-11-15). It is Settings' switch: applied and saved at once, kept by
+// Skip, and never mixed up with step 4's teaching language.
+appCheck('Setup step 1 asks the site language: both languages, current one checked, apart from the teaching language', (h) => {
+  const {dialog,next}=realSetup(h);
+  const field=dialog.querySelector('.ob-uilang'), legend=field?.querySelector('legend'), labels=field?.querySelectorAll('label')??[], radios=labels.map(l=>l.querySelector('input'));
+  if(!field||dialog.querySelector('.ob-step.on').children[1]!==field)return false;
+  if(legend.textContent!==`${UI.en.r8_ob_site_language} · ${UI.sk.r8_ob_site_language}`||legend.querySelector('span').getAttribute('lang')!=='sk')return false;
+  if(JSON.stringify(radios.map(r=>[r.type,r.name,r.value,r.checked]))!==JSON.stringify([['radio','ob-site-language','sk',false],['radio','ob-site-language','en',true]]))return false;
+  if(labels.map(l=>l.getAttribute('lang')).join()!=='sk,en'||labels.map(l=>l.textContent).join()!=='Slovenčina,English')return false;
+  next();next();next();
+  return dialog.querySelector('.ob-language').textContent===t('taught_in') && !dialog.querySelector('.ob-uilang');
+});
+check('Setup language radios never share Settings\' name or data-language', (() => {
+  const src=read('js/onboarding.js');
+  return !/['"\[]data-language|['"]site-language['"]/.test(src) && src.includes("input.name = 'ob-site-language'") && /settings_language/.test(read('index.html')) && read('index.html').includes('name="site-language"');
+})());
+appCheck('Picking Slovak in setup switches the page and redraws setup in Slovak at once; answers, focus and Skip keep', (h) => {
+  const calls=[];
+  try {
+    const {dialog,next,writes,applied,primary}=realSetup(h,{switchLanguage:(code)=>{calls.push(code);i18n.setLanguage(code,{setItem(){}});}}), {get,fire}=h;
+    next(); const points=get('ob-points'); points.value='38'; fire(points,'input');
+    fire(dialog.querySelectorAll('.ob-foot button').find(b=>b.textContent===t('r2_back')),'click');
+    const sk=dialog.querySelectorAll('input').find(n=>n.value==='sk'); sk.checked=true; fire(sk,'change');
+    const now=dialog.querySelectorAll('input').find(n=>n.value==='sk'), hint=dialog.querySelectorAll('.skipwrap small').find(n=>n.classList.contains('on'));
+    if(JSON.stringify(calls)!=='["sk"]'||get('ob-title').textContent!==UI.sk.r2_ob1h||primary().textContent!==UI.sk.r2_start)return false;
+    if(!now.checked||stubDocument.activeElement!==now||!dialog.querySelector('.ob-step.on').classList.contains('stay'))return false;
+    if(dialog.querySelector('.ob-uilang legend').textContent!==`${UI.sk.r8_ob_site_language} · ${UI.en.r8_ob_site_language}`)return false;
+    if(dialog.querySelector('.skipwrap button').getAttribute('aria-label')!==UI.sk.r2_skip||hint?.textContent!==UI.sk.r2_skip_sub)return false;
+    // Picking the language already in force does nothing.
+    fire(now,'change'); if(calls.length!==1)return false;
+    next(); if(String(get('ob-points').value)!=='38')return false;
+    fire(dialog.querySelector('.skipwrap button'),'click');
+    return writes.length===1&&writes[0][1]==='dismissed'&&applied.length===0&&i18n.getLanguage()==='sk'&&!dialog.open;
+  } finally { i18n.setLanguage('en',{setItem(){}}); }
+});
+// Leon, 2026-11-15 ("take a look at this on each setup page"): Skip said
+// "Discards these answers" on every step, also on step 1 where nothing is
+// asked, and over existing filters, which Skip keeps. Follow-up (Leon, same
+// day): a first visit says "Shows all programmes". Five states; every line
+// the setup can show is in the button from the start (one size throughout),
+// exactly one is on, and only it is the description.
+const skipState=(dialog)=>{
+  const b=dialog.querySelector('.skipwrap button'), smalls=b.querySelectorAll('small'), on=smalls.filter(s=>s.classList.contains('on'));
+  const ids=smalls.filter(s=>s.id==='ob-skip-hint');
+  if(on.length>1||ids.length!==on.length||(on[0]&&ids[0]!==on[0])||b.classList.contains('has-line')!==Boolean(on[0])||(b.getAttribute('aria-describedby')??null)!==(on[0]?'ob-skip-hint':null))return 'inconsistent';
+  return JSON.stringify({name:b.getAttribute('aria-label'),label:b.querySelector('.sk-l').textContent,line:on[0]?.textContent??null,lines:smalls.map(s=>s.getAttribute('data-line'))});
+};
+const skipWant=(line,lines)=>JSON.stringify({name:t('r2_skip'),label:t('r2_skip'),line:line&&t(line),lines});
+appCheck('Skip on a first visit: "Shows all programmes" on every step until an answer, then "Discards these answers", and back', (h) => {
+  const {get,fire}=h, first=realSetup(h), lines=['r8_skip_all','r2_skip_sub'];
+  if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  const points=get('ob-points'); points.value='38'; fire(points,'input');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  points.value=''; fire(points,'input'); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); const chip=first.dialog.querySelector('.chip'); fire(chip,'click');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  fire(chip,'click');
+  return skipState(first.dialog)===skipWant('r8_skip_all',lines);
+});
+appCheck('Skip reopened over answers: no line until a change, then "Keeps your filters"; undone, no line', (h) => {
+  const {get,fire}=h, again=realSetup(h,{state:savedState.validateFilters({myIbPoints:36})}), lines=['r8_skip_keep'];
+  if(skipState(again.dialog)!==skipWant(null,lines))return false;
+  again.next(); if(String(get('ob-points').value)!=='36'||skipState(again.dialog)!==skipWant(null,lines))return false;
+  get('ob-points').value='37'; fire(get('ob-points'),'input'); if(skipState(again.dialog)!==skipWant('r8_skip_keep',lines))return false;
+  get('ob-points').value='36'; fire(get('ob-points'),'input');
+  return skipState(again.dialog)===skipWant(null,lines);
+});
+// A search alone is not a setup answer, so a new answer would be discarded;
+// unchanged, Skip leaves the search, so "Shows all programmes" would be wrong.
+appCheck('Skip over a search alone or in My list: no line until an answer, then "Discards these answers"', (h) => {
+  const {get,fire}=h, search=realSetup(h,{state:savedState.validateFilters({search:'law'})}), lines=['r2_skip_sub'];
+  if(skipState(search.dialog)!==skipWant(null,lines))return false;
+  search.next(); get('ob-points').value='30'; fire(get('ob-points'),'input');
+  if(skipState(search.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  get('ob-points').value=''; fire(get('ob-points'),'input');
+  return skipState(search.dialog)===skipWant(null,lines);
+});
+appCheck('Skip opened in My list with no filters does not claim to show all programmes', (h) => {
+  const list=realSetup(h,{state:Object.assign(savedState.validateFilters({}),{shortlistOnly:true})});
+  return skipState(list.dialog)===skipWant(null,['r2_skip_sub']);
+});
+// The motion (Leon, 2026-11-15): transform and opacity only, token times,
+// the line waits coming in and the label waits going back, none under
+// reduced motion, and the button's own box never changes (one grid cell).
+check('Skip\'s label and line move by transform and opacity only, never resize the button, and stand still under reduced motion',
+  /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && /grid-area:s/.test(ruleAt(cssText, '.skipwrap .btn.btn-q>span'))
+  && /transform:translateY\(-7\.5px\)/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l')) && /transition-delay:0ms/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l'))
+  && /transition:transform var\(--t-med\) var\(--ease-out\) 60ms/.test(ruleAt(cssText, '.skipwrap .sk-l'))
+  // A button centres its text: a shorter line sat 8 px right of the label in the stacked cell (smoke LP-S5, 2026-11-15).
+  && /justify-items:start/.test(ruleAt(cssText, '.skipwrap .sk-h'))
+  && /grid-area:h/.test(ruleAt(cssText, '.skipwrap .btn small')) && /opacity:0/.test(ruleAt(cssText, '.skipwrap .btn small'))
+  && /opacity:1/.test(ruleAt(cssText, '.skipwrap .btn small.on')) && /transition-delay:60ms/.test(ruleAt(cssText, '.skipwrap .btn small.on'))
+  && ['.skipwrap .sk-l', '.skipwrap .btn small'].every((sel) => /transition:none/.test(ruleAt(cssText, sel, '(prefers-reduced-motion:reduce)')))
+  && !/(?:width|height|margin|padding|top|bottom|left|right)\s/.test([ruleAt(cssText, '.skipwrap .sk-l'), ruleAt(cssText, '.skipwrap .btn small')].join(';').match(/transition:[^;}]*/g).join(';')));
+await asyncAppCheck('Setup\'s language switch is app.js\'s switchLanguage and writes no saved filters over URL state', async ({run,get,context,settle,advance}) => {
+  try {
+    context.savedPrefs = {version:1,filters:{myIbPoints:42}}; context.location.search = '?points=36';
+    run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+    if (context.onboardingConfig.switchLanguage !== run('switchLanguage')) return false;
+    const urls = []; context.history.replaceState = (s, title, url) => urls.push(url);
+    context.onboardingConfig.switchLanguage('sk'); advance(500);
+    return !(context.prefWrites ?? []).length && get('f-points').value === '36' && /[?&]ui=sk/.test(urls.at(-1)) && /[?&]points=36/.test(urls.at(-1));
+  } finally { run("switchLanguage('en')"); }
+}, {boot:true});
 // Was "onboarding completion toast uses the compact Edit action…": the toast is
 // gone (the done screen says it), and r2_edit_short with it. The native maths
 // half still stands.
@@ -6247,7 +7141,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
@@ -6321,6 +7215,7 @@ section('SK/EN interface and data translations');
   const snapshot = JSON.parse(read('data/fallback.json'));
   equal('offline snapshot includes the exact translation CSV', snapshot.translations, skRows.map(({ __row, ...row }) => row));
   const inventory = translationInventory(csvToObjects(read('data/universities.csv')).rows, csvToObjects(read('data/programmes.csv')).rows, skRows);
+  equal('PR2 all four new free-text columns have Slovak coverage', inventory.missing.filter(row => ['ib_recognition','ib_recognition_default','app_fee_note','app_fee_note_default'].includes(row.field)), []);
   console.log(`        ${skRows.length} Slovak data rows; ${inventory.missing.length} missing; ${inventory.orphans.length} orphan rows (report only)`);
 
   const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
@@ -6398,13 +7293,26 @@ section('SK/EN interface and data translations');
     if (!originalsLabel(next, true) || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
     next.dispatchEvent({ type: 'click' });
     return originalsLabel(next, false) && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
-      && detail.querySelectorAll('.d-sec').every((section) => section.querySelectorAll('.english-note').length === (section.querySelector('[data-untranslated]') ? 1 : 0));
+      && !englishNoteProblems(detail).length;
   }));
-  check('detail without translated values hides the toggle but labels untranslated sections', withStubDocument(() => {
+  // Review of 5bb123d: this used to compare the notice count with a count taken
+  // the same way as the code does. The sections are now named: with no
+  // translations at all, tud-cse shows English in Before you apply (its
+  // requirements), Costs (living_cost_source, "national estimate (Study in
+  // NL)", short enough to be a visible line) and Applying details (Studielink).
+  equal('detail without translated values hides the toggle and puts one notice at the end of each section that shows English', withStubDocument(() => {
     i18n.setDataTranslations([]);
-    const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), noFilters());
+    const row = live.find((r) => r.id === 'tud-cse');
+    const detail = renderModuleForI18n.renderDetail(row, noFilters());
     i18n.setDataTranslations(skRows);
-    return !detail.querySelector('.detail-originals') && detail.querySelectorAll('.english-note').length === 2;
+    return [Boolean(detail.querySelector('.detail-originals')), row.livingCostSource, row.applicationSystem,
+      detail.querySelectorAll('.d-sec').filter((section) => section.lastChild.classList.contains('english-note')).map((section) => section.querySelector('h3').textContent),
+      detail.querySelectorAll('.english-note').length, englishNoteProblems(detail)];
+  }), [false, 'national estimate (Study in NL)', 'Studielink', [i18n.t('before_you_apply'), i18n.t('costs'), i18n.t('applying_details')], 3, []]);
+  check('every live row in Slovak puts its English notices next to visible English or inside the note that holds it', withStubDocument(() => {
+    const bad = live.flatMap((row) => englishNoteProblems(renderModuleForI18n.renderDetail(row, noFilters())).map((p) => `${row.id} ${p}`));
+    const inside = live.filter((row) => renderModuleForI18n.renderDetail(row, noFilters()).querySelectorAll('.d-note-body .english-note').length).length;
+    return bad.length === 0 && inside > 0;
   }));
   equal('free-text inventory counts programme rows separately from missing strings',
     translationInventory([], [{ ib_subjects: 'HL Maths', other_requirements: 'none', deadline_notes: 'A note' }, { ib_subjects: 'HL Maths' }], []).freeText,
@@ -6727,14 +7635,18 @@ section('Batch 2 · C');
 check('C1 print resets the detail actions to a plain left-aligned link',
   /@media print\{\.d-actions\{display:block\}\.d-actions \.btn\{min-height:0;text-align:left\}\}/.test(cssText));
 {
-  const row = { ...live[0], studentLifeUrl: 'https://example.org/life', isChecked: true,
+  const row = { ...live[0], applyUrl: null, studentLifeUrl: 'https://example.org/life', isChecked: true,
     lastVerified: new Date('2026-08-14'), verifiedBy: 'Fixture' };
   // Batch 3 · A: the detail also carries the compare button (Leon's compare
   // icon on every programme), so the actions are official, save, compare.
   const detail = withStubDocument(() => renderDetail(row, noFilters(), { saved: false, inCompare: false }));
-  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0];
-  equal('C1 actions contain official, then save, then compare', actions.children.map((n) => [n.tagName, n.className]),
-    [['a', 'btn btn-p'], ['button', 'btn save'], ['button', 'btn cmpb']]);
+  // F3: the official link moved up, straight after the facts; Save and Compare
+  // stay in the footer, after everything there is to read.
+  const foot = byClass(detail, 'd-foot')[0], actions = byClass(foot, 'd-actions')[0], top = byClass(detail, 'd-apply')[0];
+  equal('C1 the official link is the top action; the footer actions are save, then compare',
+    [top.children.map((n) => [n.tagName, n.className]), actions.children.map((n) => [n.tagName, n.className]),
+      ['d-facts', 'd-apply', 'd-must', 'd-foot'].map((name) => detail.children.findIndex((n) => n.classList.contains(name))).every((at, i, all) => at >= 0 && (!i || at > all[i - 1]))],
+    [[['a', 'btn btn-p']], [['button', 'btn save'], ['button', 'btn cmpb']], true]);
   check('C1 Student life and provenance stay outside actions',
     actions.parent === foot && byClass(foot, 'lnk')[0]?.parent === foot && byClass(foot, 'ok')[0]?.parent === foot);
   const solo = withStubDocument(() => renderDetail({ ...row, officialUrl: null }, noFilters(), { saved: false }));
@@ -6766,6 +7678,13 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
     const note = t('r2_czech_free');
     check('C3 free Czech detail note is in Language (' + lang + ')',
       kvOf(detailOf(czech))[t('language')]?.textContent.includes(note));
+    {
+      const free = detailOf(czech), languageDd = kvOf(free)[t('language')];
+      check('C3 free Czech note is a .dd-note inside the Language row, beside the fee profile note (' + lang + ')',
+        // F3: both notes are one-line links with the whole text inside.
+        byClass(languageDd, 'dd-note').some((n) => noteLink(n) === t('why_no_fee') && noteBody(n).textContent === note) && byClass(free, 'dd-note').length > 1
+        && byClass(kvOf(free)[t('app_fee')], 'dd-note').some((n) => noteLink(n) === t('fee_details') && noteBody(n).textContent.endsWith(t('app_fee_profile'))));
+    }
     for (const [name, row] of [
       ['English taught', { ...czech, languages: ['English'] }],
       ['paid', { ...czech, tuitionEu: 2000 }],
@@ -6775,6 +7694,14 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
       check('C3 no note for ' + name + ' (' + lang + ')', !detail.textContent.includes(note));
       check('C3 note-free detail keeps the fee wording guard (' + name + ', ' + lang + ')',
         !/Tuition \(EU\)|no tuition fee/.test(detail.textContent));
+      // Regression (smoke R4J): PR 2 draws .dd-note on every detail (the fee profile),
+      // so "no .dd-note in the pane" is no longer the way to say "no Czech note".
+      // The Czech wording must be absent from the Language row while the other notes stay.
+      const languageDd = kvOf(detail)[t('language')];
+      check('C3 ' + name + ' (' + lang + '): other fee/profile notes are drawn, so a bare .dd-note test cannot mean "Czech note"',
+        byClass(detail, 'dd-note').length > 0 && byClass(kvOf(detail)[t('app_fee')], 'dd-note').some((n) => noteBody(n)?.textContent.endsWith(t('app_fee_profile'))));
+      check('C3 ' + name + ' (' + lang + '): the Language row has no Czech tuition note',
+        !languageDd || !byClass(languageDd, 'dd-note').some((n) => n.textContent.includes(note)));
     }
   }
   i18n.initLanguage('', { getItem: () => 'en' });
@@ -6857,7 +7784,7 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
       && name.includes(rows[0].programme) && name.includes(rows[0].university) && name.startsWith(lang === 'sk' ? 'Pridať' : 'Add'));
   }
   i18n.initLanguage('', { getItem: () => 'en' });
-  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null }, noFilters(), { saved: true, inCompare: true }));
+  const solo = withStubDocument(() => renderDetail({ ...rows[0], officialUrl: null, applyUrl: null }, noFilters(), { saved: true, inCompare: true }));
   const pair = byClass(solo, 'd-actions')[0].children;
   check('A2 detail without an official link: Save and Compare are the pair, Compare says "In compare" with its symbol',
     pair.length === 2 && pair[0].classList.contains('save') && pair[1].classList.contains('cmpb') && pair[1].getAttribute('aria-pressed') === 'true'
@@ -6865,6 +7792,22 @@ const cmpToggle = (run, id) => run(`changeCompare((ids) => toggleIn(ids, ${JSON.
     && pair[1].textContent.endsWith(`: ${rows[0].programme}, ${rows[0].university}`));
   const none = withStubDocument(() => renderDetail(rows[0], noFilters()));
   check('A2 a detail drawn without inCompare has no compare button (the print and CSV paths)', !byClass(none, 'cmpb').length);
+  // Regression (smoke AL detail pair): an Apply link now precedes the official link, so
+  // Save and Compare are no longer the 2nd and 3rd children. They are found by what they are.
+  {
+    const both = withStubDocument(() => renderDetail({ ...rows[0], applyUrl: 'https://example.org/apply', applyLinkKind: 'programme', applyCode: '',
+      officialUrl: 'https://example.org/official', deadlinePassed: false }, noFilters(), { saved: false, inCompare: false }));
+    // F3: the links are the top action group, Save and Compare the footer's.
+    const groups = byClass(both, 'd-actions'), group = groups[1], kids = groups.flatMap((g) => g.children);
+    equal('A2 detail with Apply and official links: links first, then Save, then Compare',
+      kids.map((n) => [n.tagName, n.classList.contains('save') ? 'save' : n.classList.contains('cmpb') ? 'cmpb' : n.classList.contains('btn-apply') ? 'apply' : 'official']),
+      [['a', 'apply'], ['a', 'official'], ['button', 'save'], ['button', 'cmpb']]);
+    check('A2 with two links, positional [link, save, compare] would pick the official link as Save, so the smoke finds buttons by class',
+      kids[1].tagName === 'a' && groups.length === 2 && groups[0].classList.contains('d-apply') && group.parent.classList.contains('d-foot')
+      && byTag(group, 'button').filter((n) => n.classList.contains('save')).length === 1
+      && byTag(group, 'button').filter((n) => n.classList.contains('cmpb')).length === 1
+      && byTag(groups[0], 'a').length === 2 && !byTag(group, 'a').length && !/\[l,\s*a,\s*b\]\s*=\s*\[\.\.\.g\.children\]/.test(read('tools/smoke.mjs')));
+  }
   check('A2 CSS: the toggle sits in column 2 beside the star in column 3; the official link spans the detail pair',
     /\.r-main\{grid-template-columns:minmax\(0,1fr\) auto auto;/.test(cssText) && /\.r-main>\.cmpi\{grid-column:2;grid-row:1\/span 2\}/.test(cssText)
     && /\.r-main>\.star\{grid-column:3\}/.test(cssText) && /\.d-actions\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\s*\.d-actions>a\.btn-p\{grid-column:1\/-1\}/.test(cssText)
@@ -7932,8 +8875,9 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
   // Leon, 2026-11-09 (option B): the hint is a second line inside Skip, which stacks its two lines.
-  && /flex-direction:column/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
-  && /skipButton\.append\(el\('small', '', t\('r2_skip_sub'\)\)\)/.test(read('js/onboarding.js'))
+  && /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
+  // Since 2026-11-15 every line the setup can show is in the button; syncSkip turns one on.
+  && /const small = el\('small', '', t\(key\)\); small\.setAttribute\('data-line', key\)/.test(read('js/onboarding.js'))
   && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
 // The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',

@@ -15,7 +15,7 @@ export function translationInventory(universities, programmes, translations) {
     if (en && en !== '?') wanted.set(`${field}\u0000${en}`, { field, en });
   };
   for (const row of [...universities, ...programmes]) {
-    for (const field of [...Object.keys(DATA_FIELDS), 'admission_default', 'english_requirement_default']) {
+    for (const field of [...Object.keys(DATA_FIELDS), 'admission_default', 'english_requirement_default', 'ib_recognition_default', 'app_fee_note_default']) {
       if (row[field]) add(field, row[field]);
     }
     // Canonical subject names can differ from the CSV's older aliases.
