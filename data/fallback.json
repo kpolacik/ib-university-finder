@@ -14907,13 +14907,13 @@
       "application_deadline": "2027-03-15",
       "deadline_notes": "Based in The Hague. Early Bird deadline 1 Dec 2026 (required for LUC Financial Support); Regular / final deadline 15 Mar 2027 (Studielink & uSis).",
       "official_url": "https://www.universiteitleiden.nl/en/education/study-programmes/bachelor/liberal-arts-and-sciences-global-challenges-leiden-university-college",
-      "last_verified": "2026-11-15",
+      "last_verified": "2026-11-19",
       "verified_by": "AI-DRAFT",
       "application_system": "",
       "apply_url": "",
       "apply_code": "",
       "app_fee": "",
-      "app_fee_note": "",
+      "app_fee_note": "Leiden's application fee covers several programmes; LUC charges its own. Leiden lists Dutch VWO, Dutch propaedeutic and Dutch-department EB exemptions, not IB. Leiden estimates LUC's EU/EEA tuition at €5841 for 2027/28.",
       "places": "",
       "places_kind": "",
       "places_year": "",
@@ -149889,6 +149889,12 @@
       "field": "app_fee_note",
       "en": "uni-assist VPD fee, per semester: €75 for the first programme, €30 for each further one (EU applicants with a foreign certificate need a VPD). The page also announces a €50 application fee from winter 2026/27; it does not say if EU applicants pay it.",
       "sk": "Poplatok za VPD od uni-assist, za semester: 75 € za prvý program, 30 € za každý ďalší (uchádzači z EÚ so zahraničným vysvedčením potrebujú VPD). Stránka tiež ohlasuje poplatok za prihlášku 50 € od zimného semestra 2026/27; neuvádza, či ho platia aj uchádzači z EÚ.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "app_fee_note",
+      "en": "Leiden's application fee covers several programmes; LUC charges its own. Leiden lists Dutch VWO, Dutch propaedeutic and Dutch-department EB exemptions, not IB. Leiden estimates LUC's EU/EEA tuition at €5841 for 2027/28.",
+      "sk": "Jeden poplatok za prihlášku na univerzitu v Leidene pokrýva viacero programov; LUC si účtuje vlastný poplatok. Univerzita medzi výnimkami uvádza holandské VWO, holandský propedeutický diplom a EB z holandskej sekcie, nie IB. Školné na LUC pre študentov z EÚ/EHP na rok 2027/28 odhaduje na 5841 €.",
       "verified_by": "AI-DRAFT"
     }
   ]
