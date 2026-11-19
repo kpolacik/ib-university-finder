@@ -8,6 +8,15 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Local data-fill branch, 2026-11-19 (not live).** The first research tier
+has been reviewed. Programme counts and IDs have not changed. The Czech
+language entries distinguish citizenship, school language and the subject
+of a school-leaving exam where the faculty makes that distinction. The
+Finance and Accounting faculty at VŠE confirms that applications for
+September 2027 close on 30 November 2026, 28 February and 30 April 2027.
+The first Nordic updates distinguish joint and rolling applications, and
+Leiden University College now labels its EU tuition as an estimate.
+
 **PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
 `filter-selected-first` worktree contains the detail-only facts, application
 actions, credited campus photos and Slovak translations from Waves 2–4.
@@ -162,7 +171,7 @@ Leipzig are not in THE. QS prints ranges with a hyphen; the data keeps an en
 dash, like the THE column. No person has read the tables row by row. Repeat
 the comparison when the 2028 editions replace these.
 
-Known research residue remains, without a data fix in this wave: VŠE
+Research residue recorded at the end of the earlier UI wave: VŠE
 `vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
 requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
 engineering's EUR 50 fee are unapplied. Some university intake defaults were
@@ -175,6 +184,12 @@ inherit EUR 75 but their own non-EU fee note hides the university's uni-assist
 explanation; `unipd-tmps` has its own EUR 60 fee and does not inherit the
 university CISIA test-fee note. The documented fee-note inheritance rule is
 unchanged; these source/data follow-ups were not repaired in the UI wave.
+
+The later data-fill pass corrected the VŠE Multimédia exam and combined
+the relevant application-fee notes. UPOL Petroleum Engineering, several
+ČVUT faculty conditions and Czech-language waivers with only last year's
+evidence still need a source for the current intake. A rule for one
+faculty is not evidence for the rest of the university.
 
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px
@@ -213,8 +228,8 @@ IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
-**Setup asks the site language** (Leon, 2026-11-15; local branch
-`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+**Setup asks the site language** (Leon, 2026-11-15; shipped in PR #9,
+merged 2026-11-16, from the 2026-11-10 backlog note). Step 1 of setup starts
 with "Site language · Jazyk stránky": Slovenčina or English, each written in
 its own language, the one in force already chosen (address, then this
 browser's choice, then English, as before). Picking one switches setup and the
@@ -737,6 +752,13 @@ plans/backlog/wording.md for the translation queue.
    each university's own estimate.
 
 ## Known gaps
+
+- The Nordic pass did not finish Lapland UAS, Laurea, SAMK or Savonia.
+  Check these before the January application rounds. UCC lists €2,350
+  contribution and €214 capitation for 2027/28, but some clinical programmes
+  have other compulsory costs. Its stored €2,710 is not a verified total.
+  The Irish figures in the historical decision table below predate this
+  research; do not use that table as a current fee schedule.
 
 - **L09 timing, round 2 (measured 2026-11-05).** Paired run, live a6fed60 vs
   round 2 90f71e1, 2,915 rows, AC power, gated load, 4× CPU, 20 samples each:

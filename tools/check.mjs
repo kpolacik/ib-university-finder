@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -1957,6 +1957,98 @@ const realLint = lintData({ universitiesCsv: read('data/universities.csv'), prog
 check('T05 real data has zero lint errors', !realLint.some((f) => f.severity === 'error'), formatReport(realLint));
 console.log(`  ${realLint.filter((f) => f.severity === 'warning').length} lint warnings (node tools/lint-data.mjs shows them)`);
 
+// ---------------------------------------------------------------- data-fill apply script
+
+section('Data-fill apply script (tools/apply-data-fill.mjs)');
+// The script rewrites both CSVs, so every guard is exercised on small fixtures
+// in a temp folder, never on data/. A guard that silently stopped refusing
+// would let a stale or mis-typed batch overwrite real cells.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'ib-data-fill-'));
+  try {
+    const fillScript = join(root, 'tools/apply-data-fill.mjs');
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const sheet = (head, rows) => [head, ...rows.map((r) => head.map((h) => r[h] ?? ''))].map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const uniHead = parseCsv(read('data/universities.csv'))[0];
+    const progHead = parseCsv(read('data/programmes.csv'))[0];
+    const uniText = sheet(uniHead, [
+      { university_id: 'fx-a', name: 'Fixture A', city: 'Town, North', country: 'Netherlands', tuition_eu_default: '2771', last_verified: '2026-10-01', verified_by: 'AI-DRAFT' },
+      { university_id: 'fx-b', name: 'Fixture B', city: 'Ville', country: 'Austria', last_verified: '2026-10-02', verified_by: 'AI-DRAFT' },
+    ]);
+    const prog = (id, extra) => ({ programme_id: id, university_id: 'fx-a', programme: `Programme ${id}`, subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, last_verified: '2026-10-03', verified_by: 'AI-DRAFT', ...extra });
+    const progText = sheet(progHead, [
+      prog('fx-p1', { deadline_notes: 'Old note, with a comma and a "quote".' }),
+      prog('fx-p2', { university_id: 'fx-b', tuition_eu: '1000' }),
+      prog('fx-p3', { university_id: 'fx-b', verified_by: 'LS' }),
+    ]);
+    const uniPath = join(dir, 'universities.csv');
+    const progPath = join(dir, 'programmes.csv');
+    const reset = () => { writeFileSync(uniPath, uniText); writeFileSync(progPath, progText); };
+    const untouched = () => readFileSync(uniPath, 'utf8') === uniText && readFileSync(progPath, 'utf8') === progText;
+    const batchHead = 'entity_type,id,column,expected_old,value,value_kind,year_label,source_url,quote';
+    const src = 'https://example.org/source';
+    let n = 0;
+    const run = (rows, ...flags) => {
+      const file = join(dir, `batch-${n++}.csv`);
+      writeFileSync(file, [`${batchHead},verdict`, ...rows.map((r) => [...r, 'ok'].map(cell).join(','))].join('\n') + '\n');
+      return spawnSync(process.execPath, [fillScript, '--data', dir, '--today', '2026-11-15', ...flags, file], { encoding: 'utf8', cwd: tmpdir() });
+    };
+    const line = (entity, id, column, old, value, kind = 'value') => [entity, id, column, old, value, kind, '2027/28', src, 'The page says so.'];
+    const out = (r) => r.stdout + r.stderr;
+
+    reset();
+    const clean = [line('prog', 'fx-p1', 'application_deadline', '', '2027-01-15')];
+    const dry = run(clean);
+    check('a clean batch dry run exits 0, prints the change and writes nothing',
+      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 application_deadline: "" -> "2027-01-15"') && untouched(), out(dry));
+    const applied = run(clean, '--apply');
+    const want = sheet(progHead, [
+      prog('fx-p1', { deadline_notes: 'Old note, with a comma and a "quote".', application_deadline: '2027-01-15', last_verified: '2026-11-15' }),
+      prog('fx-p2', { university_id: 'fx-b', tuition_eu: '1000' }),
+      prog('fx-p3', { university_id: 'fx-b', verified_by: 'LS' }),
+    ]);
+    check('--apply writes the value, stamps last_verified on that row only and leaves every other byte alone',
+      applied.status === 0 && readFileSync(progPath, 'utf8') === want && readFileSync(uniPath, 'utf8') === uniText, out(applied));
+    const again = run(clean, '--apply');
+    check('running the same batch again is a SKIP, not a refusal or a second stamp',
+      again.status === 0 && again.stdout.includes('SKIP ') && readFileSync(progPath, 'utf8') === want, out(again));
+
+    const refused = (name, rows, reason, status = 2) => {
+      reset();
+      const r = run(rows, '--apply');
+      check(name, r.status === status && r.stdout.includes('REFUSE ') && reason.test(r.stdout) && untouched(), out(r));
+    };
+    // The good line rides along: one refusal must stop the whole batch.
+    refused('a stale expected_old is refused and nothing is written, even with --apply',
+      [...clean, line('prog', 'fx-p2', 'tuition_eu', '900', '1200')], /stale baseline: expected_old "900", the cell now holds "1000"/);
+    refused('verified_by is not an editable column', [...clean, line('prog', 'fx-p1', 'verified_by', 'AI-DRAFT', 'LS')], /may not be changed/);
+    refused('programme_id is not an editable column', [...clean, line('prog', 'fx-p1', 'programme_id', 'fx-p1', 'fx-p9')], /may not be changed/);
+    refused('a row signed by a person is refused', [...clean, line('prog', 'fx-p3', 'admission', '', 'Selective')], /row is signed \(verified_by "LS"\)/);
+    refused('a university with a signed programme is refused too', [...clean, line('uni', 'fx-b', 'admission_default', '', 'Selective')], /university has a signed programme/);
+    refused('value_kind none is refused in tuition_eu', [...clean, line('prog', 'fx-p2', 'tuition_eu', '1000', '', 'none')], /value_kind none is only allowed in ib_subjects, ib_maths/);
+    refused('"0" typed as an ordinary value is refused', [...clean, line('prog', 'fx-p2', 'tuition_eu', '1000', '0')], /needs value_kind zero/);
+    refused('two lines that want different values in one cell are both refused',
+      [line('prog', 'fx-p2', 'tuition_eu', '1000', '1200'), line('prog', 'fx-p2', 'tuition_eu', '1000', '1300')], /conflicting lines[^\n]*\n[^\n]*conflicting lines/);
+    refused('an impossible date is refused', [line('prog', 'fx-p1', 'application_deadline', '', '2027-02-30')], /real YYYY-MM-DD date/);
+    refused('the stop gate exits 3 when a column loses most of its lines',
+      ['fx-p1', 'fx-p2', 'fx-p1', 'fx-p2'].map((id, i) => line('prog', id, 'entrance_exam', 'stale', i < 2 ? 'yes' : 'no')), /STOP: 4 of 4 lines for entrance_exam/, 3);
+
+    reset();
+    const kinds = run([
+      line('prog', 'fx-p1', 'ib_subjects', '', '', 'none'),
+      line('prog', 'fx-p2', 'tuition_eu', '1000', '', 'unknown_override'),
+      line('uni', 'fx-a', 'tuition_eu_default', '2771', '0', 'zero'),
+      ['prog', 'fx-p1', 'deadline_notes', 'Old note, with a comma and a "quote".', '', 'blank', '', src, ''],
+    ], '--apply');
+    const after = csvToObjects(readFileSync(progPath, 'utf8')).rows;
+    const afterUni = csvToObjects(readFileSync(uniPath, 'utf8')).rows;
+    check('none, ?, 0 and blank are each written as their own literal',
+      kinds.status === 0 && after[0].ib_subjects === 'none' && after[0].deadline_notes === '' && after[1].tuition_eu === '?'
+        && afterUni[0].tuition_eu_default === '0' && afterUni[0].last_verified === '2026-11-15' && afterUni[1].last_verified === '2026-10-02'
+        && after[2].last_verified === '2026-10-03' && after.every((r) => r.verified_by === (r.programme_id === 'fx-p3' ? 'LS' : 'AI-DRAFT')), out(kinds));
+  } finally { rmSync(dir, { recursive: true }); }
+}
+
 // ---------------------------------------------------------------- the real data
 
 section('The real dataset');
@@ -2099,12 +2191,10 @@ check('lei-polsci is dropped and lei-iro stays numerus fixus',
 // headline is the general date (1 May); the housing date lives in the note, in
 // one fixed sentence. The check compares the headline with the date the note
 // names, so it needs no year and survives the next cycle.
-// uva-anthro and uva-comm are left out on purpose: when this was fixed
-// (2026-10-25) their pages still showed the 2026 dates (anthro) or an
-// "advisory 1 April" with no year (comm), so their rows were not rewritten.
-// Take them off this list the day their pages show the 2027 dates.
-const UVA_NOT_YET_CONFIRMED = new Set(['uva-anthro', 'uva-comm']);
-const uvaRows = live.filter((p) => p.id.startsWith('uva-') && !UVA_NOT_YET_CONFIRMED.has(p.id));
+// uva-anthro and uva-comm used to be left out (their pages still showed the
+// 2026 dates). UvA's 2027-2028 admissions page confirmed 1 May with the
+// advisory 1 April on 2026-11-15, so every UvA row is checked now.
+const uvaRows = live.filter((p) => p.id.startsWith('uva-'));
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
   'september', 'october', 'november', 'december'];
 const housingDate = (p) => {
