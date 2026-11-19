@@ -238,8 +238,14 @@ function rankLine(row) {
   ]) {
     const item = el('span', 'rk');
     if (rank && rank.includes('=')) tied = true;
-    item.append(externalLink('lnk rk-src', source, url), document.createTextNode(' '),
-      rank ? el('b', 'fig', rank) : el('span', 'rk-none unk-t', rank === '' ? t('rank_unlisted') : t('not_published')));
+    // "Not listed" is a checked fact (the table has no row for this
+    // university), so it is plain words; only "Not published" (we hold no
+    // valid figure) is an unknown and wears the dashed box.
+    const value = rank ? el('b', 'fig', rank)
+      : rank === '' ? el('span', 'rk-none', t('rank_unlisted')) : el('span', 'rk-none unk-t', t('not_published'));
+    // The link shows only "QS"; a screen reader's list of links needs to know
+    // it is that year's table.
+    item.append(externalLink('lnk rk-src', source, url, t('rank_table_hidden', { year: row.rankingsYear })), document.createTextNode(' '), value);
     if (items.childElementCount) items.append(document.createTextNode(' '));
     items.append(item);
   }
@@ -299,11 +305,16 @@ function pointsFact(row, state) {
 }
 
 // The phone slot sits under a row that already shows the points. It repeats
-// them only when the full lines say more than the row's short figure: two CAO
-// rounds, the HPAT ranking, a cutoff that hides a test score, or a points note.
+// them whenever the full lines say anything the row's short cell does not:
+// - every CAO cutoff: the row shows "≈39 R1" and drops the year and, once a
+//   verdict takes its place, "with HL Maths 4+" (a 601–625 cutoff);
+// - the HPAT ranking, a cutoff that hides a test score, an unverified one;
+// - a points note.
+// Only a plain "38 minimum" and a plain "no minimum published" are left out:
+// the row says exactly that.
 function slotPoints(row, pointsSays) {
-  const more = pointsLines(row).length > 1 || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified
-    || pointsSays !== null;
+  const cutoff = row.ibPointsMin !== null && row.pointsKind === 'cutoff' && Boolean(row.cao);
+  const more = cutoff || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified || pointsSays !== null;
   if (!more) return null;
   const points = el('div', 'd-pts');
   points.append(el('p', 'lab', t('ib_points')), pointsList(row));
@@ -643,17 +654,41 @@ function noteLine(nodes, label, { lead = null, always = false, paragraphs = fals
 }
 
 // " · " already separates alternatives in the data; draw them as a list, so a
-// run of requirements is not one wall of text. A translated value stays one
-// run: the "Show the English original" toggle needs one node to sit under.
+// run of requirements is not one wall of text, in Slovak as in English.
+// dataValue gives one span per translated piece. Each list item keeps its own
+// spans, so lang="en" on untranslated text and the English original behind a
+// translated item (the "Show the English original" toggle) still work per
+// item. A translation that covers several items at once is split the same
+// way; if its English does not split into as many pieces, the whole English
+// original goes under the list instead.
 function listify(value) {
-  const text = value.textContent;
-  if (!text.includes(' · ') || value.querySelector('[data-english]')) return value;
+  const items = [[]];
+  const whole = [];
+  for (const part of [...value.children]) {
+    const text = part.textContent;
+    if (text === ' · ') { items.push([]); continue; }
+    const pieces = text.split(' · ');
+    if (pieces.length === 1) { items.at(-1).push(part); continue; }
+    const english = part.getAttribute('data-english');
+    const originals = english === null ? null : english.split(' · ');
+    if (originals && originals.length !== pieces.length) whole.push(english);
+    pieces.forEach((piece, i) => {
+      if (i) items.push([]);
+      const span = el('span', '', piece);
+      if (part.lang) span.lang = part.lang;
+      if (part.getAttribute('data-untranslated') !== null) span.setAttribute('data-untranslated', '');
+      if (originals && originals.length === pieces.length) span.setAttribute('data-english', originals[i]);
+      items.at(-1).push(span);
+    });
+  }
+  if (items.length < 2) return value;
   const list = el('ul', 'd-list');
-  // An untranslated value keeps lang="en" (pronunciation) and its marker,
-  // which detailOriginals reads to add "In English, as published".
-  if (value.querySelector('[data-untranslated]')) { list.lang = 'en'; list.setAttribute('data-untranslated', ''); }
-  for (const part of text.split(' · ')) list.append(el('li', '', part));
-  return list;
+  for (const item of items) { const li = el('li'); li.append(...item); list.append(li); }
+  if (!whole.length) return list;
+  const box = el('div', 'd-list-box');
+  box.setAttribute('data-english', whole.join(' · '));
+  box.append(list);
+  return box;
 }
 
 // "Before you apply": always open, never a fold. Everything that can decide
@@ -713,12 +748,20 @@ function beforeYouApply(row) {
     reqRow(list, t('language'), [language]);
   }
 
-  // The fee's note can carry a condition (an extra test fee, who it applies
-  // to), so it is always one click away, right under the figure.
+  // The fee's own note can carry the only known charge ("Admission test:
+  // 50 EUR." under a fee nobody has checked), so a short one is a plain line
+  // like every other note. A longer one, and the sentence saying whose fee
+  // this is, sit one click away behind "Fee details", right under the figure.
   const fee = el('span');
   fee.append(row.appFee != null ? (row.appFee === 0 ? t('app_fee_none') : money.format(row.appFee)) : newUnknown(row.appFeeUnknown));
-  const feeNote = noteLine([row.appFeeNote ? dataValue('app_fee_note', row.appFeeNote) : null, document.createTextNode(t('app_fee_profile'))],
-    t('fee_details'), { always: true });
+  const ownNote = row.appFeeNote ? dataValue('app_fee_note', row.appFeeNote) : null;
+  const ownShort = ownNote !== null && ownNote.textContent.length <= NOTE_MAX;
+  if (ownShort) {
+    const line = el('div', 'd-note dd-note');
+    line.append(ownNote);
+    fee.append(line);
+  }
+  const feeNote = noteLine([ownShort ? null : ownNote, document.createTextNode(t('app_fee_profile'))], t('fee_details'), { always: true });
   feeNote.classList.add('dd-note');
   fee.append(feeNote);
   reqRow(list, t('app_fee'), [fee]);
@@ -874,7 +917,10 @@ function costsFold(row, state) {
   const line = yearlyLine(row, cost);
   let gist;
   if (line.segments) {
-    const [first, ...rest] = line.segments;
+    // The national-minimum label is the visible qualifier before the link, so
+    // it is not said again inside it.
+    const [first, ...others] = line.segments;
+    const rest = cost.floor ? others.filter((part) => part.text !== floorLabel()) : others;
     const how = el('span');
     rest.forEach((part, i) => {
       if (i) how.append(' · ');
@@ -909,35 +955,51 @@ function applyingFold(row, state) {
   // code A100"): some universities describe theirs in a sentence, which made
   // the closed fold four lines tall.
   const gist = el('span');
-  if (via && via.textContent.length <= GIST_VIA_MAX) gist.append(`${via.textContent} · `);
-  gist.append(`${t('places')}: `, typeof places === 'string' ? places : unknownTag(places.textContent));
+  if (via && via.textContent.length <= GIST_VIA_MAX) {
+    // A copy of the words only. English left untranslated keeps lang="en"
+    // for pronunciation, without the marker that would add a second
+    // "In English, as published" notice for the same text.
+    for (const part of [...via.children]) {
+      const copy = el('span', '', part.textContent);
+      if (part.querySelector('[data-untranslated]')) copy.lang = 'en';
+      gist.append(copy);
+    }
+    gist.append(' · ');
+  }
+  // "650 places", "42 admitted in 2026" and "5 EU places" say what they are
+  // (Leon, 2026-11-15: "Places: 650 places" repeated itself). The label stays
+  // where the value alone would be unclear: no fixed limit, or an unknown.
+  if (row.placesKind === 'open' || row.places == null) gist.append(`${t('places')}: `);
+  gist.append(typeof places === 'string' ? places : unknownTag(places.textContent));
   return fold(row, state, 'applying', t('applying_details'), gist, list);
 }
 
 const GIST_VIA_MAX = 24;
 
 // The application system as the data names it, else the one the apply link
-// or code points at, with the course code a student has to type in.
+// or code points at, with the course code a student has to type in. Each
+// part is its own span, so the fold summary can copy them one by one.
 function applyVia(row) {
   const systems = { ucas: 'UCAS', cao: 'CAO', studielink: 'Studielink', uni_assist: 'uni-assist' };
   const node = el('span');
   if (row.applicationSystem) node.append(dataValue('application_system', row.applicationSystem));
-  else if (systems[row.applyLinkKind]) node.append(systems[row.applyLinkKind]);
-  else if (row.applyCode) node.append(row.applyCode.split(':')[0]);
+  else if (systems[row.applyLinkKind]) node.append(el('span', '', systems[row.applyLinkKind]));
+  else if (row.applyCode) node.append(el('span', '', row.applyCode.split(':')[0]));
   else return null;
   const code = row.applyCode?.slice(row.applyCode.indexOf(':') + 1);
-  if (code) node.append(t('apply_code_suffix', { code }));
+  if (code) node.append(el('span', '', t('apply_code_suffix', { code })));
   return node;
 }
 
 // How many places, and what kind of number it is: a capacity, an EU quota or
-// last year's intake are three different promises.
+// last year's intake are three different promises. `count` picks the plural
+// form (1 miesto, 2–4 miesta, 5+ miest); `n` is the same number as written.
 function placesValue(row) {
   if (row.placesKind === 'open') return t('places_no_fixed_limit');
   if (row.places == null) return newUnknown(row.placesUnknown);
-  const count = formatCount(row.places);
-  if (row.placesKind === 'past_intake') return row.placesYear ? t('places_past', { count, year: row.placesYear }) : t('places_past_noyear', { count });
-  return `${t(row.placesKind === 'eu_quota' ? 'places_eu' : 'places_capacity', { count })} · ${row.placesYear || t('places_year_not_published')}`;
+  const vars = { count: row.places, n: formatCount(row.places), year: row.placesYear };
+  if (row.placesKind === 'past_intake') return t(row.placesYear ? 'places_past' : 'places_past_noyear', vars);
+  return `${t(row.placesKind === 'eu_quota' ? 'places_eu' : 'places_capacity', vars)} · ${row.placesYear || t('places_year_not_published')}`;
 }
 
 // One compare.js line as a node: plain text, or the dashed unknown box with
@@ -1491,9 +1553,19 @@ export function dataValue(field, english) {
 
 function detailOriginals(article, id, state) {
   if (getLanguage() !== 'sk') return;
+  // "In English, as published by the university." goes next to English the
+  // student can see: once at the end of a section that shows some, or, when a
+  // section's only English sits inside a closed note link ("Fee details"),
+  // inside that note, where it appears together with the text it is about.
   for (const section of article.querySelectorAll('.d-sec')) {
-    if (section.querySelector('[data-untranslated]')) {
+    const english = [...section.querySelectorAll('[data-untranslated]')];
+    if (!english.length) continue;
+    if (english.some((node) => !node.closest('.d-note-body'))) {
       section.append(el('p', 'english-note', t('untranslated_section')));
+      continue;
+    }
+    for (const body of new Set(english.map((node) => node.closest('.d-note-body')))) {
+      body.append(el('p', 'english-note', t('untranslated_section')));
     }
   }
   const translated = article.querySelectorAll('[data-english]');

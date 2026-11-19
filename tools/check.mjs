@@ -222,6 +222,25 @@ const byTag = (root, tag) => findAll(root, (n) => n.tagName === tag);
 // null when the value has no such link.
 const noteBody = (node) => (node ? byClass(node, 'd-note-body')[0] ?? null : null);
 const noteLink = (node) => (node ? byTag(node, 'summary')[0]?.textContent ?? null : null);
+// "In English, as published by the university." sits next to English the
+// student can see: one notice at the end of a section that shows untranslated
+// text; when a section's only English is inside closed note links, one notice
+// inside each such note instead, and none on the section.
+const englishNoteProblems = (detail) => byClass(detail, 'd-sec').flatMap((section) => {
+  const english = findAll(section, (n) => n.getAttribute('data-untranslated') !== null);
+  const visible = english.filter((n) => !n.closest('.d-note-body'));
+  const own = section.children.filter((n) => typeof n !== 'string' && n.classList.contains('english-note')).length;
+  const bodies = byClass(section, 'd-note-body');
+  const out = [];
+  if (own !== (visible.length ? 1 : 0)) out.push(`${section.className}: ${own} section notices for ${visible.length} visible English texts`);
+  for (const body of bodies) {
+    const has = findAll(body, (n) => n.getAttribute('data-untranslated') !== null).length > 0;
+    const notes = byClass(body, 'english-note').length;
+    if (notes !== (has && !visible.length ? 1 : 0)) out.push(`${section.className}: a note link has ${notes} notices`);
+  }
+  if (byClass(section, 'english-note').length > own + bodies.length) out.push(`${section.className}: a notice is somewhere else`);
+  return out;
+});
 // Every dt label with its dd, across every list of a detail (Before you
 // apply and the two folds).
 const kvOf = (article) => {
@@ -343,18 +362,29 @@ section('PR2 detail UI');
     check(`PR2 detail ${name} names all five states`, ['Application fee','Places','Intake','IB recognition','Offer timing'].every(k => facts[k]?.textContent.includes(expected)));
   }
   const inheritedFacts = kvOf(draw(inherited));
-  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feeFee detailsdefault For EU citizens with an IB Diploma.'
-    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'default For EU citizens with an IB Diploma.'
+  check('PR2 detail renders inherited zero, note, recognition, months and offer', inheritedFacts['Application fee'].textContent === 'No application feedefaultFee detailsFor EU citizens with an IB Diploma.'
+    && noteLink(inheritedFacts['Application fee']) === 'Fee details' && noteBody(inheritedFacts['Application fee']).textContent === 'For EU citizens with an IB Diploma.'
     && inheritedFacts['IB recognition'].textContent === 'recognised' && inheritedFacts.Intake.textContent === 'September · February' && inheritedFacts['Offer timing'].textContent === 'Offer after final results');
   check('PR2 fee note survives unknown fee and profile appears once', draw(unknown).textContent.includes('Test fee only') && draw(unknown).textContent.split(UI.en.app_fee_profile).length === 2);
   const explicit = (await pr2Fixture(pr2Defaults, { app_fee: '12', app_fee_note: 'own', intake_months: '1', ib_recognition: 'own', ib_offer: 'predicted', places: '5', places_kind: 'capacity', places_year: '2027/28' })).programmes[0];
   const explicitFacts = kvOf(draw(explicit));
-  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12Fee detailsown ') && !explicitFacts['Application fee'].textContent.includes('default')
+  check('PR2 detail explicit values replace every inherited fact', explicitFacts['Application fee'].textContent.startsWith('€12ownFee details') && !explicitFacts['Application fee'].textContent.includes('default')
     && explicitFacts.Intake.textContent === 'January' && explicitFacts['IB recognition'].textContent === 'own'
     && explicitFacts['Offer timing'].textContent === UI.en.offer_predicted && explicitFacts.Places.textContent === '5 places · 2027/28');
   const noteOnly = draw({ ...pr2Blank, appFeeNote: 'Admission test fee: EUR 35 (TOL).' });
-  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetFee detailsAdmission test fee: EUR 35 (TOL). For EU citizens with an IB Diploma.'
+  check('PR2 note-only test fee survives blank fee', kvOf(noteOnly)['Application fee'].textContent === 'Not checked yetAdmission test fee: EUR 35 (TOL).Fee detailsFor EU citizens with an IB Diploma.'
     && byClass(kvOf(noteOnly)['Application fee'], 'unk-t')[0]?.textContent === 'Not checked yet');
+  // Review of 5bb123d: the fee's own note was always folded, so six Austrian rows
+  // hid their only known charge ("Admission test: 50 EUR." under an unchecked
+  // fee) behind "Fee details". A note of 36 characters or fewer is a plain line;
+  // a longer one and the profile sentence stay behind the link.
+  equal('fee note: 36 characters or fewer is a plain line outside the link, 37 is inside it; the profile sentence is always inside',
+    ['Admission test: 50 EUR.', 'x'.repeat(36), 'y'.repeat(37), ''].map((appFeeNote) => {
+      const dd = kvOf(draw({ ...pr2Blank, appFeeNote }))['Application fee'];
+      const plain = byClass(dd, 'd-note').filter((n) => !byTag(n, 'details').length).map((n) => n.textContent).join('|');
+      return [plain, noteLink(dd), noteBody(dd).textContent];
+    }), [['Admission test: 50 EUR.', 'Fee details', 'For EU citizens with an IB Diploma.'], ['x'.repeat(36), 'Fee details', 'For EU citizens with an IB Diploma.'],
+      ['', 'Fee details', `${'y'.repeat(37)} For EU citizens with an IB Diploma.`], ['', 'Fee details', 'For EU citizens with an IB Diploma.']]);
   const early = draw({ ...pr2Blank, noSubjectsRequired: true, ibRecognition: 'recognised' });
   check('PR2 recognition survives nothingAtAll return', byClass(early,'kv-none').length === 1 && kvOf(early)['IB recognition'].textContent === 'recognised');
   const photo = { ...inherited, imageFile: 'img/universities/u.jpg', imageAuthor: 'A long author name intact', imageLicence: 'CC BY 4.0', imageLicenceUrl: 'https://example.org/licence', imageSourceUrl: 'https://commons.wikimedia.org/wiki/File:Campus_%C5%BE_photo.jpg' };
@@ -390,8 +420,13 @@ section('PR2 detail UI');
   // labelled as the whole university's; there is no "About the university" fold.
   check('PR2 ranks distinguish absent and invalid and link both tables', byClass(ranks,'d-rank').length === 1
     && byClass(ranks,'rk-lab')[0]?.textContent === 'Whole-university rank, 2027'
-    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS (opens in a new tab) Not listed|THE (opens in a new tab) Not published'
-    && byClass(byClass(ranks,'d-rank')[0],'unk-t').length === 2 && !byClass(ranks,'rk-note').length
+    // Review of 5bb123d: "Not listed" is a checked fact, so plain words; only
+    // "Not published" is an unknown and wears the dashed box. Each link's hidden
+    // name says it is that year's table.
+    && byClass(ranks,'rk').map(n => n.textContent.replace(/\s+/g, ' ')).join('|') === 'QS, 2027 table (opens in a new tab) Not listed|THE, 2027 table (opens in a new tab) Not published'
+    && byClass(ranks,'rk-none').map(n => `${n.textContent}:${n.classList.contains('unk-t')}`).join('|') === 'Not listed:false|Not published:true'
+    && byTag(byClass(ranks,'d-rank')[0],'a').every(a => byClass(a,'visually-hidden')[0]?.textContent === ', 2027 table (opens in a new tab)')
+    && !byClass(ranks,'rk-note').length
     && byTag(byClass(ranks,'d-rank')[0],'a').map(n=>n.href).join(' ').includes('https://www.topuniversities.com/world-university-rankings')
     && byTag(byClass(ranks,'d-rank')[0],'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2027/world-ranking');
   check('F3 the rank line is a plain line straight after the two folds, never a fold and with no heading', (() => {
@@ -442,6 +477,16 @@ section('PR2 detail UI');
     // and ran 9 rows out of the pane. .unk-t is nowrap for the list row.
     check('F3 a dashed unknown box inside the detail may wrap',
       /\.detail :is\(dd,\.fold-g,\.rk,\.plines\) \.unk-t\{[^}]*white-space:normal\}/.test(sheet));
+    // Review of 5bb123d: the rank links and note links were pinned at 24 px, which
+    // undid the 44 px touch target (--tap, S16). They keep a 24 px line and take
+    // the full hit height back with a negative margin, like .cmp-t .lnk.
+    check('F3 rank links and note links keep the --tap hit height on a 24 px line',
+      /\.rk \.rk-src\{gap:2px;min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\)\}/.test(sheet)
+      && /\.d-note-more>summary\{[^}]*min-height:var\(--tap\);margin-block:calc\(\(24px - var\(--tap\)\) \/ 2\);/.test(sheet)
+      && !/min-height:24px/.test(sheet.slice(sheet.indexOf('.detail{gap:24px}'))));
+    check('F3 "Not listed" is plain grey words; only a rank that is also .unk-t gets the dashed box',
+      /\.rk \.rk-none\{font-size:var\(--fs-13\);line-height:20px;color:var\(--ink-2\)\}/.test(sheet)
+      && /\.detail \.rk \.rk-none\.unk-t\{/.test(sheet) && !/\.rk-none\{[^}]*(?:border|dashed)/.test(sheet));
     // Found while building F3: a new key reused the name of an existing one
     // ("deadline_passed"), and the later entry silently won.
     const source = read('js/i18n.js'), enAt = source.indexOf('  en: {'), skAt = source.indexOf('  sk: {');
@@ -453,16 +498,20 @@ section('PR2 detail UI');
     equal('F3 the passed tag and the list group keep their own words', [UI.en.passed_tag, UI.en.deadline_passed, UI.sk.passed_tag, UI.sk.deadline_passed],
       ['Passed', 'Deadline passed', 'Uplynul', 'Termín uplynul']);
   }
-  equal('F3 the Applying details summary always names the places; a system joins them only when it is a short name',
+  // Leon, 2026-11-15: "Places: 650 places" repeated itself. A value that says
+  // what it is stands alone; "No fixed limit" and an unknown keep the label.
+  equal('F3 the Applying details summary always names the places, labelled only where the value alone is unclear; a system joins them only when it is a short name',
     [{ applicationSystem: 'Studielink', places: 650, placesKind: 'capacity', placesYear: '' },
       { applicationSystem: 'An admission information system described in one long sentence', placesKind: 'open' },
-      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true }].map((extra) => {
+      { applicationSystem: '', applyCode: 'UCAS:A100', applyLinkKind: 'ucas', placesUnknown: true },
+      { places: 42, placesKind: 'past_intake', placesYear: '2026' }, { places: 5, placesKind: 'eu_quota', placesYear: '2027/28' }, {}].map((extra) => {
       const detail = draw({ ...pr2Blank, ...extra });
       const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === 'Applying details');
-      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via'].textContent];
-    }), [[', Studielink · Places: 650 places · year not published', 'Studielink'],
+      return [byClass(fold, 'fold-g')[0].textContent, kvOf(detail)['Apply via']?.textContent ?? null];
+    }), [[', Studielink · 650 places · year not published', 'Studielink'],
       [', Places: No fixed limit', 'An admission information system described in one long sentence'],
-      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100']]);
+      [', UCAS · code A100 · Places: Not published', 'UCAS · code A100'],
+      [', 42 admitted in 2026', null], [', 5 EU places · 2027/28', null], [', Places: Not checked yet', null]]);
   const nextEdition = byClass(draw({ ...photo, rankingsYear: '2028' }, { showRankings: true }), 'd-rank')[0];
   check('PR2 THE table link follows the displayed edition', byTag(nextEdition, 'a')[1].href === 'https://www.timeshighereducation.com/world-university-rankings/2028/world-ranking');
   const zeroRank = (await pr2Fixture({ rankings_year: '2027', qs_rank: '0', the_rank: '=0' })).programmes[0];
@@ -486,6 +535,12 @@ section('PR2 detail UI');
   const historical = kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:'2026'}));
   check('PR2 historical places says past intake and year', historical.Places?.textContent === '42 admitted in 2026'
     && kvOf(draw({...pr2Blank,places:42,placesKind:'past_intake',placesYear:''})).Places.textContent === '42 admitted (year not published)');
+  // Review of 5bb123d: the count was passed already formatted, so the plural
+  // form was never chosen. No live row has 1–4 places today.
+  equal('places choose their plural form by the number (en)',
+    [1, 3, 5, 1500].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' })).Places.textContent)),
+    [['1 place · 2026', '1 EU place · 2026', '1 admitted in 2026'], ['3 places · 2026', '3 EU places · 2026', '3 admitted in 2026'],
+      ['5 places · 2026', '5 EU places · 2026', '5 admitted in 2026'], ['1,500 places · 2026', '1,500 EU places · 2026', '1,500 admitted in 2026']]);
   check('PR2 open and unknown-year places remain explicit', kvOf(draw({...pr2Blank,placesKind:'open'})).Places.textContent === 'No fixed limit'
     && kvOf(draw({...pr2Blank,places:5,placesKind:'eu_quota'})).Places.textContent === '5 EU places · year not published');
   i18n.setLanguage('sk',{setItem(){}});
@@ -502,6 +557,79 @@ section('PR2 detail UI');
   originalButton.dispatchEvent({type:'click'});
   check('PR2 new field originals reveal English', byClass(sk,'data-original').every(n=>!n.hidden) && sk.textContent.includes('recognised'));
   check('PR2 missing new translation labels its section', byClass(draw({...pr2Blank,ibRecognition:'Untranslated recognition'}),'english-note').length === 1);
+  equal('places choose their plural form by the number (sk)',
+    [1, 3, 5].map((places) => ['capacity', 'eu_quota', 'past_intake'].map((placesKind) => kvOf(draw({ ...pr2Blank, places, placesKind, placesYear: '2026' }))['Počet miest'].textContent)),
+    [['1 miesto · 2026', '1 miesto pre EÚ · 2026', '1 prijatý v roku 2026'], ['3 miesta · 2026', '3 miesta pre EÚ · 2026', '3 prijatí v roku 2026'],
+      ['5 miest · 2026', '5 miest pre EÚ · 2026', '5 prijatých v roku 2026']]);
+  equal('places without a year keep the plural form (sk)',
+    [1, 2, 7].map((places) => kvOf(draw({ ...pr2Blank, places, placesKind: 'past_intake', placesYear: '' }))['Počet miest'].textContent),
+    ['1 prijatý (rok nezverejnený)', '2 prijatí (rok nezverejnený)', '7 prijatých (rok nezverejnený)']);
+  equal('"your figure" in Slovak', UI.sk.your_figure, 'tvoj údaj');
+  equal('Applying summary in Slovak: no repeated "Počet miest"; the label stays for no limit and for an unknown',
+    [{ places: 650, placesKind: 'capacity', placesYear: '' }, { placesKind: 'open' }, {}].map((extra) => {
+      const fold = byTag(draw({ ...pr2Blank, ...extra }), 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+      return byClass(fold, 'fold-g')[0].textContent;
+    }), [', 650 miest · rok nezverejnený', ', Počet miest: Bez pevného limitu', ', Počet miest: Zatiaľ neoverené']);
+  // Review of 5bb123d: the notice was added to "Before you apply" even when the
+  // only English was inside a closed note link, so it pointed at nothing visible.
+  {
+    const long = 'An untranslated fee note that is longer than thirty-six characters.';
+    const hidden = draw({ ...pr2Blank, appFeeNote: long });
+    const must = byClass(hidden, 'd-must')[0], body = noteBody(kvOf(hidden)[UI.sk.app_fee]);
+    check('English only inside a note link: the notice is inside that note, not on the section',
+      body.textContent === `${long} ${UI.sk.app_fee_profile}${UI.sk.untranslated_section}` && byClass(body, 'english-note').length === 1
+      && body.lastChild.classList.contains('english-note') && byClass(must, 'english-note').length === 1 && !englishNoteProblems(hidden).length,
+      englishNoteProblems(hidden).join('; '));
+    const shown = draw({ ...pr2Blank, appFeeNote: 'Admission test: 50 EUR.', deadlineNotes: long });
+    check('English the student can see: one notice at the end of the section, none inside its note links',
+      byClass(shown, 'd-must')[0].lastChild.classList.contains('english-note') && byClass(shown, 'english-note').length === 1
+      && !byClass(shown, 'd-note-body').some((b) => byClass(b, 'english-note').length) && !englishNoteProblems(shown).length,
+      englishNoteProblems(shown).join('; '));
+    const two = draw({ ...pr2Blank, appFeeNote: long, deadlineNotes: `${long} Twice.` });
+    check('English inside two note links of one section: a notice in each', byClass(two, 'd-note-body').filter((b) => byClass(b, 'english-note').length === 1).length === 2
+      && byClass(two, 'english-note').length === 2 && !englishNoteProblems(two).length, englishNoteProblems(two).join('; '));
+  }
+  // Review of 5bb123d: a translated multi-part requirement stayed one " · "
+  // paragraph in Slovak while English drew a list.
+  {
+    const listOf = (translations, otherRequirements) => {
+      i18n.setDataTranslations(translations);
+      const detail = draw({ ...pr2Blank, otherRequirements });
+      const dd = kvOf(detail)[UI.sk.other_requirements];
+      // The hidden English original (a .data-original span) is left out of the text and the lang count.
+      const original = (n) => n.classList.contains('data-original');
+      return { detail, dd, items: byTag(dd, 'li').map((li) => [findAll(li, (n) => n.getAttribute('data-english') !== null || n.getAttribute('data-untranslated') !== null || (n.parent === li && !original(n)))
+        .map((n) => n.children.filter((c) => typeof c === 'string').join('')).join(''),
+      findAll(li, (n) => n.getAttribute('data-english') !== null).map((n) => n.getAttribute('data-english')).join(),
+      findAll(li, (n) => n.lang === 'en' && !original(n)).length]) };
+    };
+    const mixed = listOf([{ field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one item per requirement; a translated item keeps its English, an untranslated one keeps lang="en"',
+      mixed.items, [['Portfólio', 'Portfolio', 0], ['Interview in English', '', 1]]);
+    byClass(mixed.detail, 'detail-originals')[0].dispatchEvent({ type: 'click' });
+    check('Slovak list: "Show the English original" reveals the original inside its own item',
+      byTag(mixed.dd, 'li')[0].textContent === 'PortfólioPortfolio' && byClass(byTag(mixed.dd, 'li')[0], 'data-original').every((n) => !n.hidden && n.lang === 'en')
+      && !byClass(byTag(mixed.dd, 'li')[1], 'data-original').length);
+    const whole = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor v angličtine' }], ['Portfolio', 'Interview in English']);
+    equal('Slovak list: one translation covering two items is split with its English, item by item',
+      whole.items, [['Portfólio', 'Portfolio', 0], ['Pohovor v angličtine', 'Interview in English', 0]]);
+    const uneven = listOf([{ field: 'other_requirements', en: 'Portfolio · Interview in English', sk: 'Portfólio · Pohovor · v angličtine' }], ['Portfolio', 'Interview in English']);
+    check('Slovak list: when the English does not split the same way, the whole original goes under the list',
+      uneven.items.length === 3 && uneven.items.every((item) => item[1] === '') && byClass(uneven.dd, 'd-list-box')[0]?.getAttribute('data-english') === 'Portfolio · Interview in English'
+      && byClass(uneven.dd, 'd-list-box')[0].lastChild.classList.contains('data-original'));
+    i18n.setDataTranslations([]);
+  }
+  // Review of 5bb123d: the closed Applying fold copied an untranslated system as
+  // plain text, so a Slovak screen reader read English words as Slovak.
+  {
+    const detail = draw({ ...pr2Blank, applicationSystem: 'Direct', applyCode: 'UCAS:A100' });
+    const fold = byTag(detail, 'details').find((d) => byTag(d, 'h3')[0]?.textContent === UI.sk.applying_details);
+    const gist = byClass(fold.children[0], 'fold-g')[0];
+    equal('Applying summary in Slovak: the untranslated system keeps lang="en", the code suffix does not, and there is one notice for the fold',
+      [findAll(gist, (n) => n.lang === 'en').map((n) => n.textContent), findAll(gist, (n) => n.getAttribute('data-untranslated') !== null).length,
+        gist.textContent.startsWith(', Direct · kód A100 · '), byClass(fold, 'english-note').length],
+      [['Direct'], 0, true, 1]);
+  }
   i18n.initLanguage('',{getItem:()=> 'en'}); i18n.setDataTranslations([]);
 }
 
@@ -3032,7 +3160,12 @@ function detailProblems(row, state, slot = false) {
   const wantLines = pts.pointsLines(row).map(pts.pointsLineText);
   const lineLists = byClass(a, 'plines');
   const lines = lineLists[0]?.children.map((li) => li.textContent) ?? null;
-  const slotSaysMore = wantLines.length > 1 || row.rankedWithHpat || row.pointsPlusTest || row.pointsTestUnverified || note !== null;
+  // Review of 5bb123d: the row's cell shortens a CAO cutoff to "≈39 R1" and,
+  // under a verdict, drops "with HL Maths 4+", so the slot must say the full
+  // lines. It may leave them out only when the one line is exactly what the row
+  // says: a plain minimum or "No minimum published", with no points note.
+  const plainLine = wantLines.length === 1 && (/^\d+ IB points, minimum$/.test(wantLines[0]) || wantLines[0] === 'No minimum published');
+  const slotSaysMore = !plainLine || note !== null;
   if (lineLists.length > 1 || (slot && !slotSaysMore ? lines !== null : JSON.stringify(lines) !== JSON.stringify(wantLines))) say(`lines ${JSON.stringify(lines)}`);
   // The Czech explanation uses "no tuition fee" in a sentence, never as a fee label.
   const feeText = (node) => typeof node === 'string' ? node
@@ -3616,6 +3749,23 @@ for (const [label, state] of [...liveRuns, ['45', fstate(45)]]) {
 }
 check('all fixture slots render cleanly, including every short points form', [noFilters(), fstate(36), fstate(36, true), fstate(37)].every((st) =>
   [...fxs, ...kinds, ...bk].filter((r) => filtersMod.pointsBucket(r, st) !== 'hidden').every((r) => !detailProblems(r, st, true).out.length)));
+{
+  const slotPointsOf = (id, state) => {
+    const row = live.find((p) => p.id === id);
+    const slot = withStubDocument(() => renderSlot(row, state));
+    return [byClass(slot, 'd-pts')[0]?.textContent ?? null, byClass(rowOf(row, state), 'c-pts')[0].textContent];
+  };
+  const bonus = ['tcd-engineering-with-management', 'tcd-management-science-and-informa', 'tcd-mathematics', 'dcu-ba-global-business-usa'];
+  check('phone slot: a single-round 601–625 cutoff says "with HL Maths 4+" although the row, under its verdict, does not',
+    bonus.every((id) => [fstate(44, true), noFilters()].every((state) => /^IB points≈ \d+ IB points, Round 1 cutoff, 2026, with HL Maths 4\+$/.test(slotPointsOf(id, state)[0])))
+      && bonus.some((id) => !slotPointsOf(id, fstate(44, true))[1].includes('HL Maths')), JSON.stringify(slotPointsOf(bonus[0], fstate(44, true))));
+  equal('phone slot: every single-round CAO cutoff keeps its round and year, which the row shortens to "R1"',
+    slotPointsOf('tcd-business-studies-and-german', noFilters()), ['IB points≈ 39 IB points, Round 1 cutoff, 2026', 'IB points≈39 R1']);
+  check('phone slot: all 356 single-round CAO cutoff rows have their points block',
+    live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1).length > 300
+      && live.filter((p) => p.ibPointsMin !== null && p.pointsKind === 'cutoff' && p.cao?.rounds.length === 1)
+        .every((p) => byClass(withStubDocument(() => renderSlot(p, noFilters())), 'plines').length === 1));
+}
 check('slot regions have unique stable ids, resolved names and no duplicated head/cells', live.every((row) => {
   const slot = withStubDocument(() => renderSlot(row, noFilters()));
   return slot.id === `x-${row.id}` && slot.getAttribute('role') === 'region' && slot.getAttribute('aria-label') === `Details for ${row.programme}`
@@ -4834,6 +4984,10 @@ const motionAllowed = {
   '.chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.dd-chev': 'transition:transform var(--t-med) var(--ease-in-out)',
   '.pane-body>.fade-in': 'transition:opacity var(--t-fast) var(--ease-out)',
+  // Leon 2026-11-15: Skip's label glides between centred and raised; its
+  // second line fades and rises. The 60 ms delay keeps the two from crossing.
+  '.skipwrap .sk-l': 'transition:transform var(--t-med) var(--ease-out) 60ms',
+  '.skipwrap .btn small': 'transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out)',
   // Leon 2026-11-06: 320 ms felt sluggish; 240 ms up ([open]), 200 ms down.
   // Smooth-slide follow-up: retain the first frame, give the movement a settling tail.
   // 2026-11-09: the times and curve became tokens shared with the FAQ panel.
@@ -6173,8 +6327,11 @@ section('Yearly cost: fee + 12 months\' living, Max yearly cost and My living co
   equal('detail: a UK visa figure reads "from", is labelled a national minimum, and keeps the £ conversion',
     [costOf(ukRow), costOf(ukRow, {}, 'Living costs')],
     [['from €54,812 a year', FLOOR_LABEL, 'How it is worked out',
-      `national estimate (UK student visa), £1,171 a month · ${FLOOR_LABEL} · converted from £ at the ECB rate of 29 October 2026`],
+      // Review of 5bb123d: the national-minimum label is said once, before the link.
+      'national estimate (UK student visa), £1,171 a month · converted from £ at the ECB rate of 29 October 2026'],
     ['from €1,401 / month', FLOOR_LABEL, 'Source', 'national estimate (UK student visa), £1,171 a month']]);
+  equal('detail: the national-minimum label appears once in the yearly row and once in the living row',
+    ['Living costs', YEAR].map((key) => kvOf(detailOf(ukRow))[key].textContent.split(FLOOR_LABEL).length - 1), [1, 1]);
   // The closed fold still says the one figure most students want from it.
   equal('F3 the Costs fold summary: the yearly range, "your living cost", the national-minimum label, or a dashed unknown with the reason',
     [[rowsAt[0], {}], [rowsAt[0], { myLiving: 800 }], [ukRow, {}], [rowsAt[2], {}]].map(([row, state]) => {
@@ -6740,12 +6897,12 @@ appCheck('heading sort cycles include the default order, announced next state an
 // shown, as app.js's callback does; media queries default to desktop.
 // Review of PR 1 (2026-11-07): apply() returns { shown, summary, filtered } and
 // closeCompare is counted; phone picks the narrow media query's answer.
-function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}} = {}) {
+function realSetup({get,fire,context,resultsSection}, {shown = 7, summary = [], filtered = false, sheetFiltered = filtered, phone = false, state = savedState.validateFilters({}), env = {}, switchLanguage} = {}) {
   const writes=[], applied=[], toasts=[], compareCloses=[];
-  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
+  const base={document:stubDocument,t,formatCount:i18n.formatCount,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const node=new ChromeNode('span');node.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return node;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,
     localStorage:{setItem:(key,value)=>writes.push([key,value])},syncSlider(){},showToast:(...args)=>toasts.push(args),matchMedia:()=>({matches:phone,addEventListener(){}}),requestAnimationFrame:()=>0,cancelAnimationFrame(){},innerHeight:800,openFaq(){},...env};
   const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'' ).replace(/^export /gm,'')+'\nsetupOnboarding;',base);
-  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true});
+  const api=setup({state,facets:filtersMod.buildFacets(context.fixture),flags:{},apply:answers=>{applied.push(answers);return {shown,summary,filtered,sheetFiltered};},results:resultsSection,closeSheet(){},closeCompare:()=>compareCloses.push(stubDocument.activeElement),firstVisit:true,switchLanguage});
   const dialog=get('onboarding'), primary=()=>dialog.querySelector('.ob-foot .btn-p'), next=()=>fire(primary(),'click');
   // On the done screen: the heading, the count line, no "Step n of 5", the bar full.
   const doneScreen=()=>{const section=dialog.querySelector('.ob-done');return section&&{heading:section.querySelector('h2').textContent,count:section.querySelector('.ob-count').textContent,
@@ -6762,17 +6919,23 @@ check('Setup uses show(), aria-modal and its own scrim, never showModal/inert/ba
     && !/html:has\([^}]*ob/.test(css) && !css.includes('dialog.ob::backdrop') && /html\.onboarding-open\{overflow:hidden\}/.test(css)
     && /z-index:80/.test(bodyOf('dialog.ob')) && /z-index:79/.test(bodyOf('.ob-scrim'));
 })());
+// Step 1's site-language radios are one Tab stop, the checked one: an
+// unchecked radio is no native stop, so Shift+Tab from English left setup and
+// a wrap could land on Slovenčina (plan review, 2026-11-15).
 appCheck('Setup traps Tab both ways, skips disabled/hidden controls and redirects stray focus', (h) => {
-  const {dialog, primary} = realSetup(h, {phone:true}), {get,fire} = h;
-  const skip=dialog.querySelector('.skipwrap button');
+  const {dialog, primary} = realSetup(h), {get,fire} = h;
+  const skip=dialog.querySelector('.skipwrap button'), radio=(code)=>dialog.querySelectorAll('input').find(n=>n.value===code);
+  if(!radio('en')?.checked || radio('sk').checked)return false;
   fire(get('ob-title'),'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary() || !stubDocument.focusOptions.focusVisible)return false;
-  fire(primary(),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==radio('en') || !stubDocument.focusOptions.focusVisible)return false;
+  fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
+  if(stubDocument.activeElement!==primary())return false;
+  fire(primary(),'keydown',{key:'Tab'});
+  if(stubDocument.activeElement!==radio('en'))return false;
+  primary().disabled=true; fire(radio('en'),'keydown',{key:'Tab',shiftKey:true});
   if(stubDocument.activeElement!==skip)return false;
   fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==primary())return false;
-  primary().disabled=true; fire(skip,'keydown',{key:'Tab'});
-  if(stubDocument.activeElement!==skip)return false;
+  if(stubDocument.activeElement!==radio('en'))return false;
   get('f-search').focus(); fire(get('f-search'),'focusin');
   return stubDocument.activeElement===get('ob-title') && dialog.open;
 });
@@ -6828,6 +6991,112 @@ appCheck('real onboarding handlers: clicking through with no answers shows the n
     && d && d.heading===t('r3_ob_done_h_none') && d.count==='2,915 programmes shown' && d.text.includes(t('r5_ob_done_p_empty_wide')) && !d.text.includes(t('r3_ob_done_p_none'))
     && !d.text.includes(t('r2_answers_applied')) && d.focused;
 });
+// Setup asks the site language on step 1 (backlog language-in-setup, built
+// 2026-11-15). It is Settings' switch: applied and saved at once, kept by
+// Skip, and never mixed up with step 4's teaching language.
+appCheck('Setup step 1 asks the site language: both languages, current one checked, apart from the teaching language', (h) => {
+  const {dialog,next}=realSetup(h);
+  const field=dialog.querySelector('.ob-uilang'), legend=field?.querySelector('legend'), labels=field?.querySelectorAll('label')??[], radios=labels.map(l=>l.querySelector('input'));
+  if(!field||dialog.querySelector('.ob-step.on').children[1]!==field)return false;
+  if(legend.textContent!==`${UI.en.r8_ob_site_language} · ${UI.sk.r8_ob_site_language}`||legend.querySelector('span').getAttribute('lang')!=='sk')return false;
+  if(JSON.stringify(radios.map(r=>[r.type,r.name,r.value,r.checked]))!==JSON.stringify([['radio','ob-site-language','sk',false],['radio','ob-site-language','en',true]]))return false;
+  if(labels.map(l=>l.getAttribute('lang')).join()!=='sk,en'||labels.map(l=>l.textContent).join()!=='Slovenčina,English')return false;
+  next();next();next();
+  return dialog.querySelector('.ob-language').textContent===t('taught_in') && !dialog.querySelector('.ob-uilang');
+});
+check('Setup language radios never share Settings\' name or data-language', (() => {
+  const src=read('js/onboarding.js');
+  return !/['"\[]data-language|['"]site-language['"]/.test(src) && src.includes("input.name = 'ob-site-language'") && /settings_language/.test(read('index.html')) && read('index.html').includes('name="site-language"');
+})());
+appCheck('Picking Slovak in setup switches the page and redraws setup in Slovak at once; answers, focus and Skip keep', (h) => {
+  const calls=[];
+  try {
+    const {dialog,next,writes,applied,primary}=realSetup(h,{switchLanguage:(code)=>{calls.push(code);i18n.setLanguage(code,{setItem(){}});}}), {get,fire}=h;
+    next(); const points=get('ob-points'); points.value='38'; fire(points,'input');
+    fire(dialog.querySelectorAll('.ob-foot button').find(b=>b.textContent===t('r2_back')),'click');
+    const sk=dialog.querySelectorAll('input').find(n=>n.value==='sk'); sk.checked=true; fire(sk,'change');
+    const now=dialog.querySelectorAll('input').find(n=>n.value==='sk'), hint=dialog.querySelectorAll('.skipwrap small').find(n=>n.classList.contains('on'));
+    if(JSON.stringify(calls)!=='["sk"]'||get('ob-title').textContent!==UI.sk.r2_ob1h||primary().textContent!==UI.sk.r2_start)return false;
+    if(!now.checked||stubDocument.activeElement!==now||!dialog.querySelector('.ob-step.on').classList.contains('stay'))return false;
+    if(dialog.querySelector('.ob-uilang legend').textContent!==`${UI.sk.r8_ob_site_language} · ${UI.en.r8_ob_site_language}`)return false;
+    if(dialog.querySelector('.skipwrap button').getAttribute('aria-label')!==UI.sk.r2_skip||hint?.textContent!==UI.sk.r2_skip_sub)return false;
+    // Picking the language already in force does nothing.
+    fire(now,'change'); if(calls.length!==1)return false;
+    next(); if(String(get('ob-points').value)!=='38')return false;
+    fire(dialog.querySelector('.skipwrap button'),'click');
+    return writes.length===1&&writes[0][1]==='dismissed'&&applied.length===0&&i18n.getLanguage()==='sk'&&!dialog.open;
+  } finally { i18n.setLanguage('en',{setItem(){}}); }
+});
+// Leon, 2026-11-15 ("take a look at this on each setup page"): Skip said
+// "Discards these answers" on every step, also on step 1 where nothing is
+// asked, and over existing filters, which Skip keeps. Follow-up (Leon, same
+// day): a first visit says "Shows all programmes". Five states; every line
+// the setup can show is in the button from the start (one size throughout),
+// exactly one is on, and only it is the description.
+const skipState=(dialog)=>{
+  const b=dialog.querySelector('.skipwrap button'), smalls=b.querySelectorAll('small'), on=smalls.filter(s=>s.classList.contains('on'));
+  const ids=smalls.filter(s=>s.id==='ob-skip-hint');
+  if(on.length>1||ids.length!==on.length||(on[0]&&ids[0]!==on[0])||b.classList.contains('has-line')!==Boolean(on[0])||(b.getAttribute('aria-describedby')??null)!==(on[0]?'ob-skip-hint':null))return 'inconsistent';
+  return JSON.stringify({name:b.getAttribute('aria-label'),label:b.querySelector('.sk-l').textContent,line:on[0]?.textContent??null,lines:smalls.map(s=>s.getAttribute('data-line'))});
+};
+const skipWant=(line,lines)=>JSON.stringify({name:t('r2_skip'),label:t('r2_skip'),line:line&&t(line),lines});
+appCheck('Skip on a first visit: "Shows all programmes" on every step until an answer, then "Discards these answers", and back', (h) => {
+  const {get,fire}=h, first=realSetup(h), lines=['r8_skip_all','r2_skip_sub'];
+  if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  const points=get('ob-points'); points.value='38'; fire(points,'input');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  points.value=''; fire(points,'input'); if(skipState(first.dialog)!==skipWant('r8_skip_all',lines))return false;
+  first.next(); const chip=first.dialog.querySelector('.chip'); fire(chip,'click');
+  if(skipState(first.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  fire(chip,'click');
+  return skipState(first.dialog)===skipWant('r8_skip_all',lines);
+});
+appCheck('Skip reopened over answers: no line until a change, then "Keeps your filters"; undone, no line', (h) => {
+  const {get,fire}=h, again=realSetup(h,{state:savedState.validateFilters({myIbPoints:36})}), lines=['r8_skip_keep'];
+  if(skipState(again.dialog)!==skipWant(null,lines))return false;
+  again.next(); if(String(get('ob-points').value)!=='36'||skipState(again.dialog)!==skipWant(null,lines))return false;
+  get('ob-points').value='37'; fire(get('ob-points'),'input'); if(skipState(again.dialog)!==skipWant('r8_skip_keep',lines))return false;
+  get('ob-points').value='36'; fire(get('ob-points'),'input');
+  return skipState(again.dialog)===skipWant(null,lines);
+});
+// A search alone is not a setup answer, so a new answer would be discarded;
+// unchanged, Skip leaves the search, so "Shows all programmes" would be wrong.
+appCheck('Skip over a search alone or in My list: no line until an answer, then "Discards these answers"', (h) => {
+  const {get,fire}=h, search=realSetup(h,{state:savedState.validateFilters({search:'law'})}), lines=['r2_skip_sub'];
+  if(skipState(search.dialog)!==skipWant(null,lines))return false;
+  search.next(); get('ob-points').value='30'; fire(get('ob-points'),'input');
+  if(skipState(search.dialog)!==skipWant('r2_skip_sub',lines))return false;
+  get('ob-points').value=''; fire(get('ob-points'),'input');
+  return skipState(search.dialog)===skipWant(null,lines);
+});
+appCheck('Skip opened in My list with no filters does not claim to show all programmes', (h) => {
+  const list=realSetup(h,{state:Object.assign(savedState.validateFilters({}),{shortlistOnly:true})});
+  return skipState(list.dialog)===skipWant(null,['r2_skip_sub']);
+});
+// The motion (Leon, 2026-11-15): transform and opacity only, token times,
+// the line waits coming in and the label waits going back, none under
+// reduced motion, and the button's own box never changes (one grid cell).
+check('Skip\'s label and line move by transform and opacity only, never resize the button, and stand still under reduced motion',
+  /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && /grid-area:s/.test(ruleAt(cssText, '.skipwrap .btn.btn-q>span'))
+  && /transform:translateY\(-7\.5px\)/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l')) && /transition-delay:0ms/.test(ruleAt(cssText, '.skipwrap .has-line .sk-l'))
+  && /transition:transform var\(--t-med\) var\(--ease-out\) 60ms/.test(ruleAt(cssText, '.skipwrap .sk-l'))
+  // A button centres its text: a shorter line sat 8 px right of the label in the stacked cell (smoke LP-S5, 2026-11-15).
+  && /justify-items:start/.test(ruleAt(cssText, '.skipwrap .sk-h'))
+  && /grid-area:h/.test(ruleAt(cssText, '.skipwrap .btn small')) && /opacity:0/.test(ruleAt(cssText, '.skipwrap .btn small'))
+  && /opacity:1/.test(ruleAt(cssText, '.skipwrap .btn small.on')) && /transition-delay:60ms/.test(ruleAt(cssText, '.skipwrap .btn small.on'))
+  && ['.skipwrap .sk-l', '.skipwrap .btn small'].every((sel) => /transition:none/.test(ruleAt(cssText, sel, '(prefers-reduced-motion:reduce)')))
+  && !/(?:width|height|margin|padding|top|bottom|left|right)\s/.test([ruleAt(cssText, '.skipwrap .sk-l'), ruleAt(cssText, '.skipwrap .btn small')].join(';').match(/transition:[^;}]*/g).join(';')));
+await asyncAppCheck('Setup\'s language switch is app.js\'s switchLanguage and writes no saved filters over URL state', async ({run,get,context,settle,advance}) => {
+  try {
+    context.savedPrefs = {version:1,filters:{myIbPoints:42}}; context.location.search = '?points=36';
+    run('applyUrlFields();'); context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle(); advance(500);
+    if (context.onboardingConfig.switchLanguage !== run('switchLanguage')) return false;
+    const urls = []; context.history.replaceState = (s, title, url) => urls.push(url);
+    context.onboardingConfig.switchLanguage('sk'); advance(500);
+    return !(context.prefWrites ?? []).length && get('f-points').value === '36' && /[?&]ui=sk/.test(urls.at(-1)) && /[?&]points=36/.test(urls.at(-1));
+  } finally { run("switchLanguage('en')"); }
+}, {boot:true});
 // Was "onboarding completion toast uses the compact Edit action…": the toast is
 // gone (the done screen says it), and r2_edit_short with it. The native maths
 // half still stands.
@@ -6962,7 +7231,7 @@ appCheck('Slovak subjects and degree types agree between onboarding, pane and fa
     const subjectLabel=byClass(subject,'data-value')[0].textContent,degreeLabel=byClass(degree,'data-value')[0].textContent;
     renderPane({pane:get('pane'),heading:get('pane-h'),body:stubDocument.querySelector('.pane-body')},null,false,state);
     const pane=stubDocument.querySelector('.pane-body').textContent;
-    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
+    const env={matchMedia:()=>({matches:false,addEventListener(){}}),document:stubDocument,t,facetLabel:i18n.facetLabel,dataValue:(field,value)=>{const n=new ChromeNode('span');n.textContent=i18n.dataParts(field,value).map(p=>p.text).join('');return n;},validateFilters:savedState.validateFilters,hasSetupAnswers:savedState.hasSetupAnswers,storedFilters:savedState.storedFilters,getLanguage:i18n.getLanguage,inLanguage:i18n.inLanguage,ONBOARDING_KEY:savedState.ONBOARDING_KEY,localStorage:{setItem(){}},syncSlider(){},showToast(){}};
     const setup=runInNewContext(read('js/onboarding.js').replace(/^import[^;]+;\n/gm,'').replace(/^export /gm,'')+'\nsetupOnboarding;',env);
     setup({state,facets:{subjectAreas:['Engineering'],countries:[],languages:[]},flags:{},apply(){},results:resultsSection,closeSheet(){},firstVisit:true});
     fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');fire(get('onboarding').querySelector('.ob-foot .btn-p'),'click');
@@ -7114,17 +7383,26 @@ section('SK/EN interface and data translations');
     if (!originalsLabel(next, true) || rerender.querySelectorAll('.data-original').some((n) => n.hidden)) return false;
     next.dispatchEvent({ type: 'click' });
     return originalsLabel(next, false) && rerender.querySelectorAll('.data-original').every((n) => n.hidden)
-      && detail.querySelectorAll('.d-sec').every((section) => section.querySelectorAll('.english-note').length === (section.querySelector('[data-untranslated]') ? 1 : 0));
+      && !englishNoteProblems(detail).length;
   }));
-  check('detail without translated values hides the toggle but labels untranslated sections', withStubDocument(() => {
+  // Review of 5bb123d: this used to compare the notice count with a count taken
+  // the same way as the code does. The sections are now named: with no
+  // translations at all, tud-cse shows English in Before you apply (its
+  // requirements), Costs (living_cost_source, "national estimate (Study in
+  // NL)", short enough to be a visible line) and Applying details (Studielink).
+  equal('detail without translated values hides the toggle and puts one notice at the end of each section that shows English', withStubDocument(() => {
     i18n.setDataTranslations([]);
-    const detail = renderModuleForI18n.renderDetail(live.find((row) => row.id === 'tud-cse'), noFilters());
+    const row = live.find((r) => r.id === 'tud-cse');
+    const detail = renderModuleForI18n.renderDetail(row, noFilters());
     i18n.setDataTranslations(skRows);
-    // One note per section that holds untranslated text: Before you apply always does here.
-    const untranslated = detail.querySelectorAll('.d-sec').filter((section) => section.querySelector('[data-untranslated]'));
-    return !detail.querySelector('.detail-originals') && untranslated.length >= 1 && untranslated[0].classList.contains('d-must')
-      && detail.querySelectorAll('.english-note').length === untranslated.length
-      && untranslated.every((section) => section.lastChild.classList.contains('english-note'));
+    return [Boolean(detail.querySelector('.detail-originals')), row.livingCostSource, row.applicationSystem,
+      detail.querySelectorAll('.d-sec').filter((section) => section.lastChild.classList.contains('english-note')).map((section) => section.querySelector('h3').textContent),
+      detail.querySelectorAll('.english-note').length, englishNoteProblems(detail)];
+  }), [false, 'national estimate (Study in NL)', 'Studielink', [i18n.t('before_you_apply'), i18n.t('costs'), i18n.t('applying_details')], 3, []]);
+  check('every live row in Slovak puts its English notices next to visible English or inside the note that holds it', withStubDocument(() => {
+    const bad = live.flatMap((row) => englishNoteProblems(renderModuleForI18n.renderDetail(row, noFilters())).map((p) => `${row.id} ${p}`));
+    const inside = live.filter((row) => renderModuleForI18n.renderDetail(row, noFilters()).querySelectorAll('.d-note-body .english-note').length).length;
+    return bad.length === 0 && inside > 0;
   }));
   equal('free-text inventory counts programme rows separately from missing strings',
     translationInventory([], [{ ib_subjects: 'HL Maths', other_requirements: 'none', deadline_notes: 'A note' }, { ib_subjects: 'HL Maths' }], []).freeText,
@@ -8687,8 +8965,9 @@ check('AL-S2 setup: Next full width on top on phones, 44 px buttons, no done-scr
   /order:-1;flex:0 0 100%;margin-left:0/.test(ruleAt(cssText, '.ob-foot:not(.ob-done-foot)>.btn-p', '(max-width:599.98px)'))
   && /height:44px/.test(ruleAt(cssText, '.ob-foot .btn')) && /min-height:0/.test(ruleAt(cssText, '.ob .ob-body:has(.ob-done)'))
   // Leon, 2026-11-09 (option B): the hint is a second line inside Skip, which stacks its two lines.
-  && /flex-direction:column/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
-  && /skipButton\.append\(el\('small', '', t\('r2_skip_sub'\)\)\)/.test(read('js/onboarding.js'))
+  && /display:grid/.test(ruleAt(cssText, '.skipwrap .btn.btn-q')) && !ruleAt(cssText, '.skipwrap small')
+  // Since 2026-11-15 every line the setup can show is in the button; syncSkip turns one on.
+  && /const small = el\('small', '', t\(key\)\); small\.setAttribute\('data-line', key\)/.test(read('js/onboarding.js'))
   && /outline-offset:-3px/.test(ruleAt(cssText, '.skipwrap .btn.btn-q:focus-visible')));
 // The footer heading's alignment with the first question went with the footer FAQ (2026-11-09).
 check('AL-F1 FAQ: the "+" sits on the first line\'s centre; the footer heading no longer lines up with a footer FAQ',

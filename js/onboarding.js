@@ -1,5 +1,5 @@
-import { t, facetLabel, formatCount } from './i18n.js';
-import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers } from './saved-state.js';
+import { t, facetLabel, formatCount, getLanguage, inLanguage } from './i18n.js';
+import { FILTER_KEY, ONBOARDING_KEY, validateFilters, hasSetupAnswers, storedFilters } from './saved-state.js';
 import { dataValue } from './render.js';
 import { syncSlider } from './round2.js';
 import { openFaq } from './faq.js';
@@ -27,7 +27,12 @@ const button = (label, className, action) => {
   const node = el('button', className, t(label)); node.type = 'button'; node.addEventListener('click', action); return node;
 };
 
-export function setupOnboarding({ state, facets, flags, apply, results, closeSheet, closeCompare, firstVisit }) {
+// Setup's own answers (not search, city…), to tell whether Skip would throw
+// anything away.
+const answerKey = (d) => JSON.stringify([d.myIbPoints, d.hlMaths, d.maxBudget, ...['subjectAreas', 'countries', 'languages'].map((key) => [...d[key]].sort())]);
+
+// switchLanguage is app.js's, the same one the Settings radios use.
+export function setupOnboarding({ state, facets, flags, apply, results, closeSheet, closeCompare, firstVisit, switchLanguage = () => {} }) {
   const dialog = document.getElementById('onboarding'), scrim = document.getElementById('onboarding-scrim');
   let keyboardInput = false, appliedOnClose = false;
   document.addEventListener('keydown', () => { keyboardInput = true; }, true);
@@ -40,6 +45,9 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   // done: Finish has applied the answers and the "you're set" screen is up. From
   // then on every way out (Show, FAQ, Esc) keeps them; Skip is gone.
   let draft = null, step = 1, trigger = null, done = false;
+  // openedWith: the answers setup started from, so Skip's hint is only there
+  // when Skip would discard something, and says what (Leon, 2026-11-15).
+  let openedWith = null, skipButton = null;
   const progress = el('div', 'ob-bar'), fill = el('i'); progress.append(fill);
   const body = el('div', 'ob-body'), foot = el('div', 'ob-foot');
   dialog.append(progress, body, foot);
@@ -77,19 +85,77 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       chip.append(field === 'subjectAreas' ? dataValue('subject_area', value) : field === 'degreeTypes' ? dataValue('degree_type', value) : document.createTextNode(facetLabel(value)));
       chip.addEventListener('click', () => {
         if (draft[field].has(value)) draft[field].delete(value); else draft[field].add(value);
-        chip.setAttribute('aria-pressed', String(draft[field].has(value)));
+        chip.setAttribute('aria-pressed', String(draft[field].has(value))); syncSkip();
       }); box.append(chip);
     }
     return box;
   };
-  const draw = (back = false) => {
+  // Skip's second line says what Skip would do, and only what is true (Leon,
+  // 2026-11-15). Five states, fixed by how setup opened and whether an
+  // answer has changed since:
+  //   opened with no filters at all, unchanged: "Shows all programmes"
+  //   opened without setup answers, changed:    "Discards these answers"
+  //   opened with setup answers, changed:       "Keeps your filters"
+  //   opened with setup answers, unchanged:     no line
+  //   opened with only other filters (a search, a city) or in My list,
+  //   unchanged:                                no line (Skip leaves them)
+  // "Discards these answers" used to show on every step, also over existing
+  // filters, which Skip keeps. The name stays "Skip setup"; the line is its
+  // description.
+  const skipLine = () => answerKey(draft) !== openedWith.key ? (openedWith.had ? 'r8_skip_keep' : 'r2_skip_sub')
+    : openedWith.nothing ? 'r8_skip_all' : null;
+  // Every line this setup can show is in the button from the start, stacked
+  // in one grid cell, so the button never changes size and only transform
+  // and opacity move (css .sk-l, .sk-h).
+  const skipLines = () => openedWith.had ? ['r8_skip_keep'] : openedWith.nothing ? ['r8_skip_all', 'r2_skip_sub'] : ['r2_skip_sub'];
+  const syncSkip = () => {
+    if (!skipButton || !draft) return;
+    const line = skipLine();
+    skipButton.classList.toggle('has-line', Boolean(line));
+    for (const small of skipButton.querySelectorAll('small')) {
+      const on = small.getAttribute('data-line') === line;
+      small.classList.toggle('on', on);
+      if (on) small.id = 'ob-skip-hint'; else small.removeAttribute('id');
+    }
+    if (line) skipButton.setAttribute('aria-describedby', 'ob-skip-hint'); else skipButton.removeAttribute('aria-describedby');
+  };
+  // The site language, first thing on step 1 (backlog, Leon 2026-11-10). It
+  // applies and is saved at once, like Settings, so Skip keeps it. Its look
+  // is Settings', not the answer chips', and step 4's teaching language says
+  // "Taught in", so the two never read as one question.
+  const languageField = () => {
+    const current = getLanguage(), other = current === 'sk' ? 'en' : 'sk';
+    const field = el('fieldset', 'ob-uilang'), legend = el('legend', '', t('r8_ob_site_language'));
+    // Both languages, so a student who reads only the other one finds it.
+    const theirs = el('span', '', inLanguage(other, () => t('r8_ob_site_language'))); theirs.setAttribute('lang', other);
+    legend.append(' · ', theirs);
+    const seg = el('div', 'ob-seg');
+    for (const code of ['sk', 'en']) {
+      const label = el('label'), input = el('input');
+      label.setAttribute('lang', code);
+      // Not Settings' name or data-language: same name would uncheck those.
+      input.type = 'radio'; input.name = 'ob-site-language'; input.value = code; input.checked = code === current;
+      input.setAttribute('data-ob-language', code);
+      input.addEventListener('change', () => {
+        if (!input.checked || code === getLanguage()) return;
+        switchLanguage(code); draw(false, code);
+      });
+      label.append(input, el('span', '', t(code === 'sk' ? 'settings_sk' : 'settings_en'))); seg.append(label);
+    }
+    field.append(legend, seg);
+    return field;
+  };
+  // keep: redrawn for a language pick; no slide-in, focus stays on the radio.
+  const draw = (back = false, keep = null) => {
     fill.style.transform = `scaleX(${(step - 1) / 4})`; progress.hidden = step === 1;
     const label = el('p', 'ob-n', t('r2_step', { step })); label.id = 'ob-step-n';
-    const section = el('section', `ob-step on${back ? ' back' : ''}`);
+    const section = el('section', `ob-step on${back ? ' back' : ''}${keep ? ' stay' : ''}`);
     const heading = el('h2', '', t(`r2_ob${step}h`)); heading.id = 'ob-title'; heading.tabIndex = -1;
     // Focus lands on the heading, so "Step n of 5" is read with it.
     heading.setAttribute('aria-describedby', label.id);
-    section.append(heading, el('p', '', t(`r2_ob${step}p`)));
+    section.append(heading);
+    if (step === 1) section.append(languageField());
+    section.append(el('p', '', t(`r2_ob${step}p`)));
     if (step === 1) section.append(el('p', 'note', t('r2_ob1n')));
     if (step === 2) {
       const points = el('div', 'big-pts'), input = el('input');
@@ -99,7 +165,7 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
         const clean = validateFilters({ myIbPoints: input.value === '' ? null : Number(input.value) });
         const valid = input.value === '' && !input.validity.badInput || clean.myIbPoints !== null;
         input.setAttribute('aria-invalid', String(!valid)); error.textContent = valid ? '' : t('enter_a_whole_number_from_24_to_45');
-        draft.myIbPoints = clean.myIbPoints; next.disabled = !valid;
+        draft.myIbPoints = clean.myIbPoints; next.disabled = !valid; syncSkip();
       };
       input.addEventListener('input', read);
       for (const delta of [-1, 1]) {
@@ -108,13 +174,13 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
         points.append(control); if (delta < 0) points.append(input);
       }
       const label = el('label', 'switch'); const check = el('input'); check.type = 'checkbox'; check.checked = draft.hlMaths;
-      check.addEventListener('change', () => { draft.hlMaths = check.checked; }); label.append(check, document.createTextNode(t('r2_ob2m')));
+      check.addEventListener('change', () => { draft.hlMaths = check.checked; syncSkip(); }); label.append(check, document.createTextNode(t('r2_ob2m')));
       section.append(points, error, label, el('p', 'ob-hint', t('r2_ob2i')));
     }
     if (step === 3) section.append(chips('subjectAreas', facets.subjectAreas));
     if (step === 4) {
       section.append(chips('countries', facets.countries, true));
-      section.append(el('p', 'ob-language', t('language')), chips('languages', facets.languages));
+      section.append(el('p', 'ob-language', t('taught_in')), chips('languages', facets.languages));
     }
     if (step === 5) {
       const wrap = el('div', 'rng'), top = el('div', 'rng-top'), label = el('label', '', t('r2_up_to')), input = el('input', 'inp');
@@ -125,15 +191,21 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
         const clean = validateFilters({ maxBudget: input.value === '' ? null : Number(input.value) });
         const valid = input.value === '' && !input.validity.badInput || clean.maxBudget !== null;
         error.textContent = valid ? '' : t('enter_a_whole_number_of_euros_0_or_more'); input.setAttribute('aria-invalid', String(!valid)); next.disabled = !valid;
-        draft.maxBudget = clean.maxBudget; syncSlider(slider, draft.maxBudget);
+        draft.maxBudget = clean.maxBudget; syncSlider(slider, draft.maxBudget); syncSkip();
       };
       input.addEventListener('input', read); slider.addEventListener('input', () => { input.value = slider.value; read(); });
       syncSlider(slider, draft.maxBudget); top.append(label, input); wrap.append(top, slider, error); section.append(wrap);
     }
     body.replaceChildren(label, section); body.scrollTop = 0;
-    // The hint is part of Skip (its accessible name says the answers go), so
-    // the footer has no extra row under the button (Leon, 2026-11-09).
-    const skipButton = button('r2_skip', 'btn btn-q', () => close()); skipButton.append(el('small', '', t('r2_skip_sub')));
+    // The hint is a second line inside Skip, so the footer has no extra row
+    // under the button (Leon, 2026-11-09); syncSkip shows the one that applies.
+    skipButton = el('button', 'btn btn-q'); skipButton.type = 'button'; skipButton.addEventListener('click', () => close());
+    skipButton.setAttribute('aria-label', t('r2_skip'));
+    const lines = el('span', 'sk-h');
+    for (const key of skipLines()) { const small = el('small', '', t(key)); small.setAttribute('data-line', key); lines.append(small); }
+    skipButton.append(el('span', 'sk-l', t('r2_skip')), lines);
+    // Its state is set before it is in the page, so a new step starts still.
+    syncSkip();
     const skip = el('div', 'skipwrap'); skip.append(skipButton);
     const spacer = el('span', 'sp');
     const previous = button('r2_back', 'btn', () => { step--; draw(true); }); previous.hidden = step === 1;
@@ -143,7 +215,8 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
       const answers = validateFilters(draft, facets); done = true;
       const result = apply(answers); dismiss('completed'); drawDone(answers, result);
     });
-    foot.replaceChildren(skip, spacer, previous, next); orderFooter(); focus(heading);
+    foot.replaceChildren(skip, spacer, previous, next); orderFooter();
+    focus(keep ? [...section.querySelectorAll('input')].find((node) => node.value === keep) : heading);
   };
   // Setup ends here, not on step 5 (Leon, 2026-11-05): the answers are already
   // filters, so it says so, how many programmes that leaves, and offers the
@@ -219,6 +292,9 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
   const open = (from) => {
     if (dialog.open) return;
     trigger = from; appliedOnClose = false; closeSheet(); draft = validateFilters(state, facets); step = 1; done = false; foot.classList.remove('ob-done-foot');
+    // nothing: no filter at all and not in My list, so Skip shows every programme.
+    const blank = JSON.stringify(storedFilters(validateFilters({}), facets).filters);
+    openedWith = { key: answerKey(draft), had: hasSetupAnswers(draft), nothing: !state.shortlistOnly && JSON.stringify(storedFilters(draft, facets).filters) === blank };
     // WebKit's modal inert update restyles every mounted row (~600 ms).
     // Like Filters, own the scrim/focus/scroll lock without touching the list.
     dialog.show(); document.documentElement.classList.add('onboarding-open'); scrim.classList.add('is-open'); draw();
@@ -228,8 +304,10 @@ export function setupOnboarding({ state, facets, flags, apply, results, closeShe
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation(); close(done);
     } else if (event.key === 'Tab') {
+      // A radio group is one Tab stop, its checked radio: an unchecked one
+      // is no native stop, so Shift+Tab from the checked one left setup.
       const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')]
-        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+        .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && (node.type !== 'radio' || node.checked));
       const first = controls[0] ?? document.getElementById('ob-title'), last = controls.at(-1) ?? first;
       const active = document.activeElement;
       if (!controls.includes(active) || (event.shiftKey ? active === first : active === last)) {

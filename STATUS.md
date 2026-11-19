@@ -228,6 +228,41 @@ IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
+**Setup asks the site language** (Leon, 2026-11-15; local branch
+`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+with "Site language · Jazyk stránky": Slovenčina or English, each written in
+its own language, the one in force already chosen (address, then this
+browser's choice, then English, as before). Picking one switches setup and the
+page behind it at once, exactly as the Settings radios do: it is saved in this
+browser, the Settings radios follow it, the address gets `ui=`, and it never
+touches saved filters or the setup flag. It is not a setup answer, so Skip and
+Esc keep it. It looks like the Settings switch, not like the answer chips, and
+step 4's teaching-language question is now headed "Taught in" / "Jazyk
+výučby", so the two cannot be mixed up. Code: `languageField` in
+`js/onboarding.js`.
+
+**Skip setup says only what is true** (Leon, 2026-11-15, "take a look at this
+on each setup page"). Its grey second line used to say "Discards these
+answers" on every step, also on step 1 where nothing is asked, and when setup
+was reopened over existing filters, which Skip keeps. Now it has five states,
+set by how setup opened and whether an answer has changed since: opened with
+no filters at all (a first visit), unchanged: "Shows all programmes" /
+"Zobrazí všetky programy"; opened without setup answers, changed: "Discards
+these answers"; opened over answers, changed: "Keeps your filters" / "Tvoje
+filtre ostanú"; opened over answers, unchanged: no line; opened with only
+other filters (a search, a city) or in My list, unchanged: no line. Screen
+readers hear the name "Skip setup" and the line as its description.
+The label glides between centred (no line) and raised (a line under it), both
+ways, and the line fades and rises in; a change of words cross-fades (Leon,
+same day). Every line the setup can show sits in the button from the start in
+one grid cell, so the button, Back, Next and the dialog never move; only
+transform and opacity change, 120–160 ms with a 60 ms stagger so label and
+line never cross, and nothing moves under reduced motion. Code: `syncSkip` in
+`js/onboarding.js`. The language radios count as one Tab stop in setup's
+focus trap. Checks: check.mjs "Setup step 1 asks the site language…", "Skip's
+hint…" and "Skip on a first visit / reopened / over a search / in My list…";
+smoke SL-1, SL-2 and SL-3 (the motion, frame by frame) in `runAlignChromeSetup`.
+
 
 3,966 programmes · 283 universities · 12 countries, counted from `data/*.csv` on 2026-11-12, right after the research rows were added (the table below is the same count by country; its Notes column still describes the older rows). Recount with a small node script if you need the figure again; don't trust this line after a data change.
 
@@ -833,9 +868,11 @@ fills the screen. From top to bottom:
    passed deadline is the plain date, an outlined word "Passed" and "Check the
    next cycle": not struck through, not red, not dimmed. On phones the panel is
    left out, because the row above already shows the three facts; the full
-   points lines are repeated only when they say more than the row (two CAO
-   rounds, the HPAT, a cutoff that includes a test, or a note about your
-   points).
+   points lines are repeated whenever they say anything the row does not:
+   every CAO cutoff (the row shortens it to "≈39 R1" and can drop "with HL
+   Maths 4+"), the HPAT, a cutoff that includes a test, or a note about your
+   points. Only a plain "38 minimum" or "no minimum published" is not
+   repeated.
 3. The Apply button and the Official page button.
 4. "Before you apply", always open: entrance exam, intake, offer timing,
    language and application fee as short label and answer pairs, then the
@@ -848,25 +885,40 @@ fills the screen. From top to bottom:
 6. Two sections that open with a click or the Enter key: **Costs** (EU fee,
    living costs, fee plus 12 months' living) and **Applying details**
    (faculty, apply via, places). Closed, each shows its main value under its
-   name, for example "€14,771–24,371 a year with living". A section the
-   student opened stays open when the details are redrawn.
+   name, for example "€14,771–24,371 a year with living" or "Studielink · 650
+   places · year not published" (the word "Places:" is added only for "No
+   fixed limit" and for an unknown). A section the student opened stays open
+   when the details are redrawn.
 7. The QS and THE ranks as one plain line, "Whole-university rank, 2027: QS 6
    · THE 5". There is no "About the university" section (Leon). The note
    under it appears only when a shown rank has "=": "“=” means a tied rank."
+   "Not listed" is plain words (we checked the table); only "Not published"
+   is in a dashed box.
    `SHOW_RANKINGS` in `js/config.js` still switches the line off.
 8. Save, Compare and Student life, then the photo credit.
 
 **One-line notes (Leon, 2026-11-15).** A grey note in the details is at most
 one line. A note of 36 characters or fewer is shown as it is. A longer one
 becomes a one-line blue link that says what is inside, and the full text
-opens under it; nothing was deleted. The links are: "Fee details" (always,
-under the application fee), "Deadline details" (deadline notes), "Source"
+opens under it; nothing was deleted. The links are: "Fee details" (always
+under the application fee, for the sentence saying whose fee it is; the
+programme's own fee note follows the 36-character rule, so "Admission test:
+50 EUR." is a plain line above the link), "Deadline details" (deadline
+notes), "Source"
 (living costs), "How it is worked out" (the yearly estimate) and "Why there
 is no tuition fee" (Czech-taught public programmes). "your figure" and
 "national minimum, not a full budget" stay visible in front of the link,
 because they change what the figure means. Not shortened on purpose: the
 warnings in point 5, the dashed "not known" boxes with their reason, and the
 photo credit.
+
+In Slovak, "V angličtine, ako to uvádza univerzita." stands at the end of a
+section that shows English text; when the only English is inside a closed
+note link, the sentence is inside that note instead. Requirements separated
+by " · " are a bulleted list in Slovak too, and each item keeps its own
+English original for the "show the original" button. The small links (note
+links, QS, THE) keep the 44 px touch height on phones although their line is
+24 px tall.
 
 When printing, every section and note link is opened so the paper has the
 full text, and closed again afterwards. The list row was not changed. New
@@ -1699,8 +1751,8 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
 - **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
   PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and
   EN/SK button, System default and per-browser choice. Settings radios replace
-  the language pill; tapping the shown language no longer flips it. Asking the
-  language in setup is backlog work, not part of this change.
+  the language pill; tapping the shown language no longer flips it. Setup asks
+  the site language on step 1 since 2026-11-15 (see *State*).
 
 - **Round 2 choices** (Leon, 2026-11-05; `plans/design-round2/proposal.md`,
   “Decided” and “Later changes vs mockup v4”):

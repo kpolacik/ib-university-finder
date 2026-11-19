@@ -954,7 +954,11 @@
       "rk-line",
       "rk-none unk-t",
       "summary",
-      "toggle"
+      "toggle",
+      ".d-note-body",
+      "d-list-box",
+      "d-note dd-note",
+      "rk-none"
     ],
     "js/shortlist.js": [
       "./cost.js",
@@ -1299,7 +1303,24 @@
       "./faq.js",
       "#i-help",
       "ob-tools ob-help-hint",
-      "{help}"
+      "{help}",
+      "ob-uilang",
+      "legend",
+      "fieldset",
+      " · ",
+      "ob-seg",
+      "radio",
+      "ob-site-language",
+      "data-ob-language",
+      "lang",
+      "ob-skip-hint",
+      " stay",
+      "sk-h",
+      "sk-l",
+      "data-line",
+      "has-line",
+      "on",
+      "id"
     ],
     "js/compare-set.js": [
       "./compare.js",

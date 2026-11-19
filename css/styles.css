@@ -1399,10 +1399,37 @@ dialog.ob[open]{pointer-events:auto;opacity:1;transform:none;display:flex;flex-d
 /* Leon, 2026-11-09 (option B of three mock-ups): the hint is a second line
    inside the Skip button, so the footer loses the row it had under the
    44 px button. Skip's text sits a little above Back's; Leon chose that over
-   keeping it level ("B2 looks broken"). */
-.skipwrap .btn.btn-q{padding-inline:11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;line-height:18px}
-.skipwrap .btn small{font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3)}
+   keeping it level ("B2 looks broken").
+   Leon, 2026-11-15: the label glides between centred (no line) and raised
+   (a line under it), both ways, and the line fades and rises in. Label and
+   lines share one grid cell and every possible line is stacked in it, so
+   the button never changes size: only transform and opacity move. 7.5 and
+   9.5 px place an 18 px label and a 14 px line 1 px apart, centred together
+   in the 44 px button. Lines start at the left, not centred in the widest
+   (a button centres its text). The line waits 60 ms coming in and the label 60 ms
+   going back, so the two never cross. Interrupting reverses from where it is. */
+.skipwrap .btn.btn-q{display:grid;grid-template-areas:"s";align-items:center;justify-items:start;padding-inline:11px;line-height:18px}
+.skipwrap .btn.btn-q>span{grid-area:s}
+.skipwrap .sk-l{transition:transform var(--t-med) var(--ease-out) 60ms}
+.skipwrap .has-line .sk-l{transform:translateY(-7.5px);transition-delay:0ms}
+.skipwrap .sk-h{display:grid;grid-template-areas:"h";justify-items:start;transform:translateY(9.5px)}
+.skipwrap .btn small{grid-area:h;font-size:12px;line-height:14px;font-weight:400;color:var(--ink-3);opacity:0;transform:translateY(3px);transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out)}
+.skipwrap .btn small.on{opacity:1;transform:none;transition-delay:60ms}
+@media (prefers-reduced-motion:reduce){.skipwrap .sk-l,.skipwrap .btn small{transition:none}}
 .skipwrap .btn.btn-q:focus-visible{outline-offset:-3px}
+/* Setup step 1: the site language (Leon, 2026-11-15). Settings' segmented
+   look, not the answer chips', so it never reads as a filter. The checked
+   segment is painted here: a redrawn step has no sliding thumb. */
+.ob-uilang{border:0;margin:0;padding:0;min-width:0}
+.ob-uilang legend{padding:0;margin:0 0 8px;font-size:14px;font-weight:600;color:var(--ink)}
+.ob-uilang legend span{font-weight:400;color:var(--ink-2)}
+.ob-seg{display:inline-flex;max-width:100%;padding:3px;background:var(--hover);border-radius:9px}
+.ob-seg label{display:flex;align-items:center;justify-content:center;min-width:128px;min-height:36px;padding:0 14px;border-radius:6px;cursor:pointer;color:var(--ink-2);font-weight:600;white-space:nowrap}
+.ob-seg input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.ob-seg label:has(input:checked){background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--hairline)}
+.ob-seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-3px}
+@media (pointer:coarse),(max-width:599px){.ob-seg{display:flex}.ob-seg label{flex:1;min-width:0;min-height:44px}}
+.ob-step.on.stay{animation:none}
 
 
 .sheet-edit{display:none}.sheet-b .sheet-edit{display:inline-flex;justify-self:start}
@@ -2526,16 +2553,18 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 
 /* A grey note is one line. Anything longer is a one-line link (a native
    <details>) whose label says what is inside; the full text opens under it.
-   The summary is interactive, so it is blue; the text inside is plain grey. */
+   The summary is interactive, so it is blue; the text inside is plain grey.
+   The link is one 24 px line with the full hit height (--tap), like .rk-src. */
 .d-note{font-size:var(--fs-13);line-height:19px;font-weight:400;color:var(--ink-2);text-align:left}
 .dd-note.d-note{margin-top:2px}
-.d-note-more>summary{display:inline-flex;align-items:center;gap:4px;min-height:24px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.d-note-more>summary{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap);margin-block:calc((24px - var(--tap)) / 2);font-weight:600;color:var(--accent);cursor:pointer;list-style:none;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
 .d-note-more>summary::-webkit-details-marker{display:none}
 .d-note-more>summary::after{content:"";width:6px;height:6px;margin:0 2px 0 4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
 .d-note-more[open]>summary::after{transform:rotate(-135deg) translateY(-1px)}
 .d-note-more>summary:hover{color:var(--accent-press)}
 .d-note-body{margin:2px 0 4px;padding-left:10px;border-left:2px solid var(--hairline)}
 .d-note-body p+p{margin-top:4px}
+.d-note-body>.english-note{margin-top:4px;font-size:inherit}
 .d-note-more{display:inline-block}
 .d-note-more[open]{display:block}
 /* Deadline notes carry facts (a time of day, a test date), so their text is
@@ -2550,9 +2579,14 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
 .rk-items{display:inline-flex;flex-wrap:wrap;gap:0 14px}
 .rk{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .rk .fig{font-size:var(--fs-14);line-height:20px}
-.rk .rk-src{gap:2px;min-height:24px}
+/* The line stays 24 px tall, but the links keep the full hit height (--tap:
+   44 px on phones and touch screens, S16): the extra is taken back with a
+   negative margin, as in the compare table. */
+.rk .rk-src{gap:2px;min-height:var(--tap);margin-block:calc((24px - var(--tap)) / 2)}
 .detail .rk-src .ic{width:12px;height:12px}
-.detail .rk .rk-none{padding:0 5px;font-size:var(--fs-12);line-height:18px}
+/* "Not listed" is a checked fact, so plain words; "Not published" is the dashed box. */
+.rk .rk-none{font-size:var(--fs-13);line-height:20px;color:var(--ink-2)}
+.detail .rk .rk-none.unk-t{padding:0 5px;font-size:var(--fs-12);line-height:18px}
 
 /* Paper has no clicks: every fold and note link prints open. app.js opens
    them in beforeprint (Safari ignores ::details-content); this is the

@@ -1155,7 +1155,15 @@ async function runI18n(base) {
         assert(await page.ev(`![...document.querySelectorAll('#results .row')].some(n => n.querySelector('.data-en, .data-original, .detail-originals'))`), 'rows contain EN markers');
         let result = await page.ev(status);
         assert(result.count >= 2 && result.pressed === 'false' && result.allOff, 'originals should start hidden');
-        assert(await page.ev(`[...document.querySelectorAll('${detail} .d-sec')].every(s => s.querySelectorAll('.english-note').length === (s.querySelector('[data-untranslated]') ? 1 : 0))`), 'section notes are missing or repeated');
+        // One notice at the end of a section that shows untranslated text; when a
+        // section's only English is inside closed note links, one inside each of
+        // those notes instead (review of 5bb123d).
+        assert(await page.ev(`[...document.querySelectorAll('${detail} .d-sec')].every(s => {
+          const english=[...s.querySelectorAll('[data-untranslated]')], visible=english.filter(n=>!n.closest('.d-note-body'));
+          const own=[...s.children].filter(n=>n.classList.contains('english-note')).length, bodies=[...s.querySelectorAll('.d-note-body')];
+          return own===(visible.length?1:0) && bodies.every(b=>b.querySelectorAll('.english-note').length===(b.querySelector('[data-untranslated]')&&!visible.length?1:0))
+            && s.querySelectorAll('.english-note').length<=own+bodies.length;
+        })`), 'section notes are missing or repeated');
         assert(await page.ev(`[...document.querySelectorAll('.deg .data-value')].filter(n => n.textContent === 'BSc').every(n => !n.querySelector('[data-english], [data-untranslated], button'))`), 'equal degree has markers');
         await page.screenshot(`/tmp/ib-i18n-v2/${width}-sk-off.png`);
         await page.ev(`document.querySelector('${button}').click()`);
@@ -1237,8 +1245,11 @@ async function runRound2(base) {
       // so Skip's label sits above Back's centre line by design; the two lines share an edge.
       await check(width,'R2J','setup stepper is centred; Skip\'s label and its hint share an edge inside the button',async()=>{
         await edit(); await next();
+        // The hint shows once an answer would be discarded (2026-11-15).
+        await page.ev(`document.querySelector('#ob-points').value='37';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`);
+        await page.ev(`Promise.all(document.querySelector('.skipwrap button').getAnimations({subtree:true}).map(a=>a.finished.catch(()=>{})))`);
         const m=await page.ev(`(()=>{const box=(n)=>n.getBoundingClientRect(),text=(n)=>{const r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()};
-          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),sb=document.querySelector('.skipwrap button'),lr=document.createRange();lr.selectNode([...sb.childNodes].find(n=>n.nodeType===3));const skip=lr.getBoundingClientRect(),hint=text(sb.querySelector('small')),btn=box(sb);
+          const step=box(document.querySelector('.ob-step.on')),btns=[...document.querySelectorAll('.big-pts>*')].map(box),sb=document.querySelector('.skipwrap button'),lr=document.createRange();lr.selectNodeContents(sb.querySelector('.sk-l'));const skip=lr.getBoundingClientRect(),hint=text(sb.querySelector('small.on')),btn=box(sb);
           return {offCentre:(btns[0].left+btns.at(-1).right)/2-(step.left+step.right)/2,inside:hint.bottom<=btn.bottom+0.5&&skip.top>=btn.top-0.5,indent:skip.left-hint.left};})()`);
         assert(Math.abs(m.offCentre)<=1 && m.inside && Math.abs(m.indent)<=1,`setup layout off: ${JSON.stringify(m)}`);
         await page.ev(`document.querySelector('#onboarding').dispatchEvent(new Event('cancel',{cancelable:true}))`);
@@ -2063,20 +2074,45 @@ async function runBatch2C(base) {
           const m = await page.ev(`(()=>{
             const top=document.querySelector('${detail} .d-apply'), group=document.querySelector('${detail} .d-foot>.d-actions'), outer=group.getBoundingClientRect(), topBox=top.getBoundingClientRect();
             const links=[...top.children], buttons=[...group.children], link=links.at(-1).getBoundingClientRect(), [a,b]=buttons.map(n=>n.getBoundingClientRect());
+            // The gaps of the F3 layout, measured between drawn blocks: what sits
+            // above the links, what follows them, and what sits above the footer.
+            const blocks=[...top.parentElement.children].filter(n=>n.getClientRects().length);
+            const aboveOf=(el)=>{const t=el.getBoundingClientRect().top;return blocks.filter(n=>n!==el&&n.getBoundingClientRect().bottom<=t+0.5).sort((x,y)=>y.getBoundingClientRect().bottom-x.getBoundingClientRect().bottom)[0]||null};
+            const belowOf=(el)=>{const b=el.getBoundingClientRect().bottom;return blocks.filter(n=>n!==el&&n.getBoundingClientRect().top>=b-0.5).sort((x,y)=>x.getBoundingClientRect().top-y.getBoundingClientRect().top)[0]||null};
+            const kind=(n)=>n?['d-photo','d-pts','d-head','d-facts','d-apply','detail-originals','d-must','notes','d-fold','d-rank','d-foot','d-src'].find(c=>n.classList.contains(c))||n.className:null;
+            const foot=group.parentElement, topAbove=aboveOf(top), topBelow=belowOf(top), footAbove=aboveOf(foot);
             const must=document.querySelector('${detail} .d-must').getBoundingClientRect();
             const side=Math.abs(a.top-b.top)<1;
             // Alignment fixes: a detail too narrow for both labels stacks the pair, full width.
             const stacked=Math.abs(a.left-b.left)<1&&Math.abs(a.width-outer.width)<=1&&b.top>=a.bottom;
-            return {full:Math.abs(link.width-topBox.width),sameWidth:Math.abs(topBox.width-outer.width),below:a.top-link.bottom,beforeMust:must.top-link.bottom,widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
+            return {full:Math.abs(link.width-topBox.width),sameWidth:Math.abs(topBox.width-outer.width),below:a.top-link.bottom,beforeMust:must.top-link.bottom,
+              topAbove:kind(topAbove),topGap:topAbove?topBox.top-topAbove.getBoundingClientRect().bottom:null,
+              topBelow:kind(topBelow),nextGap:topBelow.getBoundingClientRect().top-topBox.bottom,
+              footAbove:kind(footAbove),footGap:foot.getBoundingClientRect().top-footAbove.getBoundingClientRect().bottom,
+              linkGaps:links.slice(1).map((n,i)=>n.getBoundingClientRect().top-links[i].getBoundingClientRect().bottom),widths:Math.abs(a.width-b.width),heights:Math.abs(a.height-b.height),side,stacked,vgap:b.top-a.bottom,
               gap:b.left-a.right,minHeight:Math.min(link.height,a.height,b.height),overflow:[...links,...buttons].some(n=>n.scrollWidth>n.clientWidth+1),
               order:links.length>=1&&links.every(n=>n.matches('a.btn'))&&links.some(n=>n.matches('a.btn-p'))&&buttons.length===2&&buttons[0].matches('button.save')&&buttons[1].matches('button.cmpb'),
               separate:!group.querySelector('.lnk,.ok,.tag')&&!top.querySelector('button,.lnk,.ok,.tag'),
               pageOverflow:document.documentElement.scrollWidth>innerWidth};
           })()`);
           assert(m.order && m.separate && m.full <= 1 && m.sameWidth <= 1 && m.widths <= 1 && m.minHeight >= 44 && !m.overflow && !m.pageOverflow, JSON.stringify(m));
-          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12) && m.below > 0 && m.beforeMust > 0, JSON.stringify(m));
+          assert(m.heights <= 1 && (m.side ? m.gap >= 8 && m.gap <= 12 : m.stacked && m.vgap >= 8 && m.vgap <= 12), JSON.stringify(m));
+          // The old single block had the pair 8–12 px under the link. The two groups
+          // now have their own fixed distances: the links are 16 px under the facts
+          // panel (pane), 12 px under the photo or 24 px under the points block
+          // (phone slot), or start the slot; two links are 10 px apart; the next
+          // block (the originals button in Slovak, else "Before you apply") follows
+          // at 24 px; the footer sits 16 px under whatever precedes it.
+          const near = (value, want) => Math.abs(value - want) <= 1;
+          const topWant = { 'd-facts': 16, 'd-photo': 12, 'd-pts': 24 };
+          assert(m.topAbove === null ? width < 1200 : m.topAbove in topWant && near(m.topGap, topWant[m.topAbove]), `gap above the links ${JSON.stringify(m)}`);
+          assert(m.topAbove !== 'd-facts' || width >= 1200, `facts panel in a slot ${JSON.stringify(m)}`);
+          assert(m.linkGaps.every((gap) => near(gap, 10)) && ['detail-originals', 'd-must'].includes(m.topBelow) && near(m.nextGap, 24), `gaps between and under the links ${JSON.stringify(m)}`);
+          assert(['d-fold', 'd-rank'].includes(m.footAbove) && near(m.footGap, 16) && m.below > 0 && m.beforeMust > 0, `gap above the footer ${JSON.stringify(m)}`);
           if ([390, 800, 1400].includes(width)) {
-            await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-actions');
+            // Both groups this check is about: the links near the top, the pair in the footer.
+            await screenshot(page, shots + '/actions-links-' + width + '-' + ui + '.png', detail + ' .d-apply');
+            await screenshot(page, shots + '/actions-' + width + '-' + ui + '.png', detail + ' .d-foot>.d-actions');
           }
         });
         if ([1024, 1199, 1200, 1280].includes(width)) {
@@ -2116,7 +2152,7 @@ async function runBatch2C(base) {
           // Detail F3: the note is a one-line link; the whole text is inside it.
           const n=dd?.tagName==='DD'?[...dd.querySelectorAll('.dd-note .d-note-body')].find(x=>x.textContent.startsWith(${JSON.stringify(note)})):null;
           return !!n && n.closest('details').open===false && !n.checkVisibility() &&
-            [...document.querySelectorAll('#pane dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})) &&
+            [...document.querySelectorAll('#pane dd .dd-note .d-note-body')].some(x=>x.textContent.includes(${JSON.stringify(profile)})) &&
             !document.querySelector('#dd-languages .dd-help,#f-languages-help') &&
             !document.querySelector('#dd-languages .dropdown-panel').hasAttribute('aria-describedby');
         })()`), 'Czech note missing from the Language row, fee profile note missing, or Language help remains');
@@ -2130,7 +2166,7 @@ async function runBatch2C(base) {
           return {open:more.open,focus:document.activeElement===summary,shown:body.height>0&&body.top>=summary.getBoundingClientRect().bottom-1,inside:body.left>=pane.left&&body.right<=pane.right+1,
             line:summary.getBoundingClientRect().height,tab:summary.tabIndex};
         })()`);
-        assert(opened.open && opened.focus && opened.shown && opened.inside && opened.line >= 24 && opened.tab === 0, 'Czech note link did not open in place ' + JSON.stringify(opened));
+        assert(opened.open && opened.focus && opened.shown && opened.inside && opened.line >= 28 && opened.tab === 0, 'Czech note link did not open in place ' + JSON.stringify(opened));
         await screenshot(page, shots + '/czech-free-' + ui + '.png', '#pane .dd-note');
       });
     } finally { await page.close(); }
@@ -2159,7 +2195,7 @@ async function runBatch2C(base) {
             const dt=[...pane.querySelectorAll('dt')].find(d=>d.textContent===${JSON.stringify(lang)});
             const dd=dt?.nextElementSibling;
             return {foot:!!pane.querySelector('.d-foot'),
-              profile:[...pane.querySelectorAll('dd .dd-note .d-note-body')].some(x=>x.textContent.endsWith(${JSON.stringify(profile)})),
+              profile:[...pane.querySelectorAll('dd .dd-note .d-note-body')].some(x=>x.textContent.includes(${JSON.stringify(profile)})),
               czechAnywhere:[...pane.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)})),
               czechInLanguage:dd?.tagName==='DD'&&[...dd.querySelectorAll('.dd-note')].some(x=>x.textContent.includes(${JSON.stringify(note)}))}
           })()`);
@@ -4349,12 +4385,20 @@ async function runAlignChromeSetup(base) {
       await check(width, 'AL-S2 setup buttons', 'one 44 px button height on the steps and the done screen; no empty band above the done buttons; Skip\'s ring is visible and holds its hint', async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
         await settle(page);
-        await page.key('Shift', 'ShiftLeft', 16);
-        await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
-        const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
-        assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
+        // A first visit: Skip says it shows all programmes (Leon, 2026-11-15).
+        assert(await page.ev(`document.querySelector('.skipwrap small.on')?.textContent===${JSON.stringify(UI.en.r8_skip_all)}`), 'step 1 does not say Skip shows all programmes');
         const heights = [];
-        for (let step = 1; step <= 5; step++) { await settle(page); heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`); }
+        for (let step = 1; step <= 5; step++) {
+          await settle(page);
+          if (step === 2) {
+            await page.ev(`document.querySelector('#ob-points').value='36';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`); await settle(page);
+            await page.key('Shift', 'ShiftLeft', 16);
+            await page.ev(`document.querySelector('.skipwrap .btn').focus()`);
+            const ring = await page.ev(`(()=>{const b=document.querySelector('.skipwrap .btn'),r=document.createRange();r.selectNodeContents(b.querySelector('small.on'));const h=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {vis:b.matches(':focus-visible'),inside:h.top>=o.top&&h.bottom<=o.bottom+0.5}})()`);
+            assert(ring.vis && ring.inside, `Skip's hint is not inside its button: ${JSON.stringify(ring)}`);
+          }
+          heights.push(...(await page.ev(foot)).heights); await next(page, `step ${step + 1}`);
+        }
         await page.waitFor(`({ok:!!document.querySelector('.ob-done'),why:'no done screen'})`, 5000, 'done screen');
         await settle(page);
         const done = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),last=[...d.querySelectorAll('.ob-done>*')].at(-1).getBoundingClientRect(),f=d.querySelector('.ob-foot').getBoundingClientRect();return {gap:f.top-last.bottom,heights:[...d.querySelectorAll('.ob-foot .btn')].map(n=>n.getBoundingClientRect().height)}})()`);
@@ -4375,11 +4419,12 @@ async function runAlignChromeSetup(base) {
     try {
       await check(width, 'LP-S5 setup hints', `(${lang}): Skip's and the maths hint sit close under their label text, aligned with it; the dialog stays centred`, async () => {
         await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
-        await next(page, 'step 2'); await settle(page);
+        await next(page, 'step 2');
+        await page.ev(`document.querySelector('#ob-points').value='36';document.querySelector('#ob-points').dispatchEvent(new Event('input',{bubbles:true}))`); await settle(page);
         const m = await page.ev(`(()=>{const tb=${textBox},d=document.querySelector('#onboarding'),r=d.getBoundingClientRect();
-          const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
+          const sk=d.querySelector('.skipwrap .btn'),sm=d.querySelector('.skipwrap small.on'),sw=d.querySelector('.ob-step.on .switch'),hint=d.querySelector('.ob-step.on .ob-hint');
           const label=[...sw.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()),lr=document.createRange();lr.selectNode(label);const lb=lr.getBoundingClientRect();
-          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:sk.getBoundingClientRect().bottom-tb(sm).bottom,skipTextGap:(()=>{const r=document.createRange();r.selectNode([...sk.childNodes].find(n=>n.nodeType===3));return tb(sm).top-r.getBoundingClientRect().bottom})(),
+          return {skipLeft:tb(sk).left,skipHint:tb(sm).left,skipGap:sk.getBoundingClientRect().bottom-tb(sm).bottom,skipTextGap:(()=>{const r=document.createRange();r.selectNodeContents(sk.querySelector('.sk-l'));return tb(sm).top-r.getBoundingClientRect().bottom})(),
             labelLeft:lb.left,hintLeft:tb(hint).left,mathGap:tb(hint).top-lb.bottom,centre:Math.abs(r.top-(innerHeight-r.bottom))}})()`);
         await shoot(page, `lp-setup-hints-${width}-${lang}`);
         assert(Math.abs(m.skipLeft - m.skipHint) <= 1 && Math.abs(m.labelLeft - m.hintLeft) <= 1, `hints not aligned: ${JSON.stringify(m)}`);
@@ -4394,6 +4439,142 @@ async function runAlignChromeSetup(base) {
         assert(h.icon && h.name === (lang === 'sk' ? 'otáznik' : 'the question mark'), `"?" hint: ${JSON.stringify(h)}`);
         if (width >= 390) assert(h.lines === 1, `"?" hint takes ${h.lines} lines`);
       });
+    } finally { await page.close(); }
+  }
+
+  // Setup asks the site language on step 1 (backlog language-in-setup, built
+  // 2026-11-15): a first visit with nothing stored is English; picking
+  // Slovenčina (a click, then the arrow keys as in Settings) switches setup
+  // and the page at once, saves the choice like Settings, keeps focus on the
+  // radio, and Skip keeps it. Opened bare, not with open(), which sets ?ui=
+  // and a stored language.
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    const page = await openPage(base, width, height);
+    try {
+      await check(width, 'SL-1 setup language', 'first visit: English checked; picking Slovenčina switches setup and the page, saves it like Settings; arrows switch; Skip and a bare reload keep it', async () => {
+        await page.waitFor(ready, 15000, 'page');
+        if (width < 600) {
+          await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+          await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+        }
+        await page.ev(`localStorage.clear();window.__oldPage=true;location.reload()`);
+        await page.waitFor(`({ok:!window.__oldPage&&document.querySelector('#loading')?.hidden&&!!document.querySelector('#onboarding[open] .ob-uilang'),why:'fresh setup'})`, 15000, 'fresh setup');
+        await settle(page);
+        const look = `(()=>{const d=document.querySelector('#onboarding'),r=(c)=>d.querySelector('input[data-ob-language="'+c+'"]');return {html:document.documentElement.lang,
+          sk:r('sk').checked,en:r('en').checked,legend:d.querySelector('.ob-uilang legend').textContent,h:d.querySelector('#ob-title').textContent,skip:d.querySelector('.skipwrap .sk-l').textContent,line:d.querySelector('.skipwrap small.on')?.textContent??null,
+          start:d.querySelector('.ob-foot .btn-p').textContent,focus:document.activeElement?.getAttribute('data-ob-language')??document.activeElement?.id,stored:localStorage.getItem('ib-university-finder:language'),
+          flag:localStorage.getItem('ibuf.onboarding.v1'),settingsSk:document.querySelector('#settings-panel [data-language=sk]').checked,code:document.querySelector('#settings-language').textContent,
+          search:location.search,heights:[...d.querySelectorAll('.ob-seg label')].map(n=>n.getBoundingClientRect().height),over:d.querySelector('.ob-body').scrollWidth-d.querySelector('.ob-body').clientWidth}})()`;
+        let m = await page.ev(look);
+        await shoot(page, `setup-language-${width}-first`);
+        assert(m.html === 'en' && m.en && !m.sk && m.legend === `${UI.en.r8_ob_site_language} · ${UI.sk.r8_ob_site_language}` && m.skip === UI.en.r2_skip && m.line === UI.en.r8_skip_all && m.stored === null && m.search === '', `first visit: ${JSON.stringify(m)}`);
+        assert(m.over <= 0 && m.heights.every((h) => h >= (width < 600 ? 44 : 36)), `segments: ${JSON.stringify(m)}`);
+        await page.click(`document.querySelector('#onboarding .ob-seg label[lang=sk]')`, 'Slovenčina');
+        await page.waitFor(`({ok:document.querySelector('#ob-title')?.textContent===${JSON.stringify(UI.sk.r2_ob1h)},why:'setup not in Slovak'})`, 5000, 'Slovak setup');
+        await settle(page);
+        m = await page.ev(look);
+        await shoot(page, `setup-language-${width}-sk`);
+        assert(m.html === 'sk' && m.sk && !m.en && m.focus === 'sk' && m.stored === 'sk' && m.flag === null && m.settingsSk && m.code === 'SK'
+          && /[?&]ui=sk/.test(m.search) && m.skip === UI.sk.r2_skip && m.start === UI.sk.r2_start && m.legend === `${UI.sk.r8_ob_site_language} · ${UI.en.r8_ob_site_language}`, `after the Slovak pick: ${JSON.stringify(m)}`);
+        assert(await page.ev(`document.querySelector('.skipwrap small.on')?.textContent===${JSON.stringify(UI.sk.r8_skip_all)}`), 'a language pick changed what Skip says it does');
+        await page.key('ArrowRight', 'ArrowRight', 39);
+        await page.waitFor(`({ok:document.documentElement.lang==='en'&&document.activeElement?.getAttribute('data-ob-language')==='en',why:document.documentElement.lang+' '+document.activeElement?.tagName})`, 5000, 'arrow to English');
+        await page.key('ArrowLeft', 'ArrowLeft', 37);
+        await page.waitFor(`({ok:document.documentElement.lang==='sk'&&document.activeElement?.getAttribute('data-ob-language')==='sk'&&document.querySelector('#onboarding').contains(document.activeElement),why:document.documentElement.lang+' '+document.activeElement?.tagName})`, 5000, 'arrow back to Slovak');
+        await page.click(`document.querySelector('#onboarding .skipwrap button')`, 'Skip setup');
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.documentElement.lang==='sk' && localStorage.getItem('ib-university-finder:language')==='sk' && localStorage.getItem('ibuf.onboarding.v1')==='dismissed' && !localStorage.getItem('ibuf.filters.v1')`), 'Skip lost the language or stored filters');
+        await page.ev(`window.__oldPage=true;location.href=${JSON.stringify(base)}`);
+        await page.waitFor(ready, 15000, 'bare reload');
+        assert(await page.ev(`location.search==='' && document.documentElement.lang==='sk' && !document.querySelector('#onboarding').open && document.querySelector('#settings-language').textContent==='SK'`), 'a bare reload is not Slovak');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+  // Skip over existing filters says they are kept, on the 320 px footer where
+  // Skip shares a row with Back (plan review, 2026-11-15).
+  for (const lang of ['en', 'sk']) {
+    const page = await open(320, 640, lang);
+    try {
+      await check(320, 'SL-2 setup Skip keeps', `(${lang}): reopened over answers, a change makes Skip say the filters are kept; Skip and Back share a row; nothing scrolls sideways`, async () => {
+        await page.ev(`{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}))}`);
+        await page.waitFor(`({ok:/[?&]points=36/.test(location.search),why:location.search})`, 5000, 'points applied');
+        await page.click(`document.querySelector('#f-more')`, 'Filters');
+        await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers');
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await settle(page);
+        assert(await page.ev(`document.querySelector('#ob-points').value==='36' && !document.querySelector('.skipwrap small.on')`), 'reopened setup lost the points or shows a hint unchanged');
+        await page.ev(`{const p=document.querySelector('#ob-points');p.value='37';p.dispatchEvent(new Event('input',{bubbles:true}))}`); await settle(page);
+        const m = await page.ev(`(()=>{const d=document.querySelector('#onboarding'),b=(n)=>n.getBoundingClientRect(),sk=d.querySelector('.skipwrap .btn'),sm=sk.querySelector('small.on'),back=d.querySelector('.ob-foot>.btn:not(.btn-p)'),body=d.querySelector('.ob-body');
+          return {hint:sm?.textContent,desc:sk.getAttribute('aria-describedby'),name:sk.getAttribute('aria-label'),skipTop:b(sk).top,backTop:b(back).top,skipRight:b(sk).right,backLeft:b(back).left,hintRight:b(sm).right,over:body.scrollWidth-body.clientWidth,footOver:d.scrollWidth-d.clientWidth}})()`);
+        await shoot(page, `setup-skip-keep-320-${lang}`);
+        assert(m.hint === UI[lang].r8_skip_keep && m.desc === 'ob-skip-hint' && m.name === UI[lang].r2_skip, `hint: ${JSON.stringify(m)}`);
+        assert(Math.abs(m.skipTop - m.backTop) <= 1 && m.skipRight <= m.backLeft && m.hintRight <= m.skipRight + 0.5 && m.over <= 0 && m.footOver <= 0, `footer: ${JSON.stringify(m)}`);
+        await page.key('Escape', 'Escape', 27);
+        assert(await page.ev(`!document.querySelector('#onboarding').open && document.querySelector('#f-points').value==='36'`), 'Escape did not keep the filters');
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
+    } finally { await page.close(); }
+  }
+
+  // Skip's motion (Leon, 2026-11-15: "animate down to be centered … also on
+  // the way back"). Each change is paused and stepped through: the button,
+  // Back, Next and the dialog never move or resize, and while a line is
+  // visible it never reaches into the label. Reduced motion is instant.
+  // Reopened over answers (no line ↔ "Keeps your filters") and a first visit
+  // ("Shows all programmes" ↔ "Discards these answers").
+  for (const [width, lang, reopened] of [[1280, 'en', true], [320, 'sk', true], [390, 'sk', false]]) {
+    const page = await open(width, width < 600 ? 640 : 900, lang, { onboarding: reopened ? 'dismissed' : null });
+    try {
+      await check(width, 'SL-3 Skip motion', `(${lang}, ${reopened ? 'reopened' : 'first visit'}): the label glides both ways, the line fades; nothing around it moves; reduced motion is instant`, async () => {
+        if (reopened) {
+          await page.ev(`{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}))}`);
+          await page.waitFor(`({ok:/[?&]points=36/.test(location.search),why:location.search})`, 5000, 'points applied');
+          if (width < 600) { await page.click(`document.querySelector('#f-more')`, 'Filters'); await page.click(`document.querySelector('.sheet-edit')`, 'Edit my answers'); }
+          else await page.click(`document.querySelector('.status [data-edit]')`, 'Edit my answers');
+        }
+        await page.waitFor(`({ok:document.querySelector('#onboarding').open,why:'setup'})`, 5000, 'setup');
+        await next(page, 'step 2'); await page.ev('document.fonts.ready.then(()=>1)'); await settle(page);
+        const look = `(()=>{const d=document.querySelector('#onboarding'),b=d.querySelector('.skipwrap button'),r=(n)=>{const x=n.getBoundingClientRect();return [x.left,x.top,x.width,x.height].map(v=>Math.round(v*10)/10).join()},
+          tb=(n)=>{const g=document.createRange();g.selectNodeContents(n);return g.getBoundingClientRect()},lab=tb(b.querySelector('.sk-l'));
+          return {boxes:[b,...d.querySelectorAll('.ob-foot>.btn'),d].map(r).join('|'),lab:lab.top,labBottom:lab.bottom,on:b.querySelector('small.on')?.textContent??null,
+            vis:[...b.querySelectorAll('small')].map(s=>({o:+getComputedStyle(s).opacity,top:tb(s).top})).filter(s=>s.o>0.05)}})()`;
+        const values = reopened ? [['37', UI[lang].r8_skip_keep], ['36', null], ['37', UI[lang].r8_skip_keep]] : [['38', UI[lang].r2_skip_sub], ['', UI[lang].r8_skip_all]];
+        const start = await page.ev(look);
+        assert(start.on === (reopened ? null : UI[lang].r8_skip_all), `start: ${JSON.stringify(start)}`);
+        const centred = reopened ? start.lab : null;
+        for (const [value, line] of values) {
+          const before = await page.ev(look);
+          await page.ev(`{const p=document.querySelector('#ob-points');p.value='${value}';p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.skipwrap button').getAnimations({subtree:true}).forEach(a=>a.pause())}`);
+          assert(await page.ev(`document.querySelector('.skipwrap button').getAnimations({subtree:true}).length`) > 0, `${value}: nothing animates`);
+          const offsets = [];
+          for (const t of [0, 30, 60, 90, 120, 160, 220]) {
+            await page.ev(`document.querySelector('.skipwrap button').getAnimations({subtree:true}).forEach(a=>{a.currentTime=${t}})`);
+            const f = await page.ev(look);
+            if (t === 90) await shoot(page, `skip-motion-${width}-${lang}-to-${value || 'blank'}-90ms`);
+            assert(f.boxes === before.boxes, `${value} at ${t} ms: something moved ${JSON.stringify([before.boxes, f.boxes])}`);
+            assert(f.vis.every((v) => v.top - f.labBottom >= -0.5), `${value} at ${t} ms: the line reaches into the label ${JSON.stringify(f)}`);
+            offsets.push(f.lab);
+          }
+          await page.ev(`Promise.all(document.querySelector('.skipwrap button').getAnimations({subtree:true}).map(a=>{a.play();return a.finished.catch(()=>{})}))`);
+          const after = await page.ev(look);
+          assert(after.on === line && after.boxes === before.boxes, `${value}: ended ${JSON.stringify(after)}`);
+          // The label moves monotonically, without a jump, when it moves at all.
+          const steps = [before.lab, ...offsets, after.lab].map((y, i, a) => i ? y - a[i - 1] : 0);
+          assert(steps.every((d) => d <= 0.01) || steps.every((d) => d >= -0.01), `${value}: label wobbles ${steps}`);
+          assert(steps.every((d) => Math.abs(d) <= 6), `${value}: label jumps ${steps}`);
+          if (reopened && line === null) assert(Math.abs(after.lab - centred) <= 0.5, `${value}: label not back in the centre ${after.lab} vs ${centred}`);
+        }
+        await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
+        try {
+          const before = await page.ev(look);
+          const value = reopened ? '36' : '38';
+          await page.ev(`{const p=document.querySelector('#ob-points');p.value='${value}';p.dispatchEvent(new Event('input',{bubbles:true}))}`);
+          const now = await page.ev(`(()=>({running:document.querySelector('.skipwrap button').getAnimations({subtree:true}).length,look:${look}}))()`);
+          assert(now.running === 0 && now.look.on === (reopened ? null : UI[lang].r2_skip_sub) && now.look.boxes === before.boxes
+            && now.look.vis.every((v) => v.o === 1) && (now.look.on === null) === (now.look.vis.length === 0), `reduced motion: ${JSON.stringify(now)}`);
+        } finally { await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] }); }
+      });
+      assert(page.errors.length === 0, page.errors.map(e => e.text).join(' | '));
     } finally { await page.close(); }
   }
 
@@ -5491,7 +5672,8 @@ async function runNonModalSetup(base, want) {
       await check(width,'NMO focus','non-modal semantics, Tab/Shift+Tab inside, Escape discards and returns keyboard focus, tap returns without a ring',async()=>{
         assert(await page.ev(`!document.querySelector('#onboarding').matches(':modal')&&document.querySelector('#onboarding').getAttribute('aria-modal')==='true'&&document.activeElement.id==='ob-title'`),'Setup still native-modal or missing semantics/focus');
         await page.key('Tab','Tab',9);
-        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .btn-p')`),'Tab missed first control');
+        // Since 2026-11-15 step 1 starts with the site-language radios: one Tab stop, the checked one.
+        assert(await page.ev(`document.activeElement===document.querySelector('#onboarding input[data-ob-language="en"]:checked')`),'Tab missed first control');
         await page.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
         await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8});
         assert(await page.ev(`document.activeElement===document.querySelector('#onboarding .skipwrap button')`),'Shift+Tab escaped');
@@ -6334,7 +6516,9 @@ async function runPr2(base) {
             overflow:d.scrollWidth>d.clientWidth+1||document.documentElement.scrollWidth>innerWidth+1,
             pane:!!d.querySelector('.d-facts')&&!!d.querySelector('.d-head'),slotPoints:d.querySelectorAll('.d-pts').length,
             folds:[...d.querySelectorAll('details.d-fold')].map(f=>[f.open,f.querySelector('summary h3')?.textContent,f.querySelector('summary').getBoundingClientRect().height>=44]),
-            notes:[...d.querySelectorAll('details.d-note-more')].every(n=>!n.open&&n.querySelector('summary').getBoundingClientRect().height>=24),
+            notes:[...d.querySelectorAll('details.d-note-more')].every(n=>!n.open&&n.querySelector('summary').getBoundingClientRect().height>=${width === 390 ? 44 : 28}),
+            rankLinks:[...d.querySelectorAll('.rk-src')].every(a=>a.getBoundingClientRect().height>=${width === 390 ? 44 : 28}),
+            rankLine:[...d.querySelectorAll('.rk-line')].every(p=>p.getBoundingClientRect().height<=(p.querySelector('.rk-items').getBoundingClientRect().top>p.querySelector('.rk-lab').getBoundingClientRect().bottom-1?52:28)),
             headings:[...d.querySelectorAll('h2,h3')].map(h=>h.tagName).join(''),
             originalsInDetails:!!d.querySelector('details .detail-originals'),
             ranks:!!d.querySelector('.d-rank'),rankInFold:!!d.querySelector('details .d-rank'),flag:SHOW_RANKINGS,
@@ -6347,7 +6531,7 @@ async function runPr2(base) {
         const order = ['d-photo', 'd-pts', 'd-head', 'd-facts', 'd-apply', 'detail-originals', 'd-must', 'notes', 'd-fold', 'd-rank', 'd-foot', 'd-src'];
         const places = facts.drawn.map((name) => order.indexOf(name));
         assert(!places.includes(-1) && places.every((at, i) => !i || at >= places[i - 1]) && !facts.overlaps, `detail drawn out of order or overlapping: ${facts.drawn}`);
-        assert(JSON.stringify(facts.folds) === JSON.stringify([[false, 'Costs', true], [false, 'Applying details', true]]) && facts.notes, `folds ${JSON.stringify(facts.folds)} or a note link is open or under 24 px`);
+        assert(JSON.stringify(facts.folds) === JSON.stringify([[false, 'Costs', true], [false, 'Applying details', true]]) && facts.notes && facts.rankLinks && facts.rankLine, `folds ${JSON.stringify(facts.folds)}, or a note link is open, or a note or rank link is under the ${width === 390 ? 44 : 28} px hit height, or the rank line grew`);
         assert(facts.headings === (width === 390 ? 'H3H3H3' : 'H2H3H3H3') && !facts.originalsInDetails && !facts.rankInFold, `heading outline ${facts.headings}, or the originals button or rank line is inside a fold`);
         assert(!facts.overflow, 'horizontal overflow');
         assert(facts.ranks === !!(facts.flag && row.rankingsYear), 'ranking flag DOM mismatch');
@@ -6389,9 +6573,11 @@ async function runPr2(base) {
           const missingYear=renderDetail({...row,rankingsYear:''},paramsToState(''),{showRankings:true});
           const unknown=renderDetail({...row,appFee:null,appFeeNote:'',places:null,placesKind:'',intakeMonths:[],ibRecognition:'',ibOffer:'',appFeeUnknown:true,placesUnknown:true,intakeUnknown:true,recognitionUnknown:true,offerUnknown:true},paramsToState(''),{slot:${width === 390}});
           window.__pr2detail.replaceWith(unknown);window.__pr2detail=unknown;
-          return {rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
+          const tag=(text)=>{const n=[...ranks.querySelectorAll('.rk-none')].find(x=>x.textContent===text);return n?(getComputedStyle(n).borderTopStyle==='dashed'?'boxed':'plain'):'absent'};
+          const forced=renderDetail({...row,theRank:null},paramsToState(''),{showRankings:true}).querySelector('.d-rank .rk-none.unk-t');
+          return {listed:tag('Not listed'),published:forced?.textContent==='Not published'?'boxed':'absent',rank:ranks.textContent,links,noYear:!missingYear.querySelector('.d-rank'),unknown:(unknown.textContent.match(/Not published/g)||[]).length,flat:unknown.scrollWidth<=unknown.clientWidth+1};
         })()`);
-        assert(/^Whole-university rank, 2027/.test(result.rank) && /THE\s*\(opens in a new tab\)\s*Not listed/.test(result.rank) && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
+        assert(/^Whole-university rank, 2027/.test(result.rank) && /THE, 2027 table\s*\(opens in a new tab\)\s*Not listed/.test(result.rank) && result.listed === 'plain'&& result.published === 'boxed' && result.links.some(u => u.startsWith('https://www.topuniversities.com/')) && result.links.some(u => u.startsWith('https://www.timeshighereducation.com/')), 'forced ranks / sources missing');
         assert(result.noYear && result.unknown >= 5 && result.flat, 'missing year / unknown fixture');
       });
       await check(where, 'F3 folds', 'folds and note links open from the keyboard, stay inside the detail, and the choice survives a redraw', async () => {
@@ -6431,13 +6617,23 @@ async function runPr2(base) {
         await page.ev(`document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')[1].open=false`);
         await page.ev(`new Promise(r=>setTimeout(r,80))`);
         const openBefore = await page.ev(`[...document.querySelectorAll('.detail details')].map(x=>x.open)`);
-        await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+        // Print media and the beforeprint hook together, as a real print has them
+        // (review of 5bb123d: each used to be tested alone). On paper the pane is
+        // hidden, so what must be readable is every fold and note of an open slot.
+        await page.send('Emulation.setEmulatedMedia', { media: 'print' });
         let printed;
-        try { printed = await page.ev(`[[...document.querySelectorAll('.detail details')].map(x=>x.open),document.querySelectorAll('.detail details').length]`); }
-        finally { await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
+        try {
+          await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+          try {
+            printed = await page.ev(`(()=>{const all=[...document.querySelectorAll('.detail details')], slot=all.filter(x=>x.closest('.expand'));
+              return [all.map(x=>x.open),all.length,slot.length,slot.every(x=>[...x.children].slice(1).some(c=>c.checkVisibility()&&c.getBoundingClientRect().height>0)),
+                slot.every(x=>getComputedStyle(x.querySelector('summary'),'::after').display==='none')]})()`);
+          } finally { await page.ev(`window.dispatchEvent(new Event('afterprint'))`); }
+        } finally { await page.send('Emulation.setEmulatedMedia', { media: '' }); }
         await page.waitFor(`({ok:!!document.querySelector(${JSON.stringify(selector)})?.querySelector('details.d-fold'),why:'detail gone after print'})`, 5000, 'after print');
         const openAfter = await page.ev(`[[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('details.d-fold')].map(x=>x.open),document.querySelectorAll('[data-print-open]').length]`);
         assert(printed[1] > 0 && printed[0].every(Boolean), `print left a fold or note closed: ${JSON.stringify(printed)}`);
+        assert(width === 390 ? printed[2] > 0 && printed[3] && printed[4] : printed[2] === 0, `in print media the slot's folds and notes are ${JSON.stringify(printed.slice(2))}`);
         assert(JSON.stringify(openAfter) === JSON.stringify([[true, false], 0]), `after print the folds are ${JSON.stringify(openAfter)}, were ${JSON.stringify(openBefore)}`);
       });
       await check(where, 'PR2 SK', 'inherited recognition and fee translations reveal English originals', async () => {
