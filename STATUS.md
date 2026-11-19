@@ -228,8 +228,8 @@ IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
-**Setup asks the site language** (Leon, 2026-11-15; local branch
-`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+**Setup asks the site language** (Leon, 2026-11-15; shipped in PR #9,
+merged 2026-11-16, from the 2026-11-10 backlog note). Step 1 of setup starts
 with "Site language · Jazyk stránky": Slovenčina or English, each written in
 its own language, the one in force already chosen (address, then this
 browser's choice, then English, as before). Picking one switches setup and the
