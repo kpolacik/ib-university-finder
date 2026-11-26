@@ -157,7 +157,8 @@ const persistPreferences = debounce(() => {
   if (!loaded || !preferencesDirty) return;
   writeSaved(storedFilters(state, facets, explicitSort)); preferencesDirty = false;
 }, 300);
-// "Show all saves": the list view without the page's filters.
+// My list opens with every save. "Apply my filters" narrows this visit only.
+// A shared link still starts with the filters encoded in its URL.
 let listAll = false;
 let groupBy = 'deadline';
 // Phones: whether My list's More is open (Share, Export, Print, Clear and the
@@ -374,10 +375,8 @@ async function start() {
       // Setup's language question switches the page as Settings does.
       switchLanguage,
       apply(answers) {
-        // "Show all saves" ignores the filters, so My list kept showing (and
-        // the done screen counted) saves the answers rule out, like a 42-point
-        // programme for 24 points. The answers are filters: they apply here.
-        listAll = false;
+        // Changing Browse filters in Setup keeps My list's explicit filter choice.
+        if (shared) listAll = false;
         setMyPoints(state, answers.myIbPoints, explicitSort);
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
@@ -386,7 +385,7 @@ async function start() {
         // any filter is on at all. On phones Search sits in the header, not in
         // Filters, so there the note counts the sheet's filters only, as the
         // Filters (n) button does (verification of PR 1).
-        const active = activeFilterCount(state);
+        const active = listAll ? 0 : activeFilterCount(state);
         return { shown: currentlyShown, summary: currentSummary.map((part) => part.text),
           filtered: active > 0, sheetFiltered: active - (state.search.trim() ? 1 : 0) > 0 };
       },
@@ -744,7 +743,12 @@ function wireInputs() {
   }
 
   dom.clear.addEventListener('click', () => clearAllFrom(dom.clear));
-  dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear));
+  dom.emptyClear.addEventListener('click', () => {
+    if (!state.shortlistOnly || shared) { clearAllFrom(dom.emptyClear); return; }
+    listAll = true;
+    update();
+    dom.listShowAll.focus();
+  });
   dom.copy.addEventListener('click', copyLink);
 
   // A tab left open overnight: work the deadlines out again when it comes
@@ -766,6 +770,7 @@ function wireInputs() {
   dom.print.addEventListener('click', () => {
     if (!state.shortlistOnly) {
       state.shortlistOnly = true;
+      listAll = true;
       update();
     }
     window.print();
@@ -998,7 +1003,7 @@ function wireList() {
       shared = null;
       state.shortlistOnly = false;
     } else state.shortlistOnly = true;
-    listAll = false;
+    listAll = !leaving;
     closeCompare(false);
     update();
     // Back hides with the list view and focus fell to the page (review of PR 1,
@@ -1390,8 +1395,7 @@ function update() {
   // save. It used to turn itself off, so "My list (0)" did nothing.
   if (!state.shortlistOnly) listAll = false;
 
-  // The list view: the saved (or shared) programmes, with the page's filters
-  // unless "Show all saves" is on, sorted, then grouped (groupRows).
+  // Sort and group the personal or shared list after applying its filter choice.
   const scope = shared ? new Set(shared.ids) : shortlist;
   const inScope = state.shortlistOnly ? allRows.filter((row) => scope.has(row.id)) : [];
   const filtered = applyFilters(allRows, state, scope);
@@ -2456,11 +2460,13 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
+  const filtersOff = listAll && mode !== 'main';
+  const offersFilterChoice = mode === 'mine' ? activeFilterCount(state) > 0 || !listAll : filtersOff || hidden > 0;
   // An empty My list shows only its title and "0 saved"; the empty card below
   // says how to save and has the way back (B3).
   const emptyMine = mode === 'mine' && listIds.length === 0;
   const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
-  if (emptyMine) { /* nothing is shown or hidden */ } else if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
+  if (emptyMine) { /* nothing is shown or hidden */ } else if (filtersOff && offersFilterChoice) parts.push(t('all_shown_your_filters_are_off_here'));
   else {
     parts.push(t('shown', { value1: shown }));
     if (hidden > 0) parts.push(t('hidden_by_your_filters', { value1: hidden }));
@@ -2468,8 +2474,7 @@ function renderListBar() {
   const text = parts.join(' · ');
   if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
 
-  const filtersOff = listAll && mode !== 'main';
-  dom.listShowAll.hidden = emptyMine || (!filtersOff && hidden <= 0);
+  dom.listShowAll.hidden = emptyMine || !offersFilterChoice;
   dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
   // The text has its own span so the back chevron survives (batch 3 B2).
@@ -2538,6 +2543,11 @@ function renderEmptyState(shown) {
     dom.emptyHint.textContent = t('r3_list_empty_hint');
     dom.emptyBack.hidden = false;
     dom.emptyBack.textContent = t('back_to_all_programmes');
+  } else if (state.shortlistOnly && !shared) {
+    dom.emptyTitle.textContent = t('your_filters_hide_all_saved_programmes');
+    dom.emptyHint.textContent = t('try_changing', { value1: listOf(filtersInUse()) });
+    dom.emptyClear.hidden = false;
+    dom.emptyClear.textContent = t('show_all_saves');
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
