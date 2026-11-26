@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, Phase 3 layer UK-4 (2026-11-26, draft stack).** Independent reviewers approved 93 reworded cells at Bristol, Manchester, KCL, Stirling, Liverpool and Oxford. Five deadline notes for Medicine, Dentistry and Veterinary Science at Bristol and KCL are held: the reviewer asked for "was" because the 15 October 2026 deadline has passed. KCL's Home fee is still the 2026/27 figure, and Manchester Medicine and Dentistry still show 2026/27 fees. Bristol's notes still mention its misprinted "13 January 2026" date. The selector lists 449 cells, including the five UK-4 holds and 24 earlier holds.
+
 **Source prose #17, Phase 3 layer UK-3 (2026-11-26, draft stack).** Independent reviewers approved 137 reworded cells at UCL, Leeds, Southampton and Durham. Fifteen Southampton deadline notes with truncated entry requirements and one UCL Psychology subject note are held. UCL’s 24 deadline notes still label the 2026-entry figures and 2026/27 fees. The selector lists 542 cells, including the 16 UK-3 holds and eight earlier holds.
 
 **Source prose #17, Phase 3 layer UK-2 (2026-11-26, draft stack).** An independent meaning review approved 164 reworded programme notes across Sheffield, Warwick, Birmingham and Exeter Medicine. The Exeter note keeps the conditional year-five NHS exception with the Home fee. Two Sheffield grade notes and one Birmingham grade note are held for source evidence, along with the five LSE grade notes from UK-1. The research-log selector skips cells whose current value matches a Phase 3 batch. It still lists held cells and can select a cell again after a wording change.
