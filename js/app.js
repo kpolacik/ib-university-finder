@@ -2613,6 +2613,10 @@ function wireDropdowns() {
     // In the sheet the lists are inline accordions: only the floating panels
     // in the bar close on Tab out or an outside click.
     d.addEventListener('focusout', (event) => {
+      // On touch WebKit can move focus out of Sort before delivering the
+      // option's click. Let that click finish. A real outside click still
+      // closes the list below, and Tab still closes it here.
+      if (d.id === 'dd-sort' && !keyboardInput) return;
       if (d.open && event.relatedTarget && !d.contains(event.relatedTarget) && !dom.sheet.contains(d)) d.open = false;
     });
   }
