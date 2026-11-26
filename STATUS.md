@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, Phase 3 layer UK-1 (2026-11-26, draft stack).** 183 research-log notes at LSE, St Andrews, Exeter, Glasgow and Bath now read as plain sentences for students, after an independent meaning review. Six cells are held for evidence or rewording: five garbled LSE grade notes and the Exeter Medicine fee note.
+
 **Source prose #17, Phase 2 (2026-11-26, draft stack).** The mechanical pass
 standardised dates in 227 programme cells to improve readability. The
 offline copy has the same wording. The Phase 3 selector lists research-log
