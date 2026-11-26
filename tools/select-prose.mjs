@@ -2,7 +2,7 @@
 // node tools/select-prose.mjs              > research-log.json
 // node tools/select-prose.mjs --mechanical > mechanical.csv
 // Mechanical proposals still go through reword-prose.mjs and independent review.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { csvToObjects } from '../js/csv.js';
 import { compareTokens, formatProblem, frozenParts } from './lib/reword.mjs';
@@ -48,6 +48,37 @@ export function mechanicalValue(column, value) {
   return added.length || missing.length ? value : next;
 }
 
+export function appliedCells(batchTexts) {
+  const applied = new Set();
+  for (const text of batchTexts) {
+    const { rows, issues } = csvToObjects(text, 'Phase 3 batch');
+    if (issues.length) throw new Error(issues.join('; '));
+    for (const { id, column, value } of rows) applied.add(`${id}|${column}|${value}`);
+  }
+  return applied;
+}
+
+export function selectResearchCells(rows, applied) {
+  const universities = new Map();
+  let total = 0;
+  for (const row of rows) {
+    if (row.verified_by !== 'AI-DRAFT') continue;
+    for (const column of COLUMNS) {
+      if (applied.has(`${row.programme_id}|${column}|${row[column]}`)) continue;
+      const signals = researchSignals(row[column]);
+      if (!signals.length) continue;
+      if (!universities.has(row.university_id)) universities.set(row.university_id, []);
+      universities.get(row.university_id).push({ id: row.programme_id, column, signals });
+      total++;
+    }
+  }
+  const groups = [...universities].sort(([a, left], [b, right]) => right.length - left.length || a.localeCompare(b, 'en'));
+  return {
+    total,
+    universities: groups.map(([id, cells]) => ({ id, count: cells.length, cells })),
+  };
+}
+
 function main(mode) {
   if ((mode !== undefined && mode !== '--mechanical') || process.argv.length > 3) {
     throw new Error('Usage: node tools/select-prose.mjs [--mechanical]');
@@ -74,23 +105,11 @@ function main(mode) {
     return;
   }
 
-  const universities = new Map();
-  let total = 0;
-  for (const row of rows) {
-    if (row.verified_by !== 'AI-DRAFT') continue;
-    for (const column of COLUMNS) {
-      const signals = researchSignals(row[column]);
-      if (!signals.length) continue;
-      if (!universities.has(row.university_id)) universities.set(row.university_id, []);
-      universities.get(row.university_id).push({ id: row.programme_id, column, signals });
-      total++;
-    }
-  }
-  const groups = [...universities].sort(([a, left], [b, right]) => right.length - left.length || a.localeCompare(b, 'en'));
-  console.log(JSON.stringify({
-    total,
-    universities: groups.map(([id, cells]) => ({ id, count: cells.length, cells })),
-  }, null, 2));
+  const batchDir = new URL('./prose-batches/', import.meta.url);
+  const batchTexts = readdirSync(batchDir)
+    .filter((name) => /^phase-3-.*\.csv$/.test(name))
+    .map((name) => readFileSync(new URL(name, batchDir), 'utf8'));
+  console.log(JSON.stringify(selectResearchCells(rows, appliedCells(batchTexts)), null, 2));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv[2]);
