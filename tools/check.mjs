@@ -2048,13 +2048,37 @@ section('Data-fill apply script (tools/apply-data-fill.mjs)');
 }
 
 section('Prose cleanup selector (#17)');
-const { researchSignals, mechanicalValue } = await import('./select-prose.mjs');
+const { researchSignals, mechanicalValue, appliedCells, selectResearchCells } = await import('./select-prose.mjs');
 equal('selector: retrieval and fetch narration', researchSignals('Deadline not found as of 2026-10-28. Check manually.'), ['retrieval', 'fetch']);
 equal('selector: course-page quote', researchSignals('The course page says "apply through the portal".'), ['source page', 'quotation']);
 equal('selector: closed-round and sign-in research logs',
   ['Was shown CLOSED on 26 Oct 2026.', 'The old round is closed; not used here.', 'Linked conditions blocked by Microsoft sign-in.'].map(researchSignals),
   [['fetch'], ['catalogue narration'], ['fetch']]);
 equal('selector: applicant-facing guidance', researchSignals('Check the official page before applying.'), []);
+{
+  const applied = 'See the course page for the deadline.';
+  const changed = 'See the course page for the new deadline.';
+  const row = { programme_id: 'fx-p1', university_id: 'fx-a', verified_by: 'AI-DRAFT',
+    deadline_notes: applied, other_requirements: '', ib_subjects: '' };
+  const batch = appliedCells([`entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p1,deadline_notes,Old,${applied},Wording,\n`]);
+  equal('selector: applied wording is skipped', selectResearchCells([row], batch).total, 0);
+  equal('selector: changed wording is selected again',
+    selectResearchCells([{ ...row, deadline_notes: changed }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p1']);
+  equal('selector: a held cell is still selected',
+    selectResearchCells([{ ...row, programme_id: 'fx-p2' }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p2']);
+
+  const current = new Map(csvToObjects(read('data/programmes.csv')).rows.map((r) => [r.programme_id, r]));
+  const run = spawnSync(process.execPath, [join(root, 'tools/select-prose.mjs')], { encoding: 'utf8' });
+  check('selector: the real data run succeeds', run.status === 0, run.stderr);
+  if (run.status === 0) {
+    const selected = new Set(JSON.parse(run.stdout).universities.flatMap(({ cells }) =>
+      cells.map(({ id, column }) => `${id}|${column}`)));
+    const phase3 = readdirSync(join(root, 'tools/prose-batches')).filter((name) => /^phase-3-.*\.csv$/.test(name));
+    const repicks = phase3.flatMap((name) => csvToObjects(read(`tools/prose-batches/${name}`)).rows)
+      .filter(({ id, column, value }) => current.get(id)?.[column] === value && selected.has(`${id}|${column}`));
+    equal('selector: no current Phase 3 batch value is selected', repicks.map(({ id, column }) => `${id}|${column}`), []);
+  }
+}
 equal('mechanical: dates, ranges, spaces and full stops',
   mechanicalValue('deadline_notes', 'Closes 2027-01-13.  Interviews 7-21 Jan 2027.. More dates to come...'),
   'Closes 13 January 2027. Interviews 7–21 January 2027. More dates to come...');

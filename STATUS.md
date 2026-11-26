@@ -8,7 +8,9 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
-**Source prose #17, Phase 3 layer UK-1 (2026-11-26, draft stack).** 183 research-log notes at LSE, St Andrews, Exeter, Glasgow and Bath now read as plain sentences for students, after an independent meaning review. Six cells are held for evidence or rewording: five garbled LSE grade notes and the Exeter Medicine fee note.
+**Source prose #17, Phase 3 layer UK-2 (2026-11-26, draft stack).** An independent meaning review approved 164 reworded programme notes across Sheffield, Warwick, Birmingham and Exeter Medicine. The Exeter note keeps the conditional year-five NHS exception with the Home fee. Two Sheffield grade notes and one Birmingham grade note are held for source evidence, along with the five LSE grade notes from UK-1. The research-log selector skips cells whose current value matches a Phase 3 batch. It still lists held cells and can select a cell again after a wording change.
+
+**Source prose #17, Phase 3 layer UK-1 (2026-11-26, draft stack).** 183 research-log notes at LSE, St Andrews, Exeter, Glasgow and Bath now read as plain sentences for students, after an independent meaning review. That layer held five garbled LSE grade notes and the Exeter Medicine fee note.
 
 **Source prose #17, Phase 2 (2026-11-26, draft stack).** The mechanical pass
 standardised dates in 227 programme cells to improve readability. The
