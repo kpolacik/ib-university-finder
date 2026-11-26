@@ -7842,6 +7842,32 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
   }
 }
 
+{
+  const irish = live.find((row) => row.country === 'Ireland' && row.tuitionEu > 0);
+  for (const lang of ['en', 'sk']) {
+    i18n.initLanguage('', { getItem: () => lang });
+    const detail = detailOf(irish), rows = kvOf(detail);
+    const qualification = byClass(rows[t('eu_fee')], 'd-note-more').find((note) =>
+      note.children[0].textContent === t('fee_details'));
+    const body = qualification?.children[1].textContent ?? '';
+    check('D16 Irish tuition explains Free Fees eligibility next to its amount (' + lang + ')',
+      body.includes('Free Fees Initiative') && body.includes(lang === 'en' ? 'three of the five' : 'tri z piatich')
+      && byClass(rows[t('eu_fee')], 'cost-fig')[0]?.textContent.includes('€'));
+    check('D16 Irish tuition preserves its separate application fee note (' + lang + ')',
+      byClass(rows[t('app_fee')], 'dd-note').some((note) => noteBody(note)?.textContent.endsWith(t('app_fee_profile')))
+      && !rows[t('app_fee')].textContent.includes('Free Fees Initiative'));
+    for (const [name, row] of [
+      ['unknown Irish fee', { ...irish, tuitionEu: null }],
+      ['zero Irish fee', { ...irish, tuitionEu: 0 }],
+      ['non-Irish fee', { ...irish, country: 'Netherlands' }],
+    ]) {
+      check('D16 no Free Fees qualification for ' + name + ' (' + lang + ')',
+        !kvOf(detailOf(row))[t('eu_fee')].textContent.includes('Free Fees Initiative'));
+    }
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
+}
+
 section('Batch 2 follow-up');
 // At 600–700 px the compact Filters button (87–120 px) sat in the 36/44 px logo
 // slot, so Search covered it ("Fil…", right part unclickable). It shows its icon
