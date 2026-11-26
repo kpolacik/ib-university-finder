@@ -2057,6 +2057,8 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
   const same = (name, a, b) => equal(`reword tokens: ${name}`, rw.conditionTokens(a), rw.conditionTokens(b));
   same('an ISO date equals the same date in words', 'Closes 2027-01-13.', 'Closes 13 January 2027, or January 13, 2027.');
   same('£10,050 equals GBP 10,050 and 10,050 GBP', 'Fee £10,050.', 'Fee GBP 10,050 (10,050 GBP).');
+  same('13 000 € equals EUR 13,000', 'Fee 13 000 €.', 'Fee EUR 13,000.');
+  same('currency signs and codes work on either side', 'Fee $400 or Kč 1,200.', 'Fee 400 $ or 1200CZK.');
   same('a hyphen day range equals an en dash range with the full month', 'Interviews 7-21 Jan 2027.', 'Interviews 7–21 January 2027.');
   same('6pm equals 18:00', 'by 6pm UK time', 'by 18:00 UK time');
   check('reword tokens: IELTS 6.5 is one decimal, not 6 and 5', rw.conditionTokens('IELTS 6.5').join(' ') === 'abbr:IELTS num:6.5');
@@ -2064,6 +2066,23 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
     rw.compareTokens('Closes 13 January 2027.', 'Closes 13 January.').missing.join() === 'date:2027-01-13');
   check('reword tokens: capitals written in lower case still count ("NOT" -> "not")',
     rw.compareTokens('NOT for EEA applicants', 'not for EEA applicants').missing.length === 0);
+  check('reword tokens: an invalid day range does not swallow either number',
+    rw.compareTokens('31–32 January 2027', '31 January 2027').missing.includes('num:32'));
+  check('reword tokens: preserve the plus on a minimum grade',
+    rw.compareTokens('HL Maths 6+', 'HL Maths 6').missing.includes('num:6+'));
+  check('reword tokens: preserve a standalone starred A-level grade',
+    rw.compareTokens('A* in Maths', 'A in Maths').missing.includes('grade:A*'));
+  check('reword tokens: keep a decimal next to a month whole',
+    rw.conditionTokens('February 6.5').includes('num:6.5'));
+  check('reword tokens: a date cannot span a test name',
+    rw.compareTokens('February Cambridge 6', 'February 6 Cambridge').added.includes('day:02-06'));
+  check('reword tokens: recognise named mixed-case tests in real notes',
+    ['uniTEST', 'TestAS', 'TestDaF'].every((name) => rw.conditionTokens(name).includes(`name:${name}`)));
+  check('reword tokens: recognise lowercase test acronyms without parsing their links twice',
+    rw.compareTokens('Take ucat (www.ucat.ac.uk).', 'See (www.ucat.ac.uk).').missing.join() === 'abbr:UCAT');
+  same('URL delimiters are outside the link', 'See (https://example.org/course): details.', 'See "https://example.org/course" for details.');
+  check('reword tokens: do not strip punctuation that can be part of a link',
+    rw.compareTokens('See https://example.org/course;', 'See https://example.org/course').added.includes('url:https://example.org/course'));
   for (const [name, sentence] of [['BONUS_ONLY', ire.BONUS_ONLY], ['HPAT_NOTE', ire.HPAT_NOTE], ['PLUS_TEST', ire.PLUS_TEST],
     ['above 625', ire.aboveIB(700)], ['601-625', ire.aboveIB(610)], ['601-625 with a test', ire.aboveIB(610, true)],
     ['CAO cutoff', '2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028). Some applicants on that score missed out in Round 2 (random draw).'],
@@ -2082,12 +2101,22 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
     const ukOld = 'UCAS deadline 2027-01-13 (6pm UK), as of 2026-10-28 per the "Apply" page. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
     const ukNew = 'Apply through UCAS by 13 January 2027, 6pm UK time. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
     const caoOld = `2026 CAO cutoff: Round 1 495 points (code TR028). ${ire.BONUS_ONLY} Check manually.`;
+    const oldEcb = 'in euros at the ECB rate of 28 October 2026.';
+    const newEcb = 'in euros at the ECB rate of 29 October 2026.';
+    const caoItem = 'Test, interview, portfolio or audition';
+    const uva = 'Want UvA housing? Apply by 1 April 2027 instead.';
+    const medicine = `${ire.HPAT_NOTE} ${ire.PLUS_TEST} ${uva}`;
     const rows = [
       prog('fx-p1', { deadline_notes: ukOld }),
       prog('fx-p2', { deadline_notes: caoOld, other_requirements: 'Test, interview, portfolio or audition · Portfolio of work', admission: 'Selective' }),
       prog('fx-p3', { deadline_notes: 'Signed note.', verified_by: 'LS' }),
       prog('fx-p4', { programme: 'Twin', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
       prog('fx-p5', { programme: 'twin ', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
+      prog('fx-p6', { programme: 'Pair', other_requirements: 'Portfolio ·  Interview', deadline_notes: `${oldEcb} ${newEcb}` }),
+      prog('fx-p7', { university_id: ' fx-a ', programme: 'pair', other_requirements: 'Portfolio · Interview' }),
+      prog('fx-p8', { other_requirements: `Portfolio ·  ${caoItem}`, ib_subjects: 'none' }),
+      prog('fx-p9', { programme: 'Pair', other_requirements: 'Interview · Portfolio' }),
+      prog('fx-p10', { deadline_notes: medicine, other_requirements: 'HPAT required · Interview' }),
     ];
     const progText = sheet(progHead, rows);
     const progPath = join(dir, 'programmes.csv');
@@ -2096,11 +2125,11 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
     let n = 0;
     // A line is [id, column, expected_old, value, drops]; the review approves
     // exactly what it is given.
-    const run = (lines, { review = lines.map(([id, column, , value, drops = '']) => [id, column, value, 'keep', drops]), apply = true } = {}) => {
+    const run = (lines, { review = lines.map(([id, column, , value, drops = '']) => [id, column, value, 'keep', drops]), apply = true, reviewText } = {}) => {
       const batch = join(dir, `batch-${n}.csv`), reviewPath = join(dir, `review-${n++}.csv`);
       writeFileSync(batch, ['entity_type,id,column,expected_old,value,reason,drops',
         ...lines.map(([id, column, old, value, drops = '']) => ['prog', id, column, old, value, 'plain wording', drops].map(cell).join(','))].join('\n') + '\n');
-      writeFileSync(reviewPath, ['entity_type,id,column,value,verdict,approved_drops',
+      writeFileSync(reviewPath, reviewText ?? ['entity_type,id,column,value,verdict,approved_drops',
         ...(review || []).map((r) => ['prog', ...r].map(cell).join(','))].join('\n') + '\n');
       const flags = apply ? ['--apply', ...(review ? ['--review', reviewPath] : [])] : [];
       return spawnSync(process.execPath, [script, '--data', dir, ...flags, batch], { encoding: 'utf8', cwd: tmpdir() });
@@ -2110,14 +2139,17 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
 
     reset();
     const dry = run([uk], { apply: false });
-    check('reword: a clean dry run exits 0, prints old and new, and writes nothing',
-      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 deadline_notes') && dry.stdout.includes(`new: ${JSON.stringify(ukNew)}`) && untouched(), out(dry));
+    check('reword: a clean dry run prints old and new with its token report and writes nothing',
+      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 deadline_notes') && dry.stdout.includes(`new: ${JSON.stringify(ukNew)}`)
+        && /kept tokens: .*date:2027-01-13/.test(dry.stdout) && untouched(), out(dry));
     const noReview = run([uk], { review: null });
     check('reword: --apply without a review file is refused and writes nothing',
       noReview.status === 1 && /--apply needs --review/.test(noReview.stderr) && untouched(), out(noReview));
-    const applied = run([uk]);
+    const reviewHead = 'entity_type,id,column,value,verdict,approved_drops';
+    const approved = ['prog', 'fx-p1', 'deadline_notes', ukNew, 'keep', 'date:2026-10-28\r\n'].map(cell).join(',');
+    const applied = run([uk], { reviewText: `\uFEFF${reviewHead}\r\n${approved}\r\n` });
     const want = sheet(progHead, [prog('fx-p1', { deadline_notes: ukNew }), ...rows.slice(1)]);
-    check('reword: --apply writes the new text and leaves last_verified, verified_by and every other byte alone',
+    check('reword: --apply accepts BOM and quoted multiline approvals, and leaves every other byte alone',
       applied.status === 0 && readFileSync(progPath, 'utf8') === want, out(applied));
     const again = run([uk]);
     check('reword: running the same batch again is a SKIP', again.status === 0 && again.stdout.includes('SKIP ') && readFileSync(progPath, 'utf8') === want, out(again));
@@ -2130,6 +2162,7 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
       check(`reword: ${name}`, r.status === 2 && r.stdout.includes('REFUSE ') && reason.test(r.stdout) && untouched(), out(r));
     };
     refused('a stale expected_old is refused and nothing is written', [['fx-p2', 'deadline_notes', 'Older text.', 'New text.']], /stale baseline/);
+    refused('even a duplicate proposal must match the old cell', [['fx-p1', 'deadline_notes', 'Older text.', ukNew, 'date:2026-10-28']], /stale baseline/);
     refused('a signed row is refused', [['fx-p3', 'deadline_notes', 'Signed note.', 'A signed note.']], /row is signed \(verified_by "LS"\)/);
     refused('a translated column is refused', [['fx-p2', 'admission', 'Selective', 'Selective entry']], /column "admission" may not be reworded/);
     refused('last_verified is refused', [['fx-p2', 'last_verified', '2026-10-03', '2026-11-26']], /column "last_verified" may not be reworded/);
@@ -2138,10 +2171,29 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
     refused('an altered ECB sentence is refused', [['fx-p1', 'deadline_notes', ukOld, ukNew.replace('29 October 2026.', '29 Oct. 2026.'), 'date:2026-10-28']], /frozen text changed/, { alone: true });
     refused('a frozen sentence introduced into a note is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', `Test, interview, portfolio or audition · Portfolio of work. ${ire.BONUS_ONLY}`]], /frozen text changed[^\n]*new "Only reachable/);
     refused('rewording the CAO test tag is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', 'Test, interview, portfolio or audition required · Portfolio of work']], /frozen text changed/);
+    refused('a parsed CAO test item stays frozen even with extra space beside it',
+      [['fx-p8', 'other_requirements', `Portfolio ·  ${caoItem}`, `Portfolio · ${caoItem} required`]], /frozen text changed/);
+    refused('the first of two ECB clauses cannot change',
+      [['fx-p6', 'deadline_notes', `${oldEcb} ${newEcb}`, `${newEcb} ${oldEcb}`]], /frozen text changed/);
+    for (const [name, old, next] of [
+      ['HPAT_NOTE', ire.HPAT_NOTE, ire.HPAT_NOTE.replace('the HPAT test', 'HPAT')],
+      ['PLUS_TEST', ire.PLUS_TEST, ire.PLUS_TEST.replace('any IB total', 'the IB total')],
+      ['UvA housing', uva, uva.replace('April', 'Apr')],
+    ]) {
+      refused(`altering ${name} is refused`,
+        [['fx-p10', 'deadline_notes', medicine, medicine.replace(old, next)]], /frozen text changed/);
+    }
+    refused('an HPAT list item stays frozen', [['fx-p10', 'other_requirements', 'HPAT required · Interview', 'Take HPAT · Interview']], /frozen text changed/);
     refused('a dropped date without drops is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6']], /condition tokens missing from the new value: date:2026-10-28/);
     refused('a new number is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28']], /new condition tokens: num:36/);
     refused('a blank or marker value is refused', [['fx-p2', 'deadline_notes', caoOld, '?']], /blank or a marker/);
+    refused('an existing marker cannot become a claim', [['fx-p8', 'ib_subjects', 'none', 'Physics required.']], /old value .*marker/);
+    refused('an empty list item is refused', [['fx-p8', 'other_requirements', `Portfolio ·  ${caoItem}`, `Portfolio · · ${caoItem}`]], /list bullet/);
     refused('rewording one same-name sibling alone is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']], /same-name sibling fx-p5/);
+    refused('siblings with equal parsed items must stay equal',
+      [['fx-p6', 'other_requirements', 'Portfolio ·  Interview', 'Submit a portfolio · Interview']], /same-name sibling fx-p7/);
+    refused('distinct parsed sibling items cannot become identical',
+      [['fx-p9', 'other_requirements', 'Interview · Portfolio', 'Portfolio · Interview']], /same-name sibling fx-p6/);
     const twins = [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']];
     reset();
     const both = run(twins, { apply: false });
@@ -2152,6 +2204,16 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
       { review: [['fx-p1', 'deadline_notes', `${ukNew} `, 'keep', 'date:2026-10-28']] });
     refused('a reviewer verdict other than keep is refused', [], /verdict is "revise"/,
       { review: [['fx-p1', 'deadline_notes', ukNew, 'revise', 'date:2026-10-28']] });
+    reset();
+    const conflicting = run([uk], { review: [
+      ['fx-p1', 'deadline_notes', ukNew, 'revise', 'date:2026-10-28'],
+      ['fx-p1', 'deadline_notes', ukNew, 'keep', 'date:2026-10-28'],
+    ] });
+    check('reword: contradictory review rows cannot authorise a write',
+      conflicting.status === 1 && /conflicting review rows/.test(conflicting.stderr) && untouched(), out(conflicting));
+    const malformed = run([uk], { reviewText: `${reviewHead}\n${approved.slice(0, -1)}` });
+    check('reword: an unclosed quote in the review cannot authorise a write',
+      malformed.status === 1 && /malformed CSV/.test(malformed.stderr) && untouched(), out(malformed));
   } finally { rmSync(dir, { recursive: true }); }
   check('reword-prose.mjs never writes last_verified or verified_by',
     !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/reword-prose.mjs')));

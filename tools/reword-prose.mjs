@@ -43,14 +43,15 @@
 // - Same-name siblings. js/data.js addProgrammeIdentity compares ib_subjects
 //   and other_requirements between programmes of one university with the same
 //   name. If two such rows hold the same text and only one is reworded, they
-//   look different and lose the "Same-name entry" warning, so the batch has to
-//   give both the same new text.
+//   look different and lose the "Same-name entry" warning. Distinct text must
+//   also stay distinct to avoid introducing the warning.
 // - With --apply, any refusal at all writes nothing.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCsv } from '../js/csv.js';
-import { frozenParts, compareTokens, formatProblem } from './lib/reword.mjs';
+import { BULLET } from '../js/data.js';
+import { frozenParts, compareTokens, formatProblem, isMarker } from './lib/reword.mjs';
 
 const HEADER = 'entity_type,id,column,expected_old,value,reason,drops'.split(',');
 const REVIEW_HEADER = 'entity_type,id,column,value,verdict,approved_drops'.split(',');
@@ -106,7 +107,7 @@ for (const r of grid.slice(1)) {
   byId.set(r[col.programme_id], r);
 }
 // Same key as js/data.js addProgrammeIdentity.
-const sameName = (r) => JSON.stringify([r[col.university_id], r[col.programme].trim().toLowerCase().normalize('NFC')]);
+const sameName = (r) => JSON.stringify([r[col.university_id].trim(), r[col.programme].trim().toLowerCase().normalize('NFC')]);
 const groups = new Map();
 for (const r of grid.slice(1)) {
   const key = sameName(r);
@@ -127,8 +128,13 @@ function records(file) {
     const ch = raw[i];
     if (ch === '"') inQuotes = !inQuotes;
     if (i === raw.length || (ch === '\n' && !inQuotes)) {
-      const part = raw.slice(start, i);
-      if (part.trim()) out.push({ line: startLine, cells: parseCsv(part)[0] || [] });
+      const part = raw.slice(start, i).replace(/\r$/, '');
+      if (part.trim()) {
+        if (inQuotes || !/^(?:"(?:[^"]|"")*"|[^",\r\n]*)(?:,(?:"(?:[^"]|"")*"|[^",\r\n]*))*$/.test(part)) {
+          fail(`${file}:${startLine}: malformed CSV record`);
+        }
+        out.push({ line: startLine, cells: parseCsv(part)[0] || [] });
+      }
       start = i + 1; startLine = line + 1;
     }
     if (ch === '\n') line++;
@@ -136,6 +142,7 @@ function records(file) {
   return out;
 }
 const tokenList = (s) => (s || '').split(/\s+/).filter(Boolean);
+const reviewKey = (entity, id, column, value) => JSON.stringify([entity, id, column, value]);
 
 const lines = [];
 for (const file of batchFiles) {
@@ -152,8 +159,14 @@ if (reviewFile) {
   const [first, ...rest] = records(reviewFile);
   if (!first || REVIEW_HEADER.some((h, i) => first.cells[i] !== h)) fail(`${reviewFile}: the header must start with ${REVIEW_HEADER.join(',')}`);
   for (const r of rest) {
+    if (r.cells.length < REVIEW_HEADER.length) fail(`${reviewFile}:${r.line}: the review row has fewer than ${REVIEW_HEADER.length} cells`);
     const v = Object.fromEntries(REVIEW_HEADER.map((h, i) => [h, r.cells[i] ?? '']));
-    reviews.set([v.entity_type, v.id, v.column, v.value].join('\0'), v);
+    const key = reviewKey(v.entity_type, v.id, v.column, v.value);
+    const previous = reviews.get(key);
+    if (previous && (previous.verdict !== v.verdict || previous.approved_drops !== v.approved_drops)) {
+      fail(`${reviewFile}:${r.line}: conflicting review rows for ${v.id} ${v.column} and this exact value`);
+    }
+    reviews.set(key, v);
   }
 }
 
@@ -167,9 +180,13 @@ for (const p of lines) {
 }
 const finalValue = (row, column) => {
   const want = wanted.get(`${row[col.programme_id]}\0${column}`);
-  return want && want.size === 1 && row[col[column]] === lines.find((p) => p.id === row[col.programme_id] && p.column === column).expected_old
-    ? [...want][0] : row[col[column]];
+  return want?.size === 1 ? [...want][0] : row[col[column]];
 };
+// Compare the same displayed facts as addProgrammeIdentity in js/data.js.
+const identityFact = (column, value) => column === 'other_requirements'
+  ? value.split(BULLET).map((item) => item.trim()).filter((item) => item && item !== '?').join(BULLET)
+  : value.trim();
+const distinguishes = (a, b) => a !== '' && a !== '?' && b !== '' && b !== '?' && a !== b;
 
 const changes = [];
 const seen = new Set();
@@ -185,9 +202,10 @@ for (const p of lines) {
   if (!row) { refuse('unknown programme_id'); continue; }
   if (wanted.get(key).size > 1) { refuse(`conflicting lines for this cell: ${[...wanted.get(key)].map((v) => JSON.stringify(v)).join(' vs ')}`); continue; }
   const current = row[col[p.column]];
-  if (current === p.value || seen.has(key)) { skips++; console.log(`SKIP ${where}: ${seen.has(key) ? 'repeats an earlier line' : 'already holds the new value'}`); continue; }
+  if (current === p.value) { skips++; console.log(`SKIP ${where}: already holds the new value`); continue; }
   if (row[col.verified_by] !== 'AI-DRAFT') { refuse(`row is signed (verified_by ${JSON.stringify(row[col.verified_by])}), not AI-DRAFT`); continue; }
   if (current !== p.expected_old) { refuse(`stale baseline: expected_old ${JSON.stringify(p.expected_old)}, the cell now holds ${JSON.stringify(current)}`); continue; }
+  if (isMarker(current)) { refuse(`the old value ${JSON.stringify(current)} is blank or a marker`); continue; }
   const format = formatProblem(p.value);
   if (format) { refuse(format); continue; }
   if (!p.reason.trim()) { refuse('reason is empty'); continue; }
@@ -195,10 +213,10 @@ for (const p of lines) {
   const frozenOld = frozenParts(p.column, current), frozenNew = frozenParts(p.column, p.value);
   if (JSON.stringify(frozenOld) !== JSON.stringify(frozenNew)) {
     const lost = frozenOld.filter((s) => !frozenNew.includes(s)), extra = frozenNew.filter((s) => !frozenOld.includes(s));
-    refuse(`frozen text changed (code reads it back): ${[...lost.map((s) => `lost ${JSON.stringify(s)}`), ...extra.map((s) => `new ${JSON.stringify(s)}`)].join('; ') || 'count or order of list items changed'}`);
+    refuse(`frozen text changed (code reads it back): ${[...lost.map((s) => `lost ${JSON.stringify(s)}`), ...extra.map((s) => `new ${JSON.stringify(s)}`)].join('; ') || 'count or order of protected text changed'}`);
     continue;
   }
-  const { missing, added } = compareTokens(current, p.value);
+  const { kept, missing, added } = compareTokens(current, p.value);
   const drops = tokenList(p.drops);
   const undeclared = missing.filter((t) => !drops.includes(t));
   if (undeclared.length) { refuse(`condition tokens missing from the new value: ${undeclared.join(' ')} (keep them, or list them in drops for the reviewer)`); continue; }
@@ -207,27 +225,32 @@ for (const p of lines) {
   if (added.length) { refuse(`new condition tokens: ${added.join(' ')}. A reword adds no fact; new evidence goes through tools/apply-data-fill.mjs`); continue; }
 
   if (IDENTITY_COLUMNS.includes(p.column)) {
-    const differ = groups.get(sameName(row)).filter((s) => s !== row && s[col[p.column]] === current && finalValue(s, p.column) !== p.value);
-    if (differ.length) { refuse(`same-name sibling ${differ.map((s) => s[col.programme_id]).join(', ')} holds the same text and would keep a different one; reword them together`); continue; }
+    const oldFact = identityFact(p.column, current);
+    const newFact = identityFact(p.column, p.value);
+    const changed = groups.get(sameName(row)).filter((s) => s !== row
+      && distinguishes(oldFact, identityFact(p.column, s[col[p.column]]))
+        !== distinguishes(newFact, identityFact(p.column, finalValue(s, p.column))));
+    if (changed.length) { refuse(`same-name sibling ${changed.map((s) => s[col.programme_id]).join(', ')} would gain or lose a displayed difference`); continue; }
   }
 
   if (apply) {
-    const review = reviews.get(['prog', p.id, p.column, p.value].join('\0'));
+    const review = reviews.get(reviewKey('prog', p.id, p.column, p.value));
     if (!review) { refuse('no review row for this exact new value'); continue; }
     if (review.verdict !== 'keep') { refuse(`the reviewer's verdict is ${JSON.stringify(review.verdict)}, not "keep"`); continue; }
     const unapproved = drops.filter((t) => !tokenList(review.approved_drops).includes(t));
     if (unapproved.length) { refuse(`drops the reviewer did not approve: ${unapproved.join(' ')}`); continue; }
   }
+  if (seen.has(key)) { skips++; console.log(`SKIP ${where}: repeats an earlier line`); continue; }
   seen.add(key);
   changes.push({ row, column: p.column, next: p.value });
-  console.log(`CHANGE prog ${p.id} ${p.column} (${p.reason})\n  old: ${JSON.stringify(current)}\n  new: ${JSON.stringify(p.value)}${drops.length ? `\n  drops: ${drops.join(' ')}` : ''}`);
+  console.log(`CHANGE prog ${p.id} ${p.column} (${p.reason})\n  old: ${JSON.stringify(current)}\n  new: ${JSON.stringify(p.value)}\n  kept tokens: ${kept.join(' ') || '(none)'}${drops.length ? `\n  drops: ${drops.join(' ')}` : ''}`);
 }
 
 // ---------------------------------------------------------------- summary
 console.log(`\nLines read: ${lines.length} (from ${batchFiles.length} file${batchFiles.length === 1 ? '' : 's'})`);
 console.log(`Changes: ${changes.length}`);
 console.log(`Refusals: ${refusals}`);
-console.log(`Skips (cell already holds the value): ${skips}`);
+console.log(`Skips: ${skips}`);
 if (refusals) {
   console.log(apply ? 'Nothing written: fix or remove the refused lines, then run again.' : 'Dry run: nothing written. Fix or remove the refused lines.');
   process.exit(2);
