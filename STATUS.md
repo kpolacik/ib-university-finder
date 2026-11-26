@@ -8,6 +8,11 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, Phase 2 (2026-11-26, draft stack).** The mechanical pass
+standardised dates in 227 programme cells to improve readability. The
+offline copy has the same wording. The Phase 3 selector lists research-log
+notes by university for the next pass.
+
 **Local data-fill branch, 2026-11-19 (not live).** The first research tier
 has been reviewed. Programme counts and IDs have not changed. The Czech
 language entries distinguish citizenship, school language and the subject
