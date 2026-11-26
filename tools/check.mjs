@@ -4781,6 +4781,19 @@ appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on 
   pick(first, 'click');
   return !details.open && stubDocument.activeElement === summary && run('`${state.sort}:${state.dir}`') === first;
 });
+appCheck('Sort stays open when a touch blurs the summary before the choice click, but closes on Tab or a click outside', ({ get, fire }) => {
+  const sort = get('dd-sort'), summary = sort.querySelector('summary'), outside = get('f-search');
+  sort.open = true;
+  fire(get('sort-options'), 'pointerdown', { pointerType: 'touch' });
+  fire(summary, 'focusout', { relatedTarget: outside });
+  if (!sort.open) return false;
+  fire(outside, 'click');
+  if (sort.open) return false;
+  sort.open = true;
+  fire(summary, 'keydown', { key: 'Tab' });
+  fire(summary, 'focusout', { relatedTarget: outside });
+  return !sort.open;
+});
 // Below 600 px Search is the filter form's only text field, so Enter there
 // submitted it and reloaded the page to ?q=…, losing the language and a
 // shared ?list= view. Smoke "PHN enter" presses the real key.
