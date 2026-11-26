@@ -2047,6 +2047,29 @@ section('Data-fill apply script (tools/apply-data-fill.mjs)');
   } finally { rmSync(dir, { recursive: true }); }
 }
 
+section('Prose cleanup selector (#17)');
+const { researchSignals, mechanicalValue } = await import('./select-prose.mjs');
+equal('selector: retrieval and fetch narration', researchSignals('Deadline not found as of 2026-10-28. Check manually.'), ['retrieval', 'fetch']);
+equal('selector: course-page quote', researchSignals('The course page says "apply through the portal".'), ['source page', 'quotation']);
+equal('selector: closed-round and sign-in research logs',
+  ['Was shown CLOSED on 26 Oct 2026.', 'The old round is closed; not used here.', 'Linked conditions blocked by Microsoft sign-in.'].map(researchSignals),
+  [['fetch'], ['catalogue narration'], ['fetch']]);
+equal('selector: applicant-facing guidance', researchSignals('Check the official page before applying.'), []);
+equal('mechanical: dates, ranges, spaces and full stops',
+  mechanicalValue('deadline_notes', 'Closes 2027-01-13.  Interviews 7-21 Jan 2027.. More dates to come...'),
+  'Closes 13 January 2027. Interviews 7–21 January 2027. More dates to come...');
+equal('mechanical: invalid ISO dates are held', mechanicalValue('deadline_notes', 'Closes 2027-02-29.'), 'Closes 2027-02-29.');
+equal('mechanical: leave compact ISO day ranges intact',
+  mechanicalValue('deadline_notes', 'Exams 2027-06-10–11; documents due 2027-06-12.'),
+  'Exams 2027-06-10–11; documents due 12 June 2027.');
+equal('mechanical: frozen ECB text stays intact',
+  ['Fee shown in euros at the ECB rate of 2026-10-29.', 'Fee at the ECB reference rate of 2026-11-12.']
+    .map((s) => mechanicalValue('deadline_notes', s)),
+  ['Fee shown in euros at the ECB rate of 2026-10-29.', 'Fee at the ECB reference rate of 2026-11-12.']);
+equal('mechanical: research-log and last-year carryovers are held',
+  ['Deadline not found as of 2026-10-28.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."].map((s) => mechanicalValue('deadline_notes', s)),
+  ['Deadline not found as of 2026-10-28.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."]);
+
 section('Prose reword script (tools/reword-prose.mjs, #17)');
 // A reword changes how a note is said, never what it says. The guards are
 // what stop a shorter sentence from losing a date, an amount, or a sentence
