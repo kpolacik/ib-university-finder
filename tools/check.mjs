@@ -2047,6 +2047,116 @@ section('Data-fill apply script (tools/apply-data-fill.mjs)');
   } finally { rmSync(dir, { recursive: true }); }
 }
 
+section('Prose reword script (tools/reword-prose.mjs, #17)');
+// A reword changes how a note is said, never what it says. The guards are
+// what stop a shorter sentence from losing a date, an amount, or a sentence
+// the cards read back, so each one is exercised on fixtures in a temp folder.
+{
+  const rw = await import(new URL('./lib/reword.mjs', import.meta.url));
+  const ire = await import(new URL('./lib/ireland.mjs', import.meta.url));
+  const same = (name, a, b) => equal(`reword tokens: ${name}`, rw.conditionTokens(a), rw.conditionTokens(b));
+  same('an ISO date equals the same date in words', 'Closes 2027-01-13.', 'Closes 13 January 2027, or January 13, 2027.');
+  same('£10,050 equals GBP 10,050 and 10,050 GBP', 'Fee £10,050.', 'Fee GBP 10,050 (10,050 GBP).');
+  same('a hyphen day range equals an en dash range with the full month', 'Interviews 7-21 Jan 2027.', 'Interviews 7–21 January 2027.');
+  same('6pm equals 18:00', 'by 6pm UK time', 'by 18:00 UK time');
+  check('reword tokens: IELTS 6.5 is one decimal, not 6 and 5', rw.conditionTokens('IELTS 6.5').join(' ') === 'abbr:IELTS num:6.5');
+  check('reword tokens: a date without a year is not the dated one',
+    rw.compareTokens('Closes 13 January 2027.', 'Closes 13 January.').missing.join() === 'date:2027-01-13');
+  check('reword tokens: capitals written in lower case still count ("NOT" -> "not")',
+    rw.compareTokens('NOT for EEA applicants', 'not for EEA applicants').missing.length === 0);
+  for (const [name, sentence] of [['BONUS_ONLY', ire.BONUS_ONLY], ['HPAT_NOTE', ire.HPAT_NOTE], ['PLUS_TEST', ire.PLUS_TEST],
+    ['above 625', ire.aboveIB(700)], ['601-625', ire.aboveIB(610)], ['601-625 with a test', ire.aboveIB(610, true)],
+    ['CAO cutoff', '2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028). Some applicants on that score missed out in Round 2 (random draw).'],
+    ['ECB conversion', 'in euros at the ECB rate of 29 October 2026.'], ['UvA housing', 'Want UvA housing? Apply by 1 April 2027 instead.']]) {
+    check(`reword frozen text: ${name} is found whole inside a note`, rw.frozenParts('deadline_notes', `Before. ${sentence} After.`).includes(sentence));
+  }
+  check('reword format: an ellipsis is fine, a doubled full stop is not', !rw.formatProblem('students... £10,050') && rw.formatProblem('Higher Level.. Home'));
+
+  const dir = mkdtempSync(join(tmpdir(), 'ib-reword-'));
+  try {
+    const script = join(root, 'tools/reword-prose.mjs');
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const sheet = (head, rows) => [head, ...rows.map((r) => head.map((h) => r[h] ?? ''))].map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const progHead = parseCsv(read('data/programmes.csv'))[0];
+    const prog = (id, extra) => ({ programme_id: id, university_id: 'fx-a', programme: `Programme ${id}`, subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, last_verified: '2026-10-03', verified_by: 'AI-DRAFT', ...extra });
+    const ukOld = 'UCAS deadline 2027-01-13 (6pm UK), as of 2026-10-28 per the "Apply" page. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
+    const ukNew = 'Apply through UCAS by 13 January 2027, 6pm UK time. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
+    const caoOld = `2026 CAO cutoff: Round 1 495 points (code TR028). ${ire.BONUS_ONLY} Check manually.`;
+    const rows = [
+      prog('fx-p1', { deadline_notes: ukOld }),
+      prog('fx-p2', { deadline_notes: caoOld, other_requirements: 'Test, interview, portfolio or audition · Portfolio of work', admission: 'Selective' }),
+      prog('fx-p3', { deadline_notes: 'Signed note.', verified_by: 'LS' }),
+      prog('fx-p4', { programme: 'Twin', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
+      prog('fx-p5', { programme: 'twin ', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
+    ];
+    const progText = sheet(progHead, rows);
+    const progPath = join(dir, 'programmes.csv');
+    const reset = () => writeFileSync(progPath, progText);
+    const untouched = () => readFileSync(progPath, 'utf8') === progText;
+    let n = 0;
+    // A line is [id, column, expected_old, value, drops]; the review approves
+    // exactly what it is given.
+    const run = (lines, { review = lines.map(([id, column, , value, drops = '']) => [id, column, value, 'keep', drops]), apply = true } = {}) => {
+      const batch = join(dir, `batch-${n}.csv`), reviewPath = join(dir, `review-${n++}.csv`);
+      writeFileSync(batch, ['entity_type,id,column,expected_old,value,reason,drops',
+        ...lines.map(([id, column, old, value, drops = '']) => ['prog', id, column, old, value, 'plain wording', drops].map(cell).join(','))].join('\n') + '\n');
+      writeFileSync(reviewPath, ['entity_type,id,column,value,verdict,approved_drops',
+        ...(review || []).map((r) => ['prog', ...r].map(cell).join(','))].join('\n') + '\n');
+      const flags = apply ? ['--apply', ...(review ? ['--review', reviewPath] : [])] : [];
+      return spawnSync(process.execPath, [script, '--data', dir, ...flags, batch], { encoding: 'utf8', cwd: tmpdir() });
+    };
+    const out = (r) => r.stdout + r.stderr;
+    const uk = ['fx-p1', 'deadline_notes', ukOld, ukNew, 'date:2026-10-28'];
+
+    reset();
+    const dry = run([uk], { apply: false });
+    check('reword: a clean dry run exits 0, prints old and new, and writes nothing',
+      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 deadline_notes') && dry.stdout.includes(`new: ${JSON.stringify(ukNew)}`) && untouched(), out(dry));
+    const noReview = run([uk], { review: null });
+    check('reword: --apply without a review file is refused and writes nothing',
+      noReview.status === 1 && /--apply needs --review/.test(noReview.stderr) && untouched(), out(noReview));
+    const applied = run([uk]);
+    const want = sheet(progHead, [prog('fx-p1', { deadline_notes: ukNew }), ...rows.slice(1)]);
+    check('reword: --apply writes the new text and leaves last_verified, verified_by and every other byte alone',
+      applied.status === 0 && readFileSync(progPath, 'utf8') === want, out(applied));
+    const again = run([uk]);
+    check('reword: running the same batch again is a SKIP', again.status === 0 && again.stdout.includes('SKIP ') && readFileSync(progPath, 'utf8') === want, out(again));
+
+    const refused = (name, lines, reason, opts = {}) => {
+      reset();
+      // The clean line rides along (unless the test is about its own cell):
+      // one refusal must stop the whole batch.
+      const r = run(opts.alone ? lines : [uk, ...lines], opts);
+      check(`reword: ${name}`, r.status === 2 && r.stdout.includes('REFUSE ') && reason.test(r.stdout) && untouched(), out(r));
+    };
+    refused('a stale expected_old is refused and nothing is written', [['fx-p2', 'deadline_notes', 'Older text.', 'New text.']], /stale baseline/);
+    refused('a signed row is refused', [['fx-p3', 'deadline_notes', 'Signed note.', 'A signed note.']], /row is signed \(verified_by "LS"\)/);
+    refused('a translated column is refused', [['fx-p2', 'admission', 'Selective', 'Selective entry']], /column "admission" may not be reworded/);
+    refused('last_verified is refused', [['fx-p2', 'last_verified', '2026-10-03', '2026-11-26']], /column "last_verified" may not be reworded/);
+    refused('an altered CAO sentence is refused', [['fx-p2', 'deadline_notes', caoOld, caoOld.replace('Round 1 495 points', 'Round 1: 495 points').replace(' Check manually.', '')]], /frozen text changed/);
+    refused('dropping BONUS_ONLY is refused', [['fx-p2', 'deadline_notes', caoOld, '2026 CAO cutoff: Round 1 495 points (code TR028).', 'num:25 abbr:HL']], /frozen text changed[^\n]*lost "Only reachable/);
+    refused('an altered ECB sentence is refused', [['fx-p1', 'deadline_notes', ukOld, ukNew.replace('29 October 2026.', '29 Oct. 2026.'), 'date:2026-10-28']], /frozen text changed/, { alone: true });
+    refused('a frozen sentence introduced into a note is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', `Test, interview, portfolio or audition · Portfolio of work. ${ire.BONUS_ONLY}`]], /frozen text changed[^\n]*new "Only reachable/);
+    refused('rewording the CAO test tag is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', 'Test, interview, portfolio or audition required · Portfolio of work']], /frozen text changed/);
+    refused('a dropped date without drops is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6']], /condition tokens missing from the new value: date:2026-10-28/);
+    refused('a new number is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28']], /new condition tokens: num:36/);
+    refused('a blank or marker value is refused', [['fx-p2', 'deadline_notes', caoOld, '?']], /blank or a marker/);
+    refused('rewording one same-name sibling alone is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']], /same-name sibling fx-p5/);
+    const twins = [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']];
+    reset();
+    const both = run(twins, { apply: false });
+    check('reword: same-name siblings reworded together pass', both.status === 0 && both.stdout.includes('Changes: 2'), out(both));
+    refused('a drop the reviewer did not approve is refused', [], /drops the reviewer did not approve: date:2026-10-28/,
+      { review: [['fx-p1', 'deadline_notes', ukNew, 'keep', '']] });
+    refused('a value changed after review is refused', [], /no review row for this exact new value/,
+      { review: [['fx-p1', 'deadline_notes', `${ukNew} `, 'keep', 'date:2026-10-28']] });
+    refused('a reviewer verdict other than keep is refused', [], /verdict is "revise"/,
+      { review: [['fx-p1', 'deadline_notes', ukNew, 'revise', 'date:2026-10-28']] });
+  } finally { rmSync(dir, { recursive: true }); }
+  check('reword-prose.mjs never writes last_verified or verified_by',
+    !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/reword-prose.mjs')));
+}
+
 // ---------------------------------------------------------------- the real data
 
 section('The real dataset');

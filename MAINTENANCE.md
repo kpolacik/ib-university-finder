@@ -310,6 +310,17 @@ it is the CAO's "#" mark, and the site reads that exact tag to know a cutoff
 may include test marks, which decides the IB figure and the HL Maths bonus.
 The CAO refresh (`tools/update-cao-points.mjs`) writes it.
 
+**Rewording a note keeps every fact.** When someone tidies the wording of
+`deadline_notes`, `other_requirements` or `ib_subjects` in bulk (issue #17),
+it goes through `tools/reword-prose.mjs`, not by hand. That script refuses a
+new wording that loses or adds a number, date, time, amount, link, course code
+or test name; that changes one of the sentences above, the "in euros at the
+ECB rate of …" sentence on UK rows or the "Want UvA housing?" sentence; or
+that gives two same-name programmes different text. It never changes
+`last_verified` or `verified_by`, because better wording is not a new check,
+and it writes nothing until an independent reviewer has approved each exact
+new text. A real change of fact goes in as research, with its source.
+
 **The card says what kind of points figure it is.** You do not fill this in;
 the site works it out:
 
