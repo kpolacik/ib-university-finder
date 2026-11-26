@@ -1423,8 +1423,6 @@ check('app.js re-applies the date when the day changes and on visibilitychange',
 section('The empty state names the filters in use (S05)');
 check('the empty state no longer mentions the Google Sheet or a fixed tuition/country hint',
   !appSrc.includes('Google Sheet') && !appSrc.includes('raising the tuition limit, or removing a country'));
-check('the empty state has a working Clear all button',
-  indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear))"));
 
 // S03: a reload threw every filter away, and a filtered view could not be
 // shared. The state now lives in the address.
@@ -6639,15 +6637,19 @@ appCheck('a failed save says so in the bar', ({ get, item, fire, context, ids: [
   fire(starOf(item(a)), 'click');
   return !get('shortlist-bar').hidden && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
 });
-appCheck('list view: the filters apply inside it, the bar says how many saves they hide, "Show all saves" brings them back, groups head the rows', ({ run, get, fire, ids: [a, b] }) => {
+appCheck('My list starts with every save, can apply Browse filters explicitly, and preserves them on return', ({ run, get, fire, ids: [a, b] }) => {
   run('shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); update();');
   if (get('shortlist-count-text').textContent !== '2 saved · 2 shown') return false;
   run('state.search = fixture[0].programme; update();');
   if (get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('ml-show-all').hidden) return false;
   fire(get('f-shortlist-only'), 'click');
   const ids = () => get('results').children.map((n) => n.dataset.id);
-  if (run('state.shortlistOnly') !== true || ids().join() !== a || get('ml-tools').hidden
-    || get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('f-shortlist-only').textContent !== 'Back to all programmes'
+  if (run('state.shortlistOnly') !== true || ids().length !== 2 || get('ml-tools').hidden
+    || !get('shortlist-count-text').textContent.includes('your filters are off') || get('f-shortlist-only').textContent !== 'Back to all programmes'
+    || get('ml-show-all').textContent !== 'Apply my filters'
+    || !get('result-count').textContent.startsWith('2 of 2 saved programmes')) return false;
+  fire(get('ml-show-all'), 'click');
+  if (ids().join() !== a || get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters'
     || !get('result-count').textContent.startsWith('1 of 2 saved programmes')) return false;
   fire(get('ml-show-all'), 'click');
   if (ids().length !== 2 || get('ml-show-all').textContent !== 'Apply my filters' || !get('shortlist-count-text').textContent.includes('your filters are off')) return false;
@@ -6660,7 +6662,27 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   if (!get('results').children[0].querySelector('.grp-h')) return false;
   fire(get('f-shortlist-only'), 'click');
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
+    && run('state.search === fixture[0].programme') && ids().join() === a
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
+});
+appCheck('a filter that hides every save offers Show all saves without clearing the Browse filters', ({ run, get, fire }) => {
+  run("shortlist.add(fixture[0].id); state.search = 'zzzzz-no-match'; update();");
+  fire(get('f-shortlist-only'), 'click');
+  if (get('results').children.length !== 1 || !get('empty-state').hidden) return false;
+  fire(get('ml-show-all'), 'click');
+  if (get('results').children.length !== 0 || get('empty-state').hidden
+    || get('empty-title').textContent !== 'Your filters hide all saved programmes.'
+    || get('empty-clear').hidden || get('empty-clear').textContent !== 'Show all saves') return false;
+  fire(get('empty-clear'), 'click');
+  return get('results').children.length === 1 && get('empty-state').hidden
+    && run("state.search === 'zzzzz-no-match'") && stubDocument.activeElement === get('ml-show-all');
+});
+appCheck('the empty Browse state still clears filters and returns focus to Search', ({ run, get, fire }) => {
+  run("state.search = 'zzzzz-no-match'; update();");
+  const clear = get('empty-clear');
+  if (get('empty-state').hidden || clear.hidden || clear.textContent !== 'Clear all (1)') return false;
+  fire(clear, 'click');
+  return run("state.search === ''") && get('empty-state').hidden && stubDocument.activeElement === get('f-search');
 });
 // Batch 3 B3 rewrote this check: Compare no longer follows the saves (A adds
 // its own check), and the last unsave leaves an empty list view instead of
@@ -8622,19 +8644,18 @@ check('B3C1 the done screen stacks full width on phones, primary first; 44 px bu
   /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
   && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
   && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
-// Was a source pin on "return currentlyShown". Review of PR 1 (2026-11-07):
-// with My list's "Show all saves" on, setup's answers did not filter the list
-// and the done screen counted a 42-point save for 24 points. apply() now ends
-// "Show all saves" and returns the count, the count line's points parts and
-// whether any filter is on.
-await asyncAppCheck('B3C1 the app apply callback ends "Show all saves" and returns the shown count, the points parts and whether a filter is on', async ({run,context,settle,ids:[a,b]}) => {
+await asyncAppCheck('Setup preserves My list’s filter choice and counts the rows the student will see', async ({run,get,fire,context,settle,ids:[a,b]}) => {
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
-  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.shortlistOnly = true; listAll = true; update();`);
-  if (run('listAll') !== true) return false;
-  const result = context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:24}));
-  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist).filter((row) => shortlist.has(row.id)), state).map((p) => p.text)');
-  return run('listAll') === false && result.shown === run('currentlyShown') && result.shown === run('applyFilters(allRows, state, shortlist).length')
-    && JSON.stringify(result.summary) === JSON.stringify(parts) && result.summary.length >= 1 && result.filtered === true;
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); update();`);
+  fire(get('f-shortlist-only'), 'click');
+  const answers = savedState.validateFilters({myIbPoints:24});
+  const full = context.onboardingConfig.apply(answers);
+  if (full.shown !== 2 || full.filtered || !run('listAll')) return false;
+  fire(get('ml-show-all'), 'click');
+  const filtered = context.onboardingConfig.apply(answers);
+  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist), state).map((p) => p.text)');
+  return !run('listAll') && filtered.shown === run('currentlyShown') && filtered.shown === run('applyFilters(allRows, state, shortlist).length')
+    && JSON.stringify(filtered.summary) === JSON.stringify(parts) && filtered.summary.length >= 1 && filtered.filtered;
 }, {boot:true});
 appCheck('B3C1 the done screen says "shown" and splits it as the count line does when IB points are set', (h) => {
   const {get,fire}=h, summary=['10 within your IB points','2 only with HL Maths 4+','24 can’t be compared'];

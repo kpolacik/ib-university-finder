@@ -3968,18 +3968,23 @@ async function runSetupCompareReview(base) {
     finally { await page.close(); }
   };
 
-  await run('1440/en', 'PR1 setup list', 'setup with "Show all saves" on filters My list again: the done screen and the list leave out a save above the points', await open(1440, 900, { saves: [high.id, low.id] }), async (page) => {
+  await run('1440/en', 'PR1 setup list', 'My list opens with both saves and applies Browse filters only on request', await open(1440, 900, { saves: [high.id, low.id] }), async (page) => {
     assert(high && low, 'no 40+ and 24-point rows in the data');
     await page.click(`document.querySelector('#header-list')`, 'My list');
     await page.click(`document.querySelector('#f-points')`, 'My IB points'); await page.type('24');
-    await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden,why:'Show all saves not offered'})`, 5000, 'Show all saves');
-    await page.click(`document.querySelector('#ml-show-all')`, 'Show all saves');
+    await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden&&document.querySelector('#ml-show-all').textContent==='Apply my filters',why:'Apply my filters not offered'})`, 5000, 'Apply my filters');
     await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length===2,why:'rows '+document.querySelectorAll('#results>li.item').length})`, 5000, 'both saves shown');
     await toDone(page);
     const count = await page.ev(`document.querySelector('.ob-count').textContent`);
-    assert(count === '1 programme shown · 1 within your IB points', `done screen count "${count}"`);
+    assert(count.startsWith('2 programmes shown · 1 within your IB points'), `done screen count "${count}"`);
     await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    await page.click(`document.querySelector('#ml-show-all')`, 'Apply my filters');
     await page.waitFor(`({ok:[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()===${JSON.stringify(low.id)},why:'rows '+[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()})`, 5000, 'only the save within the points');
+    await page.click(`document.querySelector('#f-search')`, 'Search');
+    await page.type('zzzzz-no-match');
+    await page.waitFor(`({ok:!document.querySelector('#empty-state').hidden&&document.querySelector('#empty-title').textContent==='Your filters hide all saved programmes.',why:'filtered My list empty message'})`, 5000, 'all saves hidden');
+    await page.click(`document.querySelector('#empty-clear')`, 'Show all saves');
+    await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length===2&&document.querySelector('#f-points').value==='24'&&document.querySelector('#f-search').value==='zzzzz-no-match',why:'saves or Browse filters changed'})`, 5000, 'both saves and retained Browse filters');
   });
 
   await run('1440/en', 'PR1 setup compare', '"Show my programmes" closes an open Compare, keeps its programme and focuses the results', await open(1440, 900, { compare: ids.slice(0, 1) }), async (page) => {
