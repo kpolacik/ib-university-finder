@@ -2205,6 +2205,26 @@ async function runBatch2C(base) {
       } finally { await page.close(); }
     }
   }
+  const irish = data.find((row) => row.country === 'Ireland' && row.tuitionEu > 0);
+  for (const ui of ['en', 'sk']) {
+    const page = await open('?ui=' + ui + '&q=' + encodeURIComponent(irish.programme), 1280);
+    try {
+      await check(1280, 'D16', 'Irish tuition opens its Free Fees eligibility note (' + ui + ')', async () => {
+        await mountProgramme(page, irish.id);
+        await page.click(`document.querySelector('li[data-id="${irish.id}"] button.open')`, 'Irish programme');
+        const costs = '#pane .d-fold:has(> .kv-costs)';
+        const note = costs + ' .kv-costs dd:first-of-type .d-note-more';
+        await page.click(`document.querySelector('${costs} > summary')`, 'Costs');
+        await page.click(`document.querySelector('${note} > summary')`, 'tuition fee details');
+        const wording = ui === 'sk' ? 'tri z piatich' : 'three of the five';
+        assert(await page.ev(`(()=>{
+          const body=document.querySelector('${note}[open] .d-note-body');
+          return !!body?.checkVisibility() && body.textContent.includes('Free Fees Initiative')
+            && body.textContent.includes(${JSON.stringify(wording)});
+        })()`), 'Free Fees condition did not open under the tuition amount');
+      });
+    } finally { await page.close(); }
+  }
 }
 
 // --- Batch 2 follow-up ----------------------------------------------------------

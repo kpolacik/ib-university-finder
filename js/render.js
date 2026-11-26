@@ -885,9 +885,11 @@ function costsFold(row, state) {
   };
 
   // EU fee: blank is not zero.
+  const feeNote = row.country === 'Ireland' && row.tuitionEu > 0
+    ? noteLine([t('irish_free_fees_eligibility')], t('fee_details')) : null;
   costRow(t('eu_fee'), row.tuitionEu === null ? unknownTag(t('not_published'))
     : row.tuitionEu === 0 ? `${money.format(0)} · ${t('no_tuition_fee')}` : `${money.format(row.tuitionEu)} ${t('year')}`,
-    row.country === 'Ireland' && row.tuitionEu !== null ? noteLine([document.createTextNode(t('student_contribution_levy'))], t('note_source')) : null);
+    feeNote);
 
   // Living: a monthly range with whose estimate it is (Jakub's living_cost_*
   // columns). The student's own figure says so; a national minimum says "from".
