@@ -5006,15 +5006,37 @@ async function runPhoneMotion(base) {
       const settled = `(()=>{const d=document.querySelector('#dd-sort');return {ok:d.open&&!d.querySelector('.dropdown-panel').getAnimations().some((a)=>a.playState==='running'),why:'not open'}})()`;
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
       await page.waitFor(settled, 5000, 'the open Sort list');
-      // Sampled from inside the page: two frames after the closing tap, and
-      // when the toggle event finally reports it closed.
-      await page.ev(`(()=>{const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');window.__fade=null;
-        s.addEventListener('click',()=>{const t0=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=p.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
-          window.__fade={reads:d.open,attr:d.hasAttribute('open'),shown:p.checkVisibility(),opacity:Number(getComputedStyle(p).opacity),hitPanel:!!hit&&p.contains(hit),aria:s.getAttribute('aria-expanded')};
-          d.addEventListener('toggle',()=>{window.__fade.toggle=Math.round(performance.now()-t0);window.__fade.after=d.open||d.hasAttribute('open')},{once:true});}));},{once:true});})()`);
+      // Sample the actual opacity transition at its midpoint. Two animation
+      // frames can both precede the first style update or arrive after close.
+      await page.ev(`(()=>{
+        const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');
+        window.__fade=null;
+        s.addEventListener('click',()=>{
+          const t0=performance.now();
+          const m=window.__fade={reads:d.open,attr:d.hasAttribute('open'),aria:s.getAttribute('aria-expanded')};
+          d.addEventListener('toggle',()=>{
+            m.toggle=Math.round(performance.now()-t0);
+            m.after=d.open||d.hasAttribute('open');
+          },{once:true});
+          // Flush the closing style so Chrome exposes the new CSS transition.
+          const r=p.getBoundingClientRect();
+          const fade=p.getAnimations().find(a=>a.transitionProperty==='opacity');
+          const time=fade?.currentTime;
+          if(fade) fade.currentTime=fade.effect.getComputedTiming().duration/2;
+          try {
+            const hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
+            m.shown=p.checkVisibility();
+            m.opacity=Number(getComputedStyle(p).opacity);
+            m.hitPanel=!!hit&&p.contains(hit);
+            m.hasFade=!!fade;
+          } finally {
+            if(fade) fade.currentTime=time??0;
+          }
+        },{once:true});
+      })()`);
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort again');
       const m = await page.waitFor(`(()=>{const f=window.__fade;return {ok:!!f&&f.toggle!==undefined,why:JSON.stringify(f),...f}})()`, 3000, 'the fade to end');
-      assert(m.reads === false && m.attr && m.shown && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
+      assert(m.reads === false && m.attr && m.shown && m.hasFade && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
       assert(m.toggle >= 120 && m.toggle <= 400 && m.after === false, `closed after ${m.toggle} ms: ${JSON.stringify(m)}`);
       // A second tap during the fade brings the list back, open and settled.
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
