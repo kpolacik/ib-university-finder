@@ -7073,19 +7073,23 @@ async function runSubjectEvidence(base) {
         assert(!facts.reviewed && !(await page.ev(compareFacts)).reviewed && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the failed citation still hid the competition or changed the catalogue wording');
         noErrors(page);
       });
-      await check('1280', 'F01 time zones', 'returning to the previous time zone cannot restore an expired rule in detail or Compare', async () => {
+      for (const [label, dates, visible] of [
+        ['expiry stays in force', { recheck_by: iso(0) }, [true, false, false]],
+        ['a review cannot be in the future', { reviewed_on: iso(1), recheck_by: iso(4) }, [false, true, false]],
+      ]) await check('1280', 'F01 time zones', `${label} on a UTC to Bratislava round trip in detail and Compare`, async () => {
         const day = iso(0);
         const recheck = `import('./js/subject-authority.js').then(m=>m.recheckAuthority())`;
         await page.send('Emulation.setTimezoneOverride', { timezoneId: 'UTC' });
         await page.ev(`Date.now = () => ${Date.parse(`${day}T23:59:00Z`)}; 0`);
-        answer = fixtures.rulesCsv([rule({ recheck_by: day })]);
+        answer = fixtures.rulesCsv([rule(dates)]);
         await page.ev(`import('./js/subject-authority.js').then(m=>m.refreshAuthority())`);
         const requests = page.seen.rules.length;
-        assert((await page.ev(detailFacts('#pane'))).reviewed && (await page.ev(compareFacts)).reviewed, 'no reviewed rule before expiry');
-        for (const timezoneId of ['Europe/Bratislava', 'UTC']) {
+        for (const [i, timezoneId] of ['UTC', 'Europe/Bratislava', 'UTC'].entries()) {
           await page.send('Emulation.setTimezoneOverride', { timezoneId });
           await page.ev(recheck);
-          assert(!(await page.ev(detailFacts('#pane'))).reviewed && !(await page.ev(compareFacts)).reviewed && requests === page.seen.rules.length, `stale approval or unexpected fetch in ${timezoneId}`);
+          const pane = await page.ev(detailFacts('#pane'));
+          const cmp = await page.ev(compareFacts);
+          assert(pane.reviewed === visible[i] && !!cmp.reviewed === visible[i] && requests === page.seen.rules.length, `${label}: unexpected reviewed state or fetch at step ${i} (${timezoneId})`);
         }
         noErrors(page);
       });

@@ -131,7 +131,8 @@ function strictCsv(input) {
 
 // acceptRule(record, { raw, today }) → { ok, key, withdrawal, rule, reasons }
 // raw: data.js's map of programme id → the exact catalogue rows the page
-// loaded. today: a Date; recheck_by counts through that local day.
+// loaded. today: the current local date. Optional expiryDay is the latest
+// ISO calendar day already observed for the same response.
 // disjoint: the record is, by its own cited scope, for a different known
 // qualification. Such a record can never apply to an IB Diploma student, so
 // it does not compete with an IB record for the same programme.
@@ -144,7 +145,7 @@ export function acceptRule(record, context) {
 
 // Everything acceptRule decides, with the rule built whenever its structure is
 // readable. Only acceptRule turns this into a usable rule.
-export function inspectRule(record, { raw = new Map(), today = new Date() } = {}) {
+export function inspectRule(record, { raw = new Map(), today = new Date(), expiryDay } = {}) {
   const reasons = new Set();
   const cell = (name) => (typeof record?.[name] === 'string' ? record[name].trim() : '');
   const programmeId = cell('programme_id');
@@ -176,7 +177,7 @@ export function inspectRule(record, { raw = new Map(), today = new Date() } = {}
   // A rule with no route that could be an IB Diploma route gives no verdict.
   if (!disjoint && kind !== 'explicit-no-restrictions' && body.routes.length && body.routes.every((r) => r.scope?.qualification && r.scope.qualification !== IB_DIPLOMA)) reasons.add('routes');
 
-  const dates = readDates(cell('checked_on'), cell('reviewed_on'), cell('recheck_by'), today, reasons);
+  const dates = readDates(cell('checked_on'), cell('reviewed_on'), cell('recheck_by'), today, expiryDay, reasons);
   bind(programmeId, json(cell('programme_dependencies')), json(cell('university_dependencies')), raw, reasons);
 
   const rule = reasons.has('scope') || reasons.has('routes') || reasons.has('sources') || reasons.has('evidence-kind') || !dates
@@ -342,7 +343,7 @@ function readRoutes(value, kind, reasons, cited) {
 
 // Real calendar dates, in order: checked, then reviewed (not in the future),
 // then recheck-by. Recheck-by counts through that local day.
-function readDates(checked, reviewed, recheck, today, reasons) {
+function readDates(checked, reviewed, recheck, today, expiryDay, reasons) {
   const real = (iso) => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
     if (!m) return false;
@@ -352,7 +353,7 @@ function readDates(checked, reviewed, recheck, today, reasons) {
   if (![checked, reviewed, recheck].every(real) || !(checked <= reviewed && reviewed <= recheck)) { reasons.add('dates'); return null; }
   const day = localDay(today);
   if (reviewed > day) reasons.add('dates');
-  if (recheck < day) reasons.add('expired');
+  if (recheck < day || (expiryDay && recheck < expiryDay)) reasons.add('expired');
   return { checked, reviewed, recheck };
 }
 

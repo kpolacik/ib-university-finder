@@ -14,8 +14,8 @@
 // forward (performance.now), never the wall clock: setting the computer's
 // clock back must not make an old answer current again. Once an answer is
 // too old it is dropped, and only a new good answer brings rules back.
-// Calendar dates (recheck_by) use the wall clock, but never a day earlier
-// than one already seen for the current answer. A good answer that changes nothing redraws nothing.
+// A review must have happened by the current local day. Once its recheck
+// date has passed for this answer, moving the clock or zone back cannot revive it.
 // A header-only file is not polled; it is asked again when the tab comes back
 // into view, after a reload, or when the browser comes back online.
 //
@@ -49,9 +49,7 @@ export function startSubjectAuthority({
   stopSubjectAuthority();
   s = {
     raw, onChange, url, timeoutMs, now, elapsed, fetchImpl, timers, online,
-    // answer: counts good answers; answeredAt: when the current one arrived,
-    // on the elapsed clock; wallFloor: the latest wall time seen since then.
-    generation: 0, records: null, answer: 0, answeredAt: null, wallFloor: -Infinity, inflight: null,
+    generation: 0, records: null, answeredAt: null, inflight: null,
     refreshTimer: null, ageTimer: null, edgeTimer: null, shown: fingerprint(new Map()), cache: null, listeners: [],
   };
   if (target) {
@@ -99,9 +97,7 @@ export function refreshAuthority() {
     const read = text === null ? { ok: false, records: [] } : readRuleRecords(text);
     if (read.ok) {
       state.records = read.records;
-      state.answer++;
       state.answeredAt = state.elapsed();
-      state.wallFloor = state.now();
     } else {
       state.records = null;
       state.answeredAt = null;
@@ -142,12 +138,6 @@ function retire() {
   queueMicrotask(() => { if (s === state) settle(); });
 }
 
-// Wall time for calendar checks, never earlier than already seen.
-function wallTime() {
-  s.wallFloor = Math.max(s.wallFloor, s.now());
-  return s.wallFloor;
-}
-
 async function fetchText(state) {
   const controller = new AbortController();
   const timer = state.timers.set(() => controller.abort(), state.timeoutMs);
@@ -168,14 +158,15 @@ function usable() {
   // At 60 s the answer is no longer current (and a clock that ran backwards
   // proves nothing).
   if (s.records.length && (age >= MAX_AGE_MS || age < 0)) { retire(); return new Map(); }
-  const today = new Date(wallTime());
+  const today = new Date(s.now());
   const day = localDay(today);
-  // A zone change can move the local day back even if wall time stands still.
-  // Keep the latest day evaluated for this answer; a new response clears it.
-  if (s.cache && s.cache.answer === s.answer && day <= s.cache.day) return s.cache.rules;
-  const results = s.records.map((record) => acceptRule(record, { raw: s.raw, today }));
+  // Every new answer clears the cache. Only expiry keeps the furthest day;
+  // a review that is back in the future must disappear immediately.
+  if (s.cache?.day === day) return s.cache.rules;
+  const expiryDay = s.cache && s.cache.expiryDay > day ? s.cache.expiryDay : day;
+  const results = s.records.map((record) => acceptRule(record, { raw: s.raw, today, expiryDay }));
   const { rules } = combineRules(results);
-  s.cache = { day, answer: s.answer, rules };
+  s.cache = { day, expiryDay, rules };
   return rules;
 }
 
@@ -220,6 +211,6 @@ function scheduleEdge(rules) {
   const earliest = [...rules.values()].map((rule) => rule.recheckBy).sort()[0];
   const [y, m, d] = earliest.split('-').map(Number);
   const end = new Date(y, m - 1, d + 1).getTime();
-  const wait = Math.min(Math.max(0, end - wallTime()), MAX_TIMER_MS);
+  const wait = Math.min(Math.max(0, end - s.now()), MAX_TIMER_MS);
   s.edgeTimer = s.timers.set(() => { s && (s.edgeTimer = null); settle(); }, wait);
 }

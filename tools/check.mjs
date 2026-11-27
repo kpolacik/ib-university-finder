@@ -11970,28 +11970,31 @@ section('F01 public subject evidence and reviewed subject rules');
     await authority.refreshAuthority();
     check('F01 authority F2: a recheck date passed on the calendar stays passed when the clock goes back; a new good answer reads the clock afresh',
       first && expired && stillExpired && has());
-    // On 24 November the review (25 November) would be in the future and the
-    // rule refused; the day already seen (27th) is used instead.
     h.jump(-3 * 86_400_000);
-    check('F01 authority F2: a calendar day earlier than one already seen is never used', has());
+    check('F01 authority F2: winding the clock to before the review date hides the rule', !has());
     authority.stopSubjectAuthority();
   }
   {
     const zone = process.env.TZ;
     try {
       process.env.TZ = 'UTC';
-      const h = harness({ start: Date.parse('2026-11-27T23:59:00Z'), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+      const h = harness({ start: Date.parse('2026-11-27T23:59:00Z'), body: fixtures.rulesCsv([
+        rec({ recheck_by: '2026-11-27' }), rec({ reviewed_on: '2026-11-28', recheck_by: '2026-12-01' }, 'eur-ibp'),
+      ]) });
+      const nextReview = () => authority.reviewedRule('eur-ibp') !== null;
       await h.start();
-      const current = has();
+      const current = has() && !nextReview();
       process.env.TZ = 'Europe/Bratislava';
       authority.recheckAuthority();
-      const expired = !has();
+      const expired = !has() && nextReview();
       process.env.TZ = 'UTC';
       authority.recheckAuthority();
       check('F01 F2: changing zones back cannot revive an approval expired in this response',
-        current && expired && !has() && h.calls.length === 1 && h.changes === 2);
+        current && expired && !has() && h.calls.length === 1);
+      check('F01 F2: returning to a day before a second programme was reviewed hides its approval too',
+        current && expired && !nextReview() && h.calls.length === 1 && h.changes === 3);
       await authority.refreshAuthority();
-      check('F01 F2: a new good response may establish approval in the current zone', has() && h.calls.length === 2 && h.changes === 3);
+      check('F01 F2: a fresh response resets expiry but cannot authorize a future review', has() && !nextReview() && h.calls.length === 2 && h.changes === 4);
     } finally {
       authority.stopSubjectAuthority();
       if (zone === undefined) delete process.env.TZ;
