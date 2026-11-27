@@ -151378,6 +151378,744 @@
       "en": "Secondary school diploma, or a foreign qualification recognised as valid under current regulations (IB Diploma recognition not stated on any page read)",
       "sk": "Stredoškolský diplom alebo zahraničná kvalifikácia uznaná za platnú podľa aktuálnych predpisov (uznávanie IB diplomu nie je uvedené na žiadnej prečítanej stránke)",
       "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS Academic or UKVI 6.0 with a minimum of 5.5 in each sub-skill (other tests on course page)",
+      "sk": "IELTS Academic alebo UKVI 6.0, minimálne 5.5 z každej čiastkovej zručnosti (ďalšie testy na stránke programu)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS Academic 6.0, no band below 6, or equivalent; IB English A1/A2/B grade 5 HL (4 SL if IB taken through English) accepted. Some courses ask for more (6.5 to 7)",
+      "sk": "IELTS Academic 6.0, žiadna časť pod 6, alebo ekvivalent; uznáva sa IB English A1/A2/B so známkou 5 na HL (4 na SL, ak štúdium IB prebiehalo v angličtine). Niektoré programy požadujú viac (6.5 až 7)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IB: International Baccalaureate™ Diploma (IB DP) taught in English or with English A HL",
+      "sk": "IB: International Baccalaureate™ Diploma (IB DP) s výučbou v angličtine alebo s English A HL",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "An accepted English test (e.g. IELTS Academic 6.0) or an IB diploma completed in English, per uasinfo.fi (Spring 2027 Joint Application I)",
+      "sk": "Uznávaný test z angličtiny (napr. IELTS Academic 6.0) alebo IB diplom získaný absolvovaním programu v angličtine, podľa uasinfo.fi (Spring 2027 Joint Application I)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Proof of English language proficiency; programme-specific certificates and scores must be checked.",
+      "sk": "Doklad o znalosti angličtiny; certifikáty a skóre pre konkrétny program treba overiť.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS 6.0; IB Diploma holders exempt",
+      "sk": "IELTS 6.0; držitelia IB diplomu sú oslobodení",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS 6.0 (6.0 writing and speaking) or equivalent listed test; exemptions for IB English, SAT/ACT, or certain national diplomas",
+      "sk": "IELTS 6.0 (6.0 z písania a hovorenia) alebo ekvivalentný test zo zoznamu; výnimky pre IB English, SAT/ACT alebo určité národné diplomy",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Danish B-level English (210 hours, grade 2.0) from upper secondary, or IELTS Academic 6.5, TOEFL iBT, or Cambridge C1 Advanced / C2 (average 180)",
+      "sk": "Angličtina na dánskej úrovni B (210 hodín, známka 2.0) z vyššieho sekundárneho vzdelávania, alebo IELTS Academic 6.5, TOEFL iBT, alebo Cambridge C1 Advanced / C2 (priemer 180)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "English B2 proof: IELTS Academic 6.0, TOEFL iBT 78, or IB Diploma with English SL/HL. Nationals of USA, Canada, UK, Ireland, Australia and NZ are exempt",
+      "sk": "Doklad o angličtine B2: IELTS Academic 6.0, TOEFL iBT 78 alebo IB diplom s English SL/HL. Štátni príslušníci USA, Kanady, Spojeného kráľovstva, Írska, Austrálie a Nového Zélandu sú oslobodení",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS Academic 6.0 or another listed English test, or a whole IB Diploma completed in English",
+      "sk": "IELTS Academic 6.0 alebo iný test z angličtiny zo zoznamu, alebo celý IB diplom absolvovaný v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "No certificate for the English bachelors; English is assessed at the admission interview",
+      "sk": "Na bakalárske programy v angličtine netreba certifikát; angličtinu posudzujú na prijímacom pohovore",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Proof of English required (IB Diploma from an IB World School counts); Game Design: English assessed in its entrance exam",
+      "sk": "Vyžaduje sa doklad o angličtine (uznáva sa IB diplom zo školy IB World School); Game Design: angličtinu posudzujú v rámci jeho prijímacej skúšky",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "B2 (CEFR), test taken within the last two years: IELTS 6.5 (no band under 6.0), Cambridge FCE grade B (173+ points), PTE Academic 59, or Duolingo English Test 125 (no sub-score under 110)",
+      "sk": "B2 (CEFR), test absolvovaný za posledné dva roky: IELTS 6.5 (žiadna časť pod 6.0), Cambridge FCE so známkou B (173+ bodov), PTE Academic 59 alebo Duolingo English Test 125 (žiadne čiastkové skóre pod 110)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "CEFR B2 certificate from IELTS, Pearson, Cambridge or TOEFL only (UniME Entry Criteria, A.A. 2026/2027)",
+      "sk": "Certifikát CEFR B2 výhradne od IELTS, Pearson, Cambridge alebo TOEFL (UniME Entry Criteria, A.A. 2026/2027)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "EU/EEA: assessed at the admission interview, no certificate. Non-EU: test certificate",
+      "sk": "EÚ/EHP: posudzuje sa na prijímacom pohovore, bez certifikátu. Mimo EÚ: certifikát z testu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IB: English A or B HL/SL at grade 4+, or the whole IB Diploma completed in English (UASinfo); otherwise an accepted English test",
+      "sk": "IB: English A alebo B na HL/SL so známkou 4+, alebo celý IB diplom absolvovaný v angličtine (UASinfo); inak uznávaný test z angličtiny",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Proof of English from an approved test or previous studies (see UASinfo.fi language requirements); required of all bachelor applicants, including native speakers",
+      "sk": "Doklad o angličtine zo schváleného testu alebo z predchádzajúceho štúdia (pozri jazykové požiadavky na UASinfo.fi); vyžaduje sa od všetkých uchádzačov o bakalárske štúdium, vrátane rodených hovoriacich",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "B2 level (IELTS, TOEFL or other Laurea-approved test)",
+      "sk": "Úroveň B2 (IELTS, TOEFL alebo iný test schválený Laureou)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "English proof due 28 Jan 2027 for the joint round (IB English A or B HL/SL grade 4+ counts). ICT's online-course route does not need it unless selected by certificate.",
+      "sk": "Doklad o angličtine treba predložiť do 28. januára 2027 v spoločnom kole (uznáva sa IB English A alebo B na HL/SL so známkou 4+). Pri prijímaní na ICT cez online kurz sa doklad nevyžaduje. Výnimkou je prípad, keď ťa vyberú na základe certifikátu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IB: HL English A 4 or HL English B 5, SL English A 5 or SL English B 6; or IELTS Academic 6.0, TOEFL iBT 80, PTE 53",
+      "sk": "IB: HL English A 4 alebo HL English B 5, SL English A 5 alebo SL English B 6; alebo IELTS Academic 6.0, TOEFL iBT 80, PTE 53",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Proof of English, e.g. IELTS Academic 6.0, unless exempt; exemption for education completed in an EU/EEA country (see TAMK eligibility page)",
+      "sk": "Doklad o angličtine, napr. IELTS Academic 6.0, ak nemáš výnimku; výnimka pre vzdelanie ukončené v krajine EÚ/EHP (pozri stránku TAMK o podmienkach prijatia)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Accepted English test (e.g. IELTS Academic 6.0, from the rolling-admission list); IB English A or B HL/SL grade 4 also counts",
+      "sk": "Uznávaný test z angličtiny (napr. IELTS Academic 6.0, zo zoznamu pre priebežné prijímanie); uznáva sa aj IB English A alebo B na HL/SL so známkou 4",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS Academic 6.0 or another accepted test (SEAMK Direct criteria); IB holders may prove English through IB English results (UASinfo rules)",
+      "sk": "IELTS Academic 6.0 alebo iný uznávaný test (kritériá SEAMK Direct); držitelia IB môžu angličtinu preukázať výsledkami z IB English (pravidlá UASinfo)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IB taught in English counts; otherwise IELTS 6.0, TOEFL iBT 67, Cambridge Advanced 169, PTE Academic 51, Oxford ELLT 6.0 or YKI grade 4",
+      "sk": "IB s výučbou v angličtine sa uznáva; inak IELTS 6.0, TOEFL iBT 67, Cambridge Advanced 169, PTE Academic 51, Oxford ELLT 6.0 alebo YKI so známkou 4",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Listed English test, e.g. IELTS Academic 6.0 (certificate-grades route); an IB Diploma completed in English also counts on that route",
+      "sk": "Test z angličtiny zo zoznamu, napr. IELTS Academic 6.0 (pri prijímaní podľa známok uvedených na doklade); pri tomto spôsobe prijímania sa uznáva aj IB diplom absolvovaný v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "proof of English required, e.g. IELTS Academic 6.0, or IB English A or B HL/SL grade 4 or more; the SAT route needs no English certificate; spring 2027 proof due 28 Jan 2027 15:00 Finnish time",
+      "sk": "vyžaduje sa doklad o angličtine, napr. IELTS Academic 6.0, alebo IB English A alebo B na HL/SL so známkou 4 alebo vyššou; cesta cez SAT nevyžaduje certifikát z angličtiny; doklad pre jarné kolo 2027 treba predložiť najneskôr 28. januára 2027 o 15:00 fínskeho času",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "English C1 (checked at the on-campus English assessment)",
+      "sk": "Angličtina C1 (overuje sa pri hodnotení angličtiny priamo v kampuse)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "English CEFR C1 (English-taught programmes), tested in the admission test",
+      "sk": "Angličtina CEFR C1 (programy vyučované v angličtine), overuje sa v prijímacom teste",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS (Academic) 6.5 or IELTS Academic online 6.5; or TOEFL iBT 94 (tests before 21 January 2026) or 4.5 (tests after); or Cambridge C1 Advanced 180 or C2 Proficiency 200; or English corresponding to Danish B level",
+      "sk": "IELTS (Academic) 6.5 alebo IELTS Academic online 6.5; alebo TOEFL iBT 94 (testy pred 21. januárom 2026) alebo 4.5 (testy po tomto dátume); alebo Cambridge C1 Advanced 180 alebo C2 Proficiency 200; alebo angličtina zodpovedajúca dánskej úrovni B",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "IELTS Academic 6.0 or another test on the UASinfo list; IB English A or B HL/SL grade 4+ also counts (spring 2027 round)",
+      "sk": "IELTS Academic 6.0 alebo iný test zo zoznamu UASinfo; uznáva sa aj IB English A alebo B na HL/SL so známkou 4+ (jarné kolo 2027)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Two years of full-time education in English within the last three calendar years, or a test taken within the last 2 years at a test centre: TOEFL iBT 80+, TOEFL paper 550+, TOEIC 670+ / 290+, IELTS Academic 6.0+, Cambridge 169+, LanguageCert Academic 65+, PTE Academic 61+. Online tests are not accepted.",
+      "sk": "Dva roky denného štúdia v angličtine počas posledných troch kalendárnych rokov, alebo test absolvovaný za posledné 2 roky v testovacom centre: TOEFL iBT 80+, TOEFL paper 550+, TOEIC 670+ / 290+, IELTS Academic 6.0+, Cambridge 169+, LanguageCert Academic 65+, PTE Academic 61+. Online testy sa neuznávajú.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "B2 (CEFR) for programmes taught in English (https://admission.unisi.it/?p=1944)",
+      "sk": "B2 (CEFR) pre programy vyučované v angličtine (https://admission.unisi.it/?p=1944)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "B2; IELTS Academic/Online 6.5, TOEFL iBT 90 before 2026-01-21 or 4.5 from that date; alternatives include PTE Academic 61, CAE C/CPE 180, FCE A, Linguaskill 180, Oxford ELLT 7, or an English-medium high-school qualification. Test reports normally no older than two years.",
+      "sk": "B2; IELTS Academic/Online 6.5, TOEFL iBT 90 pred 2026-01-21 alebo 4.5 od tohto dátumu; medzi alternatívy patrí PTE Academic 61, CAE C/CPE 180, FCE A, Linguaskill 180, Oxford ELLT 7 alebo stredoškolská kvalifikácia získaná absolvovaním vzdelávania v angličtine. Doklady o výsledkoch testov majú byť spravidla najviac dva roky staré.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "CEFR B2 (Novia's general statement). Some programmes check it in the entrance exam instead.",
+      "sk": "CEFR B2 (všeobecné vyhlásenie Novie). Niektoré programy túto úroveň namiesto toho overujú v prijímacej skúške.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement_default",
+      "en": "Minimum B2: IELTS 6.0, Cambridge B2/B2+ or TOEFL 68",
+      "sk": "Minimálne B2: IELTS 6.0, Cambridge B2/B2+ alebo TOEFL 68",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IB: English requirement met by the IB Diploma",
+      "sk": "IB: požiadavku na angličtinu spĺňa IB diplom",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.5, each component at least 5.5",
+      "sk": "IELTS 6.5, každá časť aspoň 5.5",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.5 or equivalent",
+      "sk": "IELTS 6.5 alebo ekvivalent",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic 6.5 overall, no band below 6 (or equivalent)",
+      "sk": "IELTS Academic celkovo 6.5, žiadna časť pod 6 (alebo ekvivalent)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic: 6.5 overall, 6.0 writing, 5.5 other elements",
+      "sk": "IELTS Academic: celkovo 6.5, písanie 6.0, ostatné časti 5.5",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No certificate listed; English test is part of the entrance exam",
+      "sk": "Certifikát nie je uvedený; test z angličtiny je súčasťou prijímacej skúšky",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 each band, Cambridge FCE, telc B2, PTE 59-75). German A2 by start of 3rd semester, B1 by end of studies.",
+      "sk": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 z každej časti, Cambridge FCE, telc B2, PTE 59-75). Nemčina A2 do začiatku 3. semestra, B1 do konca štúdia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Czech B2 exam (ÚJOP UK or another Czech university) required for graduates of a foreign secondary school (no Slovak exemption stated in bachelor rules)",
+      "sk": "Skúška z češtiny na úrovni B2 (ÚJOP UK alebo iná česká univerzita) sa vyžaduje od absolventov zahraničnej strednej školy (pravidlá bakalárskeho štúdia neuvádzajú slovenskú výnimku)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.0 (no subscore below 5.5); IB Diploma holders exempt",
+      "sk": "IELTS 6.0 (žiadne čiastkové skóre pod 5.5); držitelia IB diplomu sú oslobodení",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic: 6.0 overall, 5.5 each",
+      "sk": "IELTS Academic: celkovo 6.0, z každej časti 5.5",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No Czech certificate required; the Scio OSP/VŠP test itself serves as proof of Czech",
+      "sk": "Certifikát z češtiny sa nevyžaduje; samotný test Scio OSP/VŠP slúži ako doklad o znalosti češtiny",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2: secondary education entirely in English, otherwise TOEFL or IELTS B2 certificate issued within five years.",
+      "sk": "B2: stredoškolské vzdelanie úplne v angličtine, inak certifikát TOEFL alebo IELTS na úrovni B2, najviac päť rokov od vydania.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2; confirmation of previous English-medium education may be accepted.",
+      "sk": "B2; potvrdenie o predchádzajúcom vzdelávaní v angličtine sa môže uznať.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 each band, Cambridge FCE, telc B2, PTE 59-75). German B1 must be proven by end of studies.",
+      "sk": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 z každej časti, Cambridge FCE, telc B2, PTE 59-75). Nemčinu B1 treba preukázať do konca štúdia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (TOEFL iBT min. 72, IELTS band min. 5.5, Cambridge FCE grade B or C, TOEIC 785/160/150, or B2 certificate from Language Test Centre of Trier UAS)",
+      "sk": "CEFR B2 (TOEFL iBT min. 72, IELTS skóre (band) min. 5.5, Cambridge FCE so známkou B alebo C, TOEIC 785/160/150, alebo certifikát B2 od Language Test Centre of Trier UAS)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 certificate (e.g. TOEFL, IELTS) or proof of secondary school taught in English",
+      "sk": "Certifikát CEFR B2 (napr. TOEFL, IELTS) alebo doklad o strednej škole s výučbou v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Czech: entrance examination is conducted in Czech (proving readiness to study in Czech); no Czech B2 language certificate is required (Rector's Directive No. 12/2021).",
+      "sk": "Čeština: prijímacia skúška prebieha v češtine (preukazuje pripravenosť študovať v češtine); jazykový certifikát z češtiny B2 sa nevyžaduje (Rector's Directive No. 12/2021).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English B2 assessed during online admission interview (with English essay and motivation video; no certificate required)",
+      "sk": "Angličtina B2 sa posudzuje počas online prijímacieho pohovoru (s esejou v angličtine a motivačným videom; certifikát sa nevyžaduje)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English at least B1",
+      "sk": "Angličtina aspoň B1",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.0 or equivalent",
+      "sk": "IELTS 6.0 alebo ekvivalent",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 7.0 overall, no band below 7.0",
+      "sk": "IELTS celkovo 7.0, žiadna časť pod 7.0",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Proof of English proficiency required (certificate or other proof of studying in English); no level or test named; not needed for native speakers",
+      "sk": "Vyžaduje sa doklad o znalosti angličtiny (certifikát alebo iný doklad o štúdiu v angličtine); úroveň ani test nie sú uvedené; rodení hovoriaci ho nepotrebujú",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Tested in the on-site exam, so no separate test is needed for that route. The UAS Exam route needs an approved English test or previous studies in English.",
+      "sk": "Overuje sa na skúške na mieste, takže pri tejto ceste netreba samostatný test. Cesta cez UAS Exam vyžaduje schválený test z angličtiny alebo predchádzajúce štúdium v angličtine.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "University English entrance examination: at least 38/50 (B2).",
+      "sk": "Univerzitná prijímacia skúška z angličtiny: aspoň 38/50 (B2).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "2026/27: English B2, with listed exceptions.",
+      "sk": "2026/27: angličtina B2, s uvedenými výnimkami.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "A2 English (CEFR) certificate for the bachelor Czech for Foreigners (B2 is the general bachelor level)",
+      "sk": "Certifikát z angličtiny A2 (CEFR) pre bakalársky program Czech for Foreigners (B2 je všeobecná úroveň pre bakalárske štúdium)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Assessed as part of the entrance examination or through documentation",
+      "sk": "Posudzuje sa v rámci prijímacej skúšky alebo na základe dokladov",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Assessed during admission via the Academic Readiness Screening Process (ACRES); no separate English certificate or other means for proving language skills accepted",
+      "sk": "Posudzuje sa počas prijímacieho konania cez Academic Readiness Screening Process (ACRES); samostatný certifikát z angličtiny ani iný spôsob preukázania jazykových znalostí sa neuznáva",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B1; accepted certificates or university test; proof of previous English-language study exempts the language test.",
+      "sk": "B1; uznávané certifikáty alebo univerzitný test; doklad o predchádzajúcom štúdiu v angličtine oslobodzuje od jazykového testu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR B2 or 8 points / grade 3.0 in upper secondary education; TOEFL or IELTS)",
+      "sk": "B2 (CEFR B2 alebo 8 bodov / známka 3.0 na strednej škole; TOEFL alebo IELTS)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR) certificate from the university's approved list, or the university's CLA test. Exempt: students who completed a programme taught entirely in English, and native English speakers from listed countries",
+      "sk": "Certifikát B2 (CEFR) zo schváleného zoznamu univerzity, alebo test CLA univerzity. Oslobodení: študenti, ktorí absolvovali program vyučovaný úplne v angličtine, a rodení hovoriaci angličtiny z uvedených krajín",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR) certificate or native speaker; IMAT participation fulfills the English requirement for admission",
+      "sk": "Certifikát B2 (CEFR) alebo rodený hovoriaci; účasť na IMAT spĺňa požiadavku na angličtinu pre prijatie",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR) certificate submitted at enrolment; exempt if from an English-official country or with at least 1 year of English-medium schooling",
+      "sk": "Certifikát B2 (CEFR) predložený pri zápise; oslobodenie, ak pochádzaš z krajiny, kde je angličtina úradným jazykom, alebo ak máš aspoň 1 rok školskej dochádzky v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR) certificate, needed for enrolment, e.g. IELTS 5.5, TOEFL iBT 60 (issued 2021 or later)",
+      "sk": "Certifikát B2 (CEFR), potrebný na zápis, napr. IELTS 5.5, TOEFL iBT 60 (vydaný v roku 2021 alebo neskôr)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR) certificate: IELTS 5.5 or TOEFL 72 at enrolment; IELTS 6.5 or TOEFL 79 if submitted later",
+      "sk": "Certifikát B2 (CEFR): IELTS 5.5 alebo TOEFL 72 pri zápise; IELTS 6.5 alebo TOEFL 79, ak ho predložíš neskôr",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (CEFR); Duolingo and EF SET not accepted",
+      "sk": "B2 (CEFR); Duolingo a EF SET sa neuznávajú",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 (handing in a TOEFL Test or IELTS)",
+      "sk": "B2 (predložením testu TOEFL alebo IELTS)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 CEFR minimum: certificate (TOEFL, IELTS, CAE or CPE), or a document certifying previous English courses or studies in English",
+      "sk": "Minimálne B2 CEFR: certifikát (TOEFL, IELTS, CAE alebo CPE), alebo doklad o predchádzajúcich kurzoch angličtiny alebo štúdiu v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2 CEFR minimum: certificate documenting knowledge of English (for the bachelor degree; C1 applies to the master English Philology)",
+      "sk": "Minimálne B2 CEFR: certifikát o znalosti angličtiny (pre bakalárske štúdium; C1 platí pre magisterský program English Philology)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "B2: Common European Framework of Reference level B2 (§ 7 HAWAZO / § 2 ZAO Mechanical Engineering)",
+      "sk": "B2: úroveň B2 podľa Spoločného európskeho referenčného rámca (§ 7 HAWAZO / § 2 ZAO Mechanical Engineering)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 each band, Cambridge FCE, telc B2, PTE 59-75). German B2 must be completed by the end of studies.",
+      "sk": "CEFR B2 (TOEFL iBT 72-94, IELTS 5.5-6.5 z každej časti, Cambridge FCE, telc B2, PTE 59-75). Nemčina B2 musí byť splnená do konca štúdia.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (TOEFL iBT min. 72, IELTS min. 5.5, Cambridge CAE/FCE min. 160, Duolingo min. 105, or TELC B2)",
+      "sk": "CEFR B2 (TOEFL iBT min. 72, IELTS min. 5.5, Cambridge CAE/FCE min. 160, Duolingo min. 105 alebo TELC B2)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 (or proof via completion of module BAA 14 at Worms UAS by the end of the first study year)",
+      "sk": "CEFR B2 (alebo preukázanie absolvovaním modulu BAA 14 na Worms UAS do konca prvého roka štúdia)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 or higher (proof of English proficiency); not required if secondary education was completed in English",
+      "sk": "CEFR B2 alebo vyššia (doklad o znalosti angličtiny); nevyžaduje sa, ak bolo stredoškolské vzdelanie ukončené v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2 required: TOEFL iBT min 4 / TOEFL ITP min 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2, or secondary education in English",
+      "sk": "Vyžaduje sa CEFR B2: TOEFL iBT min. 4 / TOEFL ITP min. 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2 alebo stredoškolské vzdelanie v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2: Cambridge CAE grade C, IELTS 6.0, TOEFL iBT 80 (or 4.0 since 2026), TOEIC 850, PTE 65. Waived if secondary education completed entirely in English (e.g. IB Diploma or A-Levels).",
+      "sk": "CEFR B2: Cambridge CAE so známkou C, IELTS 6.0, TOEFL iBT 80 (alebo 4.0 od roku 2026), TOEIC 850, PTE 65. Od požiadavky sa upúšťa, ak bolo stredoškolské vzdelanie ukončené úplne v angličtine (napr. IB diplom alebo A-Levels).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2: TOEFL iBT min 4 / TOEFL ITP min 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2, Unicert II, or secondary education in English",
+      "sk": "CEFR B2: TOEFL iBT min. 4 / TOEFL ITP min. 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2, Unicert II alebo stredoškolské vzdelanie v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "CEFR B2: TOEFL iBT min 4 / TOEFL ITP min 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2, or secondary education in English",
+      "sk": "CEFR B2: TOEFL iBT min. 4 / TOEFL ITP min. 543, IELTS, Cambridge FCE / ESOL Level 1, PTE Academic B2 alebo stredoškolské vzdelanie v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Czech B2 (e.g. state language exam, MŠMT-accredited Czech course, or ICV VUT Czech course for foreigners; applicants may communicate in Czech or Slovak during the entrance exam)",
+      "sk": "Čeština B2 (napr. štátna jazyková skúška, kurz češtiny akreditovaný MŠMT alebo kurz češtiny pre cudzincov ICV VUT; uchádzači môžu počas prijímacej skúšky komunikovať po česky alebo po slovensky)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Danish A-level English (335 hours, grade 2.0) as a specific requirement",
+      "sk": "Angličtina na dánskej úrovni A (335 hodín, známka 2.0) ako špecifická požiadavka",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English B1 or higher; faculty admissions page",
+      "sk": "Angličtina B1 alebo vyššia; stránka fakulty o prijímacom konaní",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English B2 demonstrated in written test; C1/C2 certificate may affect scoring.",
+      "sk": "Angličtina B2 sa preukazuje v písomnom teste; certifikát C1/C2 môže ovplyvniť bodovanie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English B2 proof required (certificate on a completed exam)",
+      "sk": "Vyžaduje sa doklad o angličtine B2 (certifikát o absolvovanej skúške)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English B2: UCT Prague English entrance exam (min. 30%), recognized B2+ certificate (min. 70% to waive exam), or maturita from an English-taught secondary programme",
+      "sk": "Angličtina B2: prijímacia skúška z angličtiny na UCT Prague (min. 30%), uznávaný certifikát B2+ (min. 70% na odpustenie skúšky), alebo maturita zo stredoškolského programu vyučovaného v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English C1 level recommended. Non-EU applicants require CAE (grade C), IELTS 6.5, TOEFL iBT 94, TOEIC 485/450, or PTE 75. EU applicants can submit these test scores to improve their average final grade by 0.4.",
+      "sk": "Odporúča sa angličtina na úrovni C1. Uchádzači z krajín mimo EÚ potrebujú CAE (známka C), IELTS 6.5, TOEFL iBT 94, TOEIC 485/450 alebo PTE 75. Uchádzači z EÚ môžu tieto výsledky testov predložiť, aby si zlepšili priemernú výslednú známku o 0.4.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English at B2",
+      "sk": "Angličtina na úrovni B2",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English at B2 (required for the English subject)",
+      "sk": "Angličtina na úrovni B2 (vyžaduje sa pre predmet angličtina)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English at a level for study in English (B2 certificate, or the language assessment)",
+      "sk": "Angličtina na úrovni potrebnej na štúdium v angličtine (certifikát B2 alebo jazykové hodnotenie)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English certification or proof of at least 1 academic year of secondary school taught in English (Allegato 1); IMAT is entirely in English",
+      "sk": "Certifikát z angličtiny alebo doklad o aspoň 1 akademickom roku strednej školy s výučbou v angličtine (Allegato 1); IMAT je celý v angličtine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English proficiency assessed using school-leaving results and/or English certificates; level not specified.",
+      "sk": "Znalosť angličtiny sa posudzuje podľa výsledkov pri ukončení stredoškolského vzdelania a/alebo certifikátov z angličtiny; úroveň nie je uvedená.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English proficiency certificate optional (not mandatory); applicants sit an online admission interview",
+      "sk": "Certifikát o znalosti angličtiny je dobrovoľný (nie povinný); uchádzači absolvujú online prijímací pohovor",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English proficiency required: English as medium of instruction (MOI) in secondary school, or CEFR B2 test certificate (e.g. TOEFL, IELTS, Cambridge, PTE)",
+      "sk": "Vyžaduje sa znalosť angličtiny: angličtina ako vyučovací jazyk (MOI) na strednej škole, alebo certifikát z testu potvrdzujúci úroveň CEFR B2 (napr. TOEFL, IELTS, Cambridge, PTE)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English school-leaving exam at B1 or relevant equivalent international certificate",
+      "sk": "Maturitná skúška z angličtiny na úrovni B1 alebo zodpovedajúci rovnocenný medzinárodný certifikát",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "English test by SCIO (ranking input)",
+      "sk": "Test z angličtiny od SCIO (započítava sa do poradia uchádzačov)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Entire study programme is taught in English; English language proficiency required",
+      "sk": "Celý študijný program sa vyučuje v angličtine; vyžaduje sa znalosť angličtiny",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "For English-language full-time study: CEFR B2 (FPEDAS leaflet)",
+      "sk": "Pre denné štúdium v angličtine: CEFR B2 (leták FPEDAS)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Good command of English (entire curriculum and examinations conducted in English)",
+      "sk": "Dobrá znalosť angličtiny (celá výučba aj skúšky prebiehajú v angličtine)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.0 (no subscore below 5.5, max two subscores of 5.5); IB Diploma holders exempt",
+      "sk": "IELTS 6.0 (žiadne čiastkové skóre pod 5.5, najviac dve čiastkové skóre 5.5); držitelia IB diplomu sú oslobodení",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.0, or equivalent (CEFR, B2/C1 level)",
+      "sk": "IELTS 6.0 alebo ekvivalent (CEFR, úroveň B2/C1)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.5 including 6.0 writing or equivalent",
+      "sk": "IELTS 6.5 vrátane 6.0 z písania alebo ekvivalent",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 6.5 or accepted equivalent",
+      "sk": "IELTS 6.5 alebo uznávaný ekvivalent",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS 7.0, each component at least 6.0",
+      "sk": "IELTS 7.0, každá časť aspoň 6.0",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic 6.5 or TOEFL iBT 85; alternatives accepted. English-schooling waiver possible.",
+      "sk": "IELTS Academic 6.5 alebo TOEFL iBT 85; uznávajú sa aj alternatívy. Pri školskom vzdelaní v angličtine je možná výnimka.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic 6.5; Duolingo 110; PTE Academic 59 overall; other accepted certificates listed on detailed admission page. Certificates valid within two years of test date.",
+      "sk": "IELTS Academic 6.5; Duolingo 110; PTE Academic celkovo 59; ďalšie uznávané certifikáty sú uvedené na podrobnej stránke o prijímaní. Certifikáty platia dva roky od dátumu testu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "IELTS Academic 7 overall, no band below 6 (or equivalent)",
+      "sk": "IELTS Academic celkovo 7, žiadna časť pod 6 (alebo ekvivalent)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "International UAS Exam route: proof of English required (recognised test or previous studies). Diak's own exam: no English certificate needed, English is tested. Rolling route: not stated (unknown)",
+      "sk": "Cesta cez International UAS Exam: vyžaduje sa doklad o angličtine (uznávaný test alebo predchádzajúce štúdium). Vlastná skúška Diaku: certifikát z angličtiny netreba, angličtina sa testuje. Priebežné prijímanie: neuvádza sa (neznáme)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Level 2 (Nursing Undergraduate Year 1): IELTS Academic 6.5 overall with no section below 6.0, or PTE Academic 63 (no section below 59), TOEFL iBT 90 (L23 R21 S22 W23), Duolingo 120 (no section below 110), OET 300, or Cambridge B2 First/C1 Advanced 176 (no section below 169)",
+      "sk": "Level 2 (Nursing, 1. ročník bakalárskeho štúdia): IELTS Academic celkovo 6.5, žiadna časť pod 6.0, alebo PTE Academic 63 (žiadna časť pod 59), TOEFL iBT 90 (L23 R21 S22 W23), Duolingo 120 (žiadna časť pod 110), OET 300 alebo Cambridge B2 First/C1 Advanced 176 (žiadna časť pod 169)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No English certificate required; English is tested in the pre-task and online interview (per TAMK)",
+      "sk": "Certifikát z angličtiny sa nevyžaduje; angličtina sa testuje v prípravnej úlohe (pre-task) a online pohovore (podľa TAMK)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No certificate level stated: entrance exam includes an English language test (general aptitude + English);",
+      "sk": "Úroveň certifikátu nie je uvedená: prijímacia skúška zahŕňa test z angličtiny (všeobecné študijné predpoklady + angličtina);",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No formal English test certificate required (such as TOEFL or IELTS); coursework is taught in English and sufficient language skills are required to complete coursework",
+      "sk": "Formálny certifikát z testu angličtiny (napr. TOEFL alebo IELTS) sa nevyžaduje; výučba prebieha v angličtine a na zvládnutie štúdia sú potrebné dostatočné jazykové znalosti",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "No separate Czech language exam required for foreigners (Scio OSP/VŠP test in Czech/Slovak suffices)",
+      "sk": "Pre cudzincov sa samostatná skúška z češtiny nevyžaduje (stačí test Scio OSP/VŠP v češtine/slovenčine)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Not a certificate requirement: English skills are assessed in the entrance exam.",
+      "sk": "Certifikát sa nevyžaduje: znalosť angličtiny sa posudzuje v prijímacej skúške.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Practical English is scored in the entrance interview (min 18 of 30)",
+      "sk": "Praktická angličtina sa boduje na prijímacom pohovore (min. 18 z 30)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Proof of English proficiency at level B2",
+      "sk": "Doklad o znalosti angličtiny na úrovni B2",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Proof of English skills required (e.g. an internationally valid certificate); not required if secondary education was in English; no CEFR level stated",
+      "sk": "Vyžaduje sa doklad o znalosti angličtiny (napr. medzinárodne platný certifikát); nevyžaduje sa, ak bolo stredoškolské vzdelanie v angličtine; úroveň CEFR nie je uvedená",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Proof of English; exemptions for graduates of English-language programmes and native speakers",
+      "sk": "Doklad o angličtine; výnimky pre absolventov programov v angličtine a pre rodených hovoriacich",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "Taught fully in English; specific undergraduate English certificate requirements to be published soon (master benchmark: TOEFL iBT 90, IELTS 6.5, Cambridge C1)",
+      "sk": "Výučba úplne v angličtine; konkrétne požiadavky na certifikát z angličtiny pre bakalárske štúdium budú čoskoro zverejnené (orientačná úroveň pre magisterské štúdium: TOEFL iBT 90, IELTS 6.5, Cambridge C1)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "english_requirement",
+      "en": "The programme requires English at CEFR B1; it accepts an English-medium school-leaving qualification if your school confirms it. The general admissions guidance lists an IB Diploma (anglophone section) from an anglophone school.",
+      "sk": "Program vyžaduje angličtinu na úrovni CEFR B1; uznáva doklad o ukončení strednej školy s angličtinou ako vyučovacím jazykom, ak to tvoja škola potvrdí. Všeobecné pokyny k prijímaniu uvádzajú IB diplom (anglofónna sekcia) z anglofónnej školy.",
+      "verified_by": "AI-DRAFT"
     }
   ]
 }
