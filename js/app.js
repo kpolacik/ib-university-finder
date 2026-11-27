@@ -20,8 +20,12 @@ import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
-  setSaved, setInCompare, renderCompare,
+  setSaved, setInCompare, renderCompare, fillReviewed, setPrivateDecor,
 } from './render.js';
+import { startSubjectAuthority, recheckAuthority } from './subject-authority.js';
+import { SHOW_MY_SUBJECTS } from './config.js';
+import { createProfileStore } from './my-subjects.js';
+import { createSubjectsUI, onScreen } from './my-subjects-ui.js';
 
 const dom = {
   banner: document.getElementById('source-banner'),
@@ -157,7 +161,8 @@ const persistPreferences = debounce(() => {
   if (!loaded || !preferencesDirty) return;
   writeSaved(storedFilters(state, facets, explicitSort)); preferencesDirty = false;
 }, 300);
-// "Show all saves": the list view without the page's filters.
+// My list opens with every save. "Apply my filters" narrows this visit only.
+// A shared link still starts with the filters encoded in its URL.
 let listAll = false;
 let groupBy = 'deadline';
 // Phones: whether My list's More is open (Share, Export, Print, Clear and the
@@ -272,12 +277,18 @@ let dataDay = localDay(new Date());
 // change came from an arrow key (sortPick).
 let sortKeysWired = false;
 let sortByArrow = false;
+// F01 Phase 2, My subjects in My list: null unless js/config.js turns
+// SHOW_MY_SUBJECTS on. Then it owns the strip under the My list bar's first
+// line, the notices beside #ml-note and the private lines render.js asks it
+// for. It never changes the state, the rows, the counts or the address.
+let subjectsUI = null;
 
 start();
 
 async function start() {
   initLanguage(location.search);
   applyLanguage();
+  if (SHOW_MY_SUBJECTS) startMySubjects();
   initTheme();
   wireSettings();
   dom.banner.addEventListener('click', openIssuesFromLink);
@@ -322,6 +333,8 @@ async function start() {
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
   window.addEventListener('beforeprint', () => {
+    // A reviewed subject rule that expired while the tab slept must not reach paper.
+    recheckAuthority();
     printing = true;
     settleSlots();
     printFlushed = !compareOpen;
@@ -341,7 +354,7 @@ async function start() {
 
   try {
     dataDay = localDay(new Date());
-    const { programmes, meta, translations } = await loadData();
+    const { programmes, meta, translations, raw } = await loadData();
     setDataTranslations(translations);
     sourceMeta = meta;
     allRows = programmes;
@@ -366,6 +379,9 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    // F01: reviewed subject rules arrive separately and never hold up or
+    // replace the catalogue; until a current answer comes, none is shown.
+    startSubjectAuthority({ raw, onChange: redrawReviewed });
     scheduleSheetWarm();
     setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
       // Compare covers the results, so "Show my programmes" closes it first.
@@ -374,10 +390,8 @@ async function start() {
       // Setup's language question switches the page as Settings does.
       switchLanguage,
       apply(answers) {
-        // "Show all saves" ignores the filters, so My list kept showing (and
-        // the done screen counted) saves the answers rule out, like a 42-point
-        // programme for 24 points. The answers are filters: they apply here.
-        listAll = false;
+        // Changing Browse filters in Setup keeps My list's explicit filter choice.
+        if (shared) listAll = false;
         setMyPoints(state, answers.myIbPoints, explicitSort);
         for (const key of Object.keys(storedFilters(answers, facets).filters)) state[key] = answers[key];
         fillFields(state); drawChips(); preferencesDirty = true; update();
@@ -386,7 +400,7 @@ async function start() {
         // any filter is on at all. On phones Search sits in the header, not in
         // Filters, so there the note counts the sheet's filters only, as the
         // Filters (n) button does (verification of PR 1).
-        const active = activeFilterCount(state);
+        const active = listAll ? 0 : activeFilterCount(state);
         return { shown: currentlyShown, summary: currentSummary.map((part) => part.text),
           filtered: active > 0, sheetFiltered: active - (state.search.trim() ? 1 : 0) > 0 };
       },
@@ -744,7 +758,12 @@ function wireInputs() {
   }
 
   dom.clear.addEventListener('click', () => clearAllFrom(dom.clear));
-  dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear));
+  dom.emptyClear.addEventListener('click', () => {
+    if (!state.shortlistOnly || shared) { clearAllFrom(dom.emptyClear); return; }
+    listAll = true;
+    update();
+    dom.listShowAll.focus();
+  });
   dom.copy.addEventListener('click', copyLink);
 
   // A tab left open overnight: work the deadlines out again when it comes
@@ -766,6 +785,7 @@ function wireInputs() {
   dom.print.addEventListener('click', () => {
     if (!state.shortlistOnly) {
       state.shortlistOnly = true;
+      listAll = true;
       update();
     }
     window.print();
@@ -998,7 +1018,7 @@ function wireList() {
       shared = null;
       state.shortlistOnly = false;
     } else state.shortlistOnly = true;
-    listAll = false;
+    listAll = !leaving;
     closeCompare(false);
     update();
     // Back hides with the list view and focus fell to the page (review of PR 1,
@@ -1111,11 +1131,24 @@ function openCompare(trigger) {
   if (!loaded) return;
   if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
   compareOpen = true;
+  // Compare is public: an open subjects editor is discarded, unsaved.
+  subjectsUI?.sync();
   dismissCompareToast?.();
   dismissCompareToast = null;
   syncCompareControls();
   dom.compare.scrollIntoView?.({ block: 'start' });
   dom.compareHeading.focus({ preventScroll: true });
+}
+
+// The current reviewed subject rules changed (one arrived, was withdrawn or
+// expired): patch every mounted anchor in the pane and the open slots, and
+// redraw Compare, which keeps its focus and sideways scroll. Nothing else on
+// the page is redrawn.
+function redrawReviewed() {
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  for (const node of document.querySelectorAll('[data-reviewed-for]')) fillReviewed(node, byId.get(node.getAttribute('data-reviewed-for')));
+  subjectsUI?.refresh();
+  drawCompare();
 }
 
 // The compare set's programmes from the whole data, never the filtered list:
@@ -1390,8 +1423,7 @@ function update() {
   // save. It used to turn itself off, so "My list (0)" did nothing.
   if (!state.shortlistOnly) listAll = false;
 
-  // The list view: the saved (or shared) programmes, with the page's filters
-  // unless "Show all saves" is on, sorted, then grouped (groupRows).
+  // Sort and group the personal or shared list after applying its filter choice.
   const scope = shared ? new Set(shared.ids) : shortlist;
   const inScope = state.shortlistOnly ? allRows.filter((row) => scope.has(row.id)) : [];
   const filtered = applyFilters(allRows, state, scope);
@@ -2431,6 +2463,57 @@ function renderCounts(shown) {
   syncRound2(dom, state, active, shortlist.size);
 }
 
+// F01 Phase 2: My subjects. Everything private is built here, only when
+// the switch is on: the two boxes in the My list bar, the profile store (no
+// storage is opened until My list is first shown) and the private lines in
+// rows and details. The hooks give the UI what only this file knows.
+function startMySubjects() {
+  const strip = document.createElement('div');
+  strip.id = 'ml-subjects';
+  strip.className = 'ms-strip ms-private';
+  strip.hidden = true;
+  const notices = document.createElement('div');
+  notices.id = 'ml-subject-notices';
+  notices.className = 'ms-notices ms-private';
+  notices.hidden = true;
+  dom.shortlistBar.querySelector('.ml-row').after(strip);
+  dom.listNote.after(notices);
+  const store = createProfileStore({ onChange: () => subjectsUI?.refresh() });
+  subjectsUI = createSubjectsUI({ store, strip, notices, hooks: {
+    view: () => ({ mode: !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine', compareOpen, listIds, myMaths: state.myMaths, hlMaths: state.hlMaths }),
+    rowById: (id) => allRows.find((row) => row.id === id) ?? null,
+    snapshot: () => ({ selectedId, wide: wideQuery.matches, paneScroll: dom.pane.scrollTop }),
+    restore: (saved) => { if (saved.wide === wideQuery.matches && paneId === saved.selectedId) dom.pane.scrollTop = saved.paneScroll; },
+    focusProgramme: (saved) => focusProgramme(saved.selectedId),
+    focusFilter,
+    layoutChanged: scheduleWindow,
+  } });
+  setPrivateDecor(subjectsUI.decor);
+}
+
+// Back to the programme the student had open, at a visible place: its row if
+// it is on screen, else the pane (wide) or the row brought into view (narrow).
+function focusProgramme(id) {
+  if (!id || !shownRows.has(id)) return false;
+  const item = mountRow(id);
+  const open = item?.querySelector('button.open');
+  if (!open) return false;
+  if (onScreen(open)) open.focus({ preventScroll: true });
+  else if (wideQuery.matches && paneId === id) dom.pane.focus({ preventScroll: true });
+  else { revealRow(item); open.focus({ preventScroll: true }); }
+  return true;
+}
+
+// The notices' links: the My maths control or the HL Maths 4+ tick, in the
+// bar from 600 px, in the Filters sheet below.
+function focusFilter(which) {
+  if (!barQuery.matches) openSheet();
+  const pressed = document.querySelector('#maths-seg [aria-pressed="true"]');
+  const target = which === 'hl' ? dom.maths : [pressed, dom.myMaths].find(canShow) ?? dom.myMaths;
+  target.scrollIntoView?.({ block: 'nearest' });
+  target.focus({ preventScroll: true });
+}
+
 // The My list bar. Outside the list view: "3 saved · 2 shown", and "Show all
 // saves" when the filters hide some. Inside it: the same counts for the list,
 // the grouping, Compare, Share and the export. Saves whose programme is no
@@ -2456,11 +2539,13 @@ function renderListBar() {
     shown = listShown;
   }
   const hidden = total - shown;
+  const filtersOff = listAll && mode !== 'main';
+  const offersFilterChoice = mode === 'mine' ? activeFilterCount(state) > 0 || !listAll : filtersOff || hidden > 0;
   // An empty My list shows only its title and "0 saved"; the empty card below
   // says how to save and has the way back (B3).
   const emptyMine = mode === 'mine' && listIds.length === 0;
   const parts = [mode === 'shared' ? t('in_this_link', { value1: total }) : t('saved_2', { value1: total })];
-  if (emptyMine) { /* nothing is shown or hidden */ } else if (listAll && mode !== 'main') parts.push(t('all_shown_your_filters_are_off_here'));
+  if (emptyMine) { /* nothing is shown or hidden */ } else if (filtersOff && offersFilterChoice) parts.push(t('all_shown_your_filters_are_off_here'));
   else {
     parts.push(t('shown', { value1: shown }));
     if (hidden > 0) parts.push(t('hidden_by_your_filters', { value1: hidden }));
@@ -2468,8 +2553,7 @@ function renderListBar() {
   const text = parts.join(' · ');
   if (dom.shortlistCount.textContent !== text) dom.shortlistCount.textContent = text;
 
-  const filtersOff = listAll && mode !== 'main';
-  dom.listShowAll.hidden = emptyMine || (!filtersOff && hidden <= 0);
+  dom.listShowAll.hidden = emptyMine || !offersFilterChoice;
   dom.listShowAll.textContent = filtersOff ? t('apply_my_filters') : mode === 'shared' ? t('show_all_in_this_link') : t('show_all_saves');
   dom.listSaveShared.hidden = mode !== 'shared';
   // The text has its own span so the back chevron survives (batch 3 B2).
@@ -2500,6 +2584,7 @@ function renderListBar() {
   dom.listMore.hidden = mode !== 'mine' || emptyMine;
   if (dom.listMore.hidden) listMoreOpen = false;
   syncListMore();
+  subjectsUI?.sync();
 }
 
 function syncListMore() {
@@ -2538,6 +2623,11 @@ function renderEmptyState(shown) {
     dom.emptyHint.textContent = t('r3_list_empty_hint');
     dom.emptyBack.hidden = false;
     dom.emptyBack.textContent = t('back_to_all_programmes');
+  } else if (state.shortlistOnly && !shared) {
+    dom.emptyTitle.textContent = t('your_filters_hide_all_saved_programmes');
+    dom.emptyHint.textContent = t('try_changing', { value1: listOf(filtersInUse()) });
+    dom.emptyClear.hidden = false;
+    dom.emptyClear.textContent = t('show_all_saves');
   } else if (activeFilterCount(state) === 0) {
     // The old hint told students to add rows to the spreadsheet, which they
     // never see (S05). With no filter set, the list itself is missing.
@@ -2613,6 +2703,10 @@ function wireDropdowns() {
     // In the sheet the lists are inline accordions: only the floating panels
     // in the bar close on Tab out or an outside click.
     d.addEventListener('focusout', (event) => {
+      // On touch WebKit can move focus out of Sort before delivering the
+      // option's click. Let that click finish. A real outside click still
+      // closes the list below, and Tab still closes it here.
+      if (d.id === 'dd-sort' && !keyboardInput) return;
       if (d.open && event.relatedTarget && !d.contains(event.relatedTarget) && !dom.sheet.contains(d)) d.open = false;
     });
   }

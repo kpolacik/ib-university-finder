@@ -8,6 +8,61 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**F01 My subjects in My list, Phase 2 (2026-11-27, local, switched off).** A student can add up to six IB Diploma subjects (HL/SL, Maths AA or AI once, optional predicted grade 1–7) in one strip and inline editor under the My list bar, in their own list and in a shared one. With a current reviewed rule a saved programme gets a private line ("Your subjects: …"), the open detail gets a "Your subjects" block (routes, each condition with its reason, the next step, "based on your predictions" where a prediction was used) and the bar a one-sentence summary over every programme in the list or link (filtered-out ones too). Every personal result says "Subjects only: not points, exams or a place". With no current rule there is no verdict, only "No subject check yet". The real rules file still has zero rows, so today every student sees the zero-reviewed sentence. Nothing about the profile reaches the address, a share link, Copy link, CSV, print, a request, the filters, sorting, grouping, counts, Compare or Browse.
+- **Switch:** `SHOW_MY_SUBJECTS` in `js/config.js`, **false** as shipped (like `SHOW_RANKINGS`). Off means no strip, notice, line or block, and the browser's storage is never opened. Turning it on is Leon's release decision; this build is a reversible draft default, not an approval to launch.
+- **Storage (reviewed contract E1–E5):** by default the profile lives in the page only and is gone on reload. Only "Remember in this browser" writes one IndexedDB record (`ib-university-finder:my-subjects:v1`, store `profile`, key `current`, `{ version, revision, entries }`), with a random revision and a compare-and-set, so a Save in a tab that missed another tab's Forget, page-only switch, newer save or site-data clear is refused. Forget, Try again and switching to page-only delete and say "removed" only after the browser confirms it; if it can't, the page says an old copy may come back and tells the student to clear this site's data in the browser settings. Other tabs hear a fixed word on a BroadcastChannel, never data. No localStorage or sessionStorage. Unreadable, old or future records show an empty profile with a notice and are never overwritten by Remember. The database is opened only once My list is shown, never in Browse or Compare.
+- **Evidence:** `tools/check.mjs` (record validation, a fake IndexedDB for E1–E5 including races, blocked/slow opens and aborts, privacy and wiring checks) and `node tools/smoke.mjs --only=runMySubjects` (34 checks in real Chrome: v4 cases 1–12 and the storage supplement, desktop 1280 and phone 393/320, both themes and languages, invented SAMPLE rules served only through the test adapter, the switch turned on only by the test's own answer to `js/config.js`). **Chrome only**: no Safari, Firefox, real phone, screen reader, eviction or crash test; script-level writes by other code on the same site are not prevented.
+- **Limits:** the Slovak strings and the subject vocabulary need independent review; IB subject offering at the cohort's school is not verified. Track B (real signed rules, a named maintainer and reviewer, the pilot) is separate and not started. Two maths notices in My list compare the profile with the My maths filter and HL Maths 4+; Save and Forget never change a filter.
+- **Rollback:** set the switch to false, or revert the Phase 2 commit; the public subject wording (Phase 1) stays. A code rollback does not delete browser data: students can clear this site's data, or use Forget while the feature is on.
+
+**Slovak prose #18, Layer 2B-1 Phase 2 (2026-11-27, local).** Appended 123 independently reviewed `AI-DRAFT` Slovak rows for single-bullet English requirements to `data/i18n/sk.csv` (35 `english_requirement_default`, 88 `english_requirement`; total 1,321 rows, the earlier 1,198 rows byte-identical). The same 123 keys are now in `SEARCH_ENGLISH_KEYS` (version 3, 239 entries), so their English stays searchable beside the Slovak; no search lost a result. `data/fallback.json` was rebuilt from the local CSVs. 395 programmes at 78 universities show the new Slovak; no other programme's display or search changed. VŠE keeps "Certifikát z češtiny sa nevyžaduje" at the start of its new Slovak. Seven reviewed keys stay English: L2B1-001, 048, 057, 060, 072, 084 and 131 (dropped in review, or 084 held for an unclear subject vs exam-language meaning); the 12 earlier holds and nine structural exclusions were never in the batch. `i18n-missing` now reports 817 missing and 8 orphans. Independent wording review is not human signoff or source verification.
+
+**Slovak prose #18, Layer 2B-1 Phase 1 tooling (2026-11-27, local).** `tools/apply-sk-translations.mjs` can now also append reviewed Slovak for an English requirement that a programme shows as one bullet: under `english_requirement` for the programme's own wording, under `english_requirement_default` for university wording it inherits. It refuses multi-bullet cells, university defaults no programme shows, a text that is also a part or bullet of another cell, a text containing wording a held cell reads (P4b G065 "English B2"), the same English under both columns, a changed or dropped language test name, `≥` or `+`, and any change to Slovak that a part of the text already has (VŠE's "Certifikát z češtiny sa nevyžaduje"). The two existing English B2 rows for the held TUL cell are pinned in `tools/check.mjs`. Search follows Leon's Option 2: `SEARCH_ENGLISH_KEYS` may now list both columns, and the page searches an inherited one under `english_requirement`. The list is unchanged (version 2, the 116 Layer 2A entries), so search, display and every data file are unchanged. The translations themselves (Phase 2) need an independent meaning review first.
+
+**Slovak prose #18, Layer 2A Phase 2 (2026-11-27, local).** Appended 116 independently reviewed `AI-DRAFT` Slovak whole-cell rows to `data/i18n/sk.csv` (4 `living_cost_source`, 112 `baseline_requirement`; total 1,198 rows, the earlier 1,082 rows byte-identical). The same 116 keys are now in `SEARCH_ENGLISH_KEYS` (version 2), so their English stays searchable beside the Slovak. `data/fallback.json` was rebuilt from the local CSVs. 924 programmes show the new Slovak. Ten keys stay English with `lang="en"`: L2A-017, 021, 022, 025, 027, 035, 060, 079, 084 and 087 (held before drafting, excluded for losing the school-leaving distinction, or held by review). Held cells, the eight UK baselines, Compare costs, the national-minimum floor and the English CSV export are unchanged. `i18n-missing` now reports 940 missing and 8 orphans. Independent wording review is not human signoff or source verification.
+
+**Slovak prose #18, Layer 2A Phase 1 tooling (2026-11-27, local).** `tools/apply-sk-translations.mjs` now also appends reviewed whole-cell `living_cost_source` and `baseline_requirement` rows, refusing parts of a cell, a whole value that is a part of another university's cell, and anything a held cell reads. The eight UK baseline translations already in `data/i18n/sk.csv` for held cells are pinned exactly in `tools/check.mjs`. Leon chose that newly reviewed Layer 2A translations keep their English searchable alongside the Slovak; the list of those cells (`SEARCH_ENGLISH_KEYS` in `js/i18n.js`, written by `tools/sk-search-english.mjs`) is empty, so search and every data file are unchanged. The translations themselves (Phase 2) are not written yet.
+
+**Slovak prose #18, Phase 2 Layer 1 (2026-11-27, draft stack).** Appended 131 independently reviewed `AI-DRAFT` Slovak rows to `data/i18n/sk.csv` (16 `ib_subjects`, 48 `other_requirements`, 67 `deadline_notes`; total 1,082 rows, keeping the 951 existing rows and signatures byte-identical) and rebuilt `data/fallback.json` from the local CSVs. Four keys from the 135-key manifest (A10, A12, A17, A58) were held out and remain English with `lang="en"`; all four semicolon-linked pairs were kept together (`semicolonPartialsRemaining = 0`), held cells and non-prose surfaces did not change, and EN/SK filter IDs, search text and English CSV export stayed identical. `freeText` in Slovak mode moved from `2668/1680/3687` to `1731/1258/2316` across 2,216 distinct programmes; independent wording review is not human signoff or source verification.
+
+**Slovak prose #18, Phase 1 tooling (2026-11-27, draft stack).** `tools/apply-sk-translations.mjs` can append independently reviewed `AI-DRAFT` Slovak rows for `ib_subjects`, `other_requirements` and `deadline_notes` while refusing held cells, unreviewed rows, and hard-token or separator changes. `tools/i18n-missing.mjs` no longer flags live prose translations as orphans, and compact programme rows now look up subject and other requirements under their own fields. This layer changes code, checks and docs only; no data or offline copy changes.
+
+**Source prose #17, REST-2 widened selector and wording (2026-11-27, draft stack).** The research-log selector now catches five additional source-narration phrases, with 41 reviewed kept-as-is exclusions stored by exact value. Independent reviewers approved 11 wording edits across nine universities (six initial, five after one repair round, including one Comenius cell moved out of the kept list). Two wording cells (UniBa Earth System and STU FIIT) and four source-conflict/inference cells (CBS ×2, Leeds Law, Schmalkalden) remain at their base text and selected, alongside the 54 carried holds (60 total). Universities, Slovak translations, signatures, dates and IDs are unchanged, and the offline copy matches the updated CSV.
+
+**Source prose #17, Phase 4b translated fields (2026-11-27, draft stack).** Independent reviewers approved 194 English wording edits in 39 groups. The existing Slovak translations follow 28 new English keys; the Slovak wording and coverage stay the same. The Leeds baseline and its translation still use the old wording because the repair review could not see both full texts. Photos, signatures, dates, IDs and the 54 notes held for research are unchanged. The offline copy uses the same new wording.
+
+**Source prose #17, Phase 4a writer (2026-11-27, draft stack).** `tools/reword-prose.mjs --translated` can reword approved programme and university prose while keeping existing Slovak text, coverage and application conditions. This layer changes the writer, checks and instructions only; no data changes. The maintenance guide covers how to restore the CSVs if a write stops partway through.
+
+**Source prose #17, Phase 3 remaining research notes (2026-11-27, draft stack).** Independent reviewers approved 149 wording edits at 45 universities, including four edits approved after a fresh review of revised wording. The selector now lists 54 held cells. The Kempten deadline note conflicts with the date in its deadline field, and the 29 Slovak and 24 UK holds still need evidence or a decision.
+
+**Source prose #17, Phase 3 Irish wording repairs (2026-11-26, draft stack).** A fresh independent review cleared both Irish holds. The TU Dublin Economics and Finance note keeps the unresolved 3- or 4-year duration and the exact CAO cutoff sentence. Trinity–Columbia still tells applicants to ask before relying on a fee for either part. The selector now lists 203 cells, including 29 Slovak evidence holds and 24 earlier UK holds.
+
+**Source prose #17, Phase 3 layer SK/CZ (2026-11-26, draft stack).** Independent reviewers approved 103 reworded programme cells, 71 Slovak and 32 Czech. Their deadlines, requirements, fee caveats and earlier-year labels carry the same meaning. The selector lists 205 cells. That includes 24 TUKE notes and five SPU Nitra notes held because their deadline fields conflict with their notes, plus 24 earlier UK holds and two Irish holds.
+
+**Source prose #17, Phase 3 layer IE (2026-11-26, draft stack).** Independent reviewers approved 136 reworded Irish cells at TU Dublin, MTU, SETU, Trinity and Galway. The CAO cutoff sentences and test tags that the site reads are unchanged. Two cells are held for a wording repair: the TU Dublin Economics and Finance duration note (the page lists both 3 and 4 years) and the Trinity–Columbia fee caveat. TU Dublin's points ranges are still the 2026 figures, its place counts are undated, and the Biotechnology science grade is our own conversion. In a separate reviewed commit, the seven Medicine, Dentistry and Veterinary Science deadline notes at Bristol, KCL and Manchester now say the 15 October 2026 deadline "was", so the five UK-4 holds are cleared. The selector lists 308 cells, including the two IE holds and 24 earlier holds.
+
+**Source prose #17, Phase 3 layer UK-4 (2026-11-26, draft stack).** Independent reviewers approved 93 reworded cells at Bristol, Manchester, KCL, Stirling, Liverpool and Oxford. Five deadline notes for Medicine, Dentistry and Veterinary Science at Bristol and KCL are held: the reviewer asked for "was" because the 15 October 2026 deadline has passed. KCL's Home fee is still the 2026/27 figure, and Manchester Medicine and Dentistry still show 2026/27 fees. Bristol's notes still mention its misprinted "13 January 2026" date. The selector lists 449 cells, including the five UK-4 holds and 24 earlier holds.
+
+**Source prose #17, Phase 3 layer UK-3 (2026-11-26, draft stack).** Independent reviewers approved 137 reworded cells at UCL, Leeds, Southampton and Durham. Fifteen Southampton deadline notes with truncated entry requirements and one UCL Psychology subject note are held. UCL’s 24 deadline notes still label the 2026-entry figures and 2026/27 fees. The selector lists 542 cells, including the 16 UK-3 holds and eight earlier holds.
+
+**Source prose #17, Phase 3 layer UK-2 (2026-11-26, draft stack).** An independent meaning review approved 164 reworded programme notes across Sheffield, Warwick, Birmingham and Exeter Medicine. The Exeter note keeps the conditional year-five NHS exception with the Home fee. Two Sheffield grade notes and one Birmingham grade note are held for source evidence, along with the five LSE grade notes from UK-1. The research-log selector skips cells whose current value matches a Phase 3 batch. It still lists held cells and can select a cell again after a wording change.
+
+**Source prose #17, Phase 3 layer UK-1 (2026-11-26, draft stack).** 183 research-log notes at LSE, St Andrews, Exeter, Glasgow and Bath now read as plain sentences for students, after an independent meaning review. That layer held five garbled LSE grade notes and the Exeter Medicine fee note.
+
+**Source prose #17, Phase 2 (2026-11-26, draft stack).** The mechanical pass
+standardised dates in 227 programme cells to improve readability. The
+offline copy has the same wording. The Phase 3 selector lists research-log
+notes by university for the next pass.
+
+**Local data-fill branch, 2026-11-19 (not live).** The first research tier
+has been reviewed. Programme counts and IDs have not changed. The Czech
+language entries distinguish citizenship, school language and the subject
+of a school-leaving exam where the faculty makes that distinction. The
+Finance and Accounting faculty at VŠE confirms that applications for
+September 2027 close on 30 November 2026, 28 February and 30 April 2027.
+The first Nordic updates distinguish joint and rolling applications, and
+Leiden University College now labels its EU tuition as an estimate.
+
 **PR 2 / Wave 7 (2026-11-13, local acceptance and independent review).** The shared
 `filter-selected-first` worktree contains the detail-only facts, application
 actions, credited campus photos and Slovak translations from Waves 2–4.
@@ -162,7 +217,7 @@ Leipzig are not in THE. QS prints ranges with a hyphen; the data keeps an en
 dash, like the THE column. No person has read the tables row by row. Repeat
 the comparison when the 2028 editions replace these.
 
-Known research residue remains, without a data fix in this wave: VŠE
+Research residue recorded at the end of the earlier UI wave: VŠE
 `vse-multimedia-v-ekonomicke-praxi` incorrectly allows a waiver rather than
 requiring Scio OSP/VŠP; two ČVUT FA deadline notes and UPOL petroleum
 engineering's EUR 50 fee are unapplied. Some university intake defaults were
@@ -175,6 +230,12 @@ inherit EUR 75 but their own non-EU fee note hides the university's uni-assist
 explanation; `unipd-tmps` has its own EUR 60 fee and does not inherit the
 university CISIA test-fee note. The documented fee-note inheritance rule is
 unchanged; these source/data follow-ups were not repaired in the UI wave.
+
+The later data-fill pass corrected the VŠE Multimédia exam and combined
+the relevant application-fee notes. UPOL Petroleum Engineering, several
+ČVUT faculty conditions and Czech-language waivers with only last year's
+evidence still need a source for the current intake. A rule for one
+faculty is not evidence for the rest of the university.
 
 **Design round 2 (2026-11-05)** is on the branch `redesign-round2-only`, a
 PR for `main` without the Supabase switch-over. It ships the white 56 px
@@ -213,8 +274,8 @@ IB subjects, deadline notes and other requirements remain English for the
 later data-translation pass. A later Gemini meaning check remains an owner
 follow-up from the translation plan.
 
-**Setup asks the site language** (Leon, 2026-11-15; local branch
-`setup-language`, from the 2026-11-10 backlog note). Step 1 of setup starts
+**Setup asks the site language** (Leon, 2026-11-15; shipped in PR #9,
+merged 2026-11-16, from the 2026-11-10 backlog note). Step 1 of setup starts
 with "Site language · Jazyk stránky": Slovenčina or English, each written in
 its own language, the one in force already chosen (address, then this
 browser's choice, then English, as before). Picking one switches setup and the
@@ -263,7 +324,7 @@ smoke SL-1, SL-2 and SL-3 (the motion, frame by frame) in `runAlignChromeSetup`.
 
 The fixes received an independent Opus plan check and fresh Fable implementation verification; the owner addressed its opening-drag and scroll-test findings. Validation: Node checks pass; all 148 contrast pairs pass; focused Chrome passes 120 checks; the combined Chrome run passes all 783 checks in 1007.2 s (Node 24.21.0). Twelve isolated WebKit combinations pass the padding, settings alignment and FAQ compatibility probes; those probes do not include drag. Data lint has 0 errors and 122 existing warnings, with no data files changed. Desktop Safari, physical iOS 16.4 (including touch focus styling), manual print preview and Leon's visual acceptance remain open. Isolated WebKit compatibility fixtures do not establish those device results. On GitHub's Linux Chrome the first FAQ tap after flicking the Filters sheet shut did nothing, twice. Event traces from two diagnostic CI runs (2026-11-11) showed why: Chrome read the fast flick on the header as a scroll gesture ending in a fling, and spent the next tap, if it came within about 0.3 s, on stopping that fling. The tap reached the page as touch and pointer events but never became a click. A second tap, a 0.6 s wait, a slow drag, a finger held still before lifting and a mouse click all worked; macOS Chrome never did it, so local runs stayed green. `js/sheet-drag.js` now cancels `touchmove` on the handle and header while a drag is on, which leaves Chrome no gesture to fling; the body's scrolling and the header's buttons are untouched. With that fixed, CI reached the lifecycle cases for the first time and the same thing happened by another road: Escape (or a rotation, or a lost capture) ends a drag while the finger is still down, and that finger's next move was no longer cancelled. The cancelling now lasts until the finger that began the drag has lifted. Checks: `check.mjs` "touchmove on the handle and header is cancelled while a drag is on" and "a touch that began a drag keeps its touchmove cancelled after Escape or a lost capture"; the smoke flick and the Escape-mid-drag step assert every `touchmove` was cancelled, and on Linux the taps straight after them are the end-to-end check. When a sheet does not open, the smoke failure message now lists the last input events the page saw, which is what showed both causes. Whether Android Chrome ate that tap for real people was never observed on a device. The earlier test-only change (touch targets must be painted, stable and uncovered, with hit/scroll/viewport details on failure) stays. After both fixes the 82-check polish suite (`node tools/smoke.mjs --only=runPr7Polish`) passes locally and on the Linux runner, and the Node checks pass; the full 783-check Chrome run passed locally after the first fix (990.0 s, Node 26.1.0). A09, A10 and A12 predate dark mode; A11 polishes the new settings feature. The existing Filters scrim's older-Safari display fade remains outside these fixes.
 
-**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows only the saves, with the page's filters still applied (or switched off with "Show all saves"), grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
+**My list** (2026-11-03, Leon reversed the 2026-10-24 removal): every row has a save star (a bookmark) and the detail a "Save to my list" button. The saves live in this browser's storage (`js/shortlist.js`), keyed by `programme_id`. A bar under the count says "N saved · M shown" and offers "Show all saves" when the filters hide some. "Open my list" shows all saves. "Apply my filters" uses the current Browse filters for this visit, shows how many saves they hide, and offers "Show all saves" to bring them back. Returning to Browse keeps its filters. Saves can be grouped by deadline month, by My IB points (within / only with HL Maths 4+ / above / can't be compared, from `pointsBucket`) or by country. From the list: **Share** a link `?list=id,id` (plus `points=` only when "Include my IB points" is ticked; no other filter travels), Export CSV, Print and Clear my list. An incoming `?list=` link opens a "Shared list" view of the programmes that still exist, says how many no longer do, and changes the saves only on "Save these to my list" (which adds, never replaces). `list` stays in the address only while that view is open.
 
 **Compare** (batch 3, Leon 2026-11-05: "comparing something and saving something is not really the same intent") is its own set of up to four programmes, kept in this browser (`js/compare-set.js`, key `ib-university-finder:compare:v1`), independent of the saves, the filters and the address. Every row, phone card and detail has a scales toggle beside the save star; a fifth add changes nothing and says why, with "Open compare". On phones (and short windows) a bottom tray says "Compare n of 4 · Open"; from 600 px a header button beside My list does. The view works at any count (an empty state at 0, a prompt at 1); each column has a Save toggle and an "x" with Undo. "Show only differences" never hides a fact that is unknown for any of them; on a phone two columns show at a time, with a "Programmes 1–2 of 3" line, arrows and an edge fade (`js/compare.js`).
 
@@ -737,6 +798,13 @@ plans/backlog/wording.md for the translation queue.
    each university's own estimate.
 
 ## Known gaps
+
+- The Nordic pass did not finish Lapland UAS, Laurea, SAMK or Savonia.
+  Check these before the January application rounds. UCC lists €2,350
+  contribution and €214 capitation for 2027/28, but some clinical programmes
+  have other compulsory costs. Its stored €2,710 is not a verified total.
+  The Irish figures in the historical decision table below predate this
+  research; do not use that table as a current fee schedule.
 
 - **L09 timing, round 2 (measured 2026-11-05).** Paired run, live a6fed60 vs
   round 2 90f71e1, 2,915 rows, AC power, gated load, 4× CPU, 20 samples each:
@@ -1725,6 +1793,12 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
     unverified; a reader that ignores aria-modal may still browse the background.
 
 ## Decisions already made, so they are not relitigated
+
+- **Layer 2B-1 search, Option 2** (Leon, 2026-11-27, "keep both sure.
+  continue going."): a newly reviewed Slovak English-requirement translation
+  is searched in Slovak and in its original English, like Layer 2A. Only
+  newly accepted Layer 2B-1 keys get this. Older translations, VŠE's existing
+  Slovak words, the 116 Layer 2A entries and other fields stay as they are.
 
 - **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
   PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and

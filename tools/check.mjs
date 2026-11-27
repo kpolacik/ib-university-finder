@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -193,7 +193,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, fillReviewed } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -1423,8 +1423,6 @@ check('app.js re-applies the date when the day changes and on visibilitychange',
 section('The empty state names the filters in use (S05)');
 check('the empty state no longer mentions the Google Sheet or a fixed tuition/country hint',
   !appSrc.includes('Google Sheet') && !appSrc.includes('raising the tuition limit, or removing a country'));
-check('the empty state has a working Clear all button',
-  indexHtml.includes('id="empty-clear"') && appSrc.includes("dom.emptyClear.addEventListener('click', () => clearAllFrom(dom.emptyClear))"));
 
 // S03: a reload threw every filter away, and a filtered view could not be
 // shared. The state now lives in the address.
@@ -1957,6 +1955,557 @@ const realLint = lintData({ universitiesCsv: read('data/universities.csv'), prog
 check('T05 real data has zero lint errors', !realLint.some((f) => f.severity === 'error'), formatReport(realLint));
 console.log(`  ${realLint.filter((f) => f.severity === 'warning').length} lint warnings (node tools/lint-data.mjs shows them)`);
 
+// ---------------------------------------------------------------- data-fill apply script
+
+section('Data-fill apply script (tools/apply-data-fill.mjs)');
+// The script rewrites both CSVs, so every guard is exercised on small fixtures
+// in a temp folder, never on data/. A guard that silently stopped refusing
+// would let a stale or mis-typed batch overwrite real cells.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'ib-data-fill-'));
+  try {
+    const fillScript = join(root, 'tools/apply-data-fill.mjs');
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const sheet = (head, rows) => [head, ...rows.map((r) => head.map((h) => r[h] ?? ''))].map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const uniHead = parseCsv(read('data/universities.csv'))[0];
+    const progHead = parseCsv(read('data/programmes.csv'))[0];
+    const uniText = sheet(uniHead, [
+      { university_id: 'fx-a', name: 'Fixture A', city: 'Town, North', country: 'Netherlands', tuition_eu_default: '2771', last_verified: '2026-10-01', verified_by: 'AI-DRAFT' },
+      { university_id: 'fx-b', name: 'Fixture B', city: 'Ville', country: 'Austria', last_verified: '2026-10-02', verified_by: 'AI-DRAFT' },
+    ]);
+    const prog = (id, extra) => ({ programme_id: id, university_id: 'fx-a', programme: `Programme ${id}`, subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, last_verified: '2026-10-03', verified_by: 'AI-DRAFT', ...extra });
+    const progText = sheet(progHead, [
+      prog('fx-p1', { deadline_notes: 'Old note, with a comma and a "quote".' }),
+      prog('fx-p2', { university_id: 'fx-b', tuition_eu: '1000' }),
+      prog('fx-p3', { university_id: 'fx-b', verified_by: 'LS' }),
+    ]);
+    const uniPath = join(dir, 'universities.csv');
+    const progPath = join(dir, 'programmes.csv');
+    const reset = () => { writeFileSync(uniPath, uniText); writeFileSync(progPath, progText); };
+    const untouched = () => readFileSync(uniPath, 'utf8') === uniText && readFileSync(progPath, 'utf8') === progText;
+    const batchHead = 'entity_type,id,column,expected_old,value,value_kind,year_label,source_url,quote';
+    const src = 'https://example.org/source';
+    let n = 0;
+    const run = (rows, ...flags) => {
+      const file = join(dir, `batch-${n++}.csv`);
+      writeFileSync(file, [`${batchHead},verdict`, ...rows.map((r) => [...r, 'ok'].map(cell).join(','))].join('\n') + '\n');
+      return spawnSync(process.execPath, [fillScript, '--data', dir, '--today', '2026-11-15', ...flags, file], { encoding: 'utf8', cwd: tmpdir() });
+    };
+    const line = (entity, id, column, old, value, kind = 'value') => [entity, id, column, old, value, kind, '2027/28', src, 'The page says so.'];
+    const out = (r) => r.stdout + r.stderr;
+
+    reset();
+    const clean = [line('prog', 'fx-p1', 'application_deadline', '', '2027-01-15')];
+    const dry = run(clean);
+    check('a clean batch dry run exits 0, prints the change and writes nothing',
+      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 application_deadline: "" -> "2027-01-15"') && untouched(), out(dry));
+    const applied = run(clean, '--apply');
+    const want = sheet(progHead, [
+      prog('fx-p1', { deadline_notes: 'Old note, with a comma and a "quote".', application_deadline: '2027-01-15', last_verified: '2026-11-15' }),
+      prog('fx-p2', { university_id: 'fx-b', tuition_eu: '1000' }),
+      prog('fx-p3', { university_id: 'fx-b', verified_by: 'LS' }),
+    ]);
+    check('--apply writes the value, stamps last_verified on that row only and leaves every other byte alone',
+      applied.status === 0 && readFileSync(progPath, 'utf8') === want && readFileSync(uniPath, 'utf8') === uniText, out(applied));
+    const again = run(clean, '--apply');
+    check('running the same batch again is a SKIP, not a refusal or a second stamp',
+      again.status === 0 && again.stdout.includes('SKIP ') && readFileSync(progPath, 'utf8') === want, out(again));
+
+    const refused = (name, rows, reason, status = 2) => {
+      reset();
+      const r = run(rows, '--apply');
+      check(name, r.status === status && r.stdout.includes('REFUSE ') && reason.test(r.stdout) && untouched(), out(r));
+    };
+    // The good line rides along: one refusal must stop the whole batch.
+    refused('a stale expected_old is refused and nothing is written, even with --apply',
+      [...clean, line('prog', 'fx-p2', 'tuition_eu', '900', '1200')], /stale baseline: expected_old "900", the cell now holds "1000"/);
+    refused('verified_by is not an editable column', [...clean, line('prog', 'fx-p1', 'verified_by', 'AI-DRAFT', 'LS')], /may not be changed/);
+    refused('programme_id is not an editable column', [...clean, line('prog', 'fx-p1', 'programme_id', 'fx-p1', 'fx-p9')], /may not be changed/);
+    refused('a row signed by a person is refused', [...clean, line('prog', 'fx-p3', 'admission', '', 'Selective')], /row is signed \(verified_by "LS"\)/);
+    refused('a university with a signed programme is refused too', [...clean, line('uni', 'fx-b', 'admission_default', '', 'Selective')], /university has a signed programme/);
+    refused('value_kind none is refused in tuition_eu', [...clean, line('prog', 'fx-p2', 'tuition_eu', '1000', '', 'none')], /value_kind none is only allowed in ib_subjects, ib_maths/);
+    refused('"0" typed as an ordinary value is refused', [...clean, line('prog', 'fx-p2', 'tuition_eu', '1000', '0')], /needs value_kind zero/);
+    refused('two lines that want different values in one cell are both refused',
+      [line('prog', 'fx-p2', 'tuition_eu', '1000', '1200'), line('prog', 'fx-p2', 'tuition_eu', '1000', '1300')], /conflicting lines[^\n]*\n[^\n]*conflicting lines/);
+    refused('an impossible date is refused', [line('prog', 'fx-p1', 'application_deadline', '', '2027-02-30')], /real YYYY-MM-DD date/);
+    refused('the stop gate exits 3 when a column loses most of its lines',
+      ['fx-p1', 'fx-p2', 'fx-p1', 'fx-p2'].map((id, i) => line('prog', id, 'entrance_exam', 'stale', i < 2 ? 'yes' : 'no')), /STOP: 4 of 4 lines for entrance_exam/, 3);
+
+    reset();
+    const kinds = run([
+      line('prog', 'fx-p1', 'ib_subjects', '', '', 'none'),
+      line('prog', 'fx-p2', 'tuition_eu', '1000', '', 'unknown_override'),
+      line('uni', 'fx-a', 'tuition_eu_default', '2771', '0', 'zero'),
+      ['prog', 'fx-p1', 'deadline_notes', 'Old note, with a comma and a "quote".', '', 'blank', '', src, ''],
+    ], '--apply');
+    const after = csvToObjects(readFileSync(progPath, 'utf8')).rows;
+    const afterUni = csvToObjects(readFileSync(uniPath, 'utf8')).rows;
+    check('none, ?, 0 and blank are each written as their own literal',
+      kinds.status === 0 && after[0].ib_subjects === 'none' && after[0].deadline_notes === '' && after[1].tuition_eu === '?'
+        && afterUni[0].tuition_eu_default === '0' && afterUni[0].last_verified === '2026-11-15' && afterUni[1].last_verified === '2026-10-02'
+        && after[2].last_verified === '2026-10-03' && after.every((r) => r.verified_by === (r.programme_id === 'fx-p3' ? 'LS' : 'AI-DRAFT')), out(kinds));
+  } finally { rmSync(dir, { recursive: true }); }
+}
+
+section('Prose cleanup selector (#17)');
+const { researchSignals, mechanicalValue, appliedCells, selectResearchCells } = await import('./select-prose.mjs');
+equal('selector: retrieval and fetch narration', researchSignals('Deadline not found as of 2026-10-28. Check manually.'), ['retrieval', 'fetch']);
+equal('selector: course-page quote', researchSignals('The course page says "apply through the portal".'), ['source page', 'quotation', 'page narration']);
+equal('selector: closed-round and sign-in research logs',
+  ['Was shown CLOSED on 26 Oct 2026.', 'The old round is closed; not used here.', 'Linked conditions blocked by Microsoft sign-in.'].map(researchSignals),
+  [['fetch'], ['catalogue narration'], ['fetch']]);
+equal('selector: widened source-narration signals',
+  [
+    'No deadline found on the pages checked.',
+    'Full-time only, per the FSI list.',
+    'Page says about 3.5 years.',
+    'Only English-taught bachelor found in the brochure.',
+    'Fee interpreted as €4,000 a year.',
+  ].map(researchSignals),
+  [['pages checked', 'found on'], ['source list'], ['page narration'], ['found on'], ['interpreted']]);
+equal('selector: applicant-facing guidance', researchSignals('Check the official page before applying.'), []);
+equal('selector: plain programme facts stay unselected', researchSignals('Places offered: 30.'), []);
+{
+  const applied = 'See the course page for the deadline.';
+  const changed = 'See the course page for the new deadline.';
+  const kept = 'Full-time only, per the FSI list.';
+  const keptChanged = 'Part-time only, per the FSI list.';
+  const row = { programme_id: 'fx-p1', university_id: 'fx-a', verified_by: 'AI-DRAFT',
+    deadline_notes: applied, other_requirements: '', ib_subjects: '' };
+  const batch = appliedCells([
+    `entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p1,deadline_notes,Old,${applied},Wording,\n`,
+    `entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p3,deadline_notes,"${kept}","${kept}",Kept as is,\n`,
+  ]);
+  equal('selector: applied wording is skipped', selectResearchCells([row], batch).total, 0);
+  equal('selector: changed wording is selected again',
+    selectResearchCells([{ ...row, deadline_notes: changed }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p1']);
+  equal('selector: a held cell is still selected',
+    selectResearchCells([{ ...row, programme_id: 'fx-p2' }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p2']);
+  equal('selector: exact kept-as-is value is skipped',
+    selectResearchCells([{ ...row, programme_id: 'fx-p3', deadline_notes: kept }], batch).total, 0);
+  equal('selector: changed kept-as-is value is selected again',
+    selectResearchCells([{ ...row, programme_id: 'fx-p3', deadline_notes: keptChanged }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p3']);
+
+  const current = new Map(csvToObjects(read('data/programmes.csv')).rows.map((r) => [r.programme_id, r]));
+  const run = spawnSync(process.execPath, [join(root, 'tools/select-prose.mjs')], { encoding: 'utf8' });
+  check('selector: the real data run succeeds', run.status === 0, run.stderr);
+  if (run.status === 0) {
+    const selected = new Set(JSON.parse(run.stdout).universities.flatMap(({ cells }) =>
+      cells.map(({ id, column }) => `${id}|${column}`)));
+    const phase3 = readdirSync(join(root, 'tools/prose-batches')).filter((name) => /^phase-3-.*\.csv$/.test(name));
+    const repicks = phase3.flatMap((name) => csvToObjects(read(`tools/prose-batches/${name}`)).rows)
+      .filter(({ id, column, value }) => current.get(id)?.[column] === value && selected.has(`${id}|${column}`));
+    equal('selector: no current Phase 3 batch value is selected', repicks.map(({ id, column }) => `${id}|${column}`), []);
+  }
+}
+equal('mechanical: dates, ranges, spaces and full stops',
+  mechanicalValue('deadline_notes', 'Closes 2027-01-13.  Interviews 7-21 Jan 2027.. More dates to come...'),
+  'Closes 13 January 2027. Interviews 7–21 January 2027. More dates to come...');
+equal('mechanical: invalid ISO dates are held', mechanicalValue('deadline_notes', 'Closes 2027-02-29.'), 'Closes 2027-02-29.');
+equal('mechanical: leave compact ISO day ranges intact',
+  mechanicalValue('deadline_notes', 'Exams 2027-06-10–11; documents due 2027-06-12.'),
+  'Exams 2027-06-10–11; documents due 12 June 2027.');
+equal('mechanical: frozen ECB text stays intact',
+  ['Fee shown in euros at the ECB rate of 2026-10-29.', 'Fee at the ECB reference rate of 2026-11-12.']
+    .map((s) => mechanicalValue('deadline_notes', s)),
+  ['Fee shown in euros at the ECB rate of 2026-10-29.', 'Fee at the ECB reference rate of 2026-11-12.']);
+equal('mechanical: research-log and last-year carryovers are held',
+  ['Deadline not found as of 2026-10-28.', 'Page says 2027-01-13.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."].map((s) => mechanicalValue('deadline_notes', s)),
+  ['Deadline not found as of 2026-10-28.', 'Page says 2027-01-13.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."]);
+
+section('Prose reword script (tools/reword-prose.mjs, #17)');
+// A reword changes how a note is said, never what it says. The guards are
+// what stop a shorter sentence from losing a date, an amount, or a sentence
+// the cards read back, so each one is exercised on fixtures in a temp folder.
+{
+  const rw = await import(new URL('./lib/reword.mjs', import.meta.url));
+  const ire = await import(new URL('./lib/ireland.mjs', import.meta.url));
+  const same = (name, a, b) => equal(`reword tokens: ${name}`, rw.conditionTokens(a), rw.conditionTokens(b));
+  same('an ISO date equals the same date in words', 'Closes 2027-01-13.', 'Closes 13 January 2027, or January 13, 2027.');
+  same('£10,050 equals GBP 10,050 and 10,050 GBP', 'Fee £10,050.', 'Fee GBP 10,050 (10,050 GBP).');
+  same('13 000 € equals EUR 13,000', 'Fee 13 000 €.', 'Fee EUR 13,000.');
+  same('currency signs and codes work on either side', 'Fee $400 or Kč 1,200.', 'Fee 400 $ or 1200CZK.');
+  same('a hyphen day range equals an en dash range with the full month', 'Interviews 7-21 Jan 2027.', 'Interviews 7–21 January 2027.');
+  same('6pm equals 18:00', 'by 6pm UK time', 'by 18:00 UK time');
+  check('reword tokens: IELTS 6.5 is one decimal, not 6 and 5', rw.conditionTokens('IELTS 6.5').join(' ') === 'abbr:IELTS num:6.5');
+  check('reword tokens: a date without a year is not the dated one',
+    rw.compareTokens('Closes 13 January 2027.', 'Closes 13 January.').missing.join() === 'date:2027-01-13');
+  check('reword tokens: capitals written in lower case still count ("NOT" -> "not")',
+    rw.compareTokens('NOT for EEA applicants', 'not for EEA applicants').missing.length === 0);
+  check('reword tokens: an invalid day range does not swallow either number',
+    rw.compareTokens('31–32 January 2027', '31 January 2027').missing.includes('num:32'));
+  check('reword tokens: preserve the plus on a minimum grade',
+    rw.compareTokens('HL Maths 6+', 'HL Maths 6').missing.includes('num:6+'));
+  check('reword tokens: preserve a standalone starred A-level grade',
+    rw.compareTokens('A* in Maths', 'A in Maths').missing.includes('grade:A*'));
+  check('reword tokens: keep a decimal next to a month whole',
+    rw.conditionTokens('February 6.5').includes('num:6.5'));
+  check('reword tokens: a date cannot span a test name',
+    rw.compareTokens('February Cambridge 6', 'February 6 Cambridge').added.includes('day:02-06'));
+  check('reword tokens: recognise named mixed-case tests in real notes',
+    ['uniTEST', 'TestAS', 'TestDaF'].every((name) => rw.conditionTokens(name).includes(`name:${name}`)));
+  check('reword tokens: recognise lowercase test acronyms without parsing their links twice',
+    rw.compareTokens('Take ucat (www.ucat.ac.uk).', 'See (www.ucat.ac.uk).').missing.join() === 'abbr:UCAT');
+  same('URL delimiters are outside the link', 'See (https://example.org/course): details.', 'See "https://example.org/course" for details.');
+  check('reword tokens: do not strip punctuation that can be part of a link',
+    rw.compareTokens('See https://example.org/course;', 'See https://example.org/course').added.includes('url:https://example.org/course'));
+  for (const [name, sentence] of [['BONUS_ONLY', ire.BONUS_ONLY], ['HPAT_NOTE', ire.HPAT_NOTE], ['PLUS_TEST', ire.PLUS_TEST],
+    ['above 625', ire.aboveIB(700)], ['601-625', ire.aboveIB(610)], ['601-625 with a test', ire.aboveIB(610, true)],
+    ['CAO cutoff', '2026 CAO cutoff: Round 1 510 points, Round 2 495 points (code TR028). Some applicants on that score missed out in Round 2 (random draw).'],
+    ['ECB conversion', 'in euros at the ECB rate of 29 October 2026.'], ['UvA housing', 'Want UvA housing? Apply by 1 April 2027 instead.']]) {
+    check(`reword frozen text: ${name} is found whole inside a note`, rw.frozenParts('deadline_notes', `Before. ${sentence} After.`).includes(sentence));
+  }
+  check('reword format: an ellipsis is fine, a doubled full stop is not', !rw.formatProblem('students... £10,050') && rw.formatProblem('Higher Level.. Home'));
+
+  const dir = mkdtempSync(join(tmpdir(), 'ib-reword-'));
+  try {
+    const script = join(root, 'tools/reword-prose.mjs');
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const sheet = (head, rows) => [head, ...rows.map((r) => head.map((h) => r[h] ?? ''))].map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const progHead = parseCsv(read('data/programmes.csv'))[0];
+    const prog = (id, extra) => ({ programme_id: id, university_id: 'fx-a', programme: `Programme ${id}`, subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, last_verified: '2026-10-03', verified_by: 'AI-DRAFT', ...extra });
+    const ukOld = 'UCAS deadline 2027-01-13 (6pm UK), as of 2026-10-28 per the "Apply" page. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
+    const ukNew = 'Apply through UCAS by 13 January 2027, 6pm UK time. EU students pay the international fee: £10,050 a year, shown here in euros at the ECB rate of 29 October 2026.';
+    const caoOld = `2026 CAO cutoff: Round 1 495 points (code TR028). ${ire.BONUS_ONLY} Check manually.`;
+    const oldEcb = 'in euros at the ECB rate of 28 October 2026.';
+    const newEcb = 'in euros at the ECB rate of 29 October 2026.';
+    const caoItem = 'Test, interview, portfolio or audition';
+    const uva = 'Want UvA housing? Apply by 1 April 2027 instead.';
+    const medicine = `${ire.HPAT_NOTE} ${ire.PLUS_TEST} ${uva}`;
+    const rows = [
+      prog('fx-p1', { deadline_notes: ukOld }),
+      prog('fx-p2', { deadline_notes: caoOld, other_requirements: 'Test, interview, portfolio or audition · Portfolio of work', admission: 'Selective' }),
+      prog('fx-p3', { deadline_notes: 'Signed note.', verified_by: 'LS' }),
+      prog('fx-p4', { programme: 'Twin', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
+      prog('fx-p5', { programme: 'twin ', ib_subjects: 'HL Maths 6, as of 2026-10-28' }),
+      prog('fx-p6', { programme: 'Pair', other_requirements: 'Portfolio ·  Interview', deadline_notes: `${oldEcb} ${newEcb}` }),
+      prog('fx-p7', { university_id: ' fx-a ', programme: 'pair', other_requirements: 'Portfolio · Interview' }),
+      prog('fx-p8', { other_requirements: `Portfolio ·  ${caoItem}`, ib_subjects: 'none' }),
+      prog('fx-p9', { programme: 'Pair', other_requirements: 'Interview · Portfolio' }),
+      prog('fx-p10', { deadline_notes: medicine, other_requirements: 'HPAT required · Interview' }),
+    ];
+    const progText = sheet(progHead, rows);
+    const progPath = join(dir, 'programmes.csv');
+    const reset = () => writeFileSync(progPath, progText);
+    const untouched = () => readFileSync(progPath, 'utf8') === progText;
+    let n = 0;
+    // A line is [id, column, expected_old, value, drops]; the review approves
+    // exactly what it is given.
+    const run = (lines, { review = lines.map(([id, column, , value, drops = '']) => [id, column, value, 'keep', drops]), apply = true, reviewText } = {}) => {
+      const batch = join(dir, `batch-${n}.csv`), reviewPath = join(dir, `review-${n++}.csv`);
+      writeFileSync(batch, ['entity_type,id,column,expected_old,value,reason,drops',
+        ...lines.map(([id, column, old, value, drops = '']) => ['prog', id, column, old, value, 'plain wording', drops].map(cell).join(','))].join('\n') + '\n');
+      writeFileSync(reviewPath, reviewText ?? ['entity_type,id,column,value,verdict,approved_drops',
+        ...(review || []).map((r) => ['prog', ...r].map(cell).join(','))].join('\n') + '\n');
+      const flags = apply ? ['--apply', ...(review ? ['--review', reviewPath] : [])] : [];
+      return spawnSync(process.execPath, [script, '--data', dir, ...flags, batch], { encoding: 'utf8', cwd: tmpdir() });
+    };
+    const out = (r) => r.stdout + r.stderr;
+    const uk = ['fx-p1', 'deadline_notes', ukOld, ukNew, 'date:2026-10-28'];
+
+    reset();
+    const dry = run([uk], { apply: false });
+    check('reword: a clean dry run prints old and new with its token report and writes nothing',
+      dry.status === 0 && dry.stdout.includes('CHANGE prog fx-p1 deadline_notes') && dry.stdout.includes(`new: ${JSON.stringify(ukNew)}`)
+        && /kept tokens: .*date:2027-01-13/.test(dry.stdout) && untouched(), out(dry));
+    const noReview = run([uk], { review: null });
+    check('reword: --apply without a review file is refused and writes nothing',
+      noReview.status === 1 && /--apply needs --review/.test(noReview.stderr) && untouched(), out(noReview));
+    const reviewHead = 'entity_type,id,column,value,verdict,approved_drops';
+    const approved = ['prog', 'fx-p1', 'deadline_notes', ukNew, 'keep', 'date:2026-10-28\r\n'].map(cell).join(',');
+    const applied = run([uk], { reviewText: `\uFEFF${reviewHead}\r\n${approved}\r\n` });
+    const want = sheet(progHead, [prog('fx-p1', { deadline_notes: ukNew }), ...rows.slice(1)]);
+    check('reword: --apply accepts BOM and quoted multiline approvals, and leaves every other byte alone',
+      applied.status === 0 && readFileSync(progPath, 'utf8') === want, out(applied));
+    const again = run([uk]);
+    check('reword: running the same batch again is a SKIP', again.status === 0 && again.stdout.includes('SKIP ') && readFileSync(progPath, 'utf8') === want, out(again));
+
+    const refused = (name, lines, reason, opts = {}) => {
+      reset();
+      // The clean line rides along (unless the test is about its own cell):
+      // one refusal must stop the whole batch.
+      const r = run(opts.alone ? lines : [uk, ...lines], opts);
+      check(`reword: ${name}`, r.status === 2 && r.stdout.includes('REFUSE ') && reason.test(r.stdout) && untouched(), out(r));
+    };
+    refused('a stale expected_old is refused and nothing is written', [['fx-p2', 'deadline_notes', 'Older text.', 'New text.']], /stale baseline/);
+    refused('even a duplicate proposal must match the old cell', [['fx-p1', 'deadline_notes', 'Older text.', ukNew, 'date:2026-10-28']], /stale baseline/);
+    refused('a signed row is refused', [['fx-p3', 'deadline_notes', 'Signed note.', 'A signed note.']], /row is signed \(verified_by "LS"\)/);
+    refused('a translated column is refused', [['fx-p2', 'admission', 'Selective', 'Selective entry']], /column "admission" may not be reworded/);
+    refused('last_verified is refused', [['fx-p2', 'last_verified', '2026-10-03', '2026-11-26']], /column "last_verified" may not be reworded/);
+    refused('an altered CAO sentence is refused', [['fx-p2', 'deadline_notes', caoOld, caoOld.replace('Round 1 495 points', 'Round 1: 495 points').replace(' Check manually.', '')]], /frozen text changed/);
+    refused('dropping BONUS_ONLY is refused', [['fx-p2', 'deadline_notes', caoOld, '2026 CAO cutoff: Round 1 495 points (code TR028).', 'num:25 abbr:HL']], /frozen text changed[^\n]*lost "Only reachable/);
+    refused('an altered ECB sentence is refused', [['fx-p1', 'deadline_notes', ukOld, ukNew.replace('29 October 2026.', '29 Oct. 2026.'), 'date:2026-10-28']], /frozen text changed/, { alone: true });
+    refused('a frozen sentence introduced into a note is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', `Test, interview, portfolio or audition · Portfolio of work. ${ire.BONUS_ONLY}`]], /frozen text changed[^\n]*new "Only reachable/);
+    refused('rewording the CAO test tag is refused', [['fx-p2', 'other_requirements', 'Test, interview, portfolio or audition · Portfolio of work', 'Test, interview, portfolio or audition required · Portfolio of work']], /frozen text changed/);
+    refused('a parsed CAO test item stays frozen even with extra space beside it',
+      [['fx-p8', 'other_requirements', `Portfolio ·  ${caoItem}`, `Portfolio · ${caoItem} required`]], /frozen text changed/);
+    refused('the first of two ECB clauses cannot change',
+      [['fx-p6', 'deadline_notes', `${oldEcb} ${newEcb}`, `${newEcb} ${oldEcb}`]], /frozen text changed/);
+    for (const [name, old, next] of [
+      ['HPAT_NOTE', ire.HPAT_NOTE, ire.HPAT_NOTE.replace('the HPAT test', 'HPAT')],
+      ['PLUS_TEST', ire.PLUS_TEST, ire.PLUS_TEST.replace('any IB total', 'the IB total')],
+      ['UvA housing', uva, uva.replace('April', 'Apr')],
+    ]) {
+      refused(`altering ${name} is refused`,
+        [['fx-p10', 'deadline_notes', medicine, medicine.replace(old, next)]], /frozen text changed/);
+    }
+    refused('an HPAT list item stays frozen', [['fx-p10', 'other_requirements', 'HPAT required · Interview', 'Take HPAT · Interview']], /frozen text changed/);
+    refused('a dropped date without drops is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6']], /condition tokens missing from the new value: date:2026-10-28/);
+    refused('a new number is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6 and 36 points', 'date:2026-10-28']], /new condition tokens: num:36/);
+    refused('a blank or marker value is refused', [['fx-p2', 'deadline_notes', caoOld, '?']], /blank or a marker/);
+    refused('an existing marker cannot become a claim', [['fx-p8', 'ib_subjects', 'none', 'Physics required.']], /old value .*marker/);
+    refused('an empty list item is refused', [['fx-p8', 'other_requirements', `Portfolio ·  ${caoItem}`, `Portfolio · · ${caoItem}`]], /list bullet/);
+    refused('rewording one same-name sibling alone is refused', [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']], /same-name sibling fx-p5/);
+    refused('siblings with equal parsed items must stay equal',
+      [['fx-p6', 'other_requirements', 'Portfolio ·  Interview', 'Submit a portfolio · Interview']], /same-name sibling fx-p7/);
+    refused('distinct parsed sibling items cannot become identical',
+      [['fx-p9', 'other_requirements', 'Interview · Portfolio', 'Portfolio · Interview']], /same-name sibling fx-p6/);
+    const twins = [['fx-p4', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28'], ['fx-p5', 'ib_subjects', 'HL Maths 6, as of 2026-10-28', 'HL Maths 6', 'date:2026-10-28']];
+    reset();
+    const both = run(twins, { apply: false });
+    check('reword: same-name siblings reworded together pass', both.status === 0 && both.stdout.includes('Changes: 2'), out(both));
+    refused('a drop the reviewer did not approve is refused', [], /drops the reviewer did not approve: date:2026-10-28/,
+      { review: [['fx-p1', 'deadline_notes', ukNew, 'keep', '']] });
+    refused('a value changed after review is refused', [], /no review row for this exact new value/,
+      { review: [['fx-p1', 'deadline_notes', `${ukNew} `, 'keep', 'date:2026-10-28']] });
+    refused('a reviewer verdict other than keep is refused', [], /verdict is "revise"/,
+      { review: [['fx-p1', 'deadline_notes', ukNew, 'revise', 'date:2026-10-28']] });
+    reset();
+    const conflicting = run([uk], { review: [
+      ['fx-p1', 'deadline_notes', ukNew, 'revise', 'date:2026-10-28'],
+      ['fx-p1', 'deadline_notes', ukNew, 'keep', 'date:2026-10-28'],
+    ] });
+    check('reword: contradictory review rows cannot authorise a write',
+      conflicting.status === 1 && /conflicting review rows/.test(conflicting.stderr) && untouched(), out(conflicting));
+    const malformed = run([uk], { reviewText: `${reviewHead}\n${approved.slice(0, -1)}` });
+    check('reword: an unclosed quote in the review cannot authorise a write',
+      malformed.status === 1 && /malformed CSV/.test(malformed.stderr) && untouched(), out(malformed));
+  } finally { rmSync(dir, { recursive: true }); }
+  check('reword-prose.mjs never writes last_verified or verified_by',
+    !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/reword-prose.mjs')));
+}
+
+section('Translated prose reword and recovery (issue #17)');
+{
+  const { readSheets, BULLET } = await import('../js/data.js');
+  const { translationInventory } = await import('./i18n-missing.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'ib-reword-translated-'));
+  try {
+    mkdirSync(join(dir, 'i18n'));
+    const paths = ['programmes.csv', 'universities.csv', 'i18n/sk.csv'];
+    const heads = paths.map((path) => parseCsv(read(`data/${path}`))[0]);
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    const csv = (grid) => grid.map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const sheet = (i, rows) => csv([heads[i], ...rows.map((r) => heads[i].map((h) => r[h] ?? ''))]);
+    const put = (path, text) => writeFileSync(join(dir, path), text);
+    const get = (path) => readFileSync(join(dir, path), 'utf8');
+    const bytes = () => paths.map(get);
+    const sameBytes = (expected) => bytes().every((text, i) => text === expected[i]);
+    const marker = '.reword-pending';
+    const clean = () => ![...readdirSync(dir), ...readdirSync(join(dir, 'i18n'))].some((p) => p.startsWith('.reword-'));
+    const sign = { verified_by: 'AI-DRAFT', last_verified: '2026-10-03' };
+    const uni = { university_id: 'a', name: 'Test University', city: 'Dublin', country: 'Ireland', ...sign };
+    const prog = (id, extra = {}) => ({ programme_id: id, university_id: 'a', programme: `Programme ${id}`,
+      subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, ...sign, ...extra });
+    const sk = (field, en, text, verified_by = 'AI-DRAFT') => ({ field, en, sk: text, verified_by });
+    const [old, next] = ['The page lists an interview', 'An interview is listed'];
+    const [defOld, defNew] = ['The page says entry is open', 'Entry is open'];
+    const [feeOld, feeNew] = ['Fee is not refundable', 'The fee cannot be refunded'];
+    const [baseOld, baseNew] = ['The page says applicants need a school diploma', 'Applicants need a school diploma'];
+    const shared = sk('admission', old, 'Pohovor, "ústny"');
+    const otherSk = sk('app_fee_note', 'Orphan fixture', 'Pôvodný riadok');
+    const two = [prog('a', { admission: old }), prog('b', { admission: old.replace('page ', 'page  ') })];
+    const progs = [...two, prog('c'), prog('d', { admission: '?', english_requirement: '?', ib_recognition: '?', app_fee: '20' })];
+    const unis = [{ ...uni, admission_default: defOld, app_fee_default: '25', app_fee_note_default: feeOld, baseline_requirement: baseOld }];
+    const translations = [shared, otherSk, sk('admission_default', defOld, 'Voľný vstup'), sk('app_fee_note_default', feeOld, 'Bez vrátenia')];
+    const reset = (p = progs, u = unis, s = translations) => {
+      [p, u, s].forEach((rows, i) => put(paths[i], sheet(i, rows)));
+      return bytes();
+    };
+    const reco = (id, previous = old, value = next, column = 'admission') => ['prog', id, column, previous, value];
+    const def = ['uni', 'a', 'admission_default', defOld, defNew];
+    const moves = [reco('a'), reco('b', two[1].admission), def, ['uni', 'a', 'app_fee_note_default', feeOld, feeNew]];
+    const batch = [...moves, ['uni', 'a', 'baseline_requirement', baseOld, baseNew]];
+    const run = (lines, { mode = true, apply = true, review = true, fault } = {}) => {
+      put('batch.csv', csv([['entity_type','id','column','expected_old','value','reason','drops'],
+        ...lines.map(([e, id, field, from, to, drops = '']) => [e, id, field, from, to, 'plain wording', drops])]));
+      put('review.csv', csv([['entity_type','id','column','value','verdict','approved_drops'],
+        ...lines.map(([e, id, field,, value, drops = '']) => [review === 'wrong' ? 'misc' : e, id, field, value, 'keep', drops])]));
+      const args = [...(fault ? ['--require', join(dir, `fault-${fault}.cjs`)] : []), join(root, 'tools/reword-prose.mjs'),
+        '--data', dir, ...(mode ? ['--translated'] : []), ...(apply ? ['--apply', ...(review ? ['--review', join(dir, 'review.csv')] : [])] : []),
+        join(dir, 'batch.csv')];
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, log: r.stdout + r.stderr };
+    };
+    const refusal = (name, lines, reason, opts, status = 2) => {
+      const before = bytes();
+      const r = run(lines, opts);
+      check(`translated: ${name}`, r.status === status && reason.test(r.log) && sameBytes(before) && clean(), r.log);
+    };
+
+    const original = reset();
+    const expected = [sheet(0, progs.map((p, i) => i < 2 ? { ...p, admission: next } : p)),
+      sheet(1, [{ ...unis[0], admission_default: defNew, app_fee_note_default: feeNew, baseline_requirement: baseNew }]),
+      sheet(2, translations.map((r, i) => i === 1 ? r : { ...r, en: [next, '', defNew, feeNew][i] }))];
+    const dry = run(batch, { apply: false });
+    check('translated: dry run lists planned rekeys and leaves all three files alone',
+      dry.status === 0 && (dry.log.match(/^REKEY /gm) || []).length === 3 && sameBytes(original) && clean(), dry.log);
+    const applied = run(batch);
+    check('translated: apply writes the two sheets and rekeys only the exact English CSV cells',
+      applied.status === 0 && sameBytes(expected) && clean(), applied.log);
+    const scope = ([p, u, s]) => {
+      const rows = (text) => csvToObjects(text).rows;
+      i18n.setDataTranslations(rows(s));
+      const parsed = readSheets(u, p, new Date('2026-11-27T12:00Z')).programmes;
+      const card = (r) => i18n.dataParts('admission', r.admission.join(BULLET), 'sk');
+      return { parsed, card: parsed.map(card), search: parsed.map(i18n.translatedSearchText),
+        inventory: translationInventory(rows(u), rows(p), rows(s)) };
+    };
+    const before = scope(original), after = scope(bytes());
+    i18n.setDataTranslations([]);
+    equal('translated: explicit and inherited cards keep Slovak bytes with updated English reveal', after.card, [
+      [{ text: shared.sk, en: next }], [{ text: shared.sk, en: next }], [{ text: translations[2].sk, en: defNew }], [],
+    ]);
+    check('translated: only the approved missing English changes bilingual search',
+      before.search.every((s, i) => after.search[i] === s.replace(baseOld, baseNew)) && before.search[2] !== after.search[2]);
+    check('translated: inherited and ? admission, recognition and overridden fee keep their parser rules',
+      after.parsed[2].appFeeNote === feeNew && after.parsed[3].appFee === 20 && after.parsed[3].appFeeNote === ''
+        && after.parsed[3].admissionUnknown && after.parsed[3].englishUnknown && after.parsed[3].recognitionUnknown);
+    equal('translated: inventory keeps its orphan and substitutes only the missing baseline key',
+      [after.inventory.orphans, after.inventory.missing], [before.inventory.orphans,
+        before.inventory.missing.map((r) => r.field === 'baseline_requirement' ? { ...r, en: baseNew } : r)]);
+    const stamp = (path) => statSync(join(dir, path)).mtimeMs;
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const retry = run(batch);
+    check('translated: exact kept retry is all SKIP without rewriting any file',
+      retry.status === 0 && /Changes: 0\nRefusals: 0\nSkips: 5/.test(retry.log) && sameBytes(expected)
+        && paths.every((p) => stamp(p) === 1000) && clean(), retry.log);
+
+    reset();
+    refusal('legacy mode refuses a translated column', [reco('a')], /may not be reworded/, { mode: false });
+    refusal('rejects wrong entity and column', [['other', 'a', 'admission', old, next], reco('a', old, next, 'application_system')], /entity_type must be prog or uni[\s\S]*may not be reworded/);
+    refusal('rejects unknown ID and stale baseline', [reco('missing'), reco('a', defOld)], /unknown programme_id[\s\S]*stale baseline/);
+    refusal('rejects markers even mixed with valid changes', [...batch, reco('d', '?')], /blank or a marker/);
+    refusal('rejects conflicting lines', [reco('a'), reco('a', old, `${next}.`)], /conflicting lines/);
+    reset([...progs, prog('signed', { admission: old, verified_by: 'LS' })]);
+    refusal('rejects changes to signed rows', [reco('signed')], /signed/);
+    reset();
+    refusal('requires an exact review', batch, /no review row for this exact new value/, { review: 'wrong' });
+    refusal('apply requires a review file', batch, /--apply needs --review/, { review: false }, 1);
+    refusal('rejects normalization-only wording', [reco('b', two[1].admission, old)], /normalization-only/);
+    refusal('rejects incomplete shared OLD', [reco('a')], /shared OLD not completely moved/);
+    refusal('rejects contradictory shared destinations', [reco('a'), reco('b', two[1].admission, `${next}.`)], /contradictory destinations/);
+    reset([prog('a', { admission: old }), prog('b', { admission: defOld })], [uni], [shared, sk('admission', defOld, 'Vstup')]);
+    refusal('rejects two sources for one destination', [reco('a'), reco('b', defOld, next)], /two Slovak sources target/);
+    reset(progs, unis, [...translations, sk('admission', next.replace('interview ', 'interview  '), 'Pohovor')]);
+    refusal('rejects normalized NEW collision', moves, /normalized NEW collides/);
+    reset(progs, unis, [...translations, { ...shared, en: two[1].admission }]);
+    refusal('rejects duplicate normalized Slovak keys', moves, /duplicate normalized Slovak key/);
+    for (const invalid of [{ ...shared, sk: ' ' }, { ...shared, verified_by: 'LS' }]) {
+      reset(progs, unis, [invalid, ...translations.slice(1)]);
+      refusal('rejects an empty or signed Slovak source', moves, /nonempty AI-DRAFT/);
+    }
+    reset();
+    put(paths[2], get(paths[2]).replaceAll('\n', '\r\n'));
+    refusal('rejects noncanonical Slovak CSV', batch, /expected CSV formatting/, {}, 1);
+    reset(progs, [...unis, { ...uni, university_id: ' a ' }]);
+    refusal('rejects duplicate normalized university IDs', batch, /duplicate university_id/, {}, 1);
+
+    reset([prog('a', { admission: `${old}; Portfolio` })], [uni], [shared]);
+    refusal('rejects an OLD with item-only coverage', [reco('a', `${old}; Portfolio`, `${next}; Portfolio`)], /item-only or default-only/);
+    reset([prog('a', { admission: defOld }), prog('b')], unis, translations.slice(1));
+    refusal('rejects an explicit OLD with only default coverage', [reco('a', defOld, defNew)], /item-only or default-only/);
+    refusal('rejects a default rekey that strands an untouched explicit override', [def], /raw lookup changed: prog a admission/);
+    reset([prog('a', { admission: defNew }), prog('b')], unis, [...translations.slice(1), sk('admission', defNew, 'Iný vstup')]);
+    refusal('rejects a NEW explicit key shadowing the moved default on an inheritor', [def], /card lookup changed: prog b admission/);
+    for (const item of [old, next]) {
+      const joiner = item === old ? '; ' : BULLET;
+      reset([...two, prog('c', { admission: `Portfolio${joiner}${item}` })], [uni], [shared]);
+      refusal('rejects loss or gain of Slovak in an untouched list', moves.slice(0, 2), /raw lookup changed: prog c admission/);
+    }
+    const listOld = `${old}${BULLET}Portfolio`, listNew = `${next}${BULLET}Portfolio`;
+    reset([prog('a', { admission: listOld })], [uni], [sk('admission', listOld, `Pohovor${BULLET}Portfólio`), shared]);
+    refusal('rejects lost item search even when joined card Slovak is unchanged', [reco('a', listOld, listNew)], /item search changed: prog a admission/);
+    refusal('rejects a changed rekey separator', [reco('a', listOld, `${next}; Portfolio`)], /separator counts changed/);
+    reset([prog('a', { admission: 'Score 1.0 or more' })], [uni], [sk('admission', 'Score 1.0 or more', 'Skóre 1.0')]);
+    refusal('hard tokens reject a different raw number spelling in rekeys', [reco('a', 'Score 1.0 or more', 'Score 1 or more')], /hard tokens changed/);
+    const pinned = JSON.parse(read('tools/i18n-allowlist.json')).hardExceptions.find((r) => r.field === 'admission_default');
+    reset([prog('a')], [{ ...uni, admission_default: pinned.en }], [pinned]);
+    refusal('holds the exact pinned Slovak exception', [['uni', 'a', pinned.field, pinned.en, `${pinned.en} See details.`]], /pinned Slovak hard-token exception/);
+    reset([prog('a', { verified_by: 'LS' })]);
+    refusal('rejects an effective university reword on a signed inheritor', [def], /effective English on signed prog a/);
+    reset(['a','b'].map((id) => prog(id, { programme: 'Twins', admission: old })), [uni], []);
+    refusal('protects same-name identity even when there is no Slovak row', [reco('a')], /identity or points label changed/);
+    for (const [a, b, hint] of [
+      [`Entrance exam required${BULLET}Portfolio`, `Portfolio${BULLET}Entrance exam required`, /Entrance exam prefix/],
+      [`Places offered in order of CAO points${BULLET}Portfolio`, `Places ranked by CAO points${BULLET}Portfolio`, /CAO sentinel/],
+      ['Numerus Fixus applies', 'Admission is limited', /numerus fixus/],
+    ]) {
+      reset([prog('a', { admission: a })], [uni], []);
+      refusal('protects a machine-read admission item', [reco('a', a, b)], hint);
+    }
+    const [mathOld, mathNew] = ['Maths at Higher Level is waived', 'Maths at Higher Level is required'];
+    reset([prog('a', { ib_maths: 'none', admission: mathOld }), prog('b', { ib_maths: 'none', admission: mathNew })], [uni], []);
+    refusal('compares lint finding identities even when counts match', [reco('a', mathOld, mathNew), reco('b', mathNew, mathOld)], /lint finding identities changed/);
+    reset([prog('a', { admission: next }), two[1]], unis, translations);
+    refusal('rejects a partial retry with OLD Slovak still present', moves, /OLD Slovak key still exists/);
+    reset([prog('a', { admission: next }), two[1]], unis, [{ ...shared, en: next }, ...translations.slice(1)]);
+    refusal('rejects a partial shared group even when the key already moved', [reco('a')], /shared OLD still present/);
+    reset();
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const one = run([batch.at(-1)]);
+    check('translated: an uncovered reword changes only its English sheet',
+      one.status === 0 && stamp(paths[1]) !== 1000 && [paths[0], paths[2]].every((p) => stamp(p) === 1000) && clean(), one.log);
+    reset();
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const twoFiles = run(moves.slice(0, 2));
+    check('translated: a programme rekey changes exactly its sheet and the Slovak file',
+      twoFiles.status === 0 && stamp(paths[1]) === 1000 && [paths[0], paths[2]].every((p) => stamp(p) !== 1000) && clean(), twoFiles.log);
+    equal('translated: rekey alone keeps every bilingual search string byte-identical', scope(bytes()).search, before.search);
+    i18n.setDataTranslations([]);
+
+    // Fault the CLI's real second rename, after the programme replacement is
+    // visible. In the second run fault the rollback rename as well.
+    for (const fault of ['rollback', 'blocked']) put(`fault-${fault}.cjs`, `
+const fs = require('node:fs');
+const rename = fs.renameSync;
+let n = 0;
+fs.renameSync = (from, to) => {
+  n++;
+  if (n === 2 || (n === 3 && ${fault === 'blocked'})) return rename(from + '.missing', to);
+  return rename(from, to);
+};
+require('node:module').syncBuiltinESMExports();
+`);
+    reset();
+    const rolledBack = run(batch, { fault: 'rollback' });
+    check('translated: a real second rename failure restores all preimages and clears the marker',
+      rolledBack.status === 1 && /ENOENT[\s\S]*Rolled back/.test(rolledBack.log) && sameBytes(original) && clean(), rolledBack.log);
+    const incomplete = run(batch, { fault: 'blocked' });
+    const pending = JSON.parse(get(marker));
+    check('translated: failed recovery retains complete preimages and a mixed tree',
+      incomplete.status === 1 && /Rollback failed/.test(incomplete.log) && incomplete.log.includes(join(dir, marker))
+        && sameBytes([expected[0], ...original.slice(1)]) && pending.length === 3
+        && pending.every(({ target, original: saved }, i) => target === join(dir, paths[i]) && readFileSync(saved, 'utf8') === original[i]), incomplete.log);
+    for (const mode of [true, false]) {
+      const blocked = run(batch, { mode, apply: false });
+      check('translated: pending marker blocks either mode before SKIP or writes',
+        blocked.status === 1 && /Recovery required/.test(blocked.log) && !/SKIP/.test(blocked.log)
+          && sameBytes([expected[0], ...original.slice(1)]), blocked.log);
+    }
+    for (const { target, original: saved } of pending) writeFileSync(target, readFileSync(saved));
+    check('translated: the documented recovery restores all three byte preimages', sameBytes(original));
+    rmSync(join(dir, marker));
+    for (const { dir: staging } of pending) rmSync(staging, { recursive: true });
+    const recovered = run(batch), recoveredRetry = run(batch);
+    check('translated: manual restore permits full apply then an all-SKIP retry',
+      recovered.status === 0 && recoveredRetry.status === 0 && /Skips: 5/.test(recoveredRetry.log) && sameBytes(expected) && clean(),
+      recovered.log + recoveredRetry.log);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+}
+
 // ---------------------------------------------------------------- the real data
 
 section('The real dataset');
@@ -2099,12 +2648,10 @@ check('lei-polsci is dropped and lei-iro stays numerus fixus',
 // headline is the general date (1 May); the housing date lives in the note, in
 // one fixed sentence. The check compares the headline with the date the note
 // names, so it needs no year and survives the next cycle.
-// uva-anthro and uva-comm are left out on purpose: when this was fixed
-// (2026-10-25) their pages still showed the 2026 dates (anthro) or an
-// "advisory 1 April" with no year (comm), so their rows were not rewritten.
-// Take them off this list the day their pages show the 2027 dates.
-const UVA_NOT_YET_CONFIRMED = new Set(['uva-anthro', 'uva-comm']);
-const uvaRows = live.filter((p) => p.id.startsWith('uva-') && !UVA_NOT_YET_CONFIRMED.has(p.id));
+// uva-anthro and uva-comm used to be left out (their pages still showed the
+// 2026 dates). UvA's 2027-2028 admissions page confirmed 1 May with the
+// advisory 1 April on 2026-11-15, so every UvA row is checked now.
+const uvaRows = live.filter((p) => p.id.startsWith('uva-'));
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
   'september', 'october', 'november', 'december'];
 const housingDate = (p) => {
@@ -4122,7 +4669,14 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
-      renderSourceBanner() {}, renderIssues() {} };
+      renderSourceBanner() {}, renderIssues() {},
+      // F01: the rules file is fetched only in a browser; here nothing is current.
+      fillReviewed, startSubjectAuthority: (options) => { context.subjectAuthority = options; }, recheckAuthority: () => { context.rechecks = (context.rechecks ?? 0) + 1; },
+      // F01 Phase 2 is off here, as shipped: any use of its private parts is a failure.
+      SHOW_MY_SUBJECTS: false, setPrivateDecor: () => { context.privateUsed = 'setPrivateDecor'; },
+      createProfileStore: () => { context.privateUsed = 'createProfileStore'; throw new Error('My subjects used while off'); },
+      createSubjectsUI: () => { context.privateUsed = 'createSubjectsUI'; throw new Error('My subjects used while off'); },
+      onScreen: () => { context.privateUsed = 'onScreen'; return true; } };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(read('js/theme.js').replace(/^export /gm, '') + '\n' + code, context);
@@ -4690,6 +5244,19 @@ appCheck('actual Sort pick-list: arrow keys sort and keep it open with focus on 
   details.open = true;
   pick(first, 'click');
   return !details.open && stubDocument.activeElement === summary && run('`${state.sort}:${state.dir}`') === first;
+});
+appCheck('Sort stays open when a touch blurs the summary before the choice click, but closes on Tab or a click outside', ({ get, fire }) => {
+  const sort = get('dd-sort'), summary = sort.querySelector('summary'), outside = get('f-search');
+  sort.open = true;
+  fire(get('sort-options'), 'pointerdown', { pointerType: 'touch' });
+  fire(summary, 'focusout', { relatedTarget: outside });
+  if (!sort.open) return false;
+  fire(outside, 'click');
+  if (sort.open) return false;
+  sort.open = true;
+  fire(summary, 'keydown', { key: 'Tab' });
+  fire(summary, 'focusout', { relatedTarget: outside });
+  return !sort.open;
 });
 // Below 600 px Search is the filter form's only text field, so Enter there
 // submitted it and reloaded the page to ?q=…, losing the language and a
@@ -6423,8 +6990,10 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     const base = live.find((r) => r.tuitionEu !== null && r.tuitionEu > 0 && r.deadline && r.mathsAccepted && r.entranceExam && r.officialUrl);
     const twin = { ...base, id: 'twin', tuitionEu: base.tuitionEu + 1000 };
     const table = compareTable([base, twin], noFilters());
+    // F01: IB subjects always; Other requirements only when a column has any;
+    // the reviewed line only with a current rule (none here).
     equal('compare rows: the facts in order, the official link last', table.map((x) => x.label),
-      ['IB points', 'Maths courses accepted', 'Entrance exam', 'EU fee', 'Fee + 12 months\' living (estimate)', 'Deadline', 'Language', 'City', 'Apply via', 'Official page']);
+      ['IB points', 'IB subjects', 'Maths courses accepted', ...(base.otherRequirements.length ? ['Other requirements'] : []), 'Entrance exam', 'EU fee', 'Fee + 12 months\' living (estimate)', 'Deadline', 'Language', 'City', 'Apply via', 'Official page']);
     const shown = visibleFacts(table, true).map((x) => x.key);
     check('only differences on two rows that differ only in fee: the fee and the yearly estimate stay (and any unknown), the rest go',
       shown.includes('fee') && shown.includes('link') && !shown.includes('deadline') && !shown.includes('exam') && !shown.includes('city')
@@ -6536,15 +7105,19 @@ appCheck('a failed save says so in the bar', ({ get, item, fire, context, ids: [
   fire(starOf(item(a)), 'click');
   return !get('shortlist-bar').hidden && get('ml-note').textContent === 'Your browser could not save your list. It may be lost when you leave this page.';
 });
-appCheck('list view: the filters apply inside it, the bar says how many saves they hide, "Show all saves" brings them back, groups head the rows', ({ run, get, fire, ids: [a, b] }) => {
+appCheck('My list starts with every save, can apply Browse filters explicitly, and preserves them on return', ({ run, get, fire, ids: [a, b] }) => {
   run('shortlist.add(fixture[0].id); shortlist.add(fixture[1].id); update();');
   if (get('shortlist-count-text').textContent !== '2 saved · 2 shown') return false;
   run('state.search = fixture[0].programme; update();');
   if (get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('ml-show-all').hidden) return false;
   fire(get('f-shortlist-only'), 'click');
   const ids = () => get('results').children.map((n) => n.dataset.id);
-  if (run('state.shortlistOnly') !== true || ids().join() !== a || get('ml-tools').hidden
-    || get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters' || get('f-shortlist-only').textContent !== 'Back to all programmes'
+  if (run('state.shortlistOnly') !== true || ids().length !== 2 || get('ml-tools').hidden
+    || !get('shortlist-count-text').textContent.includes('your filters are off') || get('f-shortlist-only').textContent !== 'Back to all programmes'
+    || get('ml-show-all').textContent !== 'Apply my filters'
+    || !get('result-count').textContent.startsWith('2 of 2 saved programmes')) return false;
+  fire(get('ml-show-all'), 'click');
+  if (ids().join() !== a || get('shortlist-count-text').textContent !== '2 saved · 1 shown · 1 hidden by your filters'
     || !get('result-count').textContent.startsWith('1 of 2 saved programmes')) return false;
   fire(get('ml-show-all'), 'click');
   if (ids().length !== 2 || get('ml-show-all').textContent !== 'Apply my filters' || !get('shortlist-count-text').textContent.includes('your filters are off')) return false;
@@ -6557,7 +7130,27 @@ appCheck('list view: the filters apply inside it, the bar says how many saves th
   if (!get('results').children[0].querySelector('.grp-h')) return false;
   fire(get('f-shortlist-only'), 'click');
   return run('state.shortlistOnly') === false && get('ml-tools').hidden && !get('results').children.some((n) => n.querySelector('.grp-h'))
+    && run('state.search === fixture[0].programme') && ids().join() === a
     && !run('addressQuery(stateToParams(state), shared)').includes('list=');
+});
+appCheck('a filter that hides every save offers Show all saves without clearing the Browse filters', ({ run, get, fire }) => {
+  run("shortlist.add(fixture[0].id); state.search = 'zzzzz-no-match'; update();");
+  fire(get('f-shortlist-only'), 'click');
+  if (get('results').children.length !== 1 || !get('empty-state').hidden) return false;
+  fire(get('ml-show-all'), 'click');
+  if (get('results').children.length !== 0 || get('empty-state').hidden
+    || get('empty-title').textContent !== 'Your filters hide all saved programmes.'
+    || get('empty-clear').hidden || get('empty-clear').textContent !== 'Show all saves') return false;
+  fire(get('empty-clear'), 'click');
+  return get('results').children.length === 1 && get('empty-state').hidden
+    && run("state.search === 'zzzzz-no-match'") && stubDocument.activeElement === get('ml-show-all');
+});
+appCheck('the empty Browse state still clears filters and returns focus to Search', ({ run, get, fire }) => {
+  run("state.search = 'zzzzz-no-match'; update();");
+  const clear = get('empty-clear');
+  if (get('empty-state').hidden || clear.hidden || clear.textContent !== 'Clear all (1)') return false;
+  fire(clear, 'click');
+  return run("state.search === ''") && get('empty-state').hidden && stubDocument.activeElement === get('f-search');
 });
 // Batch 3 B3 rewrote this check: Compare no longer follows the saves (A adds
 // its own check), and the last unsave leaves an empty list view instead of
@@ -7364,6 +7957,972 @@ appCheck('switching the interface language never touches the teaching-language f
 i18n.initLanguage('', { getItem: () => 'en' });
 // END i18n checks
 
+section('Slovak prose translation tooling (issue #18)');
+{
+  const { translationInventory } = await import('./i18n-missing.mjs');
+  const {
+    heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS, WHOLE_CELL_DATA_FIELDS, SINGLE_BULLET_FIELDS,
+    liveDisplayKeys, wholeCellLeaves,
+  } = await import('./apply-sk-translations.mjs');
+  const searchMod = await import('./sk-search-english.mjs');
+  const renderMod = await import('../js/render.js');
+  const renderModMain = renderMod;
+  const costMod = await import('../js/cost.js');
+
+  const dir = mkdtempSync(join(tmpdir(), 'ib-apply-sk-'));
+  try {
+    mkdirSync(join(dir, 'i18n'));
+    const paths = ['programmes.csv', 'universities.csv', 'i18n/sk.csv'];
+    const heads = paths.map((p) => parseCsv(read(`data/${p}`))[0]);
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    const csv = (grid) => grid.map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const sheet = (i, rows) => csv([heads[i], ...rows.map((r) => heads[i].map((h) => r[h] ?? ''))]);
+    const put = (p, text) => writeFileSync(join(dir, p), text);
+    const get = (p) => readFileSync(join(dir, p), 'utf8');
+    const bytes = () => paths.map(get);
+    const sameBytes = (expected) => bytes().every((text, i) => text === expected[i]);
+    const stamp = (p) => statSync(join(dir, p)).mtimeMs;
+    const cleanTemps = () => !readdirSync(join(dir, 'i18n')).some((n) => n.startsWith('.sk-apply-'));
+
+    const sign = { verified_by: 'AI-DRAFT', last_verified: '2026-10-03' };
+    const unis = [
+      { university_id: 'u1', name: 'Test University', city: 'Dublin', country: 'Ireland', ...sign },
+      { university_id: 'tul', name: 'TUL', city: 'Liberec', country: 'Czechia', ...sign },
+    ];
+    const prog = (id, extra = {}) => ({
+      programme_id: id, university_id: 'u1', programme: `Programme ${id}`,
+      subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, ...sign, ...extra,
+    });
+    const sk = (field, en, text, verified_by = 'AI-DRAFT') => ({ field, en, sk: text, verified_by });
+    const progs = [
+      prog('p1', {
+        ib_subjects: 'HL Maths 6.5 or equivalent',
+        other_requirements: 'Portfolio · Interview; online',
+        deadline_notes: 'Apply by 15 January 2027',
+      }),
+      prog('p2', {
+        ib_subjects: 'Shared held subject',
+        other_requirements: 'Shared held leaf · Normal item',
+        deadline_notes: 'Shared held whole',
+      }),
+      // Held via live selector60 rules: "programme page" and "Check manually".
+      prog('p3', {
+        ib_subjects: 'Cross-field held subject',
+        other_requirements: 'See programme page · Shared held leaf · Cross-field piece',
+        deadline_notes: 'Check manually; Shared held whole',
+      }),
+      prog('p4', { ib_subjects: 'Cross-field piece' }),
+      prog('p5', { ib_subjects: 'Cross-field held subject' }),
+      // Held via NON_SELECTOR_HOLDS (K8) and shared by unheld p7.
+      prog('tul-anglophone-studies', { university_id: 'tul', deadline_notes: 'Pinned K8 note' }),
+      prog('p7', { deadline_notes: 'Pinned K8 note' }),
+      prog('p8', { ib_subjects: 'none', other_requirements: '?', deadline_notes: '?' }),
+      prog('p9', { ib_subjects: 'Existing normal key', other_requirements: 'Existing spaced key' }),
+    ];
+    const orphanRow = sk('admission', 'Legacy orphan row', 'Zastaralý riadok');
+    const baseSk = [
+      orphanRow,
+      sk('ib_subjects', 'Existing normal key', 'Existujúci kľúč'),
+      sk('other_requirements', 'Existing  spaced  key', 'Existujúci medzerníkový kľúč'),
+    ];
+    const reset = (p = progs, u = unis, s = baseSk) => {
+      [p, u, s].forEach((rows, i) => put(paths[i], sheet(i, rows)));
+      return bytes();
+    };
+
+    const run = (batchRows, { apply = false, reviewRows = null, reviewText = null, fault = false, deferOutput = false } = {}) => {
+      put('batch.csv', csv([['field', 'en', 'sk'], ...batchRows]));
+      const args = [
+        ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        ...(deferOutput ? ['--require', join(dir, 'slow-output.cjs')] : []),
+        join(root, 'tools/apply-sk-translations.mjs'),
+        '--data', dir,
+      ];
+      if (apply) args.push('--apply');
+      if (reviewText !== null) {
+        put('review.csv', reviewText);
+        args.push('--review', join(dir, 'review.csv'));
+      } else if (reviewRows !== null) {
+        put('review.csv', csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
+        args.push('--review', join(dir, 'review.csv'));
+      }
+      args.push(join(dir, 'batch.csv'));
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, stdout: r.stdout, stderr: r.stderr, log: r.stdout + r.stderr };
+    };
+
+    const goodBatch = [
+      ['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika HL 6.5 alebo ekvivalent'],
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+      ['other_requirements', 'Interview', 'Pohovor'],
+      ['deadline_notes', 'Apply by 15 January 2027', 'Prihlášku podaj do 15. januára 2027'],
+    ];
+    const goodReview = goodBatch.map(([f, en, skv]) => [f, en, skv, 'keep']);
+
+    // The UI trims field names. A padded row is already signed for this key.
+    reset(progs, unis, [...baseSk, sk(' other_requirements ', 'Portfolio', 'Prior wording', 'JK')]);
+    const signedInput = bytes();
+    const signedConflict = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: a signed translation with a padded field name blocks a conflicting addition',
+      signedConflict.status === 2 && /already has a different translation/.test(signedConflict.log) && sameBytes(signedInput), signedConflict.log);
+
+    put(paths[2], sheet(2, baseSk) + 'admission,Prior,Text,"JK');
+    const truncatedInput = bytes();
+    const truncated = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: refuses to append inside an unclosed final sk.csv field',
+      truncated.status === 1 && /malformed CSV/.test(truncated.log) && sameBytes(truncatedInput), truncated.log);
+
+    reset(progs.map((row) => row.programme_id === 'p3' ? { ...row, university_id: 'missing-uni' } : row));
+    const partialInput = bytes();
+    const shared = ['other_requirements', 'Shared held leaf', 'Fixture'];
+    const skippedHold = run([shared], { apply: true, reviewRows: [[...shared, 'keep']] });
+    check('apply-sk: a skipped programme cannot hide a held use of a shared key',
+      skippedHold.status === 1 && /skipped programme rows/.test(skippedHold.log) && sameBytes(partialInput), skippedHold.log);
+
+    const original = reset();
+    for (const p of paths) utimesSync(join(dir, p), 1, 1);
+    const dry = run(goodBatch);
+    check('apply-sk: dry run writes nothing and leaves all files and mtimes untouched',
+      dry.status === 0 && /To add: 4/.test(dry.stdout) && /Refused: 0/.test(dry.stdout)
+        && sameBytes(original) && paths.every((p) => stamp(p) === 1000) && cleanTemps(), dry.log);
+
+    // A piped CLI may still have queued writes after printing its totals.
+    put('slow-output.cjs', `
+const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = (...args) => { setImmediate(() => write(...args)); return true; };
+`);
+    const pipedDry = run(goodBatch, { deferOutput: true });
+    const pipedRefusal = run([...goodBatch, goodBatch[0]], { deferOutput: true });
+    check('apply-sk: piped dry runs and refusals deliver every decision and the final totals',
+      [pipedDry, pipedRefusal].every((r) => (r.stdout.match(/^ADD /gm) || []).length === goodBatch.length)
+        && pipedDry.status === 0 && /Refused: 0/.test(pipedDry.stdout)
+        && pipedRefusal.status === 2 && /^REFUSE /m.test(pipedRefusal.stdout) && /Refused: 1/.test(pipedRefusal.stdout)
+        && sameBytes(original), pipedDry.log + pipedRefusal.log);
+
+    const noRev = run(goodBatch, { apply: true });
+    check('apply-sk: --apply without --review exits 1 and writes nothing',
+      noRev.status === 1 && /--apply needs --review/.test(noRev.stderr) && sameBytes(original) && cleanTemps(), noRev.log);
+
+    put('fault-rename.cjs', `
+const fs = require('node:fs');
+fs.renameSync = () => { const e = new Error('simulated rename failure'); e.code = 'EIO'; throw e; };
+require('node:module').syncBuiltinESMExports();
+`);
+    const atomicFail = run(goodBatch, { apply: true, reviewRows: goodReview, fault: true });
+    check('apply-sk: atomic rename failure leaves sk.csv untouched and cleans temp file',
+      atomicFail.status === 1 && /Atomic write failed/.test(atomicFail.stderr) && sameBytes(original) && cleanTemps(), atomicFail.log);
+
+    for (const p of paths) utimesSync(join(dir, p), 1, 1);
+    const applied = run(goodBatch, { apply: true, reviewRows: goodReview });
+    const afterSk = get('i18n/sk.csv');
+    const addedRows = parseCsv(afterSk).slice(1);
+    check('apply-sk: --apply --review appends exact N AI-DRAFT rows with old bytes as prefix and leaves inputs untouched',
+      applied.status === 0 && afterSk.startsWith(original[2])
+        && addedRows.length === baseSk.length + goodBatch.length
+        && addedRows.slice(-goodBatch.length).every((r, i) => r[0] === goodBatch[i][0] && r[1] === goodBatch[i][1] && r[2] === goodBatch[i][2] && r[3] === 'AI-DRAFT')
+        && afterSk.includes(`${orphanRow.field},${orphanRow.en},${orphanRow.sk},${orphanRow.verified_by}\n`)
+        && get('programmes.csv') === original[0] && get('universities.csv') === original[1]
+        && stamp('programmes.csv') === 1000 && stamp('universities.csv') === 1000
+        && /make-snapshot\.mjs/.test(applied.stdout) && /check\.mjs/.test(applied.stdout) && cleanTemps(), applied.log);
+
+    const afterApplyBytes = bytes();
+    utimesSync(join(dir, 'i18n/sk.csv'), 1, 1);
+    const retry = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: exact retry is all SKIP with sk.csv bytes and mtime unchanged',
+      retry.status === 0 && /To add: 0/.test(retry.stdout) && /Skipped: 4/.test(retry.stdout) && /Refused: 0/.test(retry.stdout)
+        && sameBytes(afterApplyBytes) && stamp('i18n/sk.csv') === 1000 && cleanTemps(), retry.log);
+
+    const refuse = (name, rows, pattern, opts = {}, code = 2) => {
+      reset();
+      const before = bytes();
+      const r = run(rows, opts);
+      check(`apply-sk: ${name}`, r.status === code && pattern.test(r.log) && sameBytes(before) && cleanTemps(), r.log);
+    };
+
+    refuse('refuses unsupported field', [['admission', 'HL Maths 6.5 or equivalent', 'Matematika HL 6.5 alebo ekvivalent']], /unsupported field/);
+    refuse('refuses empty Slovak text', [['other_requirements', 'Portfolio', '   ']], /Slovak text is empty/);
+    refuse('refuses non-normalised English key', [['other_requirements', ' Portfolio ', 'Portfólio']], /normalised/);
+    refuse('refuses ? and none markers', [['ib_subjects', 'none', 'žiadne'], ['other_requirements', '?', 'neznáme']], /marker value/);
+    refuse('refuses non-live English key', [['deadline_notes', 'Text not in any programme', 'Text mimo dát']], /not a live lookup key/);
+    refuse('refuses duplicate (field, en) within batch', [
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+    ], /duplicate/);
+    refuse('refuses different sk for existing key', [['ib_subjects', 'Existing normal key', 'Iný kľúč']], /already has a different translation/);
+    refuse('refuses normalised duplicate with different sk in sk.csv', [['other_requirements', 'Existing spaced key', 'Iný preklad']], /already has a different translation/);
+    refuse('refuses decimal hard-token change (6.5 -> 6,5)', [['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika HL 6,5 alebo ekvivalent']], /hard tokens differ/);
+    refuse('refuses dropped fixed hard token (HL)', [['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika 6.5 alebo ekvivalent']], /hard tokens differ/);
+    refuse('refuses separator count change', [['other_requirements', 'Portfolio · Interview; online', 'Portfólio; Pohovor; online']], /separator counts/);
+    refuse('refuses missing review row in --apply mode', [goodBatch[0]], /no review row/, { apply: true, reviewRows: [] });
+    refuse('a byte order mark on a review record cannot create an exact approval', [goodBatch[0]], /unexpected BOM/, {
+      apply: true, reviewRows: [['\uFEFF' + goodBatch[0][0], ...goodBatch[0].slice(1), 'keep']],
+    }, 1);
+    refuse('refuses non-keep review verdict', [goodBatch[0]], /not "keep"/, { apply: true, reviewRows: [[...goodBatch[0], 'revise']] });
+    refuse('rejects conflicting review verdicts (reject then keep) instead of last-match', [goodBatch[0]], /conflicting review verdicts/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'reject'], [...goodBatch[0], 'keep']],
+    }, 1);
+    refuse('rejects conflicting review verdicts (keep then reject)', [goodBatch[0]], /conflicting review verdicts/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'keep'], [...goodBatch[0], 'reject']],
+    }, 1);
+    refuse('rejects ambiguous conflicting keep rows for same key', [goodBatch[0]], /conflicting keep review rows/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'keep'], [goodBatch[0][0], goodBatch[0][1], 'Alternatíva HL 6.5', 'keep']],
+    }, 1);
+    refuse('rejects malformed review CSV', [goodBatch[0]], /malformed CSV/, {
+      apply: true,
+      reviewText: 'field,en,sk,verdict\nib_subjects,"unclosed quote,sk,keep\n',
+    }, 1);
+    refuse('mixed batch with one valid and one refused line writes nothing', [
+      goodBatch[1],
+      ['deadline_notes', 'Not live anywhere', 'Nie je v dátach'],
+    ], /not a live lookup key/, { apply: true, reviewRows: [[...goodBatch[1], 'keep'], ['deadline_notes', 'Not live anywhere', 'Nie je v dátach', 'keep']] });
+
+    // Held refusals: whole, shared leaf, cross-field piece, cross-field compact crossover, pinned non-selector.
+    refuse('refuses held whole cell', [['deadline_notes', 'Check manually; Shared held whole', 'Skontroluj ručne; Zdieľaná časť']], /held cell.*prog\|p3\|deadline_notes/);
+    refuse('refuses key shared by held cell and unheld row (deadline_notes leaf)', [['deadline_notes', 'Shared held whole', 'Zdieľaná poznámka']], /held cell.*prog\|p3\|deadline_notes/);
+    refuse('refuses key shared by held cell and unheld row (other_requirements leaf)', [['other_requirements', 'Shared held leaf', 'Zdieľaná položka']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses cross-field ib_subjects key equal to a piece of a held other_requirements cell', [['ib_subjects', 'Cross-field piece', 'Krížová položka']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses cross-field ib_subjects key read via compact lookup of a held other_requirements cell', [['ib_subjects', 'Cross-field held subject', 'Krížový predmet']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses pinned NON_SELECTOR_HOLDS key even when shared with an unheld row', [['deadline_notes', 'Pinned K8 note', 'Poznámka K8']], /held cell.*prog\|tul-anglophone-studies\|deadline_notes/);
+
+    // Layer 2A: living_cost_source and baseline_requirement are whole-cell only.
+    // u2's piece "Leaf baseline" is u3's whole cell; bath is a pinned held
+    // baseline (carry-for-18) shared whole by unheld u4 and as a piece by u5.
+    const heldLayer2A = ['baseline_requirement', 'Internal reference; see IB recognition evidence.', 'Interná referencia; pozri podklady.'];
+    const wUnis = [...unis.map((uni) => uni.university_id === 'tul' ? { ...uni, baseline_requirement: heldLayer2A[1] } : uni),
+      { university_id: 'w1', name: 'Whole One', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'secondary school leaving certificate; IB Diploma accepted',
+        living_cost_source: 'national estimate (Test Immigration Service)' },
+      { university_id: 'w2', name: 'Whole Two', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Leaf baseline; Second item', living_cost_source: 'university estimate; city data' },
+      { university_id: 'w3', name: 'Whole Three', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Leaf baseline', living_cost_source: 'national estimate (Migration Agency)' },
+      { university_id: 'bath', name: 'Bath', city: 'Bath', country: 'United Kingdom', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
+      { university_id: 'w4', name: 'Whole Four', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
+      { university_id: 'w5', name: 'Whole Five', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Shared UK piece' },
+      { university_id: 'w6', name: 'Whole Six', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Minimum 24 points with HL Maths; see https://example.org/ib' },
+    ];
+    const wProgs = [...progs, ...['w1', 'w2', 'w3', 'bath', 'w4', 'w5', 'w6'].map((u) => prog(`pw-${u}`, { university_id: u }))];
+    const wholeBatch = [
+      ['baseline_requirement', 'secondary school leaving certificate; IB Diploma accepted', 'maturitné vysvedčenie; IB Diploma sa uznáva'],
+      ['living_cost_source', 'national estimate (Test Immigration Service)', 'národný odhad (Test Immigration Service)'],
+    ];
+    const wholeReview = wholeBatch.map((r) => [...r, 'keep']);
+    const wOriginal = reset(wProgs, wUnis);
+    const wDry = run(wholeBatch);
+    check('apply-sk: whole living_cost_source and baseline_requirement cells dry-run clean and write nothing',
+      wDry.status === 0 && /To add: 2/.test(wDry.stdout) && /Refused: 0/.test(wDry.stdout) && sameBytes(wOriginal), wDry.log);
+    const wApplied = run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    const wAdded = parseCsv(get('i18n/sk.csv')).slice(1).slice(-2);
+    check('apply-sk: --apply --review appends the two whole-cell rows as AI-DRAFT after the old bytes',
+      wApplied.status === 0 && get('i18n/sk.csv').startsWith(wOriginal[2])
+        && wAdded.every((r, i) => r.join('|') === [...wholeBatch[i], 'AI-DRAFT'].join('|')) && cleanTemps(), wApplied.log);
+    const wAfter = bytes();
+    const wRetry = run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    check('apply-sk: exact whole-cell retry is all SKIP and writes nothing',
+      wRetry.status === 0 && /Skipped: 2/.test(wRetry.stdout) && /To add: 0/.test(wRetry.stdout) && sameBytes(wAfter), wRetry.log);
+
+    const wRefuse = (name, rows, pattern, opts = {}) => {
+      reset(wProgs, wUnis);
+      const before = bytes();
+      const r = run(rows, opts);
+      check(`apply-sk: ${name}`, r.status === 2 && pattern.test(r.log) && sameBytes(before) && cleanTemps(), r.log);
+    };
+    wRefuse('refuses a semicolon piece of baseline_requirement (whole cells only)',
+      [['baseline_requirement', 'IB Diploma accepted', 'IB Diploma sa uznáva']], /not a live lookup key for baseline_requirement/);
+    wRefuse('refuses a semicolon piece of living_cost_source (whole cells only)',
+      [['living_cost_source', 'city data', 'údaje mesta']], /not a live lookup key for living_cost_source/);
+    wRefuse('refuses a whole key that is a piece of another unheld cell, before writing anything',
+      [wholeBatch[0], ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka']], /piece at w2/,
+      { apply: true, reviewRows: [...wholeReview, ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'keep']] });
+    wRefuse('refuses a held UK baseline whole cell even when an unheld university shares it',
+      [['baseline_requirement', 'Held UK baseline; Shared UK piece', 'Držaná; Zdieľaná']], /held cell.*uni\|bath\|baseline_requirement \(carry-for-18\)/);
+    wRefuse('refuses an unheld whole cell that is a piece of a held UK baseline',
+      [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť']], /held cell.*uni\|bath\|baseline_requirement/);
+    wRefuse('refuses a Layer 2A baseline held for internal references',
+      [heldLayer2A], /held cell.*uni\|tul\|baseline_requirement \(L2A-035\)/, { apply: true, reviewRows: [[...heldLayer2A, 'keep']] });
+    const w6 = 'Minimum 24 points with HL Maths; see https://example.org/ib';
+    wRefuse('refuses a whole-cell number change', [['baseline_requirement', w6, 'Minimum 26 bodov s HL Maths; pozri https://example.org/ib']], /hard tokens differ/);
+    wRefuse('refuses a whole-cell URL change', [['baseline_requirement', w6, 'Minimum 24 bodov s HL Maths; pozri https://example.org/sk']], /hard tokens differ/);
+    wRefuse('refuses a dropped HL in a whole cell', [['baseline_requirement', w6, 'Minimum 24 bodov s matematikou; pozri https://example.org/ib']], /hard tokens differ/);
+    wRefuse('refuses a whole-cell separator change', [['baseline_requirement', w6, 'Minimum 24 bodov s HL Maths, pozri https://example.org/ib']], /separator counts/);
+
+    // Search-English list writer (tools/sk-search-english.mjs) on a copy of the
+    // real js/i18n.js block, so the real file is never written by a check.
+    reset(wProgs, wUnis);
+    const historicalSk = readFileSync(join(root, 'data/i18n/sk.csv')).subarray(0, searchMod.BASE_SK_BYTES).toString('utf8');
+    put(paths[2], historicalSk);
+    run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    const appendedSk = get(paths[2]);
+    const jsCopy = join(dir, 'i18n-copy.js');
+    const source = read('js/i18n.js');
+    const realBlock = searchMod.readSearchEnglishBlock(source);
+    writeFileSync(jsCopy, searchMod.writeSearchEnglishBlock(source, realBlock.version, []));
+    const gen = (reviewRows, { apply = false, reviewText = null, fault = false, extra = [] } = {}) => {
+      put('search-review.csv', reviewText ?? csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
+      const args = [
+        ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        join(root, 'tools/sk-search-english.mjs'), '--data', dir, '--js', jsCopy, '--review', join(dir, 'search-review.csv'), ...extra,
+      ];
+      if (apply) args.push('--apply');
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, stdout: r.stdout, log: r.stdout + r.stderr };
+    };
+    const jsBefore = readFileSync(jsCopy, 'utf8');
+    const genDry = gen(wholeReview);
+    check('search-english: dry run lists both accepted whole cells and writes nothing',
+      genDry.status === 0 && /To add: 2/.test(genDry.stdout) && readFileSync(jsCopy, 'utf8') === jsBefore, genDry.log);
+    const genOdd = gen([
+      ...wholeReview,
+      [...goodBatch[0], 'keep'], // prose field: not a search-English field
+      ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'reject'],
+    ], { apply: true });
+    const written = searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8'));
+    equal('search-english: --apply writes only keep whole cells, sorted, and bumps the version once',
+      [genOdd.status, written.version, written.entries, /Ignored: 2/.test(genOdd.stdout)],
+      [0, realBlock.version + 1, [['baseline_requirement', wholeBatch[0][1]], ['living_cost_source', wholeBatch[1][1]]], true]);
+    check('search-english: --apply changes nothing outside the block',
+      readFileSync(jsCopy, 'utf8').replace(/\/\/ BEGIN SEARCH_ENGLISH[\s\S]*\/\/ END SEARCH_ENGLISH\n/, '')
+        === jsBefore.replace(/\/\/ BEGIN SEARCH_ENGLISH[\s\S]*\/\/ END SEARCH_ENGLISH\n/, ''));
+    const afterGen = readFileSync(jsCopy, 'utf8');
+    const genRetry = gen(wholeReview, { apply: true });
+    check('search-english: an exact retry adds nothing and leaves the file as it was',
+      genRetry.status === 0 && /To add: 0/.test(genRetry.stdout) && readFileSync(jsCopy, 'utf8') === afterGen, genRetry.log);
+    const genRefuse = (name, rows, pattern, opts, code = 2) => {
+      writeFileSync(jsCopy, jsBefore);
+      const before = bytes();
+      utimesSync(jsCopy, 1, 1);
+      const r = gen(rows, { apply: true, ...opts });
+      check(`search-english: ${name}`, r.status === code && pattern.test(r.log) && sameBytes(before)
+        && readFileSync(jsCopy, 'utf8') === jsBefore && stamp('i18n-copy.js') === 1000
+        && !readdirSync(dir).some((n) => n.startsWith('.search-english-')), r.log);
+    };
+    genRefuse('refuses a batch with an exact keep and a different Slovak text',
+      [wholeReview[1], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /no row with exactly this Slovak/);
+    const oldRow = 'living_cost_source,national estimate (Migration Agency),celoštátny odhad (Migration Agency),AI-DRAFT';
+    const oldReview = [[...oldRow.split(',').slice(0, 3), 'keep']];
+    genRefuse('refuses a translation that was in sk.csv before Layer 2A',
+      oldReview, /older sk\.csv row/);
+    genRefuse('does not accept a fixture flag on production dictionary bytes', oldReview, /Usage:/, { extra: ['--first-new-row', '0'] }, 1);
+    for (const [name, dictionary, pattern] of [
+      ['reordered historical key after the prefix', appendedSk.replace(oldRow + '\n', '') + oldRow + '\n', /unchanged .* byte prefix/],
+      ['duplicate historical key after the prefix', appendedSk + oldRow + '\n', /duplicate normalised key/],
+      ['historical signature edit', appendedSk.replace(oldRow, oldRow.replace('AI-DRAFT', 'REVIEWED')), /unchanged .* byte prefix/],
+    ]) {
+      put(paths[2], dictionary);
+      genRefuse(name, oldReview, pattern, {}, 1);
+    }
+    put(paths[2], appendedSk);
+    genRefuse('refuses conflicting verdicts even when one English key has different spaces',
+      [wholeReview[0], [wholeBatch[0][0], ' ' + wholeBatch[0][1], wholeBatch[0][2], 'reject']], /conflicting review verdicts/, {}, 1);
+    genRefuse('refuses conflicting keep texts for the same key',
+      [wholeReview[0], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /conflicting keep review rows/, {}, 1);
+    genRefuse('refuses malformed quotes on a keep record', wholeReview, /malformed CSV/,
+      { reviewText: 'field,en,sk,verdict\n' + csv([wholeReview[0]]).trimEnd() + '"\n' }, 1);
+    genRefuse('requires four literal review headings', wholeReview, /header must be exactly/,
+      { reviewText: '"field,en,sk,verdict"\n' + csv(wholeReview) }, 1);
+    const paddedSk = ' ' + wholeBatch[0][2] + ' ';
+    put(paths[2], appendedSk.replace(wholeBatch[0][2], paddedSk));
+    genRefuse('compares review Slovak with the exact CSV cell before the app trims it', wholeReview, /no row with exactly this Slovak/);
+    const exactPadded = gen([[wholeBatch[0][0], wholeBatch[0][1], paddedSk, 'keep']], { apply: true });
+    equal('search-english: accepts the corrected exact review and adds only that pair',
+      [exactPadded.status, searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8')).entries],
+      [0, [wholeBatch[0].slice(0, 2)]]);
+    put(paths[2], appendedSk);
+    genRefuse('cleans up and preserves the original file if the atomic rename fails', wholeReview, /Atomic write failed/, { fault: true }, 1);
+    // A held or piece key can only reach sk.csv by hand; the list refuses it too.
+    put(paths[2], get(paths[2]) + 'baseline_requirement,Shared UK piece,Zdieľaná časť,AI-DRAFT\nbaseline_requirement,Leaf baseline,Listová požiadavka,AI-DRAFT\n');
+    genRefuse('refuses held and piece keys even when sk.csv has them',
+      [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť', 'keep'], ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'keep']],
+      /read by held cell uni\|bath[\s\S]*piece of a cell at w2/);
+    put(paths[2], appendedSk + csv([[...heldLayer2A, 'AI-DRAFT']]));
+    genRefuse('refuses a Layer 2A baseline held for internal references even when sk.csv has it',
+      [[...heldLayer2A, 'keep']], /read by held cell.*L2A-035/);
+    // Layer 2B-1: single-bullet English requirements, stored under the column
+    // the text comes from. pe1 inherits e1's default (english_requirement_default);
+    // pe2 and pe7 have their own (english_requirement). e2's default is latent:
+    // every e2 programme has its own wording. e3's default has two bullets, the
+    // second containing ';'. tul-european-business is the held P4b G065 cell.
+    const vseEn = 'No Czech certificate required; the Scio OSP/VŠP test itself serves as proof of Czech';
+    const vseSk = 'Certifikát z češtiny sa nevyžaduje; samotný test Scio OSP/VŠP slúži ako doklad češtiny';
+    const testsEn = 'TOEFL iBT 80, PTE 59, Duolingo 110, ÚJOP B2+, EF SET 61 or CLA ≥ 6';
+    const testsSk = 'TOEFL iBT 80, PTE 59, Duolingo 110, ÚJOP B2+, EF SET 61 alebo CLA ≥ 6';
+    const inhEn = 'IELTS 6.0 overall; IB Diploma holders exempt';
+    const inhSk = 'IELTS 6.0 celkovo; držitelia IB Diploma sú oslobodení';
+    const eUni = (id, english_requirement_default) => ({
+      university_id: id, name: `English ${id}`, city: 'Cork', country: 'Ireland', ...sign, english_requirement_default,
+    });
+    const eUnis = [...wUnis, eUni('e1', inhEn), eUni('e2', 'Latent default text; Latent piece'),
+      eUni('e3', 'Multi item · Second item; with a semicolon'), eUni('e4', 'Twin wording'),
+      eUni('e5', 'Live twin')];
+    const eProgs = [...wProgs,
+      prog('pe1', { university_id: 'e1' }),
+      prog('pe2', { university_id: 'e2', english_requirement: testsEn }),
+      prog('pe3', { university_id: 'e3' }),
+      prog('pe4', { university_id: 'e2', english_requirement: 'Multi item' }),
+      prog('pe5', { university_id: 'e2', english_requirement: 'Latent piece' }),
+      prog('pe6', { university_id: 'e2', english_requirement: 'English B2; or IELTS 5.5' }),
+      prog('tul-european-business', { university_id: 'tul', english_requirement: 'English B2' }),
+      prog('pe7', { university_id: 'e2', english_requirement: vseEn }),
+      prog('pe8', { university_id: 'e4' }),
+      prog('pe9', { university_id: 'e2', english_requirement: '?' }),
+      prog('pe10', { university_id: 'e2', english_requirement: 'Second item; with a semicolon' }),
+      prog('pe11', { university_id: 'e5' }),
+      prog('pe12', { university_id: 'e5', english_requirement: 'Live twin' }),
+      prog('pe13', { university_id: 'e2', english_requirement: 'Spacing trap\t·\tOther option' }),
+    ];
+    const eSk = [...baseSk, sk('english_requirement', 'No Czech certificate required', 'Certifikát z češtiny sa nevyžaduje'),
+      sk('english_requirement', 'Twin wording', 'Dvojité znenie')];
+    const eBatch = [
+      ['english_requirement_default', inhEn, inhSk],
+      ['english_requirement', testsEn, testsSk],
+      ['english_requirement', vseEn, vseSk],
+    ];
+    const eReview = eBatch.map((r) => [...r, 'keep']);
+    const eOriginal = reset(eProgs, eUnis, eSk);
+    const eDry = run(eBatch);
+    check('apply-sk L2B1: an inherited and two own English requirements dry-run clean and write nothing',
+      eDry.status === 0 && /To add: 3/.test(eDry.stdout) && /Refused: 0/.test(eDry.stdout) && sameBytes(eOriginal), eDry.log);
+    const eApplied = run(eBatch, { apply: true, reviewRows: eReview });
+    check('apply-sk L2B1: --apply --review appends them under their physical column as AI-DRAFT after the old bytes',
+      eApplied.status === 0 && get('i18n/sk.csv').startsWith(eOriginal[2])
+        && parseCsv(get('i18n/sk.csv')).slice(1).slice(-3).every((r, i) => r.join('|') === [...eBatch[i], 'AI-DRAFT'].join('|'))
+        && get('programmes.csv') === eOriginal[0] && get('universities.csv') === eOriginal[1] && cleanTemps(), eApplied.log);
+    const eAfter = bytes();
+    utimesSync(join(dir, 'i18n/sk.csv'), 1, 1);
+    const eRetry = run(eBatch, { apply: true, reviewRows: eReview });
+    check('apply-sk L2B1: an exact retry is all SKIP with sk.csv bytes and mtime unchanged',
+      eRetry.status === 0 && /Skipped: 3/.test(eRetry.stdout) && /To add: 0/.test(eRetry.stdout)
+        && sameBytes(eAfter) && stamp('i18n/sk.csv') === 1000 && cleanTemps(), eRetry.log);
+
+    const eRefuse = (name, rows, pattern) => {
+      reset(eProgs, eUnis, eSk);
+      for (const p of paths) utimesSync(join(dir, p), 1, 1);
+      const before = bytes();
+      const r = run(rows, { apply: true, reviewRows: rows.map((row) => [...row, 'keep']) });
+      check(`apply-sk L2B1: ${name}`, r.status === 2 && pattern.test(r.log) && sameBytes(before)
+        && paths.every((p) => stamp(p) === 1000) && cleanTemps(), r.log);
+    };
+    eRefuse('refuses a multi-bullet whole',
+      [['english_requirement_default', 'Multi item · Second item; with a semicolon', 'Položka · Druhá položka; s bodkočiarkou']], /not a live lookup key/);
+    eRefuse('refuses a bullet separator exposed by English normalisation',
+      [['english_requirement', 'Spacing trap · Other option', 'Prvá možnosť · Druhá možnosť']], /not a live lookup key/);
+    eRefuse('refuses a latent university default',
+      [['english_requirement_default', 'Latent default text; Latent piece', 'Skrytý text; Skrytá časť']], /not a live lookup key/);
+    eRefuse('refuses a programme\'s own wording offered as english_requirement_default',
+      [['english_requirement_default', testsEn, testsSk]], /not a live lookup key for english_requirement_default/);
+    eRefuse('refuses inherited wording offered as english_requirement',
+      [['english_requirement', inhEn, inhSk]], /not a live lookup key for english_requirement:/);
+    eRefuse('refuses the same English when sk.csv has it under the other column',
+      [['english_requirement_default', 'Twin wording', 'Dvojité znenie']], /also a english_requirement key/);
+    eRefuse('refuses explicit wording equal to a live inherited key, with neither in sk.csv',
+      [['english_requirement', 'Live twin', 'Rovnaké znenie']], /also a english_requirement_default key/);
+    eRefuse('refuses a held English requirement whole (P4b G065)',
+      [['english_requirement', 'English B2', 'Angličtina B2']], /held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
+    eRefuse('refuses a whole containing a held piece (P4b G065)',
+      [['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5']], /piece of this key is read by held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
+    eRefuse('refuses a whole equal to an item of a multi-bullet cell',
+      [['english_requirement', 'Multi item', 'Položka']], /english_requirement piece at .*pe3/);
+    eRefuse('refuses a whole equal to an entire semicolon-bearing bullet item',
+      [['english_requirement', 'Second item; with a semicolon', 'Druhá položka; s bodkočiarkou']], /english_requirement piece at .*pe3/);
+    eRefuse('refuses a whole equal to a piece of a latent university default',
+      [['english_requirement', 'Latent piece', 'Skrytá časť']], /english_requirement piece at .*e2/);
+    eRefuse('refuses a changed historic Slovak slot',
+      [['english_requirement', vseEn, 'Certifikát z češtiny nie je potrebný; samotný test Scio OSP/VŠP slúži ako doklad češtiny']],
+      /changes existing Slovak "Certifikát z češtiny sa nevyžaduje".*needs a separate decision/);
+    for (const [what, bad] of [
+      ['PTE', testsSk.replace('PTE', 'test PT')], ['Duolingo', testsSk.replace('Duolingo', 'duolingo')],
+      ['iBT', testsSk.replace('iBT', 'IBT')], ['ÚJOP', testsSk.replace('ÚJOP', 'UJOP')],
+      ['EF SET', testsSk.replace('EF SET', 'EF-SET')], ['CLA', testsSk.replace('CLA', 'KLA')],
+      ['≥', testsSk.replace('≥', 'aspoň')], ['+', testsSk.replace('B2+', 'B2')],
+    ]) eRefuse(`refuses a dropped or changed ${what}`, [['english_requirement', testsEn, bad]], /test names or the ≥ and \+ signs differ/);
+    eRefuse('refuses a separator change', [['english_requirement', vseEn, vseSk.replace(';', ',')]], /separator counts/);
+    eRefuse('refuses ?', [['english_requirement', '?', 'neznáme']], /marker value/);
+
+    // Layer 2B-1 search list (Option 2) on a fixture whose sk.csv starts with
+    // the real 1,198 rows from before Layer 2B-1.
+    const l2b1Sk = readFileSync(join(root, 'data/i18n/sk.csv')).subarray(0, searchMod.L2B1_BASE_SK_BYTES).toString('utf8');
+    reset(eProgs, eUnis);
+    put(paths[2], l2b1Sk);
+    const l2b1Applied = run(eBatch, { apply: true, reviewRows: eReview });
+    const l2b1Appended = get(paths[2]);
+    check('search-english L2B1: the writer appends after the real 1,198-row base',
+      l2b1Applied.status === 0 && l2b1Appended.startsWith(l2b1Sk) && /To add: 3/.test(l2b1Applied.stdout), l2b1Applied.log);
+    writeFileSync(jsCopy, jsBefore);
+    const l2b1Gen = gen(eReview, { apply: true });
+    equal('search-english L2B1: --apply lists the inherited and own requirements under their physical column, sorted',
+      [l2b1Gen.status, searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8')).entries],
+      [0, [['english_requirement', vseEn], ['english_requirement', testsEn], ['english_requirement_default', inhEn]]]);
+    const l2b1Buf = Buffer.from(l2b1Appended);
+    const tamperAt = l2b1Buf.indexOf('AI-DRAFT', searchMod.BASE_SK_BYTES);
+    const tampered = Buffer.from(l2b1Buf);
+    tampered.write('AI-DRAFX', tamperAt);
+    put(paths[2], tampered.toString('utf8'));
+    genRefuse('refuses English requirement entries when the 1,198-row prefix changed after row 1,082',
+      eReview, /unchanged 1198-row byte prefix from before Layer 2B-1/);
+    const withRows = (...rows) => put(paths[2], l2b1Appended + csv(rows.map((r) => [...r, 'AI-DRAFT'])));
+    withRows(['english_requirement_default', testsEn, testsSk]);
+    genRefuse('refuses an entry whose English sk.csv also has under the other column',
+      [[...eBatch[1], 'keep']], /also a english_requirement_default key/);
+    const twinOnlyInList = searchMod.searchEnglishProblems(
+      [['english_requirement', testsEn], ['english_requirement_default', testsEn]], {
+        dictionary: new Map([[`english_requirement\u0000${testsEn}`, { field: 'english_requirement', en: testsEn, sk: testsSk, verifiedBy: 'AI-DRAFT' }]]),
+        older: new Set(), hasL2B1Prefix: true, olderL2B1: new Set(), heldKeys: new Map(),
+        liveKeys: new Set([`english_requirement\u0000${testsEn}`]), leaves: new Map(),
+      });
+    check('search-english L2B1: two names of one English listed together are refused even with one sk.csv row',
+      twinOnlyInList.some((p) => p.startsWith('english_requirement "') && /also a english_requirement_default key/.test(p)), twinOnlyInList.join('\n'));
+    withRows(['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5']);
+    genRefuse('refuses an entry containing a held piece even when sk.csv has it',
+      [['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5', 'keep']], /piece is read by held cell .*P4b G065/);
+    const badVse = l2b1Appended.replace(vseSk, vseSk.replace('sa nevyžaduje', 'nie je potrebný'));
+    put(paths[2], badVse);
+    genRefuse('refuses a changed historic Slovak slot even when sk.csv has it',
+      [['english_requirement', vseEn, vseSk.replace('sa nevyžaduje', 'nie je potrebný'), 'keep']], /changes existing Slovak/);
+    const noPte = testsSk.replace('PTE', 'test PT');
+    put(paths[2], l2b1Appended.replace(testsSk, noPte));
+    genRefuse('refuses a dropped test name even when sk.csv has it',
+      [['english_requirement', testsEn, noPte, 'keep']], /test names or the ≥ and \+ signs differ/);
+    put(paths[2], l2b1Appended);
+    genRefuse('refuses an English requirement row from before Layer 2B-1',
+      [['english_requirement', 'No Czech certificate required', 'Certifikát z češtiny sa nevyžaduje', 'keep']], /older sk\.csv row/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // Inventory: prose translations lower freeText, are not orphans, and leave missing unchanged.
+  {
+    const sampleProgs = [
+      { admission: 'Open entry', ib_subjects: 'HL Maths 6', other_requirements: 'Portfolio · Interview', deadline_notes: 'Apply by January' },
+      { admission: 'Open entry', ib_subjects: 'none', other_requirements: 'Portfolio', deadline_notes: '?' },
+    ];
+    const baseInv = translationInventory([], sampleProgs, []);
+    const proseSk = [
+      { field: 'ib_subjects', en: 'HL Maths 6', sk: 'Matematika HL 6' },
+      { field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio' },
+      { field: 'deadline_notes', en: 'Apply by January', sk: 'Prihlás sa do januára' },
+    ];
+    const withProse = translationInventory([], sampleProgs, proseSk);
+    const withDeadProse = translationInventory([], sampleProgs, [
+      ...proseSk,
+      { field: 'ib_subjects', en: 'Dead prose key', sk: 'Mŕtvy kľúč' },
+      { field: 'ib_subjects', en: 'none', sk: 'žiadne' },
+      { field: 'deadline_notes', en: '?', sk: 'neznáme' },
+    ]);
+    equal('inventory: live prose translations lower freeText, add no orphans, and keep missing unchanged', [
+      baseInv.freeText, withProse.freeText, withProse.orphans.length, withProse.missing,
+    ], [
+      { ib_subjects: 1, other_requirements: 2, deadline_notes: 1 },
+      { ib_subjects: 0, other_requirements: 1, deadline_notes: 0 },
+      0, baseInv.missing,
+    ]);
+    equal('inventory: dead, none, and ? prose rows remain orphans',
+      withDeadProse.orphans.map((r) => `${r.field}:${r.en}`),
+      ['ib_subjects:Dead prose key', 'ib_subjects:none', 'deadline_notes:?']);
+  }
+
+  // Compact row: separate ib_subjects and other_requirements lookups in Slovak and preserved EN order.
+  {
+    const baseRow = live.find((r) => r.ibSubjects && r.otherRequirements.length);
+    const testRow = { ...baseRow, ibSubjects: 'HL Maths 5', otherRequirements: ['Portfolio', 'Interview'], admission: [], languages: ['English'] };
+    const bothRow = { ...baseRow, ibSubjects: 'HL Maths 6', otherRequirements: ['Interview'], admission: [], languages: ['English'] };
+    const compactOk = withStubDocument(() => {
+      i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+      i18n.setDataTranslations([
+        { field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio', verified_by: 'AI-DRAFT' },
+        { field: 'ib_subjects', en: 'HL Maths 6', sk: 'Matematika HL 6', verified_by: 'AI-DRAFT' },
+      ]);
+      const list = new ChromeNode('ul');
+      renderMod.renderRows(list, [testRow, bothRow], { state: noFilters() });
+      const lines = list.querySelectorAll('.line');
+      const [line1, line2] = lines;
+      const untrans1 = line1.querySelectorAll('[data-untranslated]').map((n) => `${n.lang}:${n.textContent}`);
+      const untrans2 = line2.querySelectorAll('[data-untranslated]').map((n) => `${n.lang}:${n.textContent}`);
+      const noMarkers = !list.querySelector('.data-en, .data-original, .detail-originals');
+      i18n.setDataTranslations([]);
+      i18n.initLanguage('', { getItem: () => 'en' });
+      return line1.textContent.includes('HL Maths 5 · Portfólio · Interview')
+        && JSON.stringify(untrans1) === JSON.stringify(['en:HL Maths 5', 'en:Interview'])
+        && line2.textContent.includes('Matematika HL 6 · Interview')
+        && JSON.stringify(untrans2) === JSON.stringify(['en:Interview'])
+        && noMarkers;
+    });
+    check('compact row translates other_requirements and whole ib_subjects separately in Slovak with lang=en on untranslated pieces and no reveal markers', compactOk);
+    check('every live row English Requires line contains [ibSubjects, ...otherRequirements].join(" · ") in order',
+      live.every((row) => {
+        const expected = [row.ibSubjects, ...row.otherRequirements].filter(Boolean).join(' · ');
+        if (!expected) return true;
+        const line = byClass(rowOf(row), 'line')[0];
+        return Boolean(line && line.textContent.includes(expected));
+      }));
+  }
+
+  // Layer 2A search (Leon, 2026-11-27, "incremental"): a listed whole cell
+  // keeps its English searchable beside its Slovak; nothing else changes.
+  // Disposable rows, translations and list; the real filter and lookups.
+  {
+    const quiet = { setItem() {} };
+    const base = { ...live.find((r) => r.id === 'tud-cse'), baselineRequirement: '', livingCostSource: '', ibRecognition: '' };
+    const fx = (id, over) => ({ ...base, id, ...over });
+    const quokka = 'Quokka diploma; wombat equivalent';
+    const rows = [
+      fx('fx-a', { baselineRequirement: quokka }), // listed, translated whole
+      fx('fx-b', { baselineRequirement: 'Numbat leaving certificate' }), // translated, not listed (older row)
+      fx('fx-c', { baselineRequirement: 'Bilby secondary school' }), // listed, no translation (held or not yet accepted)
+      fx('fx-d', { baselineRequirement: 'Dunnart IB' }), // listed, Slovak equals English
+      fx('fx-e', { ibRecognition: quokka }), // same English in another field
+      fx('fx-f', { baselineRequirement: 'Potoroo note; Wallaby clause' }), // listed key only as a translated piece
+      fx('fx-g', { baselineRequirement: 'Potoroo note' }), // listed, translated whole
+      fx('fx-l', { livingCostSource: 'Pademelon estimate (Test Immigration Service)' }),
+    ];
+    const translations = [
+      { field: 'baseline_requirement', en: quokka, sk: 'Kvokova maturita; ekvivalent' },
+      { field: 'baseline_requirement', en: 'Numbat leaving certificate', sk: 'Mravcožrútie vysvedčenie' },
+      { field: 'baseline_requirement', en: 'Dunnart IB', sk: 'Dunnart  IB' },
+      { field: 'ib_recognition', en: quokka, sk: 'Uznanie kvoky' },
+      { field: 'baseline_requirement', en: 'Potoroo note', sk: 'Poznámka klokanky' },
+      { field: 'living_cost_source', en: 'Pademelon estimate (Test Immigration Service)', sk: 'odhad klokana (Test Immigration Service)' },
+    ];
+    const list = [
+      ['baseline_requirement', quokka], ['baseline_requirement', 'Bilby secondary school'], ['baseline_requirement', 'Dunnart IB'],
+      ['baseline_requirement', 'Potoroo note'], ['ib_recognition', quokka], // ignored: not a whole-cell field
+      ['living_cost_source', 'Pademelon estimate (Test Immigration Service)'],
+    ];
+    const queries = ['quokka', 'wombat,', '(Quokka)', 'okka', 'quokka dip', 'kvokova', 'quokka kvokova', 'numbat', 'mravcozrutie',
+      'bilby', 'dunnart ib', 'potoroo', 'wallaby', 'klokanky', 'pademelon', 'kvoky'];
+    const search = () => Object.fromEntries(['en', 'sk'].map((lang) => {
+      i18n.setLanguage(lang, quiet);
+      return [lang, queries.map((q) => applyFilters(rows, { ...noFilters(), search: q }, new Set()).map((r) => r.id).join(' '))];
+    }));
+    // klokanky is Slovak for a translated piece, so fx-f matches it: pieces stay translated.
+    const listed = ['fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', '', 'fx-b', 'fx-c', 'fx-d', 'fx-g', 'fx-f', 'fx-f fx-g', 'fx-l', 'fx-e'];
+    const unlisted = ['', '', '', '', '', 'fx-a', '', '', 'fx-b', 'fx-c', 'fx-d', '', 'fx-f', 'fx-f fx-g', '', 'fx-e'];
+    try {
+      i18n.setDataTranslations(translations);
+      i18n.setSearchEnglishKeys([]);
+      const before = search(); // fills the cache with the plain index
+      i18n.setSearchEnglishKeys(list);
+      const after = search();
+      i18n.setDataTranslations([]);
+      const noSk = search();
+      i18n.setDataTranslations(translations);
+      const reloaded = search();
+      i18n.setSearchEnglishKeys([]);
+      const cleared = search();
+      equal('search: an empty list keeps the old Slovak-only index, in both interfaces', [before.en, before.sk], [unlisted, unlisted]);
+      equal('search: listed whole cells add their English, cache refreshed, in both interfaces; pieces, other fields, older and same-string rows unchanged',
+        [after.en, after.sk], [listed, listed]);
+      equal('search: with no translations loaded every cell is searched in English as before',
+        noSk.sk, ['fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', '', '', 'fx-b', '', 'fx-c', 'fx-d', 'fx-f fx-g', 'fx-f', '', 'fx-l', '']);
+      equal('search: reloading the dictionary and clearing the list both refresh cached rows', [reloaded.sk, cleared.sk], [listed, unlisted]);
+      i18n.setSearchEnglishKeys(list);
+      equal('search: a listed cell adds its English once, and a same-string translation adds nothing',
+        [i18n.translatedSearchText(rows[0]).split(quokka).length - 1, i18n.translatedSearchText(rows[3]).split('Dunnart').length - 1,
+          i18n.translatedSearchText(rows[2]).split('Bilby').length - 1], [1, 1, 1]);
+    } finally {
+      i18n.setSearchEnglishKeys();
+      i18n.setDataTranslations([]);
+      i18n.setLanguage('en', quiet);
+    }
+
+    // The shipped page: its index is the old one plus, for each listed whole
+    // cell that has a differing translation, that cell's English once.
+    const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
+    i18n.setDataTranslations(skRows);
+    i18n.setSearchEnglishKeys();
+    const listedNow = new Set(i18n.SEARCH_ENGLISH_KEYS.map(([f, en]) => `${i18n.searchRuntimeField(f)}\u0000${en}`));
+    const legacy = (row) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => {
+        const parts = i18n.dataParts(field, value, 'sk');
+        const en = i18n.normaliseEnglish(value);
+        return [...parts.map((p) => p.text), ...(parts.length === 1 && parts[0].en === en && listedNow.has(`${field}\u0000${en}`) ? [en] : [])];
+      })).join(' ');
+    const plain = (row) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => i18n.dataParts(field, value, 'sk').map((p) => p.text))).join(' ');
+    check('search: every live row indexes the old text plus only listed English',
+      live.every((row) => i18n.translatedSearchText(row) === legacy(row)));
+    equal('search: live rows whose index differs from the old one are exactly the rows with a listed whole cell',
+      live.filter((row) => i18n.translatedSearchText(row) !== plain(row)).map((r) => r.id),
+      live.filter((row) => [...new Set(i18n.SEARCH_ENGLISH_FIELDS.map(i18n.searchRuntimeField))].some((f) => {
+        const val = row[i18n.DATA_FIELDS[f]];
+        return (Array.isArray(val) ? val : [val]).some((v) => listedNow.has(`${f}\u0000${i18n.normaliseEnglish(v)}`));
+      })).map((r) => r.id));
+    i18n.setDataTranslations([]);
+  }
+
+  // Layer 2A display: a whole-cell translation changes words only. LAB's real
+  // floor source and a lowercase semicolon baseline, with disposable Slovak.
+  {
+    const lab = live.find((r) => r.universityId === 'lab' && r.livingCostMin !== null && r.tuitionEu !== null);
+    const row = { ...lab, baselineRequirement: 'secondary school leaving certificate; IB Diploma accepted' };
+    const other = live.find((r) => r.universityId !== 'lab' && r.livingCostMin !== null && r.tuitionEu !== null);
+    const skLab = 'národný odhad (Fínsky imigračný úrad)';
+    const dict = [
+      { field: 'living_cost_source', en: lab.livingCostSource, sk: skLab },
+      { field: 'baseline_requirement', en: row.baselineRequirement, sk: 'maturitné vysvedčenie; IB Diploma sa uznáva' },
+    ];
+    const facts = () => {
+      const state = noFilters();
+      const detail = renderModMain.renderDetail(row, state);
+      const compare = new ChromeNode('div');
+      const table = compareMod.compareTable([row, other], state);
+      renderModMain.renderCompare(compare, [row, other], table);
+      const general = detail.querySelectorAll('.data-value').find((n) => n.textContent.startsWith('Maturitné') || n.textContent.startsWith('Secondary'));
+      return {
+        general: general && general.querySelectorAll('[data-english]').length + '|' + general.children[0].children[0],
+        detail: detail.textContent, compare: compare.textContent,
+        cost: JSON.stringify(costMod.yearlyCost(row)), floor: costMod.livingIsFloor(row.livingCostSource),
+        table: JSON.stringify(table), differs: table.map(compareMod.differs).join(), csv: shortlistMod.toCsv([row, other]),
+      };
+    };
+    const [en, sk, skPlain] = withStubDocument(() => {
+      try {
+        i18n.setDataTranslations(dict);
+        const out = [i18n.inLanguage('en', facts)];
+        i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+        out.push(facts());
+        i18n.setDataTranslations([]);
+        out.push(facts());
+        return out;
+      } finally {
+        i18n.setDataTranslations([]);
+        i18n.initLanguage('', { getItem: () => 'en' });
+      }
+    });
+    equal('Layer 2A: a whole baseline translation is one part, capitalised once, with its English kept for the reveal',
+      [i18n.dataParts('baseline_requirement', row.baselineRequirement).length, sk.general], [1, '1|Maturitné vysvedčenie; IB Diploma sa uznáva']);
+    check('Layer 2A: LAB\'s Slovak source shows in detail (note and yearly line) and Compare, with the national-minimum label',
+      (sk.detail.split(skLab).length - 1) >= 2 && sk.compare.includes(skLab) && !sk.compare.includes(lab.livingCostSource)
+        && sk.detail.includes(i18n.inLanguage('sk', () => costMod.floorLabel())) && !en.detail.includes(skLab));
+    equal('Layer 2A: cost, floor, Compare lines and differences and the CSV export ignore the translation',
+      [sk.cost, sk.floor, sk.table, sk.differs, sk.csv], [skPlain.cost, true, skPlain.table, skPlain.differs, skPlain.csv]);
+    // Only the CSV headings follow the interface; every value stays English.
+    const body = (text) => text.split('\r\n').slice(1).join('\r\n');
+    check('Layer 2A: CSV export values are the same English in both interfaces, with LAB\'s English source',
+      body(en.csv) === body(sk.csv) && body(sk.csv).includes(lab.livingCostSource) && !sk.csv.includes(skLab));
+  }
+
+  // Layer 2B-1 search (Leon, 2026-11-27, Option 2): a listed English
+  // requirement keeps its English searchable beside its Slovak. The list uses
+  // the sk.csv column, and js/i18n.js maps english_requirement_default to the
+  // english_requirement the rows are searched under. Disposable rows,
+  // translations and list; the real filter and lookups.
+  {
+    const quiet = { setItem() {} };
+    const base = { ...live.find((r) => r.id === 'tud-cse'), baselineRequirement: '', livingCostSource: '', ibRecognition: '' };
+    const fx = (id, englishRequirement) => ({ ...base, id, englishRequirement });
+    const own = 'Quokka IELTS 6.5; IB Diploma holders exempt';
+    const inherited = 'Numbat certificate (B2) required';
+    const mixed = 'No wombat certificate required; the bilby test serves as proof';
+    const rows = [
+      fx('fx-own', [own]), // listed as english_requirement, semicolon cell
+      fx('fx-inh', [inherited]), // listed as english_requirement_default
+      fx('fx-mix', [mixed]), // listed, its first piece has an older Slovak row
+      fx('fx-multi', ['Potoroo item', 'Dunnart second item']), // a translated bullet item, never listed
+      fx('fx-none', ['Untranslated wallaby note']),
+    ];
+    const translations = [
+      { field: 'english_requirement', en: own, sk: 'Kvoka IELTS 6.5; držitelia IB Diploma sú oslobodení' },
+      { field: 'english_requirement_default', en: inherited, sk: 'Mravcožrútí certifikát (B2) povinný' },
+      { field: 'english_requirement', en: 'No wombat certificate required', sk: 'Vombatí certifikát sa nevyžaduje' },
+      { field: 'english_requirement', en: mixed, sk: 'Vombatí certifikát sa nevyžaduje; test bandikuta slúži ako doklad' },
+      { field: 'english_requirement', en: 'Potoroo item', sk: 'Položka klokanky' },
+    ];
+    const list = [['english_requirement', own], ['english_requirement', mixed], ['english_requirement_default', inherited]];
+    const queries = ['quokka', 'exempt,', '(ielts)', 'ib', 'b2', 'kvoka', 'numbat', 'certificate', 'mravcozruti',
+      'wombat', 'vombati', 'bilby', 'potoroo', 'klokanky', 'dunnart', 'wallaby'];
+    const search = () => Object.fromEntries(['en', 'sk'].map((lang) => {
+      i18n.setLanguage(lang, quiet);
+      return [lang, queries.map((q) => applyFilters(rows, { ...noFilters(), search: q }, new Set()).map((r) => r.id).join(' '))];
+    }));
+    const unlisted = ['', '', 'fx-own', 'fx-own', 'fx-inh', 'fx-own', '', '', 'fx-inh', '', 'fx-mix', '', '', 'fx-multi', 'fx-multi', 'fx-none'];
+    const listed = ['fx-own', 'fx-own', 'fx-own', 'fx-own', 'fx-inh', 'fx-own', 'fx-inh', 'fx-inh fx-mix', 'fx-inh',
+      'fx-mix', 'fx-mix', 'fx-mix', '', 'fx-multi', 'fx-multi', 'fx-none'];
+    // js/i18n.js at ec30f31 keyed the list by the listed column, unmapped.
+    const indexWith = (row, keys) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => {
+        const parts = i18n.dataParts(field, value, 'sk');
+        const en = i18n.normaliseEnglish(value);
+        return [...parts.map((p) => p.text), ...(parts.length === 1 && parts[0].en === en && keys.has(`${field}\u0000${en}`) ? [en] : [])];
+      })).join(' ');
+    try {
+      i18n.setDataTranslations(translations);
+      i18n.setSearchEnglishKeys([]);
+      const before = search();
+      i18n.setSearchEnglishKeys(list);
+      const after = search();
+      const counts = rows.slice(0, 3).map((row) => i18n.translatedSearchText(row).split(row.englishRequirement[0]).length - 1);
+      const unmapped = new Set(list.map(([f, en]) => `${f}\u0000${en}`));
+      const mapped = new Set(list.map(([f, en]) => `${i18n.searchRuntimeField(f)}\u0000${en}`));
+      const trap = [indexWith(rows[1], unmapped).includes(inherited), indexWith(rows[1], mapped) === i18n.translatedSearchText(rows[1])];
+      i18n.setSearchEnglishKeys([]);
+      const cleared = search();
+      equal('search L2B1: an empty list keeps the old Slovak-only index, in both interfaces', [before.en, before.sk], [unlisted, unlisted]);
+      equal('search L2B1: listed inherited and own requirements add their English in both interfaces; the older Slovak piece still matches; bullet items and unlisted cells unchanged',
+        [after.en, after.sk], [listed, listed]);
+      equal('search L2B1: each listed requirement adds its English exactly once', counts, [1, 1, 1]);
+      equal('search L2B1: unmapped, the english_requirement_default entry would miss the inherited row; mapped it matches the real index', trap, [false, true]);
+      equal('search L2B1: clearing the list refreshes cached rows', cleared.sk, unlisted);
+    } finally {
+      i18n.setSearchEnglishKeys();
+      i18n.setDataTranslations([]);
+      i18n.setLanguage('en', quiet);
+    }
+    const { createHash } = await import('node:crypto');
+    const layer2A = i18n.SEARCH_ENGLISH_KEYS.filter(([f]) => ['living_cost_source', 'baseline_requirement'].includes(f));
+    equal('search L2B1: the 116 Layer 2A entries stay byte-identical', [layer2A.length,
+      createHash('sha256').update(JSON.stringify(layer2A)).digest('hex')], [116, 'c1344cf894cbbb391b6622a3d7a62d3e59a34fb996351204585f202aa2873ed0']);
+    check('search L2B1: the list stays at version 2 until an English requirement entry is added',
+      i18n.SEARCH_ENGLISH_KEYS.length === layer2A.length ? i18n.SEARCH_ENGLISH_VERSION === 2 : i18n.SEARCH_ENGLISH_VERSION >= 3);
+  }
+
+  // Layer 2B-1 display: a single-bullet translation changes words only, and
+  // only on programmes whose whole shown cell is a key the writer accepts.
+  {
+    const ac = await import('./apply-sk-translations.mjs');
+    const held = ac.heldDisplayKeys({ universitiesCsv: read('data/universities.csv'), programmesCsv: read('data/programmes.csv') });
+    const liveKeys = ac.liveDisplayKeys(held.programmes, held.heldCells, held.progRaw);
+    const leaves = ac.wholeCellLeaves(held.programmes, held);
+    // Replay from the Phase 1 dictionary so valid Phase 2 appends cannot
+    // remove a key from this baseline eligibility test.
+    const skRows = csvToObjects(readFileSync(join(root, 'data/i18n/sk.csv'))
+      .subarray(0, searchMod.L2B1_BASE_SK_BYTES).toString('utf8')).rows;
+    const skKeys = new Set(skRows.map((r) => `${r.field.trim()}\u0000${i18n.normaliseEnglish(r.en)}`));
+    // Every key the writer would accept today, ignoring wording, with a fake Slovak text.
+    const eligible = [...liveKeys].map((k) => k.split('\u0000')).filter(([f, en]) => ac.SINGLE_BULLET_FIELDS.includes(f)
+      && !skKeys.has(`${f}\u0000${en}`) && !held.heldKeys.has(`${f}\u0000${en}`) && !ac.heldPieceLabels(en, held.heldKeys).length
+      && !leaves.has(`${f}\u0000${en}`) && !skKeys.has(`${ac.twinField(f)}\u0000${en}`) && !liveKeys.has(`${ac.twinField(f)}\u0000${en}`));
+    const fake = eligible.map(([field, en]) => ({ field, en, sk: `SK ${en.replaceAll(';', '; SK')}` }));
+    const shown = (row) => i18n.dataParts('english_requirement', row.englishRequirement.join(' · '), 'sk').map((p) => p.text).join('');
+    let changed = [];
+    try {
+      i18n.setDataTranslations(skRows);
+      const plain = live.map(shown);
+      i18n.setDataTranslations([...skRows, ...fake]);
+      changed = live.filter((row, i) => shown(row) !== plain[i]);
+    } finally {
+      i18n.setDataTranslations([]);
+    }
+    const eligibleEn = new Set(eligible.map(([, en]) => en));
+    const heldIds = ['muni-portuguese-language-and-literature', 'muni-computational-linguistics', 'tul-european-business'];
+    equal('display L2B1: with every acceptable key translated, only programmes whose one shown bullet is such a key change',
+      changed.map((r) => r.id), live.filter((r) => r.englishRequirement.length === 1 && eligibleEn.has(i18n.normaliseEnglish(r.englishRequirement[0]))).map((r) => r.id));
+    check('display L2B1: no held (G063, G064, G065), multi-bullet or empty display changes',
+      changed.length > 0 && changed.every((r) => r.englishRequirement.length === 1 && !heldIds.includes(r.id)));
+    equal('display L2B1: the acceptable keys are the 142 structurally eligible ones (36 inherited, 106 own)',
+      [eligible.length, eligible.filter(([f]) => f === 'english_requirement_default').length], [142, 36]);
+
+    const karelia = live.find((r) => r.id === 'karelia-ict');
+    const own = karelia.englishRequirement[0];
+    const skText = 'doklad o angličtine je povinný, napr. IELTS Academic 6.0 alebo IB English A alebo B HL/SL známka 4 alebo viac; cesta cez SAT certifikát z angličtiny nevyžaduje; doklad na jar 2027 do 28 Jan 2027 15:00 fínskeho času';
+    const other = live.find((r) => r.id === 'lapland-uas-nursing');
+    const blank = live.find((r) => !r.englishRequirement.length && !r.englishUnknown);
+    const look = () => {
+      const detail = renderModMain.renderDetail(karelia, noFilters());
+      // In Slovak each part holds its English reveal after its own text.
+      const value = detail.querySelectorAll('.data-value').find((n) => n.textContent === own || n.textContent.startsWith(skText));
+      const parts = value ? value.children.filter((c) => typeof c !== 'string') : [];
+      return {
+        parts: parts.map((p) => [p.children[0] === skText ? 'sk' : p.textContent === own ? 'en' : '?',
+          p.getAttribute('data-english') === own, Boolean(p.lang), p.getAttribute('data-untranslated') !== null]),
+        list: Boolean(value?.closest('.d-list')) || detail.querySelectorAll('.d-list').some((n) => n.textContent.includes('doklad o angličtine')),
+        unknown: renderModMain.renderDetail(other, noFilters()).textContent.includes(i18n.t('not_published')),
+        blank: renderModMain.renderDetail(blank, noFilters()).textContent.includes(i18n.t('not_checked_yet')),
+        csv: shortlistMod.toCsv([karelia, other, blank]).split('\r\n').slice(1).join('\r\n'),
+      };
+    };
+    const [en, sk] = withStubDocument(() => {
+      try {
+        i18n.setDataTranslations([{ field: 'english_requirement', en: own, sk: skText }]);
+        const out = [i18n.inLanguage('en', look)];
+        i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+        out.push(look());
+        return out;
+      } finally {
+        i18n.setDataTranslations([]);
+        i18n.initLanguage('', { getItem: () => 'en' });
+      }
+    });
+    equal('display L2B1: a single-bullet translation is one Slovak part with its English kept for the reveal, no lang="en", no list, lowercase start kept',
+      [sk.parts, sk.list, skText[0]], [[['sk', true, false, false]], false, 'd']);
+    equal('display L2B1: the English interface shows the English cell unchanged', en.parts, [['en', false, false, false]]);
+    equal('display L2B1: "?" still says Not published and a blank still says Not checked yet, in both interfaces',
+      [en.unknown, en.blank, sk.unknown, sk.blank], [true, true, true, true]);
+    check('display L2B1: the CSV export values are the same English in both interfaces',
+      en.csv === sk.csv && sk.csv.includes(own.split(';')[0]) && !sk.csv.includes('doklad o angličtine'));
+  }
+
+  // Permanent data guard: no prose sk.csv row is read by any held cell.
+  {
+    equal('writer pins all 23 non-selector holds', NON_SELECTOR_HOLDS.length, 23);
+    const { heldKeys, heldCells, programmes, progRaw, uniRaw } = heldDisplayKeys({
+      universitiesCsv: read('data/universities.csv'),
+      programmesCsv: read('data/programmes.csv'),
+    });
+    const skLive = csvToObjects(read('data/i18n/sk.csv')).rows;
+    const heldProseConflicts = skLive.filter((row) =>
+      PROSE_FIELDS.includes(row.field) && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('no prose sk.csv row is read by a held cell', heldProseConflicts, []);
+    // Layer 2A: the only whole-cell rows a held cell reads are the eight UK
+    // baselines that were in sk.csv before (field, English, Slovak and
+    // signature pinned by SHA-256 of the JSON tuple). A new row for a held
+    // cell, or an edit to one of these, fails here.
+    const { createHash } = await import('node:crypto');
+    const heldWhole = skLive.filter((row) => WHOLE_CELL_DATA_FIELDS.includes(row.field)
+      && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('the only whole-cell sk.csv rows read by held cells are the eight pinned UK baselines', heldWhole.map((row) => [
+      createHash('sha256').update(JSON.stringify([row.field, row.en, row.sk, row.verified_by])).digest('hex'),
+      [...heldKeys.get(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`)].sort().join('; '),
+    ]).sort(), [
+      ['0b626d53f9a2ff291fb21eef7d7bdfbd67c3d6bae4001994dfa37c1dc14ff9cb', 'uni|birmingham|baseline_requirement (P4b G056)'],
+      ['109c66e2713c5cfb9d5948168a0eb93b1e2cf907b808c2964c5583daf790e312', 'uni|leeds|baseline_requirement (P4b G059)'],
+      ['154d7726d5aa4ce41a34726e5e0bc2103e058f49be9735dba5f1e6c4c41dc7b9', 'uni|sheffield|baseline_requirement (carry-for-18)'],
+      ['46dfda85aacb774a63581408ec637e933fc4b154ee201ff1c009d431005cc9c6', 'uni|exeter|baseline_requirement (carry-for-18)'],
+      ['69fdeab32d59b8eddec773831f674df3f681428466bac5c4b4e9f7fa0f279838', 'uni|bath|baseline_requirement (carry-for-18)'],
+      ['6b82ded8873f668636b092c067d10e1861fd7faba5533c73f8295c1b42a50093', 'uni|glasgow|baseline_requirement (carry-for-18)'],
+      ['b2e15e71c940309e7e3a2f27806eccc3d5ac65ef360518fb878aed8e7fc245d7', 'uni|st-andrews|baseline_requirement (carry-for-18)'],
+      ['b4c23e541d7bf8c79528dbc942071c267b5aea722fc41c5f538f92f1266f74fe', 'uni|southampton|baseline_requirement (carry-for-18)'],
+    ]);
+    // Layer 2B-1: the only English requirement rows a held cell reads are the
+    // two English B2 rows that were there before (P4b G065), pinned the same way.
+    const heldEnglish = skLive.filter((row) => SINGLE_BULLET_FIELDS.includes(row.field)
+      && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('the only English requirement sk.csv rows read by held cells are the two pinned English B2 rows', heldEnglish.map((row) => [
+      createHash('sha256').update(JSON.stringify([row.field, row.en, row.sk, row.verified_by])).digest('hex'),
+      [...heldKeys.get(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`)].sort().join('; '),
+    ]).sort(), [
+      ['1b14169919cac21be7ce921e5afbdacfbf783dbba6d28536f85d8029a8b07174', 'prog|tul-european-business|english_requirement (P4b G065)'],
+      ['1e7c8c9cc63be5cafcd455372e2e17bef556832aa7136b98ac9a429bd742d645', 'prog|tul-european-business|english_requirement (P4b G065)'],
+    ]);
+    const liveKeys = liveDisplayKeys(programmes, heldCells, progRaw);
+    const englishRows = skLive.map((row, i) => ({ ...row, i, en: i18n.normaliseEnglish(row.en) }))
+      .filter((row) => SINGLE_BULLET_FIELDS.includes(row.field));
+    equal('every English requirement sk.csv row added after the 1,198-row base is a live key under its own column',
+      englishRows.filter((row) => row.i >= 1198 && !liveKeys.has(`${row.field}\u0000${row.en}`)).map((row) => `${row.field}: ${row.en}`), []);
+    equal('no English requirement text has rows under both columns with different Slovak',
+      englishRows.filter((row) => englishRows.some((o) => o.field !== row.field && o.en === row.en && o.sk.trim() !== row.sk.trim()))
+        .map((row) => `${row.field}: ${row.en}`), []);
+    // The shipped search-English list passes the same rules its writer uses.
+    const guard = 'the original sk.csv bytes and every shipped search-English entry pass the Layer 2A and 2B-1 guards';
+    try {
+      const skFile = 'data/i18n/sk.csv';
+      const fail = (message) => { throw new Error(message); };
+      const dictionary = searchMod.readSearchEnglishDictionary(skFile, readFileSync(join(root, skFile)), fail);
+      equal('shipped sk.csv keeps both the 1,082-row and the 1,198-row base byte prefixes', dictionary.hasL2B1Prefix, true);
+      equal(guard, searchMod.searchEnglishProblems(i18n.SEARCH_ENGLISH_KEYS, {
+        ...dictionary, heldKeys, liveKeys, leaves: wholeCellLeaves(programmes, { progRaw, uniRaw }),
+      }), []);
+    } catch (error) {
+      check(guard, false, error.message);
+    }
+    equal('js/i18n.js SEARCH_ENGLISH block is in the written format and matches the module',
+      searchMod.readSearchEnglishBlock(read('js/i18n.js')), { version: i18n.SEARCH_ENGLISH_VERSION, entries: i18n.SEARCH_ENGLISH_KEYS });
+  }
+}
+
 section('Batch 2 · A');
 // batch 2 · A checks go here
 // The app harness stubs wireCompactHeader and wireRound2, so code in them would
@@ -7715,6 +9274,32 @@ appCheck('C2 second wide activation focuses the pane without navigation; narrow 
     const { programmes } = await load(uni, prog);
     equal('C3 parser-to-render ' + name, detailOf(programmes[0]).textContent.includes(t('r2_czech_free')), expected);
   }
+}
+
+{
+  const irish = live.find((row) => row.country === 'Ireland' && row.tuitionEu > 0);
+  for (const lang of ['en', 'sk']) {
+    i18n.initLanguage('', { getItem: () => lang });
+    const detail = detailOf(irish), rows = kvOf(detail);
+    const qualification = byClass(rows[t('eu_fee')], 'd-note-more').find((note) =>
+      note.children[0].textContent === t('fee_details'));
+    const body = qualification?.children[1].textContent ?? '';
+    check('D16 Irish tuition explains Free Fees eligibility next to its amount (' + lang + ')',
+      body.includes('Free Fees Initiative') && body.includes(lang === 'en' ? 'three of the five' : 'tri z piatich')
+      && byClass(rows[t('eu_fee')], 'cost-fig')[0]?.textContent.includes('€'));
+    check('D16 Irish tuition preserves its separate application fee note (' + lang + ')',
+      byClass(rows[t('app_fee')], 'dd-note').some((note) => noteBody(note)?.textContent.endsWith(t('app_fee_profile')))
+      && !rows[t('app_fee')].textContent.includes('Free Fees Initiative'));
+    for (const [name, row] of [
+      ['unknown Irish fee', { ...irish, tuitionEu: null }],
+      ['zero Irish fee', { ...irish, tuitionEu: 0 }],
+      ['non-Irish fee', { ...irish, country: 'Netherlands' }],
+    ]) {
+      check('D16 no Free Fees qualification for ' + name + ' (' + lang + ')',
+        !kvOf(detailOf(row))[t('eu_fee')].textContent.includes('Free Fees Initiative'));
+    }
+  }
+  i18n.initLanguage('', { getItem: () => 'en' });
 }
 
 section('Batch 2 follow-up');
@@ -8519,19 +10104,18 @@ check('B3C1 the done screen stacks full width on phones, primary first; 44 px bu
   /\.ob-done-foot\{flex-direction:row-reverse\}/.test(cssText) && /\.ob-done-foot>\.btn\{min-height:44px/.test(cssText)
   && /@media \(max-width:599\.98px\)\{\s*\.ob-done-foot\{flex-direction:column;align-items:stretch\}/.test(cssText)
   && /foot\.replaceChildren\(show, faq, el\('span', 'sp'\)\)/.test(read('js/onboarding.js')));
-// Was a source pin on "return currentlyShown". Review of PR 1 (2026-11-07):
-// with My list's "Show all saves" on, setup's answers did not filter the list
-// and the done screen counted a 42-point save for 24 points. apply() now ends
-// "Show all saves" and returns the count, the count line's points parts and
-// whether any filter is on.
-await asyncAppCheck('B3C1 the app apply callback ends "Show all saves" and returns the shown count, the points parts and whether a filter is on', async ({run,context,settle,ids:[a,b]}) => {
+await asyncAppCheck('Setup preserves My list’s filter choice and counts the rows the student will see', async ({run,get,fire,context,settle,ids:[a,b]}) => {
   context.resolveData({programmes:context.fixture,meta:{issues:[]}}); await settle();
-  run(`shortlist.add('${a}'); shortlist.add('${b}'); state.shortlistOnly = true; listAll = true; update();`);
-  if (run('listAll') !== true) return false;
-  const result = context.onboardingConfig.apply(savedState.validateFilters({myIbPoints:24}));
-  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist).filter((row) => shortlist.has(row.id)), state).map((p) => p.text)');
-  return run('listAll') === false && result.shown === run('currentlyShown') && result.shown === run('applyFilters(allRows, state, shortlist).length')
-    && JSON.stringify(result.summary) === JSON.stringify(parts) && result.summary.length >= 1 && result.filtered === true;
+  run(`shortlist.add('${a}'); shortlist.add('${b}'); update();`);
+  fire(get('f-shortlist-only'), 'click');
+  const answers = savedState.validateFilters({myIbPoints:24});
+  const full = context.onboardingConfig.apply(answers);
+  if (full.shown !== 2 || full.filtered || !run('listAll')) return false;
+  fire(get('ml-show-all'), 'click');
+  const filtered = context.onboardingConfig.apply(answers);
+  const parts = run('pointsSummaryParts(applyFilters(allRows, state, shortlist), state).map((p) => p.text)');
+  return !run('listAll') && filtered.shown === run('currentlyShown') && filtered.shown === run('applyFilters(allRows, state, shortlist).length')
+    && JSON.stringify(filtered.summary) === JSON.stringify(parts) && filtered.summary.length >= 1 && filtered.filtered;
 }, {boot:true});
 appCheck('B3C1 the done screen says "shown" and splits it as the count line does when IB points are set', (h) => {
   const {get,fire}=h, summary=['10 within your IB points','2 only with HL Maths 4+','24 can’t be compared'];
@@ -9959,6 +11543,1285 @@ check('A12 the gesture helper is shared and owns no spring: both sheets call wir
   /wireSheetDrag\(dom\.sheet, \{ regions: '\.grab,\.sheet-h'/.test(appSrc) && /wireSheetDrag\(panel, \{ regions: '\.grab,\.faqp-h'/.test(read('js/faq.js'))
     && (appSrc.match(/sheetDrag\?\.reset\(\);/g) ?? []).length === 3 && !/spring|requestAnimationFrame/.test(read('js/sheet-drag.js').replace(/\/\/.*$/gm, ''))
     && indexHtml.includes('<link rel="modulepreload" href="js/sheet-drag.js">'));
+
+// ------------------------------------------------- F01 public subject evidence
+// Phase 1 of My subjects: the public subject wording in the detail and
+// Compare, the optional reviewed-rule file, its strict reader, the rule
+// authority (current answers only) and the pure checker. Rules shown here are
+// SAMPLE fixtures from tools/subject-rule-fixtures.mjs; the shipped table has
+// a header and no rows. Positive cases go through the test-only adapter
+// (tools/subject-rules-sample-adapter.js), loaded the way smoke.mjs serves it.
+section('F01 public subject evidence and reviewed subject rules');
+{
+  const rulesMod = await import(new URL('../js/subject-rules.js', import.meta.url));
+  const subjectsMod = await import(new URL('../js/ib-subjects.js', import.meta.url));
+  const fixtures = await import(new URL('./subject-rule-fixtures.mjs', import.meta.url));
+  const { readRuleRecords, acceptRule, inspectRule, combineRules, RULE_COLUMNS, RULES_PATH } = rulesMod;
+  const { evaluateSubjects, normalizeProfile, STATUS, STATUS_KEYS, SUBJECTS_ONLY_KEY, PREDICTED_KEY, IB_COURSES } = subjectsMod;
+  const { registerHooks } = await import('node:module');
+
+  // --- the shipped table and its saved copy --------------------------------
+  const shipped = read(RULES_PATH);
+  equal('F01 the shipped rules file is exactly the header, with no rows (Track A)', shipped, `${RULE_COLUMNS.join(',')}\n`);
+  const shippedRead = readRuleRecords(shipped);
+  check('F01 the shipped rules file reads as a valid empty table', shippedRead.ok && shippedRead.records.length === 0, JSON.stringify(shippedRead));
+  const snap = JSON.parse(read('data/fallback.json'));
+  equal('F01 the saved copy carries the same rule records, read by the page\'s reader', snap.subject_rules, { schema_version: 1, records: shippedRead.records });
+  equal('F01 the saved copy has no other new top-level field', Object.keys(snap), ['meta', 'universities', 'programmes', 'translations', 'subject_rules']);
+
+  // The generator is reproducible: run the real script on a copy of the repo
+  // files and compare bytes (only the date line may differ).
+  {
+    const dir = mkdtempSync(join(tmpdir(), 'ib-f01-snapshot-'));
+    try {
+      for (const sub of ['js', 'tools', 'data/i18n']) mkdirSync(join(dir, sub), { recursive: true });
+      for (const name of readdirSync(join(root, 'js')).filter((n) => n.endsWith('.js'))) writeFileSync(join(dir, 'js', name), read(`js/${name}`));
+      for (const path of ['tools/make-snapshot.mjs', 'data/universities.csv', 'data/programmes.csv', 'data/i18n/sk.csv', RULES_PATH]) writeFileSync(join(dir, path), read(path));
+      const made = spawnSync(process.execPath, [join(dir, 'tools/make-snapshot.mjs')], { encoding: 'utf8' });
+      const fresh = made.status === 0 ? readFileSync(join(dir, 'data/fallback.json'), 'utf8') : '';
+      const sameDate = fresh.replace(/"generated_at": "\d{4}-\d{2}-\d{2}"/, `"generated_at": "${snap.meta.generated_at}"`);
+      check('F01 make-snapshot.mjs regenerates data/fallback.json byte for byte from the repo files', made.status === 0 && sameDate === read('data/fallback.json'), made.stderr || made.stdout);
+      writeFileSync(join(dir, RULES_PATH), `${RULE_COLUMNS.join(',')}\n"unclosed\n`);
+      const broken = spawnSync(process.execPath, [join(dir, 'tools/make-snapshot.mjs')], { encoding: 'utf8' });
+      check('F01 a broken rules file stops the snapshot rebuild instead of saving an untrusted copy',
+        broken.status !== 0 && /ib-subject-rules\.csv could not be read/.test(broken.stderr) && readFileSync(join(dir, 'data/fallback.json'), 'utf8') === fresh, broken.stderr);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  // --- the strict reader -----------------------------------------------------
+  const header = RULE_COLUMNS.join(',');
+  for (const [name, text, reason] of [
+    ['an empty file', '', 'empty'],
+    ['a file of blank lines', '\n\n', 'empty'],
+    ['a renamed column', header.replace('reviewer', 'checker') + '\n', 'header'],
+    ['columns in another order', [...RULE_COLUMNS].reverse().join(',') + '\n', 'header'],
+    ['a short row', `${header}\n1,x\n`, 'malformed'],
+    ['an unclosed quote', `${header}\n"1,x\n`, 'malformed'],
+    ['an HTML error page', '<!doctype html><html><body>Not found</body></html>\n', 'header'],
+  ]) {
+    const got = readRuleRecords(text);
+    check(`F01 reader: ${name} is not a table (${reason}), so no rule is current`, !got.ok && got.reason === reason && got.records.length === 0, JSON.stringify(got));
+  }
+  check('F01 reader: a header with a byte-order mark and CRLF still reads as the empty table',
+    readRuleRecords(`﻿${header}\r\n`).ok && readRuleRecords(`﻿${header}\r\n`).records.length === 0);
+  {
+    // F1: the rules file has its own strict reader; nothing is repaired.
+    const blankRow = RULE_COLUMNS.map(() => '').join(',');
+    const headerCells = [...RULE_COLUMNS];
+    const joinedTwo = [`"${headerCells[0]},${headerCells[1]}"`, ...headerCells.slice(2)].join(',');
+    for (const [name, text, reason] of [
+      ['text after a closing quote', `${header}\n"1"x${blankRow}\n`, 'malformed'],
+      ['a space after a closing quote', `${header}\n"1" ${blankRow}\n`, 'malformed'],
+      ['a quote inside an unquoted cell', `${header}\n1x"y"${blankRow}\n`, 'malformed'],
+      ['an unclosed field after an escaped quote', `${header}\n"1""x${blankRow}\n`, 'malformed'],
+      ['a lone carriage return', `${header}\r${blankRow}\n`, 'malformed'],
+      ['an unclosed quote at the very end', `${header}\n"`, 'malformed'],
+      ['two header cells joined into one quoted cell', `${joinedTwo}\n`, 'header'],
+      ['an extra empty header cell', `${header},\n`, 'header'],
+      ['a header cell with a stray space', `${header.replace('reviewer', 'reviewer ')}\n`, 'header'],
+      ['a header missing its last cell', `${headerCells.slice(0, -1).join(',')}\n`, 'header'],
+      ['a row with one cell too many', `${header}\n${blankRow},\n`, 'malformed'],
+      ['a row with one cell too few', `${header}\n${blankRow.slice(1)}\n`, 'malformed'],
+      ['a quoted empty line', `${header}\n""\n`, 'malformed'],
+    ]) {
+      const got = readRuleRecords(text);
+      check(`F01 reader F1: ${name} fails the whole file (${reason})`, !got.ok && got.reason === reason && got.records.length === 0, JSON.stringify(got));
+    }
+    const good = readRuleRecords(fixtures.rulesCsv([fixtures.sampleRuleRecord(fixtures.servedCatalogue(read('data/universities.csv'), read('data/programmes.csv')), 'eur-ibeor')]).replaceAll('\n', '\r\n'));
+    check('F01 reader F1: properly quoted JSON cells with doubled quotes, commas and CRLF still read', good.ok && good.records.length === 1 && JSON.parse(good.records[0].routes).routes[0].id === 'a');
+    check('F01 reader F1: the catalogue keeps its forgiving reader (a stray quote after a closing one is still read)',
+      JSON.stringify(parseCsv('a\n"x"y\n')) === JSON.stringify([['a'], ['xy']]));
+  }
+
+  // --- raw catalogue rows, as loaded ----------------------------------------
+  const servedUni = read('data/universities.csv');
+  const servedProg = read('data/programmes.csv');
+  const served = fixtures.servedCatalogue(servedUni, servedProg);
+  const liveLoad = await load(servedUni, servedProg);
+  const raw = liveLoad.raw;
+  check('F01 loadData returns the exact raw rows behind every programme, outside meta',
+    raw instanceof Map && raw.size === liveLoad.programmes.length && !('raw' in liveLoad.meta)
+      && liveLoad.programmes.every((p) => raw.get(p.id)?.programme.programme_id === p.id && raw.get(p.id).university.university_id === p.universityId && raw.get(p.id).unsafe === false));
+  check('F01 raw rows keep "none" and the four maths courses apart, which the parsed rows do not',
+    raw.get('eur-ibp').programme.ib_maths === 'none' && raw.get('arcada-it').programme.ib_maths === 'AA HL · AA SL · AI HL · AI SL'
+      && JSON.stringify(liveLoad.programmes.find((p) => p.id === 'eur-ibp').mathsAccepted) === JSON.stringify(liveLoad.programmes.find((p) => p.id === 'arcada-it').mathsAccepted));
+  {
+    const dupUni = `${uni}u2,Other,Town,Testland,,,,,,,2026-08-14,TT\nu,Again,Town,Testland,,,,,,,2026-08-14,TT\n`;
+    const rows = [head, 'p1,u,,One,BSc,Engineering,English,,?,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p2,u2,,Two,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p2,u2,,Two again,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n';
+    const res = await load(dupUni, rows);
+    check('F01 an id used twice on either tab makes its raw rows unsafe to bind a rule to; the first row still shows',
+      res.raw.get('p1').unsafe === true && res.raw.get('p2').unsafe === true && res.raw.get('p2').programme.programme === 'Two'
+        && res.programmes.map((p) => p.id).join() === 'p1,p2', JSON.stringify([...res.raw].map(([id, e]) => [id, e.unsafe])));
+    const q = res.programmes.find((p) => p.id === 'p1');
+    // F3: a repeated id is caught in either order, even when the copy that
+    // is dropped is the first one (its university is unknown).
+    const shownFirst = await load(uni, [head, 'p3,u,,Shown,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p3,zz,,Dropped,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    const shownSecond = await load(uni, [head, 'p3,zz,,Dropped,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p3,u,,Shown,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    check('F01 F3: a repeated programme id is unsafe in both orders, while the winning row still shows',
+      [shownFirst, shownSecond].every((r) => r.raw.get('p3')?.unsafe === true && r.raw.get('p3').programme.programme === 'Shown'
+        && r.programmes.map((p) => p.programme).join() === 'Shown'), JSON.stringify([shownFirst, shownSecond].map((r) => r.raw.get('p3')?.unsafe)));
+    const single = await load(uni, [head, 'p4,u,,Only,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    check('F01 F3: an id used once stays safe', single.raw.get('p4').unsafe === false);
+    check('F01 "?" in ib_subjects is unknown: no literal "?", and the detail says "Not checked yet"',
+      q.ibSubjects === '' && !q.noSubjectsRequired && kvOf(detailOf(q))['IB subjects']?.textContent === 'Not checked yet');
+    const snapRes = await load(uni, '', undefined, { snapshot: { ...snapFixture, subject_rules: { schema_version: 1, records: [fixtures.sampleRuleRecord(served, 'eur-ibeor')] } } });
+    check('F01 the saved copy also gives raw rows; its embedded rule records are not read by the loader',
+      snapRes.meta.source === 'snapshot' && snapRes.raw.get('snap-1')?.programme.programme === 'Saved' && !('subject_rules' in snapRes) && !JSON.stringify(snapRes.meta).includes('SAMPLE'));
+  }
+
+  // --- one record: the acceptance boundary -----------------------------------
+  const today = new Date(2026, 10, 27, 12, 0, 0);
+  const ctx = { raw, today };
+  const rec = (over = {}, id = 'eur-ibeor') => fixtures.sampleRuleRecord(served, id, over);
+  const base = inspectRule(rec(), ctx);
+  equal('F01 production rejects a SAMPLE rule for exactly one distinct reason, "sample"', acceptRule(rec(), ctx).reasons, ['sample']);
+  check('F01 the inspected SAMPLE rule is otherwise complete (it only becomes usable through the test adapter)',
+    base.rule && base.rule.programmeId === 'eur-ibeor' && base.rule.routes.length === 1 && base.rule.sample === false && !acceptRule(rec(), ctx).rule);
+  const pDeps = JSON.parse(rec().programme_dependencies);
+  const uDeps = JSON.parse(rec().university_dependencies);
+  const reasonCases = [
+    ['a draft', { status: 'draft' }, 'draft'],
+    ['an unknown status', { status: 'signed' }, 'status'],
+    ['another schema version', { schema_version: '2' }, 'schema'],
+    ['last year\'s intake', { intake: '2026/27' }, 'intake'],
+    ['an AI-DRAFT author', { author: 'AI-DRAFT' }, 'ai-draft'],
+    ['an AI-DRAFT reviewer', { reviewer: 'SAMPLE AI-DRAFT' }, 'ai-draft'],
+    ['no reviewer', { reviewer: '' }, 'unsigned'],
+    ['a reviewer who is not initials', { reviewer: 'SAMPLE reviewed' }, 'unsigned'],
+    ['self-review', { reviewer: 'SAMPLE AB' }, 'self-review'],
+    ['an unsafe source link', { sources: { s1: { url: 'javascript:alert(1)', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
+    ['a link with a user name', { sources: { s1: { url: 'https://www.eur.nl@evil.example/', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
+    ['a source with no quote', { sources: { s1: { url: fixtures.SAMPLE_URL, quote: ' ' } } }, 'sources'],
+    ['a source language given as a list', { sources: { s1: { url: fixtures.SAMPLE_URL, quote: fixtures.SAMPLE_QUOTE, lang: ['en'] } } }, 'sources'],
+    ['a route id given as a list', { routes: { routes: [{ id: ['a'], clauses: [fixtures.PHYSICS_HL5] }] } }, 'routes'],
+    ['an impossible date', { checked_on: '2026-02-31' }, 'dates'],
+    ['dates out of order', { checked_on: '2026-11-26', reviewed_on: '2026-11-25' }, 'dates'],
+    ['a review in the future', { reviewed_on: '2026-11-28', recheck_by: '2027-01-31' }, 'dates'],
+    ['a passed recheck date', { checked_on: '2026-10-01', reviewed_on: '2026-10-02', recheck_by: '2026-11-26' }, 'expired'],
+    ['no scope', { scope: '' }, 'scope'],
+    ['a scope with no source', { scope: { qualification: 'ib-diploma', label: { en: 'IB' }, sources: [] } }, 'scope'],
+    ['a scope for another qualification', { scope: { qualification: 'a-levels', label: { en: 'A levels' }, sources: ['s1'] } }, 'scope-inapplicable'],
+    ['an unknown evidence kind', { evidence_kind: 'complete' }, 'evidence-kind'],
+    ['a typo in a clause key', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, min_grde: 5 }] }] } }, 'routes'],
+    ['HL for an SL-only course', { routes: { routes: [{ id: 'a', clauses: [{ type: 'subject', courses: ['fr-ab-initio'], levels: ['HL'], sources: ['s1'] }] }] } }, 'routes'],
+    ['a level both required and excluded', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, exclude_levels: ['HL'] }] }] } }, 'routes'],
+    ['an unsupported course', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['further-maths'] }] }] } }, 'routes'],
+    ['a clause citing no source', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, sources: [] }] }] } }, 'routes'],
+    ['an absence with routes', { evidence_kind: 'explicit-no-restrictions' }, 'routes'],
+    ['a partial check without its note', { evidence_kind: 'partial-restrictions' }, 'routes'],
+    ['an unknown dependency column', { programme_dependencies: { ...pDeps, ib_sujects: '' } }, 'dependencies'],
+    ['a missing required dependency', { university_dependencies: Object.fromEntries(Object.entries(uDeps).filter(([k]) => k !== 'english_requirement_default')) }, 'dependencies'],
+    ['dependencies for another programme', { programme_dependencies: { ...pDeps, programme_id: 'eur-ibp' } }, 'dependencies'],
+    ['a changed maths cell', { programme_dependencies: { ...pDeps, ib_maths: 'AA HL' } }, 'drift'],
+    ['a changed university cell', { university_dependencies: { ...uDeps, baseline_requirement: `${uDeps.baseline_requirement} (changed)` } }, 'drift'],
+    ['a blank recorded where the file says nothing (column present)', { programme_dependencies: { ...pDeps, ib_offer: null } }, 'drift'],
+  ];
+  for (const [name, over, reason] of reasonCases) {
+    const got = acceptRule(rec(over), ctx);
+    check(`F01 rule not used: ${name} (${reason})`, !got.ok && got.reasons.includes(reason) && !got.rule, JSON.stringify(got.reasons));
+  }
+  {
+    // "none" and the four courses parse the same, and "?" and blank both read
+    // "Not checked yet"; a rule bound to one must not survive the other.
+    const fourTracks = acceptRule(rec({ programme_dependencies: { ...JSON.parse(rec({}, 'eur-ibp').programme_dependencies), ib_maths: 'AA HL · AA SL · AI HL · AI SL' } }, 'eur-ibp'), ctx);
+    const qOverBlank = new Map(raw); qOverBlank.set('qub-environmental-management-bsc', { ...raw.get('qub-environmental-management-bsc'), programme: { ...raw.get('qub-environmental-management-bsc').programme, ib_subjects: '?' } });
+    const blankBound = acceptRule(rec({}, 'qub-environmental-management-bsc'), { raw: qOverBlank, today });
+    const missingColumn = new Map(raw); const { ib_maths: _gone, ...withoutMaths } = raw.get('eur-ibeor').programme;
+    missingColumn.set('eur-ibeor', { ...raw.get('eur-ibeor'), programme: withoutMaths });
+    const unsafe = new Map(raw); unsafe.set('eur-ibeor', { ...raw.get('eur-ibeor'), unsafe: true });
+    check('F01 drift: "none" bound, four maths courses loaded (same parsed value) blocks the rule', fourTracks.reasons.includes('drift'), JSON.stringify(fourTracks.reasons));
+    check('F01 drift: blank bound, "?" loaded blocks the rule', blankBound.reasons.includes('drift'), JSON.stringify(blankBound.reasons));
+    check('F01 drift: a column missing from the loaded source blocks the rule', acceptRule(rec(), { raw: missingColumn, today }).reasons.includes('drift'));
+    check('F01 a programme that did not load, or loaded from a duplicated id, cannot carry a rule',
+      acceptRule(rec(), { raw: new Map(), today }).reasons.includes('unbound') && acceptRule(rec(), { raw: unsafe, today }).reasons.includes('unbound'));
+    check('F01 recheck-by counts through its local day: usable at 23:59 that day, expired at 00:00 the next',
+      acceptRule(rec({ recheck_by: '2026-11-27' }), { raw, today: new Date(2026, 10, 27, 23, 59, 59) }).reasons.join() === 'sample'
+        && acceptRule(rec({ recheck_by: '2026-11-27' }), { raw, today: new Date(2026, 10, 28, 0, 0, 0) }).reasons.includes('expired'));
+  }
+
+  // --- the adapter graph: the page's modules with only the acceptance
+  // boundary swapped, exactly as smoke.mjs serves it ---------------------------
+  const jsDir = new URL('../js/', import.meta.url).href;
+  const adapterUrl = new URL('./subject-rules-sample-adapter.js', import.meta.url).href;
+  const TAG = '?f01-adapter-graph';
+  registerHooks({
+    resolve(specifier, context, next) {
+      const parent = context.parentURL ?? '';
+      if (parent === adapterUrl && specifier === './subject-rules.js?production') return { url: `${jsDir}subject-rules.js?production`, shortCircuit: true };
+      const result = next(specifier, context);
+      if (parent.endsWith(TAG) && result.url.startsWith(jsDir) && !result.url.includes('?')) {
+        return { ...result, url: result.url === `${jsDir}subject-rules.js` ? adapterUrl : `${result.url}${TAG}` };
+      }
+      return result;
+    },
+  });
+  const graph = (name) => import(`${jsDir}${name}${TAG}`);
+  const authority = await graph('subject-authority.js');
+  const adapted = await graph('compare.js');
+  const adaptedRender = await graph('render.js');
+  const adaptedI18n = await graph('i18n.js');
+  const adapter = await import(adapterUrl);
+  const adapterSrc = read('tools/subject-rules-sample-adapter.js');
+  const productionFiles = ['index.html', ...readdirSync(join(root, 'js')).map((n) => `js/${n}`)];
+  check('F01 R8: no production file references the test adapter or fixtures, or carries a test flag',
+    productionFiles.every((path) => !/sample-adapter|subject-rule-fixtures|\?production|f01-adapter/.test(read(path))));
+  check('F01 R8: the adapter imports the unmodified production module at a distinct address and overrides only acceptRule',
+    /import \* as production from '\.\/subject-rules\.js\?production';/.test(adapterSrc) && /export \* from '\.\/subject-rules\.js\?production';/.test(adapterSrc)
+      && [...adapterSrc.matchAll(/^export (?:function|const|let|class) (\w+)/gm)].map((m) => m[1]).join() === 'acceptRule'
+      && Object.keys(adapter).sort().join() === Object.keys(rulesMod).sort().join());
+  check('F01 R8: the authority calls only the acceptance boundary, and holds the state the adapter must not',
+    !/inspectRule/.test(read('js/subject-authority.js')) && /acceptRule\(record/.test(read('js/subject-authority.js')) && !/^let |^const s\b/m.test(adapterSrc.replace(/^\/\/.*$/gm, '')));
+  const waived = adapter.acceptRule(rec(), ctx);
+  check('F01 R8: the adapter accepts a rule whose only problem is "sample", and marks it sample', waived.ok && waived.rule.sample === true && waived.reasons.length === 0);
+  check('F01 R8: the adapter still rejects every other problem, alone or next to "sample"',
+    reasonCases.every(([, over]) => !adapter.acceptRule(rec(over), ctx).ok));
+
+  // combineRules through the adapter
+  const ok = (r) => adapter.acceptRule(r, ctx);
+  const one = (records) => adapter.combineRules(records.map(ok)).rules;
+  check('F01 one approved record gives one usable rule', one([rec()]).get('eur-ibeor')?.sample === true && one([rec()]).size === 1);
+  check('F01 a withdrawal wins over an approval, in either order',
+    one([rec(), rec({ status: 'withdrawn' })]).size === 0 && one([rec({ status: 'withdrawn' }), rec()]).size === 0);
+  check('F01 two approvals for one programme are ambiguous: neither is used', one([rec(), rec({ reviewer: 'SAMPLE EF' })]).size === 0);
+  check('F01 a rejected record for the same programme blocks a valid one', one([rec(), rec({ reviewer: '' })]).size === 0);
+  check('F01 a record for another, well-formed intake does not block this intake\'s rule', one([rec(), rec({ intake: '2026/27' })]).size === 1);
+  check('F01 a record whose intake cannot be read blocks the programme', one([rec(), rec({ intake: 'soon' })]).size === 0);
+  check('F01 a record whose programme cannot be read makes the whole table untrusted',
+    one([rec(), rec({}, 'eur-ibp'), rec({ programme_id: '' })]).size === 0 && one([rec(), rec({}, 'eur-ibp')]).size === 2);
+  {
+    // F5: scope for another known qualification is proof the record is not
+    // for IB students; anything less is not.
+    const scopeFor = (qualification, extra = {}) => ({ qualification, label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'], ...extra });
+    const aLevels = rec({ scope: scopeFor('a-levels') });
+    const typo = rec({ scope: scopeFor('alevels') });
+    const uncited = rec({ scope: scopeFor('a-levels', { sources: [] }) });
+    const disjointResult = acceptRule(aLevels, ctx);
+    check('F01 F5: a cited scope for another known qualification is definitely not for IB students',
+      disjointResult.disjoint && disjointResult.reasons.includes('scope-inapplicable') && !disjointResult.ok);
+    check('F01 F5: an unknown or misspelt qualification, or an uncited one, is invalid, never proof of disjointness',
+      !acceptRule(typo, ctx).disjoint && acceptRule(typo, ctx).reasons.includes('scope') && !acceptRule(uncited, ctx).disjoint && acceptRule(uncited, ctx).reasons.includes('scope'));
+    check('F01 F5: a disjoint record does not block the IB record for the same programme', one([rec(), aLevels]).size === 1 && one([aLevels, rec()]).size === 1);
+    const source = { url: fixtures.SAMPLE_URL, quote: fixtures.SAMPLE_QUOTE };
+    for (const [problem, override] of [
+      ['unsupported schema', { schema_version: '2' }],
+      ['invalid scope link', { sources: { s1: { ...source, url: '/not-an-official-url' } } }],
+      ['missing scope quote', { sources: { s1: { ...source, quote: ' ' } } }],
+      ['invalid citation language', { sources: { s1: { ...source, lang: ['en'] } } }],
+      ['invalid condition citation', { scope: scopeFor('a-levels', { conditions: [{ en: 'Condition (SAMPLE)', sources: ['s2'] }] }),
+        sources: { s1: source, s2: { ...source, quote: '' } } }],
+    ]) {
+      const competitor = rec({ scope: scopeFor('a-levels'), ...override });
+      check(`F01 F5: ${problem} cannot establish a disjoint qualification in either record order`,
+        !acceptRule(competitor, ctx).disjoint && !one([rec(), competitor]).size && !one([competitor, rec()]).size);
+    }
+    check('F01 F5: a disjoint record with its own other problems still cannot block it', one([rec(), rec({ scope: scopeFor('a-levels'), reviewer: '' })]).size === 1);
+    check('F01 F5: a misspelt or uncited qualification might overlap, so it blocks', one([rec(), typo]).size === 0 && one([rec(), uncited]).size === 0);
+    check('F01 F5: a withdrawal still wins, beside a disjoint record too', one([rec(), aLevels, rec({ status: 'withdrawn' })]).size === 0);
+    check('F01 F5: a disjoint record is never usable itself, SAMPLE or not', one([aLevels]).size === 0 && !adapter.acceptRule(aLevels, ctx).ok);
+    const routed = (routes) => rec({ routes: { routes } });
+    const ibRoute = { id: 'a', clauses: [fixtures.PHYSICS_HL5] };
+    const otherRoute = { id: 'b', clauses: [fixtures.PHYSICS_HL5], scope: scopeFor('a-levels') };
+    check('F01 F5: a route may carry its own cited scope', ok(routed([ibRoute, otherRoute])).ok && ok(routed([ibRoute, otherRoute])).rule.routes[1].scope.qualification === 'a-levels');
+    check('F01 F5: a route scope with an unknown qualification or no source is invalid',
+      acceptRule(routed([ibRoute, { ...otherRoute, scope: scopeFor('alevels') }]), ctx).reasons.includes('routes')
+        && acceptRule(routed([ibRoute, { ...otherRoute, scope: scopeFor('a-levels', { sources: [] }) }]), ctx).reasons.includes('routes'));
+    check('F01 F5: a rule with no route that could be an IB Diploma route is invalid', acceptRule(routed([otherRoute]), ctx).reasons.includes('routes'));
+    check('F01 F5: route conditions now live in the route scope; a bare "conditions" key is refused',
+      acceptRule(routed([{ ...ibRoute, conditions: [{ en: 'x', sources: ['s1'] }] }]), ctx).reasons.includes('routes'));
+  }
+
+  // --- the authority: what is current, with a fake clock --------------------
+  const T0 = new Date(2026, 10, 27, 12, 0, 0).getTime();
+  const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve)); };
+  function harness({ start = T0, body, timeoutMs } = {}) {
+    // now: the wall clock, which can be set; mono: elapsed time, which only
+    // moves forward. Timers run on elapsed time.
+    let now = start, mono = 1_000_000, seq = 0;
+    const queue = new Map();
+    const calls = [];
+    const h = { changes: 0, online: true, body, calls, pendingFetches: [],
+      now: () => now,
+      elapsed: () => mono,
+      timers: { set: (fn, ms) => { queue.set(++seq, { at: mono + ms, fn }); return seq; }, clear: (id) => { queue.delete(id); } },
+      async advance(ms) {
+        const end = mono + ms;
+        for (;;) {
+          const next = [...queue].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+          if (!next) break;
+          queue.delete(next[0]); now += next[1].at - mono; mono = next[1].at; next[1].fn(); await flush();
+        }
+        now += end - mono; mono = end; await flush();
+      },
+      // Someone sets the computer's clock: elapsed time does not move.
+      jump(ms) { now += ms; },
+      // Time passes while the tab's timers sleep (a throttled background tab).
+      sleep(ms) { now += ms; mono += ms; },
+      monoBack(ms) { mono -= ms; },
+      timerCount: () => queue.size,
+      fetchImpl: (url, init) => {
+        calls.push({ url, init });
+        const answer = typeof h.body === 'function' ? h.body() : h.body;
+        if (answer === 'hang' || answer?.defer) {
+          return new Promise((resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+            if (answer?.defer) h.pendingFetches.push((text) => resolve({ ok: true, status: 200, text: async () => text }));
+          });
+        }
+        if (answer instanceof Error) return Promise.reject(answer);
+        if (answer?.status) return Promise.resolve({ ok: false, status: answer.status, text: async () => 'Not found' });
+        return Promise.resolve({ ok: true, status: 200, text: async () => answer });
+      },
+      target: null,
+    };
+    h.start = (mod = authority, extra = {}) => mod.startSubjectAuthority({ raw, onChange: () => { h.changes++; }, now: h.now, elapsed: h.elapsed, timers: h.timers,
+      fetchImpl: h.fetchImpl, online: () => h.online, target: h.target, ...(timeoutMs ? { timeoutMs } : {}), ...extra });
+    return h;
+  }
+  const approved = fixtures.rulesCsv([rec()]);
+  const has = (mod = authority) => mod.reviewedRule('eur-ibeor') !== null;
+
+  {
+    const h = harness({ body: `${header}\n` });
+    await h.start();
+    const call = h.calls[0];
+    check('F01 authority: one same-origin request for the fixed file, never cached, with nothing about the student',
+      h.calls.length === 1 && call.url === 'data/ib-subject-rules.csv' && call.init.cache === 'no-store' && call.init.credentials === 'same-origin'
+        && call.init.body === undefined && call.init.method === undefined && Object.keys(call.init).sort().join() === 'cache,credentials,signal');
+    check('F01 authority: the header-only table makes nothing current, announces nothing and is not polled', !has() && h.changes === 0 && h.timerCount() === 0);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start(await import(new URL('../js/subject-authority.js', import.meta.url)));
+    const prod = await import(new URL('../js/subject-authority.js', import.meta.url));
+    check('F01 authority (unmodified page modules): a served SAMPLE rule is never current', !has(prod) && h.changes === 0);
+    prod.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    check('F01 authority: a current approval shows once, with a refresh and an age limit scheduled', has() && h.changes === 1 && h.timerCount() === 3);
+    const before = h.calls.length;
+    await h.advance(45_000);
+    check('F01 authority R4: the file is asked again 45 s after the last good answer; an unchanged answer redraws nothing',
+      h.calls.length === before + 1 && has() && h.changes === 1);
+    await h.advance(40_000);
+    check('F01 authority R4: steady good answers keep the rule current past 60 s without a flicker', has() && h.changes === 1 && h.calls.length === before + 1);
+    h.body = new Error('offline-ish failure');
+    await h.advance(5_000);
+    check('F01 authority: a failed refresh removes the rule at once', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved, timeoutMs: 30_000 });
+    await h.start();
+    h.body = 'hang';
+    await h.advance(45_000);
+    check('F01 authority R4: a refresh still in flight at 45 s leaves the rule current', has() && h.changes === 1);
+    await h.advance(15_002);
+    check('F01 authority R4: 60 s with no newer good answer: the rule stops counting, even with the request still out', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    h.sleep(61_000);
+    check('F01 authority: a throttled tab whose timers slept never shows an aged-out rule (checked at use)', !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    // F2: 60 s of elapsed time, whatever the wall clock says.
+    const h = harness({ body: approved });
+    await h.start();
+    h.sleep(59_999);
+    const before = has();
+    h.sleep(1);
+    check('F01 authority F2: current at 59.999 s, no longer current at exactly 60 s', before && !has());
+    await flush();
+    check('F01 authority F2: dropping an aged answer is announced', h.changes === 2);
+    h.jump(-120_000);
+    check('F01 authority F2: setting the wall clock back does not revive an aged answer', !has());
+    h.monoBack(30_000);
+    check('F01 authority F2: nor does an elapsed clock that ran backwards', !has());
+    await authority.refreshAuthority();
+    check('F01 authority F2: only a new good answer brings the rule back', has() && h.changes === 3);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    h.jump(-3_600_000);
+    h.sleep(30_000);
+    const early = has();
+    h.jump(-86_400_000);
+    h.sleep(29_999);
+    const late = has();
+    h.sleep(1);
+    check('F01 authority F2: winding the wall clock back neither extends nor shortens the 60 s', early && late && !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ start: new Date(2026, 10, 27, 12, 0, 0).getTime(), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+    await h.start();
+    const first = has();
+    h.jump(86_400_000);
+    const expired = !has();
+    h.jump(-86_400_000);
+    const stillExpired = !has();
+    await authority.refreshAuthority();
+    check('F01 authority F2: a recheck date passed on the calendar stays passed when the clock goes back; a new good answer reads the clock afresh',
+      first && expired && stillExpired && has());
+    h.jump(-3 * 86_400_000);
+    check('F01 authority F2: winding the clock to before the review date hides the rule', !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    const zone = process.env.TZ;
+    try {
+      process.env.TZ = 'UTC';
+      const h = harness({ start: Date.parse('2026-11-27T23:59:00Z'), body: fixtures.rulesCsv([
+        rec({ recheck_by: '2026-11-27' }), rec({ reviewed_on: '2026-11-28', recheck_by: '2026-12-01' }, 'eur-ibp'),
+      ]) });
+      const nextReview = () => authority.reviewedRule('eur-ibp') !== null;
+      await h.start();
+      const current = has() && !nextReview();
+      process.env.TZ = 'Europe/Bratislava';
+      authority.recheckAuthority();
+      const expired = !has() && nextReview();
+      process.env.TZ = 'UTC';
+      authority.recheckAuthority();
+      check('F01 F2: changing zones back cannot revive an approval expired in this response',
+        current && expired && !has() && h.calls.length === 1);
+      check('F01 F2: returning to a day before a second programme was reviewed hides its approval too',
+        current && expired && !nextReview() && h.calls.length === 1 && h.changes === 3);
+      await authority.refreshAuthority();
+      check('F01 F2: a fresh response resets expiry but cannot authorize a future review', has() && !nextReview() && h.calls.length === 2 && h.changes === 4);
+    } finally {
+      authority.stopSubjectAuthority();
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
+  }
+  for (const [name, body] of [['a missing file (404)', { status: 404 }], ['a malformed file', `${header}\n"broken`], ['an empty file', ''],
+    ['an HTML page', '<!doctype html><p>Sign in</p>'], ['a request that never answers', 'hang']]) {
+    const h = harness({ body });
+    const started = h.start();
+    await h.advance(3_000);
+    await started;
+    check(`F01 authority: ${name} makes nothing current and is given up within 3 s`, !has() && h.changes === 0 && h.calls.length === 1);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: { defer: true } });
+    const listeners = {};
+    const fakeTarget = { addEventListener: (type, fn) => { (listeners[type] ??= []).push(fn); }, removeEventListener() {},
+      document: { visibilityState: 'visible', addEventListener: (type, fn) => { (listeners[`doc:${type}`] ??= []).push(fn); }, removeEventListener() {} } };
+    h.target = fakeTarget;
+    h.start();
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    h.pendingFetches.shift()(approved);
+    await flush();
+    check('F01 authority: going offline voids an answer still on its way, even an approval', !has() && h.changes === 0);
+    h.online = true;
+    h.body = approved;
+    listeners.online.forEach((fn) => fn());
+    await flush();
+    check('F01 authority: back online, a fresh answer can make the rule current again', has() && h.changes === 1);
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    check('F01 authority: offline removes a current rule at once', !has() && h.changes === 2);
+    // An answer to an older request arrives after a newer one withdrew the rule.
+    h.online = true;
+    h.body = { defer: true };
+    listeners['doc:visibilitychange'].forEach((fn) => fn());
+    const older = h.pendingFetches.shift();
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    h.online = true;
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    listeners.online.forEach((fn) => fn());
+    await flush();
+    older(approved);
+    await flush();
+    check('F01 authority: a late answer to an older request never revives an approval after a newer withdrawal', !has() && h.calls.length === 4);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: fixtures.rulesCsv([rec(), rec({ status: 'withdrawn' })]) });
+    await h.start();
+    check('F01 authority: a current withdrawal wins over an approval in the same answer', !has() && h.changes === 0);
+    authority.stopSubjectAuthority();
+    const drifted = new Map(raw);
+    drifted.set('eur-ibeor', { ...raw.get('eur-ibeor'), programme: { ...raw.get('eur-ibeor').programme, ib_subjects: `${raw.get('eur-ibeor').programme.ib_subjects} ` + 'Updated.' } });
+    const d = harness({ body: approved });
+    await d.start(authority, { raw: drifted });
+    check('F01 authority: a catalogue cell that changed since review blocks the rule', !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ start: new Date(2026, 10, 27, 23, 59, 30).getTime(), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+    await h.start();
+    check('F01 authority: a rule whose recheck date is today is current until midnight', has() && h.changes === 1);
+    await h.advance(30_001);
+    check('F01 authority: at local midnight the rule expires in an open tab with no interaction, and the change is announced', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+
+  // --- the views, with a current SAMPLE rule (adapter graph) ----------------
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    const ibeor = live.find((r) => r.id === 'eur-ibeor');
+    const ibp = live.find((r) => r.id === 'eur-ibp');
+    const detail = withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters()));
+    const block = byClass(detail, 'd-reviewed')[0];
+    const subjectsDd = kvOf(detail)['IB subjects'];
+    check('F01 detail: the reviewed rule sits in the IB subjects row, under the recorded wording, with its fixture warning',
+      block && subjectsDd.contains(block) && subjectsDd.textContent.startsWith(ibeor.ibSubjects)
+        && byTag(block, 'h4')[0]?.textContent === 'Subject requirement (reviewed)' && byClass(block, 'rv-sample').length === 1);
+    equal('F01 detail: the reviewed rule\'s scope, route, source and dates, in words', byClass(block, 'rv-line').map((n) => n.textContent).concat(byClass(block, 'rv-meta').map((n) => n.textContent)), [
+      'Applies to: Applicants with the IB Diploma (SAMPLE fixture)',
+      'Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher',
+      'Intake 2027/28 · checked 20 November 2026 · reviewed by CD on 25 November 2026 · recheck by 31 January 2027',
+    ]);
+    const link = byTag(block, 'a')[0];
+    const quote = byTag(block, 'q')[0];
+    check('F01 detail: each source is a safe external link with its exact quote, language marked',
+      link?.href === fixtures.SAMPLE_URL && link.target === '_blank' && link.rel === 'noopener noreferrer' && quote?.textContent === fixtures.SAMPLE_QUOTE && quote.lang === 'en');
+    const table = adapted.compareTable([ibeor, ibp], noFilters());
+    const reviewedRow = table.find((f) => f.key === 'reviewed');
+    check('F01 Compare: a reviewed row appears with the same words; the column without a rule says so and stays under Show only differences',
+      reviewedRow?.label === 'Subject requirement (reviewed)' && reviewedRow.cells[0].lines.some((l) => l.parts?.map((p) => p.text).join('') === 'Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher')
+        && reviewedRow.cells[1].unknown && reviewedRow.cells[1].lines[0].tag === 'No subject check yet'
+        && adapted.visibleFacts(table, true).some((f) => f.key === 'reviewed'));
+    adaptedI18n.setLanguage('sk');
+    const sk = withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters()));
+    const skBlock = byClass(sk, 'd-reviewed')[0];
+    check('F01 detail in Slovak: Slovak words, rule text in Slovak where given, the quote still marked English',
+      byTag(skBlock, 'h4')[0]?.textContent === 'Požiadavka na predmety (overená)'
+        && byClass(skBlock, 'rv-line')[1]?.textContent === 'Matematika AA alebo Matematika AI na úrovni HL, známka aspoň 5 (SL sa neuznáva) a Fyzika na úrovni HL, známka aspoň 5'
+        && byClass(skBlock, 'rv-line')[0]?.textContent === 'Platí pre: Uchádzači s IB diplomom (SAMPLE fixture)' && byTag(skBlock, 'q')[0]?.lang === 'en');
+    adaptedI18n.setLanguage('en');
+    // A withdrawal arrives: the same anchors are patched, nothing else.
+    const section = byClass(detail, 'd-must')[0];
+    const childrenBefore = section.children.length;
+    check('F01 an unchanged rule leaves a mounted anchor alone', withStubDocument(() => adaptedRender.fillReviewed(section, ibeor)) === false);
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    await authority.refreshAuthority();
+    const patched = withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    check('F01 a withdrawal removes the mounted reviewed block, leaving the recorded wording and the rest of the section',
+      patched && h.changes === 2 && byClass(detail, 'd-reviewed').length === 0 && kvOf(detail)['IB subjects'].textContent === ibeor.ibSubjects && section.children.length === childrenBefore);
+    check('F01 Compare drops the reviewed row once no compared programme has a current rule',
+      !adapted.compareTable([ibeor, ibp], noFilters()).some((f) => f.key === 'reviewed'));
+    // F1: a malformed replacement removes the reviewed block; the recorded
+    // wording stays.
+    h.body = approved;
+    await authority.refreshAuthority();
+    withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    const restored = byClass(detail, 'd-reviewed').length === 1;
+    h.body = `${approved}"x"y\n`;
+    await authority.refreshAuthority();
+    withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    check('F01 F1: a malformed refresh removes the open reviewed block and keeps the recorded subject wording',
+      restored && !has() && byClass(detail, 'd-reviewed').length === 0 && kvOf(detail)['IB subjects'].textContent === ibeor.ibSubjects);
+    // F4: a partial check never says one route is enough, in either language.
+    const partialRule = (routes) => rec({ evidence_kind: 'partial-restrictions', routes: { routes, partial_note: { en: 'Programme pages not yet checked (SAMPLE).', sk: 'Stránky programu ešte neoverené (SAMPLE).' } } });
+    const twoRoutes = [{ id: 'a', clauses: [fixtures.PHYSICS_HL5] }, { id: 'b', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['chemistry'] }] }];
+    const linesOf = (record, lang) => {
+      adaptedI18n.setLanguage(lang);
+      const block = byClass(withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters())), 'd-reviewed')[0];
+      const cmp = adapted.compareTable([ibeor, ibp], noFilters()).find((f) => f.key === 'reviewed')?.cells[0].lines.map((l) => l.parts ? l.parts.map((p) => p.text).join('') : l.text) ?? [];
+      adaptedI18n.setLanguage('en');
+      return { detail: block ? byClass(block, 'rv-line').map((n) => n.textContent) : [], cmp };
+    };
+    const served = async (record) => { h.body = fixtures.rulesCsv([record]); await authority.refreshAuthority(); };
+    await served(partialRule(twoRoutes));
+    const pEn = linesOf(null, 'en'), pSk = linesOf(null, 'sk');
+    await served(partialRule([twoRoutes[0]]));
+    const p1En = linesOf(null, 'en'), p1Sk = linesOf(null, 'sk');
+    check('F01 F4: partial routes, EN and SK, detail and Compare, list what was recorded without implying any is enough',
+      [pEn, p1En].every((v) => !v.detail.includes(UI.en.rv_any_route)) && [pSk, p1Sk].every((v) => !v.detail.includes(UI.sk.rv_any_route))
+        && [pEn, pSk, p1En, p1Sk].every((v) => v.detail.length && JSON.stringify(v.detail) === JSON.stringify(v.cmp.filter((l) => v.detail.includes(l))))
+        && pEn.detail.includes(UI.en.rv_partial_routes) && pSk.detail.includes(UI.sk.rv_partial_routes)
+        && p1En.detail.includes(UI.en.rv_partial_route) && p1Sk.detail.includes(UI.sk.rv_partial_route)
+        && /none is known to be enough/.test(UI.en.rv_partial_routes) && /not known to be enough/.test(UI.en.rv_partial_route) && /nevieme, či sama stačí/.test(UI.sk.rv_partial_routes),
+      JSON.stringify([pEn.detail, pSk.detail]));
+    const named = (routes) => ({ ...fixtures.PHYSICS_HL5, routes });
+    await served(rec({ routes: { routes: twoRoutes, general: [fixtures.PHYSICS_HL5, named(['b']), named(['b', 'a'])] } }));
+    for (const [lang, wording] of [
+      ['en', ['Alternative subject routes:', 'Every route also needs: Physics', 'Route 2 also needs: Physics', 'Routes 2, 1 also need: Physics']],
+      ['sk', ['Možnosti splnenia požiadaviek na predmety:', 'Každá cesta navyše vyžaduje: Fyzika', 'Cesta 2 navyše vyžaduje: Fyzika', 'Cesty 2, 1 navyše vyžadujú: Fyzika']],
+    ]) {
+      const view = linesOf(null, lang);
+      check(`F01 ${lang}: alternatives and additional general conditions identify the named routes in detail and Compare`,
+        wording.every((words) => view.detail.some((line) => line.startsWith(words)) && view.cmp.some((line) => line.startsWith(words))), JSON.stringify(view));
+    }
+    await served(rec({ routes: { routes: [twoRoutes[1]], general: [named(['b'])] } }));
+    for (const [lang, route, general] of [
+      ['en', 'Route 1: Chemistry', 'Route 1 also needs: Physics'],
+      ['sk', 'Cesta 1: Chémia', 'Cesta 1 navyše vyžaduje: Fyzika'],
+    ]) {
+      const view = linesOf(null, lang);
+      check(`F01 ${lang}: a sole named route displays the same number beside its clauses and its general requirement`,
+        [route, general].every((words) => view.detail.some((line) => line.startsWith(words)) && view.cmp.some((line) => line.startsWith(words))), JSON.stringify(view));
+    }
+    // F5: a route's own scope is shown to the reader.
+    await served(rec({ routes: { routes: [twoRoutes[0], { id: 'b', clauses: [twoRoutes[1].clauses[0]], scope: { qualification: 'a-levels', label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'] } }] } }));
+    const scoped = linesOf(null, 'en'), scopedSk = linesOf(null, 'sk');
+    check('F01 F5: a route scope is shown under its route, EN and SK, in the detail and Compare',
+      scoped.detail.includes('This route is only for: Applicants with A levels (SAMPLE fixture)') && scoped.cmp.includes('This route is only for: Applicants with A levels (SAMPLE fixture)')
+        && scopedSk.detail.includes('Táto cesta platí len pre: Uchádzači s A-levels (SAMPLE fixture)'), JSON.stringify(scoped.detail));
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    await authority.refreshAuthority();
+    authority.stopSubjectAuthority();
+    const absence = harness({ body: fixtures.rulesCsv([rec({ evidence_kind: 'explicit-no-restrictions', routes: { absence_sources: ['s1'] } }, 'eur-ibp')]) });
+    await absence.start();
+    const absenceBlock = byClass(withStubDocument(() => adaptedRender.renderDetail(ibp, noFilters())), 'd-reviewed')[0];
+    check('F01 detail: a reviewed full-scope absence says so, and cites its source',
+      byClass(absenceBlock, 'rv-line').map((n) => n.textContent).includes('No IB subject restrictions, stated for everyone this applies to.') && byTag(absenceBlock, 'a').length === 1);
+    authority.stopSubjectAuthority();
+  }
+
+  // --- the public journey on the real rows, with zero rules ---------------
+  {
+    const rows = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'].map((id) => live.find((r) => r.id === id));
+    const [ibeor, arcada, ibp, qub] = rows;
+    const subjectsOf = (row) => kvOf(detailOf(row))['IB subjects']?.textContent;
+    check('F01 eur-ibeor: the whole recorded wording, including the AA SL 6 exam alternative, and no reviewed line',
+      subjectsOf(ibeor) === served.programmes.get('eur-ibeor').ib_subjects && /AA SL 6 lets you sit the maths entrance exam instead/.test(subjectsOf(ibeor))
+        && byClass(detailOf(ibeor), 'd-reviewed').length === 0);
+    check('F01 arcada-it: blank subjects read "Not checked yet"; the recorded maths wording stays under Other requirements',
+      subjectsOf(arcada) === 'Not checked yet' && kvOf(detailOf(arcada))['Other requirements']?.textContent.includes('Maths: advanced course at IB grade 2 (A) or better'));
+    check('F01 eur-ibp: literal "none" keeps its public meaning, "None required"', subjectsOf(ibp) === 'None required');
+    check('F01 qub-environmental-management-bsc: no subject or maths evidence reads "Not checked yet", with its official link',
+      subjectsOf(qub) === 'Not checked yet' && !!qub.officialUrl && byClass(detailOf(qub), 'd-apply').length === 1);
+    const table = compareMod.compareTable(rows, noFilters());
+    const cellsOf = (key) => table.find((f) => f.key === key)?.cells;
+    equal('F01 Compare: an IB subjects row with the recorded wording, None required and Not checked yet',
+      cellsOf('subjects').map((c) => c.lines.map((l) => l.tag ?? l.text).join('|')), [ibeor.ibSubjects, 'Not checked yet', 'None required', 'Not checked yet']);
+    check('F01 Compare: the subjects cell uses the whole recorded field for translation', cellsOf('subjects')[0].lines[0].field === 'ib_subjects');
+    equal('F01 Compare: the maths courses row is unchanged and separate',
+      cellsOf('maths').map((c) => c.lines.map((l) => l.tag ?? l.text).join('|')), ['AA HL · AA SL', 'AA HL · AA SL · AI HL · AI SL', 'AA HL · AA SL · AI HL · AI SL', 'Not checked yet']);
+    check('F01 Compare: Other requirements is its own labelled row with each whole field, so Arcada\'s maths wording stays available',
+      cellsOf('other')[1].lines[0].field === 'other_requirements' && cellsOf('other')[1].lines[0].text === arcada.otherRequirements.join(' · ')
+        && cellsOf('other')[3].lines[0].text === 'Nothing else listed');
+    const shown = compareMod.visibleFacts(table, true).map((f) => f.key);
+    check('F01 Compare: Show only differences keeps the unknown subjects cell, and no reviewed row exists without a rule',
+      shown.includes('subjects') && shown.includes('link') && !table.some((f) => f.key === 'reviewed'));
+    const missing = { ...qub, ibSubjects: '', officialUrl: null };
+    const missingTable = compareMod.compareTable([ibeor, missing], noFilters());
+    check('F01 a row with no official link keeps the existing missing-link message in the detail and Compare',
+      byClass(detailOf(missing), 'note-strong').some((n) => n.textContent === 'No official admissions link. Do not rely on this entry.')
+        && missingTable.find((f) => f.key === 'link').cells[1].lines[0].strong === true && missingTable.find((f) => f.key === 'link').cells[1].unknown);
+  }
+
+  // --- the checker: five exclusive results ---------------------------------
+  {
+    const S = (courses, levels, min = null, { exL = [], exC = [], routes } = {}) => ({ type: 'subject', courses, levels, minGrade: min, excludeLevels: exL, excludeCourses: exC, sources: ['s1'], ...(routes ? { routes } : {}) });
+    const X = (type) => ({ type, text: { en: `${type} (SAMPLE)`, sk: '' }, sources: ['s1'] });
+    const R = (kind, routes, { general = [], conditions = [] } = {}) => ({ kind, scope: { conditions }, general,
+      routes: routes.map((clauses, i) => (Array.isArray(clauses) ? { id: `r${i + 1}`, clauses, scope: null } : { id: `r${i + 1}`, scope: null, ...clauses })) });
+    const E = (course, level, grade = null) => ({ course, level, grade });
+    const C = 'complete-restrictions';
+    const status = (rule, entries) => evaluateSubjects(rule, entries).status;
+    const case1 = R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5, { exL: ['SL'] }), S(['physics'], ['HL'], 5)]]);
+    const case1Result = evaluateSubjects(case1, [E('maths-ai', 'SL'), E('physics', 'HL', 6)]);
+    check('F01 checker case 1: AI SL against a cited SL exclusion is a conflict, naming the maths clause and the entry',
+      case1Result.status === STATUS.CONFLICT && case1Result.routes[0].clauses[0].reason.kind === 'level-excluded' && case1Result.routes[0].clauses[0].reason.course === 'maths-ai');
+    const case1Open = evaluateSubjects(R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5), S(['physics'], ['HL'], 5)]]), [E('maths-ai', 'SL'), E('physics', 'HL', 6)]);
+    check('F01 checker case 1 without the cited exclusion: SL is unmentioned, so Needs checking, never a conflict',
+      case1Open.status === STATUS.NEEDS && case1Open.next?.kind === 'level-unstated');
+    const hl5 = R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5)]]);
+    const meets = evaluateSubjects(hl5, [E('maths-aa', 'HL', 6)]);
+    check('F01 checker exclusive pair: Maths HL 5 required, HL predicted 6 → Meets only, based on predictions',
+      meets.status === STATUS.MEETS && meets.predicted === true && meets.status !== STATUS.NO_RESTRICTIONS);
+    const absence = { kind: 'explicit-no-restrictions', scope: { conditions: [] }, general: [], routes: [] };
+    check('F01 checker exclusive pair: a reviewed full-scope absence → No listed subject restrictions only, whatever was entered',
+      status(absence, [E('maths-ai', 'SL')]) === STATUS.NO_RESTRICTIONS && status(absence, []) === STATUS.NO_RESTRICTIONS && evaluateSubjects(absence, []).predicted === false);
+    check('F01 checker: an absence whose applicability is unknown is Needs checking',
+      status({ ...absence, scope: { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] } }, []) === STATUS.NEEDS);
+    check('F01 checker: no usable rule is "No subject check yet" (coverage, not a verdict)', status(null, [E('physics', 'HL', 7)]) === STATUS.NO_CHECK);
+    check('F01 checker: meeting a restriction never counts as no restrictions; four accepted maths tracks are still a restriction',
+      status(R(C, [[S(['maths-aa', 'maths-ai'], ['HL', 'SL'])]]), [E('maths-ai', 'SL')]) === STATUS.MEETS);
+    const alt = R(C, [[S(['physics'], ['HL'], 6)], [S(['chemistry'], ['HL'], 6)]]);
+    const p5 = evaluateSubjects(alt, [E('physics', 'HL', 5)]);
+    check('F01 checker case 4: Physics HL predicted 5 and no Chemistry → Needs checking; Chemistry HL 6 is another open route',
+      p5.status === STATUS.NEEDS && p5.routes[1].outcome === 'open' && p5.routes[1].clauses[0].reason.kind === 'add' && p5.routes[1].clauses[0].reason.course === 'chemistry');
+    check('F01 checker case 4: adding Chemistry SL still Needs checking (SL is not mentioned)', status(alt, [E('physics', 'HL', 5), E('chemistry', 'SL')]) === STATUS.NEEDS);
+    const chem6 = evaluateSubjects(alt, [E('physics', 'HL', 5), E('chemistry', 'HL', 6)]);
+    check('F01 checker case 4: Chemistry HL predicted 6 → Meets, based on predictions', chem6.status === STATUS.MEETS && chem6.predicted);
+    const withAa = R(C, [[S(['physics'], ['HL'], 6)], [S(['chemistry'], ['HL'], 6), S(['maths-aa'], ['HL'], null, { exC: ['maths-ai'] })]]);
+    const aiSl = evaluateSubjects(withAa, [E('maths-ai', 'SL'), E('physics', 'HL', 5), E('chemistry', 'HL', 6)]);
+    check('F01 checker case 4: a route needing Maths AA HL shows its own mismatch for AI SL, but no overall conflict while another route is open',
+      aiSl.status === STATUS.NEEDS && aiSl.routes[1].outcome === 'excluded' && aiSl.routes[1].clauses[1].reason.kind === 'course-excluded' && aiSl.routes[0].outcome === 'open');
+    check('F01 checker: a valid scope whose applicability is unknown never gives Meets or a conflict',
+      status(R(C, [[S(['physics'], ['HL'])]], { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] }), [E('physics', 'HL')]) === STATUS.NEEDS
+        && status(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })]], { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] }), [E('physics', 'SL')]) === STATUS.NEEDS);
+    check('F01 checker: SL-only wording with HL entered is Needs checking (the source says nothing about HL)',
+      evaluateSubjects(R(C, [[S(['physics'], ['SL'], 5)]]), [E('physics', 'HL', 7)]).next?.kind === 'level-unstated');
+    const exam = evaluateSubjects(R(C, [[S(['maths-aa'], ['SL'], 6), X('exam')]]), [E('maths-aa', 'SL', 6)]);
+    check('F01 checker: matching grades plus an exam whose result is unknown → Needs checking; permission to sit is not a pass',
+      exam.status === STATUS.NEEDS && exam.next?.kind === 'exam');
+    check('F01 checker: an unresolved waiver keeps its route open, never failed',
+      evaluateSubjects(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], [X('waiver')]]), [E('physics', 'SL')]).status === STATUS.NEEDS);
+    check('F01 checker: when every route is excluded by documented incompatibilities, the result is a conflict',
+      status(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], [S(['chemistry'], ['HL'], null, { exL: ['SL'] })]]), [E('physics', 'SL'), E('chemistry', 'SL')]) === STATUS.CONFLICT);
+    const six = [E('maths-aa', 'HL', 7), E('en-a-lit', 'HL', 6), E('biology', 'HL', 6), E('economics', 'SL', 6), E('de-b', 'SL', 6), E('visual-arts', 'SL', 6)];
+    const sixResult = evaluateSubjects(R(C, [[S(['physics'], ['HL'], 5, { exL: ['SL'] })]]), six);
+    check('F01 checker case 5: six entries, the required subject missing → Needs checking with "add", never conflict',
+      sixResult.status === STATUS.NEEDS && sixResult.next?.kind === 'add' && sixResult.next?.course === 'physics');
+    check('F01 checker: a predicted grade below the minimum, or no grade, is Needs checking, never a conflict',
+      evaluateSubjects(hl5, [E('maths-aa', 'HL', 4)]).next?.kind === 'grade-below' && evaluateSubjects(hl5, [E('maths-aa', 'HL')]).next?.kind === 'grade-missing');
+    check('F01 checker: an independently met route counts even while another stays open',
+      status(R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'], 7), X('exam')]]), [E('physics', 'HL')]) === STATUS.MEETS
+        && evaluateSubjects(R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'], 7)]]), [E('physics', 'HL'), E('chemistry', 'HL', 6)]).predicted === false);
+    check('F01 checker: a partial check never gives Meets or a conflict, and says why',
+      evaluateSubjects(R('partial-restrictions', [[S(['physics'], ['HL'])]]), [E('physics', 'HL')]).next?.kind === 'partial'
+        && status(R('partial-restrictions', [[S(['physics'], ['HL'], null, { exL: ['SL'] })]]), [E('physics', 'SL')]) === STATUS.NEEDS);
+    // R5: university-wide clauses join every route they govern.
+    const general = (clause) => R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'])]], { general: [clause] });
+    check('F01 checker R5: an unmet university-wide clause leaves governed routes open',
+      status(general(S(['en-a-lit', 'en-a-lang-lit'], ['HL', 'SL'])), [E('physics', 'HL')]) === STATUS.NEEDS);
+    check('F01 checker R5: a met university-wide clause lets a route meet',
+      status(general(S(['en-a-lit', 'en-a-lang-lit'], ['HL', 'SL'])), [E('physics', 'HL'), E('en-a-lit', 'SL')]) === STATUS.MEETS);
+    check('F01 checker R5: a documented incompatibility in a university-wide clause excludes every route it governs',
+      status(general(S(['maths-aa'], ['HL'], null, { exL: ['SL'] })), [E('physics', 'HL'), E('chemistry', 'HL'), E('maths-aa', 'SL')]) === STATUS.CONFLICT);
+    check('F01 checker R5: a university-wide clause naming one route governs only that route',
+      status(general(S(['maths-aa'], ['HL'], null, { exL: ['SL'], routes: ['r2'] })), [E('physics', 'HL'), E('maths-aa', 'SL')]) === STATUS.MEETS);
+    check('F01 checker: a route with only an exam and no subject clause never gives Meets', status(R(C, [[X('exam')]]), []) === STATUS.NEEDS);
+    check('F01 every result has English and Slovak words and the subjects-only rider',
+      Object.values(STATUS).every((s) => UI.en[STATUS_KEYS[s]] && UI.sk[STATUS_KEYS[s]]) && UI.en[SUBJECTS_ONLY_KEY] === 'Subjects only: not points, exams or a place'
+        && UI.sk[SUBJECTS_ONLY_KEY] === 'Len predmety: nie body, skúšky ani prijatie' && UI.sk[PREDICTED_KEY] === 'podľa tvojich predpokladaných známok');
+
+    const norm = (rows) => normalizeProfile(rows);
+    check('F01 profile: untouched blank rows are ignored; one to six valid entries are kept with integer grades',
+      norm([{ course: '', level: '', grade: '' }, { course: 'physics', level: 'HL', grade: '6' }, { course: 'maths-ai', level: 'SL' }]).ok
+        && JSON.stringify(norm([{ course: 'physics', level: 'HL', grade: '6' }]).entries) === JSON.stringify([{ course: 'physics', level: 'HL', grade: 6 }]));
+    const codes = (rows) => norm(rows).errors.map((e) => e.code).join();
+    equal('F01 profile: every invalid input is its own error, never coerced',
+      [codes([{ course: 'physics' }]), codes([{ course: 'further-maths', level: 'HL' }]), codes([{ course: 'fr-ab-initio', level: 'HL' }]),
+        codes([{ course: 'physics', level: 'HL', grade: '8' }]), codes([{ course: 'physics', level: 'HL', grade: '5.5' }]), codes([{ course: 'physics', level: 'HL', grade: 'six' }]),
+        codes([{ course: 'maths-aa', level: 'HL' }, { course: 'maths-ai', level: 'SL' }]), codes([{ course: 'physics', level: 'HL' }, { course: 'physics', level: 'SL' }]),
+        codes([]), codes(IB_COURSES.slice(0, 7).map((c) => ({ course: c.id, level: 'SL' })))],
+      ['incomplete', 'unsupported', 'level', 'grade', 'grade', 'grade', 'duplicate', 'duplicate', 'empty', 'too-many']);
+    // F6: only the intended representations; nothing coerced, nothing thrown.
+    const throwing = { toString() { throw new Error('coerced'); }, valueOf() { throw new Error('coerced'); } };
+    let threw = null;
+    let gradeCodes = [];
+    try {
+      gradeCodes = [[5], {}, true, 5.5, '5 ', ' 5', '05', '5.0', NaN, Infinity, 0, 8, -1, 5n, Symbol('5'), throwing, new String('5'), new Number(5)]
+        .map((grade) => codes([{ course: 'physics', level: 'HL', grade }]));
+    } catch (err) { threw = err.message; }
+    check('F01 profile F6: arrays, objects, booleans, padded or decimal strings, non-integers and odd primitives are grade errors, never coerced or thrown',
+      threw === null && gradeCodes.length === 18 && gradeCodes.every((c) => c === 'grade'), threw ?? JSON.stringify(gradeCodes));
+    check('F01 profile F6: blank (absent, null, empty), integers 1-7 and the strings "1"-"7" are accepted',
+      [undefined, null, '', 1, 7, '1', '7'].every((grade) => norm([{ course: 'physics', level: 'HL', grade }]).ok)
+        && norm([{ course: 'physics', level: 'HL', grade: '7' }]).entries[0].grade === 7 && norm([{ course: 'physics', level: 'HL', grade: null }]).entries[0].grade === null);
+    let rowThrew = null, rowCodes = [];
+    try {
+      rowCodes = [null, 'physics', ['physics', 'HL'], 5, { course: 5, level: 'HL' }, { course: 'physics', level: ['HL'] }, { course: throwing, level: 'HL' }].map((row) => codes([row]));
+    } catch (err) { rowThrew = err.message; }
+    check('F01 profile F6: a row that is not a plain object, or with non-text course or level, is invalid without throwing',
+      rowThrew === null && rowCodes.every((c) => c === 'invalid'), rowThrew ?? JSON.stringify(rowCodes));
+    check('F01 profile F6: a grade-only row with an invalid grade is an error, not ignored', codes([{ grade: [5] }]) === 'grade' && codes([{ grade: 5 }]) === 'incomplete');
+    // F5 in the checker: routes for another qualification count neither way.
+    const forOther = { qualification: 'a-levels', label: { en: 'A levels' }, conditions: [], sources: ['s1'] };
+    const unknownIb = { qualification: 'ib-diploma', label: { en: 'IB' }, conditions: [{ text: { en: 'x' }, sources: ['s1'] }], sources: ['s1'] };
+    const mixed = R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], { clauses: [S(['physics'], ['SL'])], scope: forOther }]);
+    check('F01 checker F5: a route for another qualification is never met for an IB student, and the IB route alone decides',
+      status(mixed, [E('physics', 'SL')]) === STATUS.CONFLICT && evaluateSubjects(mixed, [E('physics', 'SL')]).routes[1].outcome === 'not-for-you'
+        && status(mixed, [E('physics', 'HL')]) === STATUS.MEETS);
+    const onlyOther = R(C, [{ clauses: [S(['physics'], ['HL'], null, { exL: ['SL'] })], scope: forOther }]);
+    check('F01 checker F5: with no possible IB route there is no verdict (never a vacuous conflict or meets)',
+      status(onlyOther, [E('physics', 'SL')]) === STATUS.NEEDS && status(onlyOther, [E('physics', 'HL')]) === STATUS.NEEDS);
+    const routeUnknown = R(C, [{ clauses: [S(['physics'], ['HL'])], scope: unknownIb }]);
+    check('F01 checker F5: an IB route whose applicability depends on an unknown fact is Needs checking, never Meets',
+      status(routeUnknown, [E('physics', 'HL')]) === STATUS.NEEDS && evaluateSubjects(routeUnknown, [E('physics', 'HL')]).next?.kind === 'scope');
+  }
+
+  {
+    // The maintenance guide's worked example is real syntax: the reader takes
+    // it, the site refuses it only for its SAMPLE signers and the shortened
+    // dependencies, and the checker gives the result the guide describes.
+    const guide = read('MAINTENANCE.md').split('### A worked example (invented, never to be added)\n')[1] ?? '';
+    const line = guide.split('```text\n')[1]?.split('\n```')[0] ?? '';
+    const parsed = readRuleRecords(`${RULE_COLUMNS.join(',')}\n${line}\n`);
+    const inspected = parsed.ok ? inspectRule(parsed.records[0], { raw, today }) : null;
+    const student = [{ course: 'maths-aa', level: 'SL', grade: 6 }, { course: 'physics', level: 'SL', grade: null }, { course: 'en-b', level: 'SL', grade: null }];
+    const result = inspected?.rule ? evaluateSubjects(inspected.rule, student) : null;
+    check('F01 MAINTENANCE.md: the worked example parses, is refused only as SAMPLE with shortened dependencies, and reads "needs checking" as described',
+      /This is a SAMPLE\./.test(guide) && parsed.ok && inspected.reasons.join() === 'sample,dependencies' && inspected.rule.routes.length === 2 && inspected.rule.general.length === 1
+        && result.status === STATUS.NEEDS && result.routes.map((r) => r.outcome).join() === 'open,open' && /needs checking/.test(guide),
+      JSON.stringify(inspected?.reasons));
+  }
+  check('F01 app.js starts the rule authority after the catalogue, with the loaded raw rows, and rechecks before printing',
+    /const \{ programmes, meta, translations, raw \} = await loadData\(\);/.test(appSrc) && /startSubjectAuthority\(\{ raw, onChange: redrawReviewed \}\);/.test(appSrc)
+      && appSrc.indexOf('startSubjectAuthority({ raw') > appSrc.indexOf('loaded = true;') && /addEventListener\('beforeprint', \(\) => \{\s*\/\/[^\n]*\n\s*recheckAuthority\(\);/.test(appSrc));
+}
+
+// BEGIN F01 Phase 2 checks
+section('F01 My subjects in My list: the private profile and its one IndexedDB record (E1–E5)');
+{
+  const msMod = await import('../js/my-subjects.js');
+  const { validRecord, newRevision, createProfileStore, DB_NAME, STORE, KEY, CHANNEL_TOKEN, CHANNEL_NAME } = msMod;
+  const UUID = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  const entry = (course, level, grade = null) => ({ course, level, grade });
+  const rec = (over = {}) => ({ version: 1, revision: UUID, entries: [entry('physics', 'HL', 6)], ...over });
+  {
+    const { courseLabel, clauseParts } = await import('../js/ib-subjects.js');
+    for (const [lang, names, expected] of [
+      ['en', ['Physics', 'Theatre', 'Design technology'], [
+        'If you take Physics, enter it in My subjects to check this route.',
+        'met; you entered Theatre HL',
+        'not decided: grade 5 or higher is needed and you have no predicted grade for Design technology',
+        'Physics HL, predicted grade 6', 'Waiver: SAMPLE', 'Exam: SAMPLE',
+      ]],
+      ['sk', ['Fyzika', 'Divadlo', 'Dizajn a technológie'], [
+        'Ak máš predmet Fyzika, zadaj ho do svojho zoznamu predmetov a over túto cestu.',
+        'splnené. V tvojom zozname: Divadlo HL',
+        'nerozhodnuté: treba známku aspoň 5, pri predmete Dizajn a technológie chýba predpokladaná známka',
+        'Fyzika HL, predpokladaná známka 6', 'Výnimka: SAMPLE', 'Skúška: SAMPLE',
+      ]],
+    ]) {
+      const actual = i18n.inLanguage(lang, () => {
+        const [physics, theatre, design] = ['physics', 'theatre', 'design-technology'].map(courseLabel);
+        const shorthand = (type) => clauseParts({ type, text: { en: 'SAMPLE', sk: 'SAMPLE' } }).map((part) => part.text).join('');
+        return [[physics, theatre, design], [
+          i18n.t('ms_n_add', { course: physics }),
+          i18n.t('ms_r_met', { entry: `${theatre} HL` }),
+          i18n.t('ms_r_grade_missing', { course: design, min: 5 }),
+          i18n.t('ms_entry_pred', { entry: `${physics} HL`, grade: 6 }),
+          shorthand('waiver'), shorthand('exam'),
+        ]];
+      });
+      equal(`F01 ${lang}: course labels, conditional entry, explicit prediction, waiver and exam assemble without inflecting labels`, actual, [names, expected]);
+    }
+  }
+  check('F01 store: a full v1 record is accepted and copied',
+    JSON.stringify(validRecord(rec())) === JSON.stringify({ revision: UUID, entries: [entry('physics', 'HL', 6)] }));
+  const rejected = [
+    ['an extra field', { ...rec(), note: 'x' }], ['version 2', rec({ version: 2 })], ['a counter revision', rec({ revision: 'r1' })],
+    ['entries as text', rec({ entries: 'bad' })], ['no entries', rec({ entries: [] })], ['seven entries', rec({ entries: ['en-a-lit', 'en-b', 'economics', 'biology', 'chemistry', 'physics', 'film'].map((c) => entry(c, 'SL')) })],
+    ['two maths', rec({ entries: [entry('maths-aa', 'HL'), entry('maths-ai', 'SL')] })], ['a text grade', rec({ entries: [entry('physics', 'HL', '6')] })],
+    ['an unknown course', rec({ entries: [entry('law', 'HL')] })], ['ab initio at HL', rec({ entries: [entry('fr-ab-initio', 'HL')] })],
+    ['an entry with an extra field', rec({ entries: [{ ...entry('physics', 'HL'), note: 1 }] })], ['undefined', undefined], ['null', null], ['an array', [rec()]],
+    ['{ corrupt: true }', { corrupt: true }],
+  ];
+  equal('F01 store: every malformed, old, future or partial record is invalid (never partly trusted)', rejected.filter(([, v]) => validRecord(v) !== null).map(([n]) => n), []);
+  check('F01 store E3: a revision is a fresh CSPRNG id (randomUUID, else getRandomValues), and with no random source there is no write',
+    newRevision({ randomUUID: () => UUID }) === UUID
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(newRevision({ getRandomValues: (a) => { a.fill(171); return a; } }))
+      && (() => { try { newRevision({}); return false; } catch { return true; } })());
+
+  // A small IndexedDB stand-in: one shared "browser" for several stores (tabs).
+  // Each transaction runs whole in one task, so two tabs' transactions
+  // serialise as in a real browser; a test can hold or block an open, abort
+  // the next put or delete, or remove the store.
+  const tick = () => new Promise((r) => setImmediate(r));
+  function fakeBrowser() {
+    const dbs = new Map();
+    const b = { dbs, opens: 0, puts: 0, deletes: 0, hold: false, blocked: false, abortPut: false, abortDelete: false, failRequest: null, held: [], posted: [], channels: new Set() };
+    const request = () => ({ onsuccess: null, onerror: null, onblocked: null, onupgradeneeded: null, result: undefined, transaction: null });
+    function connection(name) {
+      const db = dbs.get(name);
+      return {
+        objectStoreNames: { contains: (n) => db.stores.has(n) },
+        createObjectStore: (n) => { db.stores.set(n, new Map()); },
+        close() { this.closed = true; },
+        transaction(storeName, mode) {
+          if (!db.stores.has(storeName)) throw new Error('NotFoundError');
+          // The transaction sees the store as it is when it runs, not when it was asked for.
+          let work = null;
+          const queue = [];
+          let aborted = false;
+          const tx = { oncomplete: null, onabort: null, onerror: null, error: null, abort() { if (aborted) throw new Error('InvalidStateError'); aborted = true; tx.error = { name: 'AbortError' }; } };
+          const req = (kind, fn) => {
+            let result;
+            const r = { onsuccess: null, error: null, get result() {
+              if (this.error) throw new Error('InvalidStateError');
+              return result;
+            } };
+            queue.push(() => {
+              if (b.failRequest === kind) {
+                b.failRequest = null;
+                r.error = { name: 'ConstraintError' };
+                let cancelled = false;
+                tx.onerror?.({ target: r, preventDefault() { cancelled = true; } });
+                if (!cancelled && !aborted) tx.abort();
+              } else { result = fn(); r.onsuccess?.(); }
+            });
+            return r;
+          };
+          const store = {
+            name: storeName,
+            getKey: (k) => req('getKey', () => (work.has(k) ? k : undefined)),
+            get: (k) => req('get', () => work.get(k)),
+            put: (v, k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.puts++; const r = req('put', () => { work.set(k, structuredClone(v)); return k; }); if (b.abortPut) { b.abortPut = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+            delete: (k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.deletes++; const r = req('delete', () => { work.delete(k); }); if (b.abortDelete) { b.abortDelete = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+          };
+          tx.objectStore = () => store;
+          setImmediate(() => {
+            work = new Map(db.stores.get(storeName));
+            while (queue.length && !aborted) queue.shift()();
+            if (!aborted) db.stores.set(storeName, work);
+            setImmediate(() => {
+              try { aborted ? tx.onabort?.() : tx.oncomplete?.(); } catch { b.callbackThrew = true; }
+            });
+          });
+          return tx;
+        },
+      };
+    }
+    function deliver(r, name, version) {
+      if (!dbs.has(name)) {
+        dbs.set(name, { version, stores: new Map() });
+        let abortedUpgrade = false;
+        r.transaction = { abort() { abortedUpgrade = true; } };
+        r.result = connection(name);
+        r.onupgradeneeded?.({ oldVersion: 0 });
+        if (abortedUpgrade) { dbs.delete(name); r.onerror?.({ preventDefault() {} }); return; }
+      } else if (dbs.get(name).version > version) { r.onerror?.({ preventDefault() {} }); return; }
+      r.result = connection(name);
+      r.onsuccess?.();
+    }
+    b.idb = {
+      open(name, version) {
+        b.opens++;
+        const r = request();
+        const go = () => deliver(r, name, version);
+        if (b.blocked) { b.blocked = false; setImmediate(() => r.onblocked?.()); b.held.push(go); }
+        else if (b.hold) { b.hold = false; b.held.push(go); }
+        else setImmediate(go);
+        return r;
+      },
+    };
+    b.release = () => { for (const go of b.held.splice(0)) go(); };
+    b.Channel = class { constructor(n) { this.name = n; b.channels.add(this); } postMessage(m) { b.posted.push(m); for (const c of b.channels) if (c !== this && c.name === this.name) setImmediate(() => c.onmessage?.({ data: m })); } close() { b.channels.delete(this); } };
+    b.record = () => dbs.get(DB_NAME)?.stores.get(STORE)?.get(KEY);
+    return b;
+  }
+  // A store (one tab) on that browser, with timers the test drives.
+  function tab(b) {
+    const timers = new Map(); let id = 0;
+    const store = createProfileStore({ idb: () => b.idb, Channel: () => b.Channel, target: null, timeoutMs: 1000,
+      timers: { set: (fn) => { timers.set(++id, fn); return id; }, clear: (i) => timers.delete(i) } });
+    store.fireTimers = () => { for (const [i, fn] of [...timers]) { timers.delete(i); fn(); } };
+    return store;
+  }
+  const settle = async (...stores) => { for (let i = 0; i < 12; i++) await tick(); await Promise.all(stores.map((s) => s.idle())); for (let i = 0; i < 6; i++) await tick(); };
+  const P = [entry('physics', 'HL', 6)];
+  const C = [entry('chemistry', 'HL', 7)];
+
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const prior = b.record();
+    b.failRequest = 'put';
+    const failed = await t.save(t.openDraft(), C, true);
+    check('F01 F1: an async put request error keeps the prior record and the new page-only entries', failed.result === 'write-failed'
+      && t.snapshot().writeFailed && t.snapshot().active.entries[0].course === 'chemistry' && b.record() === prior);
+    b.failRequest = 'delete';
+    check('F01 F1: an async delete request error leaves the record and reports failure', (await t.forget()).result === 'delete-failed' && b.record() === prior);
+    check('F01 F1: a subsequent operation runs after the errors', (await t.retryDelete()).result === 'forgotten' && !b.record());
+    b.failRequest = 'delete';
+    check('F01 F1: key absence alone cannot turn a failed delete request into success', (await t.forget()).result === 'delete-failed');
+    for (const kind of ['getKey', 'get']) {
+      const readBrowser = fakeBrowser(); const reader = tab(readBrowser);
+      readBrowser.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, rec()]])]]) });
+      readBrowser.failRequest = kind;
+      reader.activate();
+      await settle();
+      check(`F01 F1: an async ${kind} request error settles the read as unavailable`, reader.snapshot().observed === 'error' && !readBrowser.callbackThrew);
+      if (reader.snapshot().observed === 'error') {
+        await reader.reread();
+        check(`F01 F1: reread progresses after a ${kind} request error`, reader.snapshot().active?.mode === 'remembered');
+      }
+    }
+  }
+  {
+    for (const remember of [false, true]) for (const beforeRead of [false, true]) {
+      const b = fakeBrowser(); const t = tab(b);
+      const prior = rec();
+      b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, prior]])]]) });
+      b.hold = true;
+      t.activate(); await tick();
+      const d = t.openDraft();
+      const early = beforeRead ? await t.save(d, C, remember) : null;
+      b.release(); await settle(t);
+      const result = early?.result === 'page' ? early : await t.save(d, C, remember);
+      check(`F01 F2: pending blank draft keeps the unseen record (Remember ${remember}, early Save ${beforeRead})`,
+        d.entries.length === 0 && result.result === (remember ? 'stale' : 'page')
+        && (!beforeRead || !remember || (early?.result === 'refused' && early.base === 'pending'))
+        && b.record() === prior && b.puts === 0 && b.deletes === 0);
+    }
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), C, false);
+    const d = t.openDraft();
+    const prior = rec();
+    b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, prior]])]]) });
+    await t.reread();
+    const fresh = t.openDraft();
+    check('F01 F2: an independent page draft cannot replace a record observed in a reread, before or after opening',
+      (await t.save(d, C, true)).result === 'stale' && (await t.save(fresh, C, true)).result === 'stale' && b.record() === prior);
+    const writer = tab(b); writer.activate(); await settle(writer);
+    b.abortPut = true;
+    await writer.save(writer.openDraft(), C, true);
+    const replacement = rec({ revision: newRevision() });
+    b.dbs.get(DB_NAME).stores.get(STORE).set(KEY, replacement);
+    await writer.reread();
+    const stale = await writer.save(writer.openDraft(), C, true);
+    const preserved = b.record() === replacement;
+    b.dbs.get(DB_NAME).stores.get(STORE).delete(KEY);
+    await writer.reread();
+    check('F01 F2: a fresh fallback edit refuses an unseen replacement but can opt in after confirmed absence',
+      stale.result === 'stale' && preserved && (await writer.save(writer.openDraft(), C, true)).result === 'remembered');
+    const unavailable = createProfileStore({ idb: () => null, Channel: () => null });
+    unavailable.activate();
+    await settle(unavailable);
+    check('F01 F2: page-only Save is available after the initial read fails', (await unavailable.save(unavailable.openDraft(), C, false)).result === 'page'
+      && unavailable.snapshot().active?.mode === 'page' && unavailable.snapshot().warning === 'read-failed');
+  }
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const d = t.openDraft(), opens = b.opens, prior = b.record();
+    b.hold = true;
+    const pending = t.forget();
+    await tick();
+    const inFlight = t.snapshot().busy && t.snapshot().active?.mode === 'remembered' && b.record() === prior;
+    const blocked = await t.save(d, C, false);
+    b.release();
+    const gone = await pending;
+    t.closeDraft(d);
+    await settle(t);
+    check('F01 F3: pending Forget keeps the visible profile, blocks Save and settles with one storage open',
+      inFlight && blocked.result === 'busy' && gone.result === 'forgotten' && !t.snapshot().active && b.opens === opens + 1);
+  }
+
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    check('F01 store: reading in My list finds nothing and creates no database', b.dbs.size === 0 && t.snapshot().observed === 'absent' && t.snapshot().active === null);
+    const opens = b.opens;
+    const d = t.openDraft();
+    const page = await t.save(d, P, false);
+    check('F01 store E4: a page-only Save stays in memory: no open, write or delete', page.result === 'page' && b.opens === opens && b.dbs.size === 0 && t.snapshot().active.mode === 'page');
+    const d2 = t.openDraft();
+    check('F01 store: a page-only profile drafts with Remember unticked', d2.remember === false);
+    const r = await t.save(d2, P, true);
+    const stored = b.record();
+    check('F01 store E1/E3: Remember from "absent" writes one valid v1 record with a random revision and posts only the fixed word',
+      r.result === 'remembered' && validRecord(stored) !== null && stored.revision !== UUID && JSON.stringify(b.posted) === JSON.stringify([CHANNEL_TOKEN])
+        && CHANNEL_NAME === DB_NAME && Object.keys(stored).sort().join() === 'entries,revision,version');
+  }
+  {
+    // Immediate stale Save after another tab's Forget, page-only switch, a
+    // new revision (ABA) and a site-data clear: no notification needed.
+    for (const how of ['forget', 'page-only', 'aba', 'clear']) {
+      const b = fakeBrowser(); const a = tab(b); const bb = tab(b);
+      a.activate(); await settle(a);
+      await a.save(a.openDraft(), P, true);
+      bb.activate(); await settle(bb);
+      const adopted = bb.snapshot().active?.mode === 'remembered';
+      // B stops hearing anything: every channel is gone.
+      b.channels.clear();
+      const draft = bb.openDraft();
+      if (how === 'forget') await a.forget();
+      if (how === 'page-only') await a.save(a.openDraft(), P, false);
+      if (how === 'aba') { await a.forget(); await a.save(a.openDraft(), C, true); }
+      if (how === 'clear') b.dbs.clear();
+      const before = JSON.stringify(b.record());
+      const result = await bb.save(draft, C, true);
+      check(`F01 store E1: tab B's Save on an old revision is refused after ${how} in tab A, and nothing is written`,
+        adopted && result.result === 'stale' && JSON.stringify(b.record()) === before && bb.snapshot().active?.mode === 'remembered');
+    }
+  }
+  {
+    const b = fakeBrowser(); const a = tab(b); const c = tab(b);
+    a.activate(); c.activate(); await settle(a, c);
+    const [x, y] = await Promise.all([a.save(a.openDraft(), P, true), c.save(c.openDraft(), C, true)]);
+    check('F01 store E1: two tabs creating from nothing at once: exactly one commits, the other is stale',
+      [x.result, y.result].sort().join() === 'remembered,stale' && validRecord(b.record()) !== null, JSON.stringify([x, y]));
+  }
+  {
+    for (const [name, value] of [['corrupt', { corrupt: true }], ['undefined', undefined], ['future', rec({ version: 2 })]]) {
+      const b = fakeBrowser();
+      b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, value]])]]) });
+      const t = tab(b); t.activate(); await settle(t);
+      const refused = await t.save(t.openDraft(), P, true);
+      const puts = b.puts;
+      const gone = await t.forget();
+      check(`F01 store E1/E3: a ${name} record reads as invalid, a remembered Save refuses to overwrite it, and Forget removes it`,
+        t.snapshot().observed === 'absent' && refused.result === 'refused' && refused.base === 'invalid' && puts === 0 && gone.result === 'forgotten' && !b.dbs.get(DB_NAME).stores.get(STORE).has(KEY));
+    }
+    const b = fakeBrowser();
+    b.dbs.set(DB_NAME, { version: 1, stores: new Map([['other', new Map()]]) });
+    const t = tab(b); t.activate(); await settle(t);
+    const snap = t.snapshot();
+    const gone = await t.forget();
+    check('F01 store E3: a version-1 database without the profile store is a read error, and Forget reports that erasure could not be confirmed',
+      snap.observed === 'error' && snap.warning === 'read-failed' && gone.result === 'delete-failed' && t.snapshot().warning === 'delete-failed');
+    const v = fakeBrowser();
+    v.dbs.set(DB_NAME, { version: 2, stores: new Map([[STORE, new Map([[KEY, rec()]])]]) });
+    const tv = tab(v); tv.activate(); await settle(tv);
+    check('F01 store E3: a newer database version is an error, never read as a profile', tv.snapshot().observed === 'error' && tv.snapshot().active === null);
+  }
+  {
+    // E2: a blocked open and a slow open, for Remember and for Forget.
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const rev1 = JSON.stringify(b.record());
+    b.blocked = true;
+    const blocked = await t.save(t.openDraft(), C, true);
+    b.release(); await settle(t);
+    check('F01 store E2: a blocked open fails the remembered Save at once; the entries stay on the page with the older-copy warning; the late open writes nothing',
+      blocked.result === 'write-failed' && t.snapshot().warning === 'write-failed' && JSON.stringify(t.snapshot().active.entries) === JSON.stringify(C)
+        && JSON.stringify(b.record()) === rev1 && b.puts === 1);
+    b.hold = true;
+    const pending = t.forget();
+    await settle(); t.fireTimers();
+    const slow = await pending;
+    const deletes = b.deletes;
+    const later = await t.retryDelete();
+    b.release(); await settle(t);
+    check('F01 store E2: a slow open fails Forget after the timeout; Retry deletes; the late open from the timed-out Forget deletes nothing more',
+      slow.result === 'delete-failed' && later.result === 'forgotten' && b.deletes === deletes + 1 && t.snapshot().warning === null && b.record() === undefined);
+    await t.save(t.openDraft(), P, true);
+    const kept = JSON.stringify(b.record());
+    b.abortPut = true;
+    const aborted = await t.save(t.openDraft(), C, true);
+    check('F01 store E2: an aborted put is reported only after the abort, keeps the entries on the page, and leaves the older copy',
+      aborted.result === 'write-failed' && JSON.stringify(b.record()) === kept && JSON.stringify(t.snapshot().active.entries) === JSON.stringify(C));
+    b.abortDelete = true;
+    const failedForget = await t.forget();
+    await t.reread(); await settle(t);
+    check('F01 store E4: after a failed delete a reread neither re-adopts the record nor clears the warning while it is still there',
+      failedForget.result === 'delete-failed' && t.snapshot().active === null && t.snapshot().warning === 'delete-failed');
+    b.dbs.clear();
+    await t.reread(); await settle(t);
+    check('F01 store E4: the delete-failure warning clears once a reread finds nothing stored', t.snapshot().warning === null && t.snapshot().deleteFailed === false);
+  }
+  {
+    const b = fakeBrowser(); const a = tab(b); const p = tab(b);
+    p.activate(); await settle(p);
+    await p.save(p.openDraft(), C, false);
+    a.activate(); await settle(a);
+    await a.save(a.openDraft(), P, true);
+    const record = JSON.stringify(b.record());
+    const opens = b.opens - 0;
+    await p.save(p.openDraft(), [entry('film', 'SL')], false);
+    await p.reread(); await settle(p, a);
+    check('F01 store E4: an independent page-only profile is never replaced by another tab\'s remembered copy, and its Saves never touch storage',
+      p.snapshot().active.mode === 'page' && JSON.stringify(p.snapshot().active.entries) === JSON.stringify([entry('film', 'SL')]) && JSON.stringify(b.record()) === record);
+    const q = tab(b); q.activate(); await settle(q, a);
+    await a.forget(); await settle(a, q);
+    check('F01 store: a tab showing the remembered copy hears another tab\'s Forget (fixed word only) and empties with a notice',
+      q.snapshot().active === null && q.snapshot().warning === 'removed-elsewhere' && b.posted.every((m) => m === CHANNEL_TOKEN) && opens > 0);
+  }
+  {
+    // A switch from remembered to page-only deletes unconditionally.
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const r = await t.save(t.openDraft(), C, false);
+    check('F01 store E4: switching to page-only keeps the entries in memory and deletes the remembered copy',
+      r.result === 'page-removed' && b.record() === undefined && t.snapshot().active.mode === 'page');
+  }
+  {
+    const { createSubjectsUI } = await import('../js/my-subjects-ui.js');
+    withStubDocument(() => {
+      const oldWindow = globalThis.window, oldLanguage = i18n.getLanguage(), oldFocus = stubDocument.activeElement;
+      const setLang = (lang) => i18n.setLanguage(lang, { setItem() {} });
+      let keydown, busy = false, dialog = null;
+      globalThis.document = Object.assign(Object.create(stubDocument), {
+        querySelector: () => dialog,
+        querySelectorAll: () => [],
+        addEventListener: (type, fn) => { if (type === 'keydown') keydown = fn; },
+        documentElement: { clientHeight: 800 },
+        elementFromPoint: () => null,
+      });
+      globalThis.window = { scrollX: 0, scrollY: 0, scrollTo() {} };
+      try {
+        setLang('en');
+        const strip = new ChromeNode('div'), notices = new ChromeNode('div');
+        const ui = createSubjectsUI({ strip, notices,
+          store: {
+            snapshot: () => ({ busy, active: null, observed: 'absent' }),
+            openDraft: () => ({ entries: [], remember: false }), closeDraft() {},
+          },
+          hooks: { view: () => ({ mode: 'mine', listIds: [] }), snapshot: () => ({}), restore() {}, focusProgramme: () => false, layoutChanged() {} },
+        });
+        const node = (selector) => strip.querySelector(selector);
+        const click = (selector) => node(selector).listeners.click[0]();
+        const escape = () => {
+          let consumed = false;
+          keydown({ key: 'Escape', preventDefault() { consumed = true; }, stopImmediatePropagation() {} });
+          return consumed;
+        };
+        click('.ms-edit');
+        click('.ms-add-row');
+        Object.assign(node('#ms-c-1'), { value: 'maths-aa' });
+        Object.assign(node('#ms-l-1'), { value: 'HL' });
+        Object.assign(node('#ms-c-2'), { value: 'maths-ai' });
+        Object.assign(node('#ms-l-2'), { value: 'SL' });
+        click('.ms-save');
+        const validError = (lang) => node('#ms-e-2').textContent === UI[lang].ms_e_duplicate_maths
+          && node('#ms-c-1').value === 'maths-aa' && node('#ms-c-2').value === 'maths-ai' && stubDocument.activeElement === node('#ms-c-2');
+        const first = validError('en');
+        setLang('sk'); ui.refresh();
+        const second = validError('sk');
+        setLang('en'); ui.refresh();
+        check('F01 F4: duplicate maths stays specific with values and focus through EN, SK and EN', first && second && validError('en'));
+        node('.ms-edit').focus();
+        dialog = new ChromeNode('dialog');
+        const modalFirst = !escape() && ui.isEditing();
+        dialog = null;
+        busy = true; ui.refresh();
+        const blocked = node('.ms-edit').disabled && node('.ms-save').disabled && node('.ms-cancel').disabled && node('.ms-add-row').disabled;
+        check('F01 F3: pending editor actions and Escape cannot close the draft', blocked && escape() && ui.isEditing());
+        busy = false; ui.refresh();
+        check('F01 F5: Escape from the strip trigger closes the editor after dialogs have priority', modalFirst && escape() && !ui.isEditing());
+      } finally {
+        setLang(oldLanguage);
+        stubDocument.activeElement = oldFocus;
+        if (oldWindow === undefined) delete globalThis.window; else globalThis.window = oldWindow;
+      }
+    });
+  }
+
+  const msSrc = read('js/my-subjects.js'), uiSrc = read('js/my-subjects-ui.js'), cfgSrc = read('js/config.js');
+  const appSrcRaw = read('js/app.js'), renderSrc = read('js/render.js'), smokeSrc = read('tools/smoke.mjs');
+  const code = (src) => src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  check('F01 config: SHOW_MY_SUBJECTS ships off, like the rankings switch', /export const SHOW_MY_SUBJECTS = false;/.test(cfgSrc));
+  check('F01 app.js: nothing private is built unless the switch is on; render.js draws nothing private until told',
+    /if \(SHOW_MY_SUBJECTS\) startMySubjects\(\);/.test(appSrcRaw) && (appSrcRaw.match(/setPrivateDecor\(/g) ?? []).length === 1
+      && /let privateDecor = null;/.test(renderSrc) && /privateDecor\?\.row\(body, row\)/.test(renderSrc) && /privateDecor\?\.detail\(/.test(renderSrc));
+  check('F01 privacy: the profile code never uses Web Storage, fetch, the console, the address or history',
+    [msSrc, uiSrc].every((s) => !/localStorage|sessionStorage|fetch\(|console\.|history\.|location\.|document\.cookie/.test(code(s))));
+  check('F01 privacy: CSV, share, Copy link and the address take no profile (toCsv, shareQuery and addressQuery unchanged; app.js never passes the store to them)',
+    /toCsv\(rows, \{ myLiving: state\.myLiving \}\)/.test(appSrcRaw) && !/subjectsUI[^\n]*(toCsv|shareQuery|addressQuery|stateToParams)/.test(appSrcRaw));
+  check('F01 storage: one fixed database, store and key, and only a fixed word on the channel', /export const DB_NAME = 'ib-university-finder:my-subjects:v1';/.test(msSrc)
+    && /export const STORE = 'profile';/.test(msSrc) && /export const KEY = 'current';/.test(msSrc) && /postMessage\(CHANNEL_TOKEN\)/.test(msSrc) && (msSrc.match(/postMessage\(/g) ?? []).length === 1);
+  check('F01 production modules never reference the SAMPLE test adapter', ![msSrc, uiSrc, appSrcRaw, renderSrc].some((s) => s.includes('sample-adapter')));
+  check('F01 smoke registers runMySubjects for --only and the full run', /runSubjectEvidence, runMySubjects \};/.test(smokeSrc) && /await runMySubjects\(base\);/.test(smokeSrc));
+  check('F01 print: every private node carries .ms-private, hidden on paper',
+    /@media print\{\.ms-private\{display:none !important\}\}/.test(read('css/styles.css')) && /'ms-row ms-private'/.test(uiSrc) && /'ms-detail ms-private'/.test(uiSrc)
+      && /'ms-strip ms-private'/.test(appSrcRaw) && /'ms-notices ms-private'/.test(appSrcRaw));
+}
+appCheck('F01 app harness: with the switch off, Browse, a detail and My list use none of the private parts', ({ run, context, click, ids }) => {
+  click(ids[0]); run('state.shortlistOnly = true; update();');
+  return context.privateUsed === undefined && !stubDocument.getElementById('ml-subjects')?.parent;
+});
+// END F01 Phase 2 checks
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

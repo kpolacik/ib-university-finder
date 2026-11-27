@@ -96,7 +96,7 @@ Only if it is not already on the `universities` tab.
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
 | `english_requirement` | Leave blank unless it differs from the university default |
 | `application_deadline` | `YYYY-MM-DD` |
-| `deadline_notes` | Anything that makes the date make sense |
+| `deadline_notes` | Anything that makes the date make sense. Spell out month names. Leave out source quotes, page names and retrieval dates; keep the exact sentences the site reads back (see below). |
 | `official_url` | Direct link to the admissions page. Must start with `https://` |
 | `last_verified`, `verified_by` | Today's date and your initials |
 
@@ -310,6 +310,42 @@ it is the CAO's "#" mark, and the site reads that exact tag to know a cutoff
 may include test marks, which decides the IB figure and the HL Maths bonus.
 The CAO refresh (`tools/update-cao-points.mjs`) writes it.
 
+**Rewording a note keeps every fact.** When someone tidies the wording of
+`deadline_notes`, `other_requirements` or `ib_subjects` in bulk (issue #17),
+it goes through `tools/reword-prose.mjs`. The script refuses new numbers,
+dates, times, amounts, links, course codes and test names. The reviewer must
+approve any token removed with redundant wording, such as a retrieval date.
+Keep the exact CAO text above, the ECB conversion clause and the UvA housing
+sentence. Preserve the displayed differences between same-name programmes.
+The script keeps `last_verified` and `verified_by` intact and writes only
+wording an independent reviewer approved verbatim. Record a changed fact as
+research, with its source.
+
+For admission, English requirements, IB recognition, application fee notes
+and the university's baseline requirement, use `--translated` with the same
+batch and review files. Include every place that uses a shared English
+lookup key. The script moves the existing Slovak entry to the new English
+key and keeps the Slovak text as written. It refuses a move that changes
+which Slovak text appears, and it leaves untranslated text untranslated.
+`application_system` is outside this mode. Before applying a batch, close
+anything that serves or writes the staging data.
+
+**If a translated write stops partway through:** the script replaces one
+file at a time and tries to restore the originals if a replacement fails,
+but an interruption or power loss can leave a mix of old and new files. If
+`data/.reword-pending` exists (or `.reword-pending` in your `--data` folder),
+both modes refuse to run. Do not build the snapshot, commit, or publish.
+
+1. Open the marker in a plain text editor. Each `target` is a CSV and each
+   `original` is the saved copy to restore. Compare them to see which files
+   changed. If the marker is unreadable, check the paths printed by the
+   script. If you cannot identify or read all saved copies, stop and get help.
+2. Copy each saved `original` over its recorded `target`, even if that
+   target looks unchanged. Keep the saved copies. Use `cmp` on each pair
+   (`cmp "target path" "original path"`); no output means they match.
+3. Once all targets match, remove the marker, then discard the staging
+   folders listed under `dir`. Run the same dry run and apply again.
+
 **The card says what kind of points figure it is.** You do not fill this in;
 the site works it out:
 
@@ -449,6 +485,197 @@ both settings; ranking source links remain.
 
 ---
 
+## Reviewed IB subject rules (`data/ib-subject-rules.csv`)
+
+The IB subjects row of every card shows `ib_subjects` exactly as recorded:
+the wording, "None required" for `none`, or "Not checked yet" for a blank
+cell or `?`. Compare shows the same words, plus "Other requirements" when a
+compared programme has any. None of that needs this file.
+
+This file is for something stronger: a **reviewed subject rule**, which a
+student may later check their own subjects against. Because a student may plan
+around it, a rule is shown only when every check passes, and **only while it
+is current**. A rule shows on the card and in Compare as "Subject requirement
+(reviewed)", under the recorded wording, never instead of it.
+
+**Today the file has a header and no rows, on purpose.** No rule is approved
+until a named maintainer writes it and a different, named reviewer checks it
+against the official page. Agents may prepare draft evidence elsewhere, never
+rows here and never initials. Do not add a row to "test" the site: tests use
+their own invented rules (`tools/subject-rule-fixtures.mjs`), which the site
+refuses.
+
+### What makes the site ignore a rule
+
+The site quietly shows only the recorded wording, with no reviewed line,
+when any of these is true. The browser decides this again every time.
+
+- The file is missing, empty, broken (a stray quote, anything between a
+  closing quote and the next comma, a row with the wrong number of cells, a
+  header cell that is not exactly as below) or slow (more than 3 seconds).
+  One broken row makes the **whole file** count for nothing.
+- The browser is offline, or 60 seconds have passed since the last good
+  answer from the file (changing the computer's clock does not bring it back). An open page asks again every 45 seconds while a rule is in
+  force. The saved copy (`fallback.json`) never approves a rule.
+- `status` is not `approved`, or the programme also has a `withdrawn` row, a
+  second approved row, or any row the site rejects.
+- `intake` is not `2027/28`. A rule for another year is never used.
+- `recheck_by` has passed. A rule counts through that day and stops at the next
+  midnight, even on a page left open.
+- `author` or `reviewer` is blank, not initials, `AI-DRAFT`, `SAMPLE`, or the
+  same person.
+- Any recorded catalogue value differs from what the page actually loaded
+  (see dependencies below), or the programme id is used twice.
+- Anything in the JSON cells is misspelt, missing a source, or uses a link
+  that is not a plain `http(s)` address.
+
+### The columns
+
+One row is one programme for one intake. Five cells hold JSON (text in curly
+or square brackets), because one rule can have several routes. In a CSV the
+whole JSON cell is wrapped in double quotes, and every `"` inside it is
+written twice (`""`). Edit it in a plain text editor, never Excel.
+
+| Column | What goes in it |
+|---|---|
+| `schema_version` | `1` |
+| `programme_id` | The programme's id from `programmes.csv` |
+| `intake` | `2027/28` |
+| `status` | `draft`, `approved` or `withdrawn` |
+| `scope` | Who the rule is for: `{"qualification":"ib-diploma","label":{"en":"…","sk":"…"},"sources":["s1"]}`. Add `"conditions":[{"en":"…","sk":"…","sources":["s1"]}]` when it depends on something the site cannot know about the student (where they took the diploma, for example). See "Qualifications" below |
+| `evidence_kind` | `complete-restrictions` (every subject rule and route was checked), `partial-restrictions` (only part was; explain in `partial_note`) or `explicit-no-restrictions` (the official page says, for everyone it applies to, that no IB subjects are required) |
+| `routes` | The routes, see below |
+| `sources` | `{"s1":{"url":"https://…","quote":"the exact short sentence from the page"}}`. Add `"lang":"sk"` (or another two-letter code) when the quote is not English |
+| `programme_dependencies`, `university_dependencies` | The catalogue cells you read while reviewing, copied exactly (below) |
+| `checked_on` | The day you read the official page |
+| `recheck_by` | The last day the rule may be shown without being read again |
+| `author`, `reviewer` | Two different people's initials, e.g. `JK` and `LS` |
+| `reviewed_on` | The day the reviewer checked it, on or after `checked_on`, not in the future |
+
+**Routes.** `{"routes":[…],"general":[…]}`. Each route is a list of
+clauses that must **all** be met; any **one** route is enough (for a
+`partial-restrictions` record the page only lists the routes recorded so far,
+never "any one is enough"). A route can have its own `"scope"`, written exactly
+like the `scope` column, when the page says that route is only for some
+applicants: `{"id":"b","clauses":[…],"scope":{…}}`. Without one, the route
+has the record's scope. `general` holds university-wide clauses that apply to
+every route (or only to the routes named in their own `"routes":["a"]`). A
+clause is one of:
+
+- `{"type":"subject","courses":["maths-aa","maths-ai"],"levels":["HL"],"min_grade":5,"sources":["s1"]}`:
+  one of these courses at one of these levels, with an optional minimum grade.
+  Course ids are listed in `IB_COURSES` in `js/ib-subjects.js`. Name both
+  maths courses only when the page accepts both.
+- Add `"exclude_levels":["SL"]` only when the page **says** SL is not
+  accepted, and `"exclude_courses":["maths-ai"]` only when it says AI is not.
+  A level the page does not mention stays unknown: "SL 5" says nothing about HL.
+- `{"type":"exam","en":"…","sk":"…","sources":["s1"]}` for an entrance exam
+  that can replace or complete a route; `"type":"waiver"` for a waiver;
+  `"type":"manual"` for a condition the site cannot check (a course it does not
+  list, for example). The site never knows the result of these, so a route
+  that needs one stays "needs checking". Being allowed to sit an exam is not
+  passing it.
+
+**Qualifications.** `qualification` is one of `ib-diploma`,
+`a-levels`, `european-baccalaureate` or `national-school-leaving` (a country's
+own school-leaving certificate). A cited scope naming one of the last three
+says the record or route is for someone else: it is shown for information, it
+never counts for or against an IB Diploma student, and such a record does not
+compete with the IB record for the same programme. Any other word, a typo, or
+a scope without a source makes the row invalid; it is never taken as proof
+that the row is for someone else. A record needs at least one route that could
+be an IB Diploma route. Conditions on an `ib-diploma` scope keep the result at
+"needs checking": the site cannot know them.
+
+For `explicit-no-restrictions`, `routes` is only
+`{"absence_sources":["s1"]}`, and the quote must say that no subjects are
+required, for everyone the rule covers. A cell saying `none`, a blank, `?`, or
+"all four maths courses" is not that proof.
+
+**Dependencies.** The rule is tied to the exact catalogue text you reviewed.
+`programme_dependencies` must list at least `programme_id`, `university_id`,
+`programme`, `official_url`, `ib_subjects`, `ib_maths`, `other_requirements`,
+`entrance_exam`, `admission` and `english_requirement`;
+`university_dependencies` at least `university_id`, `name`,
+`baseline_requirement`, `admission_default` and `english_requirement_default`.
+Copy each cell exactly as the CSV has it (blank is `""`; a column the file does
+not have at all is `null`). Add any other column the rule relies on. If anyone
+later edits one of those cells, even from `none` to all four maths courses,
+which the filters treat the same, the rule stops showing until it is reviewed
+again.
+
+### A worked example (invented, never to be added)
+
+> **This is a SAMPLE.** The programme, quote and address are made up, and the
+> `SAMPLE` in both signer cells makes the site refuse it. It must never be
+> copied into `data/ib-subject-rules.csv`.
+
+Say an official page read: "Maths AA HL 5 and Physics HL 5. Applicants with
+Maths AA SL 6 may sit our maths entrance exam instead. All applicants need
+English A or B." The catalogue row has `ib_maths` = `AA HL · AA SL`. The
+rule has two routes, plus English as a university-wide clause:
+
+- Route a: Maths AA at HL, grade 5, and Physics at HL, grade 5.
+- Route b: Maths AA at SL, grade 6, and the maths entrance exam.
+- Every route: English A (Literature, or Language and literature) or English B.
+
+As one CSV line (shortened dependencies; a real row lists all the required
+ones):
+
+```text
+1,example-programme,2027/28,approved,"{""qualification"":""ib-diploma"",""label"":{""en"":""Applicants with the IB Diploma"",""sk"":""Uchádzači s IB diplomom""},""sources"":[""s1""]}",complete-restrictions,"{""routes"":[{""id"":""a"",""clauses"":[{""type"":""subject"",""courses"":[""maths-aa""],""levels"":[""HL""],""min_grade"":5,""sources"":[""s1""]},{""type"":""subject"",""courses"":[""physics""],""levels"":[""HL""],""min_grade"":5,""sources"":[""s1""]}]},{""id"":""b"",""clauses"":[{""type"":""subject"",""courses"":[""maths-aa""],""levels"":[""SL""],""min_grade"":6,""sources"":[""s1""]},{""type"":""exam"",""en"":""Maths entrance exam"",""sk"":""Prijímacia skúška z matematiky"",""sources"":[""s1""]}]}],""general"":[{""type"":""subject"",""courses"":[""en-a-lit"",""en-a-lang-lit"",""en-b""],""levels"":[""HL"",""SL""],""sources"":[""s1""]}]}","{""s1"":{""url"":""https://example.org/admissions"",""quote"":""Maths AA HL 5 and Physics HL 5. Applicants with Maths AA SL 6 may sit our maths entrance exam instead.""}}","{""programme_id"":""example-programme"",""ib_maths"":""AA HL · AA SL"",…}","{""university_id"":""example-university"",…}",2026-11-20,2027-02-28,SAMPLE JK,SAMPLE LS,2026-11-22
+```
+
+A student with Maths AA SL predicted 6, Physics SL and English B would get
+"needs checking" on this rule: route a does not mention SL (so it is not ruled
+out) and route b needs an exam result nobody knows yet.
+
+### Approving, rechecking and withdrawing
+
+1. **Write it.** The maintainer reads the official page for the right intake,
+   writes the row with `status` `draft`, and their own initials as `author`.
+2. **Review it.** A different person opens every source, checks each quote
+   word for word, every route, the scope, the intake and every dependency
+   against the current CSVs, then puts their initials in `reviewer`, today's
+   date in `reviewed_on`, and sets `status` to `approved`. A reviewer's
+   initials vouch for this one rule only.
+3. **Commit** with `node tools/check.mjs` passing, then `node tools/make-snapshot.mjs`
+   (the saved copy keeps a record of the rules but never approves one).
+4. **Recheck by `recheck_by`.** Read all the routes again. If nothing changed,
+   update `checked_on`, `reviewed_on`, `recheck_by` (and a fresh review).
+5. **When something is wrong, withdraw first, then correct.** Change `status` to
+   `withdrawn` straight away and commit: the rule disappears from every open
+   page within a minute. Only then write the corrected rule, as a new review.
+   Deleting the row also removes the rule.
+
+Track A (now) ships with zero rows: `tools/check.mjs` fails if the shipped file
+has any. Allowing real rows is Leon's decision, together with naming the
+maintainer and reviewer.
+
+### My subjects in My list (switched off as shipped)
+
+Students can add their own IB subjects in My list and see, beside each saved
+programme that has a current reviewed rule above, whether their subjects meet
+it. Nothing about it needs maintaining in the data: it reads only the rules
+file above, and with zero rows every student sees "No reviewed subject checks
+for these programmes yet".
+
+- **On or off:** `SHOW_MY_SUBJECTS` in `js/config.js`. Leave it `false` until
+  Leon decides to release it. Off draws nothing private and never opens the
+  browser's storage; the public subject wording shows either way.
+- **Where a student's subjects are kept:** on the page only, unless they tick
+  "Remember in this browser"; then in this browser's site data (IndexedDB),
+  never on any server. Nobody else, including the maintainers, can see them.
+  A student who wants them gone uses Forget subjects, or clears this site's
+  data in their browser settings.
+- **Changing the subject list** (`IB_COURSES` in `js/ib-subjects.js`): add a
+  new id with its English and Slovak names in `js/i18n.js`; never rename or
+  reuse an id, because remembered profiles and rules store ids.
+- **Checks:** `node tools/check.mjs`, then
+  `node tools/smoke.mjs --only=runMySubjects` (real Chrome, about a minute).
+
+---
+
 ## The autumn job, every year
 
 Do this in **September or early October**, before applications open. It is the
@@ -561,6 +788,58 @@ translation; `ORPHAN` means a translation whose English is no longer in use.
 It does not change any files. After updating translations, rebuild the offline
 copy with `node tools/make-snapshot.mjs`, then run `node tools/check.mjs`.
 Translations gathered by AI keep `AI-DRAFT`; never sign for another person.
+
+To add reviewed Slovak rows for `ib_subjects`, `other_requirements` or
+`deadline_notes` in bulk, preview a `field,en,sk` batch with
+`node tools/apply-sk-translations.mjs batch.csv` and write it with
+`--apply --review review.csv`. The script only appends `AI-DRAFT` rows for live
+wording that is not held for source review, checks that numbers, test names and
+separators stay unchanged, skips exact rows already in `data/i18n/sk.csv`, and
+writes nothing if any line is refused.
+
+The same script also takes `living_cost_source` and `baseline_requirement`,
+but only as **whole cells**: the English must be a university's entire value,
+never one part between `;` or ` · `. It refuses a whole value that also
+appears as a part of another university's cell, because the page would then
+translate that part too. Four baselines that refer to internal evidence
+(STU, JČU, TUL and Avans) stay on hold until their English wording is repaired.
+
+Search for these two fields (Leon, 2026-11-27): a newly reviewed Slovak
+translation is searched in Slovak **and** in its English, so a student who
+types "diploma" still finds the programme. Older translations, other fields
+and untranslated text keep the old search. The page knows which cells get this
+from the list `SEARCH_ENGLISH_KEYS` in `js/i18n.js`, which only a script
+writes. After the `--apply` above, run
+`node tools/sk-search-english.mjs --review review.csv` (preview), then the same
+with `--apply`, then `node tools/check.mjs`. It adds only rows the review marked
+`keep` that are now in new `AI-DRAFT` rows in `data/i18n/sk.csv` with exactly
+that Slovak. It checks that all 1,082 original rows are still intact, in order
+and with their original signatures. Fix conflicting reviews before trying again.
+
+The script also takes `english_requirement` and `english_requirement_default`,
+but only for a programme that shows **one** requirement (no ` · `), and only
+the whole shown text. Use `english_requirement` when the programme has its own
+wording in `programmes.csv`, and `english_requirement_default` when the text is
+the university's default the programme inherits; the script refuses the other
+one. It also refuses:
+
+- multi-bullet requirements, and a university default no programme shows;
+- a text that is also a part or a bullet of another requirement, because the
+  page would then translate that part too;
+- a text containing wording a held cell reads (such as TUL's "English B2");
+- the same English under both columns;
+- a dropped or changed test name (PTE, Duolingo, Cambridge, iBT, EF SET, ÚJOP
+  and others) or a dropped `≥` or `+`;
+- a change to Slovak that a part of the text already has. VŠE's "No Czech
+  certificate required" must stay "Certifikát z češtiny sa nevyžaduje"; a
+  different word there needs Leon's decision first.
+
+Search for English requirements (Leon, 2026-11-27, Option 2) works the same
+way as above: `node tools/sk-search-english.mjs` lists the new rows under the
+same column they have in `data/i18n/sk.csv`, and the page searches an
+`english_requirement_default` entry as `english_requirement`. Older
+translations and other fields keep the old search. For these two columns it
+also checks that all 1,198 rows from before Layer 2B-1 are still intact.
 
 CSV exports use headings in the selected language and keep **all data cells
 in English**, including requirement wording. Numbers inside data text keep

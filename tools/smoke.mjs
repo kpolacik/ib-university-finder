@@ -16,6 +16,7 @@
 //   node tools/smoke.mjs --only=runSelectedFirst # ticked pick-list options first on the next open
 //   node tools/smoke.mjs --only=runBestMatchDesktop # desktop Sort strip: Best match reachable (SMOKE_SHOTS=<dir> saves screenshots)
 //   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
+//   node tools/smoke.mjs --only=runSubjectEvidence # F01 public subject wording, reviewed-rule pipeline (fixtures)
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
@@ -293,9 +294,11 @@ function connect(url) {
 
 // A fresh tab per scenario, so nothing (the address bar's filters, an open
 // sheet) leaks from one width to the next.
-async function openPage(base, width, height, { block = [], beforeNavigate, paused } = {}) {
+async function openPage(base, width, height, { block = [], beforeNavigate, paused, context = null } = {}) {
   // Each scenario gets its own storage; ordinary tabs share saved filters.
-  const { browserContextId } = await cdp.send('Target.createBrowserContext');
+  // `context` puts this tab in an existing browser context (two tabs of one
+  // browser share storage); that context is then the caller's to dispose.
+  const { browserContextId } = context ? { browserContextId: context } : await cdp.send('Target.createBrowserContext');
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
   let scheme = 'light';
@@ -344,7 +347,7 @@ async function openPage(base, width, height, { block = [], beforeNavigate, pause
     await send('Page.navigate', { url: base });
   } catch (error) {
     off();
-    await cdp.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
+    if (!context) await cdp.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
     throw error;
   }
 
@@ -415,7 +418,7 @@ async function openPage(base, width, height, { block = [], beforeNavigate, pause
   const close = async () => {
     off();
     await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
-    await cdp.send('Target.disposeBrowserContext', { browserContextId }, undefined, 5000).catch(() => {});
+    if (!context) await cdp.send('Target.disposeBrowserContext', { browserContextId }, undefined, 5000).catch(() => {});
   };
   const screenshot = async (path, { viewportOnly = false } = {}) => {
     const { cssContentSize } = await send('Page.getLayoutMetrics');
@@ -423,7 +426,7 @@ async function openPage(base, width, height, { block = [], beforeNavigate, pause
       clip: { x: 0, y: 0, width, height: viewportOnly ? height : Math.min(6000, cssContentSize.height), scale: 1 } });
     await writeFile(path, Buffer.from(data, 'base64'));
   };
-  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send };
+  return { ev, waitFor, click, key, type, clearField, errors, exceptions, close, screenshot, send, browserContextId };
 }
 
 // Theme tests own their emulated scheme. Legacy scenarios always start in Light.
@@ -2205,6 +2208,26 @@ async function runBatch2C(base) {
       } finally { await page.close(); }
     }
   }
+  const irish = data.find((row) => row.country === 'Ireland' && row.tuitionEu > 0);
+  for (const ui of ['en', 'sk']) {
+    const page = await open('?ui=' + ui + '&q=' + encodeURIComponent(irish.programme), 1280);
+    try {
+      await check(1280, 'D16', 'Irish tuition opens its Free Fees eligibility note (' + ui + ')', async () => {
+        await mountProgramme(page, irish.id);
+        await page.click(`document.querySelector('li[data-id="${irish.id}"] button.open')`, 'Irish programme');
+        const costs = '#pane .d-fold:has(> .kv-costs)';
+        const note = costs + ' .kv-costs dd:first-of-type .d-note-more';
+        await page.click(`document.querySelector('${costs} > summary')`, 'Costs');
+        await page.click(`document.querySelector('${note} > summary')`, 'tuition fee details');
+        const wording = ui === 'sk' ? 'tri z piatich' : 'three of the five';
+        assert(await page.ev(`(()=>{
+          const body=document.querySelector('${note}[open] .d-note-body');
+          return !!body?.checkVisibility() && body.textContent.includes('Free Fees Initiative')
+            && body.textContent.includes(${JSON.stringify(wording)});
+        })()`), 'Free Fees condition did not open under the tuition amount');
+      });
+    } finally { await page.close(); }
+  }
 }
 
 // --- Batch 2 follow-up ----------------------------------------------------------
@@ -3968,18 +3991,23 @@ async function runSetupCompareReview(base) {
     finally { await page.close(); }
   };
 
-  await run('1440/en', 'PR1 setup list', 'setup with "Show all saves" on filters My list again: the done screen and the list leave out a save above the points', await open(1440, 900, { saves: [high.id, low.id] }), async (page) => {
+  await run('1440/en', 'PR1 setup list', 'My list opens with both saves and applies Browse filters only on request', await open(1440, 900, { saves: [high.id, low.id] }), async (page) => {
     assert(high && low, 'no 40+ and 24-point rows in the data');
     await page.click(`document.querySelector('#header-list')`, 'My list');
     await page.click(`document.querySelector('#f-points')`, 'My IB points'); await page.type('24');
-    await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden,why:'Show all saves not offered'})`, 5000, 'Show all saves');
-    await page.click(`document.querySelector('#ml-show-all')`, 'Show all saves');
+    await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden&&document.querySelector('#ml-show-all').textContent==='Apply my filters',why:'Apply my filters not offered'})`, 5000, 'Apply my filters');
     await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length===2,why:'rows '+document.querySelectorAll('#results>li.item').length})`, 5000, 'both saves shown');
     await toDone(page);
     const count = await page.ev(`document.querySelector('.ob-count').textContent`);
-    assert(count === '1 programme shown · 1 within your IB points', `done screen count "${count}"`);
+    assert(count.startsWith('2 programmes shown · 1 within your IB points'), `done screen count "${count}"`);
     await page.click(`document.querySelector('.ob-foot>.btn-p')`, 'Show my programmes');
+    await page.click(`document.querySelector('#ml-show-all')`, 'Apply my filters');
     await page.waitFor(`({ok:[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()===${JSON.stringify(low.id)},why:'rows '+[...document.querySelectorAll('#results>li.item')].map(x=>x.dataset.id).join()})`, 5000, 'only the save within the points');
+    await page.click(`document.querySelector('#f-search')`, 'Search');
+    await page.type('zzzzz-no-match');
+    await page.waitFor(`({ok:!document.querySelector('#empty-state').hidden&&document.querySelector('#empty-title').textContent==='Your filters hide all saved programmes.',why:'filtered My list empty message'})`, 5000, 'all saves hidden');
+    await page.click(`document.querySelector('#empty-clear')`, 'Show all saves');
+    await page.waitFor(`({ok:document.querySelectorAll('#results>li.item').length===2&&document.querySelector('#f-points').value==='24'&&document.querySelector('#f-search').value==='zzzzz-no-match',why:'saves or Browse filters changed'})`, 5000, 'both saves and retained Browse filters');
   });
 
   await run('1440/en', 'PR1 setup compare', '"Show my programmes" closes an open Compare, keeps its programme and focuses the results', await open(1440, 900, { compare: ids.slice(0, 1) }), async (page) => {
@@ -5006,15 +5034,37 @@ async function runPhoneMotion(base) {
       const settled = `(()=>{const d=document.querySelector('#dd-sort');return {ok:d.open&&!d.querySelector('.dropdown-panel').getAnimations().some((a)=>a.playState==='running'),why:'not open'}})()`;
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
       await page.waitFor(settled, 5000, 'the open Sort list');
-      // Sampled from inside the page: two frames after the closing tap, and
-      // when the toggle event finally reports it closed.
-      await page.ev(`(()=>{const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');window.__fade=null;
-        s.addEventListener('click',()=>{const t0=performance.now();requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=p.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
-          window.__fade={reads:d.open,attr:d.hasAttribute('open'),shown:p.checkVisibility(),opacity:Number(getComputedStyle(p).opacity),hitPanel:!!hit&&p.contains(hit),aria:s.getAttribute('aria-expanded')};
-          d.addEventListener('toggle',()=>{window.__fade.toggle=Math.round(performance.now()-t0);window.__fade.after=d.open||d.hasAttribute('open')},{once:true});}));},{once:true});})()`);
+      // Sample the actual opacity transition at its midpoint. Two animation
+      // frames can both precede the first style update or arrive after close.
+      await page.ev(`(()=>{
+        const d=document.querySelector('#dd-sort'),s=d.querySelector('summary'),p=d.querySelector('.dropdown-panel');
+        window.__fade=null;
+        s.addEventListener('click',()=>{
+          const t0=performance.now();
+          const m=window.__fade={reads:d.open,attr:d.hasAttribute('open'),aria:s.getAttribute('aria-expanded')};
+          d.addEventListener('toggle',()=>{
+            m.toggle=Math.round(performance.now()-t0);
+            m.after=d.open||d.hasAttribute('open');
+          },{once:true});
+          // Flush the closing style so Chrome exposes the new CSS transition.
+          const r=p.getBoundingClientRect();
+          const fade=p.getAnimations().find(a=>a.transitionProperty==='opacity');
+          const time=fade?.currentTime;
+          if(fade) fade.currentTime=fade.effect.getComputedTiming().duration/2;
+          try {
+            const hit=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(40,r.height/2));
+            m.shown=p.checkVisibility();
+            m.opacity=Number(getComputedStyle(p).opacity);
+            m.hitPanel=!!hit&&p.contains(hit);
+            m.hasFade=!!fade;
+          } finally {
+            if(fade) fade.currentTime=time??0;
+          }
+        },{once:true});
+      })()`);
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort again');
       const m = await page.waitFor(`(()=>{const f=window.__fade;return {ok:!!f&&f.toggle!==undefined,why:JSON.stringify(f),...f}})()`, 3000, 'the fade to end');
-      assert(m.reads === false && m.attr && m.shown && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
+      assert(m.reads === false && m.attr && m.shown && m.hasFade && m.opacity > 0 && m.opacity < 1 && !m.hitPanel && m.aria === 'false', `mid-fade ${JSON.stringify(m)}`);
       assert(m.toggle >= 120 && m.toggle <= 400 && m.after === false, `closed after ${m.toggle} ms: ${JSON.stringify(m)}`);
       // A second tap during the fade brings the list back, open and settled.
       await page.click(`document.querySelector('#dd-sort>summary')`, 'Sort');
@@ -6655,6 +6705,1723 @@ async function runPr2(base) {
   }
 }
 
+// F01 Phase 1: the public subject evidence in the detail (pane and phone
+// slot) and Compare, with the shipped header-only rules file, and the reviewed
+// rule pipeline in a real browser. Invented SAMPLE rules reach the page only
+// through request interception: the rules file is answered with a fixture,
+// and js/subject-rules.js with the test adapter, which imports the unmodified
+// module at a distinct address (tools/subject-rules-sample-adapter.js). Rule
+// dependencies are read from the catalogue text actually served.
+async function runSubjectEvidence(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-subject-evidence';
+  await mkdir(shots, { recursive: true });
+  const fixtures = await import('./subject-rule-fixtures.mjs');
+  const { UI } = await import('../js/i18n.js');
+  const { RULE_COLUMNS } = await import('../js/subject-rules.js');
+  const uniText = await readFile(join(root, 'data/universities.csv'), 'utf8');
+  const progText = await readFile(join(root, 'data/programmes.csv'), 'utf8');
+  const snapshotText = await readFile(join(root, 'data/fallback.json'), 'utf8');
+  const configText = await readFile(join(root, 'js/config.js'), 'utf8');
+  const adapterText = await readFile(join(here, 'subject-rules-sample-adapter.js'), 'utf8');
+  const IDS = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'];
+  const COMPARE = 'ib-university-finder:compare:v1';
+  // Dates around the real day, so the fixtures never age out of the test.
+  const iso = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const dated = { checked_on: iso(-7), reviewed_on: iso(-2), recheck_by: iso(60) };
+  const catalogue = fixtures.servedCatalogue(uniText, progText);
+  const rule = (over = {}, id = 'eur-ibeor', cat = catalogue) => fixtures.sampleRuleRecord(cat, id, { ...dated, ...over });
+  const csvCell = (v) => (/[",\n\r]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
+  // The served programmes file with one row changed: every other byte kept.
+  const withProgramme = (id, change) => {
+    const parsed = csvToObjects(progText, 'programmes.csv');
+    const lines = [parsed.header.join(',')];
+    for (const { __row, ...row } of parsed.rows) lines.push(parsed.header.map((c) => csvCell(row.programme_id === id ? (change[c] ?? row[c]) : row[c])).join(','));
+    return `${lines.join('\n')}\n`;
+  };
+
+  const RULES = '/data/ib-subject-rules.csv';
+  const send64 = (text) => Buffer.from(text).toString('base64');
+  // One page. `rules` answers the rules file: a string, { status }, 'hang'
+  // (never answered), or a function of the request count. `adapter` serves the
+  // test adapter for js/subject-rules.js. `programmes`, `snapshot` and
+  // `sheet` replace what the page reads. `block` fails requests outright.
+  const openSubjects = async ({ width = 1280, height = 900, query = `?ui=en&list=${IDS.join(',')}`, rules = null, adapter = false,
+    programmes = null, snapshot = null, sheet = null, block = [], compare = IDS, clock = null } = {}) => {
+    const seen = { rules: [], held: [] };
+    const page = await openPage(base + query, width, height, {
+      beforeNavigate: async (send) => {
+        await send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});`
+          + (clock ? `(()=>{const real=Date.now.bind(Date);const d=new Date();const target=new Date(d.getFullYear(),d.getMonth(),d.getDate(),${clock.join(',')}).getTime();const offset=target-real();Date.now=()=>real()+offset;})();` : '') });
+        const patterns = ['*/data/ib-subject-rules.csv*', ...(adapter ? ['*/js/subject-rules.js*'] : []), ...(programmes ? ['*/data/programmes.csv*'] : []),
+          ...(snapshot ? ['*/data/fallback.json*'] : []), ...(sheet ? ['*/js/config.js*', 'https://sheet.invalid/*'] : []), ...block];
+        await send('Fetch.enable', { patterns: patterns.map((urlPattern) => ({ urlPattern })) });
+      },
+      paused: async (p, send) => {
+        const url = new URL(p.request.url);
+        const fulfill = (body, type = 'text/csv; charset=utf-8', code = 200) => send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: code,
+          responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: send64(body) });
+        if (block.some((b) => new RegExp(b.replaceAll('.', '\\.').replaceAll('*', '.*')).test(p.request.url))) return false;
+        if (url.pathname === RULES) {
+          seen.rules.push({ url: p.request.url, method: p.request.method, body: p.request.postData ?? null });
+          const answer = typeof rules === 'function' ? rules(seen.rules.length) : rules;
+          if (answer === null) { await send('Fetch.continueRequest', { requestId: p.requestId }); return true; }
+          if (answer === 'hang') return true;
+          if (answer === 'hold') { seen.held.push((text) => fulfill(text)); return true; }
+          if (answer?.status) { await fulfill('Not found', 'text/plain', answer.status); return true; }
+          await fulfill(answer); return true;
+        }
+        if (adapter && url.pathname === '/js/subject-rules.js' && url.search === '') { await fulfill(adapterText, 'text/javascript; charset=utf-8'); return true; }
+        if (programmes && url.pathname === '/data/programmes.csv') { await fulfill(programmes); return true; }
+        if (snapshot && url.pathname === '/data/fallback.json') { await fulfill(snapshot, 'application/json'); return true; }
+        if (sheet && url.pathname === '/js/config.js') {
+          await fulfill(configText.replace("universities: '',", "universities: 'https://sheet.invalid/universities.csv',").replace("programmes: '',", "programmes: 'https://sheet.invalid/programmes.csv',"), 'text/javascript; charset=utf-8');
+          return true;
+        }
+        if (sheet && url.hostname === 'sheet.invalid') { await fulfill(url.pathname.includes('universities') ? sheet.universities : sheet.programmes); return true; }
+        await send('Fetch.continueRequest', { requestId: p.requestId });
+        return true;
+      },
+    });
+    page.seen = seen;
+    await page.waitFor(`({ok:!!document.querySelector('#loading')?.hidden && !!document.querySelector('#results li[data-id="eur-ibeor"]'),why:'list not ready'})`, 20_000, 'the saved list');
+    return page;
+  };
+  const detailSel = (width) => (width >= 1200 ? '#pane' : '#results li[data-id="eur-ibeor"] .expand');
+  const openDetail = async (page, id, width = 1280) => {
+    await page.click(`document.querySelector('#results li[data-id="${id}"] button.open')`, `${id} details`);
+    const where = width >= 1200 ? '#pane' : `#results li[data-id="${id}"] .expand`;
+    await page.waitFor(`({ok:!!document.querySelector('${where} [data-reviewed-for="${id}"]'),why:'detail not open'})`, 5000, `${id} detail`);
+  };
+  // The detail's IB subjects value, the reviewed block and other facts.
+  const detailFacts = (where) => `(()=>{const root=document.querySelector('${where}');const dd=(label)=>{const dt=[...root.querySelectorAll('dt')].find(d=>d.textContent===label);return dt?dt.nextElementSibling:null};
+    const s=dd(${JSON.stringify(UI.en.ib_subjects)})||dd(${JSON.stringify(UI.sk.ib_subjects)});const r=root.querySelector('.d-reviewed');
+    return {subjects:s?[...s.childNodes].filter(n=>!(n.classList&&n.classList.contains('d-reviewed'))).map(n=>n.textContent).join(''):null,
+      other:(dd(${JSON.stringify(UI.en.other_requirements)})||{}).textContent??null,reviewed:!!r,inSubjects:!!(r&&s&&s.contains(r)),
+      heading:r?.querySelector('h4')?.textContent??null,sample:!!r?.querySelector('.rv-sample'),lines:r?[...r.querySelectorAll('.rv-line')].map(n=>n.textContent):[],
+      links:r?[...r.querySelectorAll('a')].map(a=>a.href):[],quote:r?.querySelector('q')?.textContent??null,missing:[...root.querySelectorAll('.note-strong')].map(n=>n.textContent),
+      text:root.textContent}})()`;
+  const openCompareView = async (page) => {
+    await page.click(`document.querySelector('#header-compare')`, 'Open compare');
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden && !!document.querySelector('#cmp-body tr[data-fact]'),why:'compare not open'})`, 5000, 'Compare');
+  };
+  const compareFacts = `(()=>{const rows={};for(const tr of document.querySelectorAll('#cmp-body tbody tr[data-fact]'))rows[tr.dataset.fact]={label:tr.querySelector('th').textContent,cells:[...tr.querySelectorAll('td')].map(td=>td.textContent)};return rows})()`;
+  const noErrors = (page) => {
+    const other = page.errors.filter((e) => !/ib-subject-rules\.csv|programmes\.csv|sheet\.invalid/.test(`${e.url} ${e.text}`));
+    assert(other.length === 0 && page.exceptions.length === 0, [...other.map((e) => e.text), ...page.exceptions].join(' | '));
+  };
+  const reviewedGone = (where) => `({ok:!document.querySelector('${where} .d-reviewed'),why:'a reviewed block is still shown'})`;
+  const reviewedShown = (where) => `({ok:!!document.querySelector('${where} .d-reviewed .rv-line'),why:'no reviewed block'})`;
+
+  // 1. The shipped header-only file: the public journey, no reviewed line.
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    const page = await openSubjects({ width, height });
+    try {
+      await check(`${width}`, 'F01 public', 'zero real rules: full recorded subject wording, Not checked yet, None required and other requirements in the detail; no reviewed line', async () => {
+        watchdog.refresh();
+        await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'the rules request');
+        const want = { 'eur-ibeor': catalogue.programmes.get('eur-ibeor').ib_subjects, 'arcada-it': UI.en.not_checked_yet, 'eur-ibp': UI.en.none_required, 'qub-environmental-management-bsc': UI.en.not_checked_yet };
+        for (const id of IDS) {
+          await openDetail(page, id, width);
+          const where = width >= 1200 ? '#pane' : `#results li[data-id="${id}"] .expand`;
+          const facts = await page.ev(detailFacts(where));
+          assert(facts.subjects === want[id], `${id}: IB subjects reads "${facts.subjects}"`);
+          assert(!facts.reviewed && !facts.text.includes(UI.en.rv_heading), `${id}: a reviewed line is shown with no rules`);
+          if (id === 'arcada-it') assert(facts.other?.includes('Maths: advanced course at IB grade 2 (A) or better'), `arcada-it other requirements: ${facts.other}`);
+          if (id === 'eur-ibeor') assert(facts.subjects.includes('Maths AA SL 6 lets you sit the maths entrance exam instead'), 'the exam alternative is missing');
+          if (width < 1200) await page.click(`document.querySelector('#results li[data-id="${id}"] button.open')`, `close ${id}`);
+        }
+        assert(page.seen.rules.length >= 1 && page.seen.rules.every((r) => new URL(r.url).search === '' && r.method === 'GET' && r.body === null), JSON.stringify(page.seen.rules));
+        await page.screenshot(`${shots}/public-${width}.png`, { viewportOnly: true });
+        noErrors(page);
+      });
+      await check(`${width}`, 'F01 compare', 'Compare: IB subjects and Other requirements rows, maths courses unchanged, unknowns kept under Show only differences, no reviewed row', async () => {
+        await page.ev(`document.querySelector('#pane-close')?.click()`);
+        if (width >= 600) await openCompareView(page); else {
+          await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+          await page.waitFor(`({ok:!document.querySelector('#compare').hidden && !!document.querySelector('#cmp-body tr[data-fact]'),why:'compare not open'})`, 5000, 'Compare');
+        }
+        const facts = await page.ev(compareFacts);
+        assert(facts.subjects?.label === UI.en.ib_subjects && JSON.stringify(facts.subjects.cells) === JSON.stringify([catalogue.programmes.get('eur-ibeor').ib_subjects, UI.en.not_checked_yet, UI.en.none_required, UI.en.not_checked_yet]), JSON.stringify(facts.subjects));
+        assert(JSON.stringify(facts.maths?.cells) === JSON.stringify(['AA HL · AA SL', 'AA HL · AA SL · AI HL · AI SL', 'AA HL · AA SL · AI HL · AI SL', UI.en.not_checked_yet]), JSON.stringify(facts.maths));
+        assert(facts.other?.label === UI.en.other_requirements && facts.other.cells[1].includes('Maths: advanced course') && facts.other.cells[3] === UI.en.cmp_nothing_else_listed, JSON.stringify(facts.other));
+        assert(!facts.reviewed, 'a reviewed row with no rules');
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        await page.waitFor(`({ok:document.querySelector('#cmp-diff').checked && !!document.querySelector('#cmp-body tr[data-fact="subjects"]') && !!document.querySelector('#cmp-body tr[data-fact="link"]'),why:'subjects row hidden'})`, 5000, 'differences');
+        await page.screenshot(`${shots}/compare-${width}.png`, { viewportOnly: true });
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 2. A synthetic "?" subject cell and a missing official link.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ programmes: withProgramme('qub-environmental-management-bsc', { ib_subjects: '?', official_url: '' }) });
+    try {
+      await check('1280', 'F01 unknown', '"?" reads Not checked yet, never "?", and a missing link keeps its warning, in the detail and Compare', async () => {
+        await openDetail(page, 'qub-environmental-management-bsc');
+        const facts = await page.ev(detailFacts('#pane'));
+        assert(facts.subjects === UI.en.not_checked_yet && facts.missing.includes(UI.en.no_official_admissions_link_do_not_rely_on_this_entry) && !facts.reviewed, JSON.stringify(facts).slice(0, 300));
+        await openCompareView(page);
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        const cmp = await page.ev(compareFacts);
+        assert(cmp.subjects?.cells[3] === UI.en.not_checked_yet && cmp.link?.cells[3] === UI.en.no_official_admissions_link_do_not_rely_on_this_entry, JSON.stringify([cmp.subjects, cmp.link]));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 3. The unmodified page rejects a served SAMPLE rule.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ rules: fixtures.rulesCsv([rule()]) });
+    try {
+      await check('1280', 'F01 sample', 'the page as shipped never shows an invented (SAMPLE) rule', async () => {
+        await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'rules');
+        await openDetail(page, 'eur-ibeor');
+        await openCompareView(page);
+        const cmp = await page.ev(compareFacts);
+        assert(!(await page.ev(detailFacts('#pane'))).reviewed && !cmp.reviewed, 'a SAMPLE rule was shown by the unmodified page');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 4. Through the test adapter: the rule arrives after the catalogue, shows in
+  // the open pane and Compare, then a withdrawal removes both.
+  watchdog.refresh();
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    let answer = 'hold';
+    const page = await openSubjects({ width, height, adapter: true, rules: () => answer });
+    try {
+      await check(`${width}`, 'F01 reviewed', 'a current reviewed rule, held until after the catalogue, appears in the open detail with its fixture warning, scope, route, source and dates', async () => {
+        watchdog.refresh();
+        await openDetail(page, 'eur-ibeor', width);
+        const where = detailSel(width);
+        assert(!(await page.ev(detailFacts(where))).reviewed, 'shown before the rules answered');
+        for (let i = 0; i < 200 && !page.seen.held.length; i++) await new Promise((resolve) => setTimeout(resolve, 25));
+        assert(page.seen.held.length === 1, `${page.seen.held.length} held requests`);
+        answer = fixtures.rulesCsv([rule()]);
+        page.seen.held.shift()(answer);
+        await page.waitFor(reviewedShown(where), 5000, 'the reviewed block');
+        const facts = await page.ev(detailFacts(where));
+        assert(facts.inSubjects && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects && facts.heading === UI.en.rv_heading && facts.sample, JSON.stringify(facts).slice(0, 400));
+        assert(facts.lines.includes('Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher')
+          && facts.links.includes(fixtures.SAMPLE_URL) && facts.quote === fixtures.SAMPLE_QUOTE, JSON.stringify(facts.lines));
+        await page.ev(`document.querySelector('${where} .d-reviewed').scrollIntoView({block:'center'})`);
+        // The pane scrolls on its own; the phone slot is in the page, so a phone shot is the whole page.
+        await page.screenshot(`${shots}/reviewed-${width}.png`, { viewportOnly: width >= 1200 });
+        await page.ev(`window.__smokeLanguage('sk')`);
+        await page.waitFor(`({ok:document.querySelector('${where} .d-reviewed h4')?.textContent===${JSON.stringify(UI.sk.rv_heading)},why:'no Slovak heading'})`, 5000, 'Slovak reviewed block');
+        await page.ev(`window.__smokeLanguage('en')`);
+        await page.waitFor(`({ok:document.querySelector('${where} .d-reviewed h4')?.textContent===${JSON.stringify(UI.en.rv_heading)},why:'no English heading'})`, 5000, 'English reviewed block');
+        noErrors(page);
+      });
+      if (width >= 1200) await check(`${width}`, 'F01 compare reviewed', 'Compare shows the reviewed row beside "No subject check yet"; a withdrawal on the next answer removes it and the pane block together', async () => {
+        await openCompareView(page);
+        let cmp = await page.ev(compareFacts);
+        assert(cmp.reviewed?.label === UI.en.rv_heading && cmp.reviewed.cells[0].includes('Physics at HL, grade 5 or higher') && cmp.reviewed.cells[1] === UI.en.rv_no_check, JSON.stringify(cmp.reviewed));
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        await page.waitFor(`({ok:!!document.querySelector('#cmp-body tr[data-fact="reviewed"]'),why:'reviewed row hidden by differences'})`, 5000, 'differences');
+        answer = fixtures.rulesCsv([rule(), rule({ status: 'withdrawn' })]);
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(`({ok:!document.querySelector('#cmp-body tr[data-fact="reviewed"]'),why:'reviewed row still shown'})`, 5000, 'withdrawal in Compare');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(reviewedGone('#pane'), 5000, 'withdrawal in the pane');
+        assert((await page.ev(detailFacts('#pane'))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
+      if (width < 1200) await check(`${width}`, 'F01 offline', 'offline removes the reviewed block from the open slot; back online, a fresh answer shows it again', async () => {
+        await page.send('Network.enable');
+        await page.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+        await page.waitFor(reviewedGone(detailSel(width)), 5000, 'offline removal');
+        answer = fixtures.rulesCsv([rule()]);
+        await page.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+        await page.waitFor(reviewedShown(detailSel(width)), 5000, 'online again');
+        noErrors(page);
+      });
+      if (width < 1200) await check(`${width}`, 'F01 malformed refresh', 'a malformed route removes the reviewed block but keeps the recorded subject wording', async () => {
+        const where = detailSel(width);
+        await page.waitFor(reviewedShown(where), 5000, 'valid rule before refresh');
+        answer = fixtures.rulesCsv([rule({ routes: { routes: [{ id: { toString: 'a' }, clauses: [fixtures.PHYSICS_HL5] }] } })]);
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(reviewedGone(where), 5000, 'malformed rule removed from the open detail');
+        assert((await page.ev(detailFacts(where))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 5. Raw dependency drift: a rule bound to other catalogue text never shows;
+  // one derived from the text served does.
+  watchdog.refresh();
+  {
+    const drifted = withProgramme('eur-ibeor', { ib_maths: 'AA HL' });
+    const driftedCatalogue = fixtures.servedCatalogue(uniText, drifted);
+    for (const [name, rules, shown] of [['bound to the shipped text, served changed text', fixtures.rulesCsv([rule()]), false],
+      ['derived from the changed text actually served', fixtures.rulesCsv([rule({}, 'eur-ibeor', driftedCatalogue)]), true]]) {
+      const page = await openSubjects({ adapter: true, programmes: drifted, rules });
+      try {
+        await check('1280', 'F01 drift', `rule ${name}: ${shown ? 'shown' : 'not shown'}`, async () => {
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else {
+            await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'rules');
+            await page.ev(`new Promise(r=>setTimeout(r,1000))`);
+            assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'a drifted rule was shown');
+          }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // 6. A missing, broken, empty or silent rules file never touches the catalogue.
+  watchdog.refresh();
+  for (const [name, rules, wait] of [['404', { status: 404 }, 0], ['malformed', `${RULE_COLUMNS.join(',')}\n"broken`, 0], ['empty', '', 0], ['no answer', 'hang', 3500]]) {
+    const page = await openSubjects({ adapter: true, rules });
+    try {
+      await check('1280', 'F01 rules source', `rules file ${name}: the catalogue loads from the CSVs, the public wording stays, no reviewed line`, async () => {
+        await openDetail(page, 'eur-ibeor');
+        if (wait) await page.ev(`new Promise(r=>setTimeout(r,${wait}))`);
+        const facts = await page.ev(detailFacts('#pane'));
+        const banner = await page.ev(`!!document.querySelector('#source-banner .bn-saved')`);
+        assert(!banner && !facts.reviewed && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, JSON.stringify({ banner, reviewed: facts.reviewed }));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 7. Saved-copy mode: the rules still come only from the live file.
+  watchdog.refresh();
+  {
+    const snap = JSON.parse(snapshotText);
+    const snapCatalogue = { universities: new Map(snap.universities.map((u) => [u.university_id, u])), programmes: new Map(snap.programmes.map((p) => [p.programme_id, p])) };
+    const embedded = JSON.stringify({ ...snap, subject_rules: { schema_version: 1, records: [rule({}, 'eur-ibeor', snapCatalogue)] } });
+    for (const [name, rules, snapshot, shown] of [['a live rule derived from the saved copy', fixtures.rulesCsv([rule({}, 'eur-ibeor', snapCatalogue)]), null, true],
+      ['an approval embedded in the saved copy while the rules file fails', { status: 404 }, embedded, false]]) {
+      const page = await openSubjects({ adapter: true, rules, snapshot, block: ['*/data/programmes.csv*'] });
+      try {
+        await check('1280', 'F01 snapshot', `saved copy, ${name}: ${shown ? 'shown' : 'never shown'}`, async () => {
+          assert(await page.ev(`!!document.querySelector('#source-banner .bn-saved')`), 'not on the saved copy');
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else { await page.ev(`new Promise(r=>setTimeout(r,1000))`); assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'the saved copy authorised a rule'); }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // 8. Sheet mode (stubbed): config.js names two Sheet addresses, answered here.
+  watchdog.refresh();
+  {
+    const drifted = withProgramme('eur-ibeor', { ib_maths: 'none' });
+    for (const [name, sheetProgrammes, shown] of [['matching the Sheet served', progText, true], ['after the Sheet changed "AA HL · AA SL" to "none"', drifted, false]]) {
+      const page = await openSubjects({ adapter: true, sheet: { universities: uniText, programmes: sheetProgrammes }, rules: fixtures.rulesCsv([rule()]) });
+      try {
+        await check('1280', 'F01 sheet', `Sheet stub, a rule ${name}: ${shown ? 'shown' : 'not shown'}`, async () => {
+          assert(await page.ev(`['universities','programmes'].every(n=>performance.getEntriesByType('resource').some(e=>e.name==='https://sheet.invalid/'+n+'.csv')) && !performance.getEntriesByType('resource').some(e=>/\\/data\\/programmes\\.csv/.test(e.name))`), 'the page did not read the stubbed Sheet');
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else { await page.ev(`new Promise(r=>setTimeout(r,1000))`); assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'a drifted Sheet rule was shown'); }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  watchdog.refresh();
+  {
+    const waiver = { type: 'waiver', en: 'A documented exemption (SAMPLE)', sk: 'Zdokumentovaná výnimka (SAMPLE)', sources: ['s1'] };
+    const exam = { type: 'exam', en: 'Pass the test (SAMPLE)', sk: 'Úspešne absolvovať skúšku (SAMPLE)', sources: ['s1'] };
+    const maths = { id: 'maths-track', clauses: [fixtures.MATHS_HL5, fixtures.PHYSICS_HL5] };
+    const page = await openSubjects({ adapter: true, rules: fixtures.rulesCsv([
+      rule({ routes: { routes: [maths, { id: 'exam-track', clauses: [exam] }], general: [
+        fixtures.PHYSICS_HL5, { ...waiver, routes: ['exam-track'] }, { ...fixtures.MATHS_HL5, routes: ['exam-track', 'maths-track'] },
+      ] } }),
+      rule({ routes: { routes: [maths], general: [{ ...waiver, routes: ['maths-track'] }] } }, 'arcada-it'),
+    ]) });
+    try {
+      await check('1280', 'F01 bilingual public routes', 'detail and Compare identify named conditions, preserve AND/OR and distinguish exams from waivers in EN and SK', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        const multi = [
+          ['en', 'Alternative subject routes:', 'Route 1: Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher',
+            'Route 2: Exam: Pass the test (SAMPLE)', 'Every route also needs: Physics at HL, grade 5 or higher', 'Route 2 also needs: Waiver: A documented exemption (SAMPLE)',
+            'Routes 2, 1 also need: Maths AA or Maths AI', 'Route 1 also needs: Waiver: A documented exemption (SAMPLE)'],
+          ['sk', 'Možnosti splnenia požiadaviek na predmety:', 'Cesta 1: Matematika AA alebo Matematika AI na úrovni HL, známka aspoň 5 (SL sa neuznáva) a Fyzika na úrovni HL, známka aspoň 5',
+            'Cesta 2: Skúška: Úspešne absolvovať skúšku (SAMPLE)', 'Každá cesta navyše vyžaduje: Fyzika na úrovni HL, známka aspoň 5', 'Cesta 2 navyše vyžaduje: Výnimka: Zdokumentovaná výnimka (SAMPLE)',
+            'Cesty 2, 1 navyše vyžadujú: Matematika AA alebo Matematika AI', 'Cesta 1 navyše vyžaduje: Výnimka: Zdokumentovaná výnimka (SAMPLE)'],
+        ];
+        for (const [code, heading, first, second, all, one, named, only] of multi) {
+          await page.ev(`window.__smokeLanguage('${code}')`);
+          const lines = (await page.ev(detailFacts('#pane'))).lines;
+          assert([heading, first, second, all, one].every((line) => lines.includes(line)) && lines.some((line) => line.startsWith(named)), JSON.stringify(lines));
+          await openDetail(page, 'arcada-it');
+          const single = (await page.ev(detailFacts('#pane'))).lines;
+          assert(single.includes(first) && single.includes(only) && !single.includes(heading), JSON.stringify(single));
+          await openCompareView(page);
+          const cells = (await page.ev(compareFacts)).reviewed.cells;
+          assert(cells[0].includes(first) && cells[0].includes(one) && cells[0].includes(named) && cells[1].includes(first) && cells[1].includes(only), JSON.stringify(cells));
+          await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+          if (code === 'en') await openDetail(page, 'eur-ibeor');
+        }
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 10. Partial routes and a route scope, in English and Slovak, then a
+  // replacement file with broken quoting (Sol r1 F1, F4, F5).
+  watchdog.refresh();
+  {
+    const note = { en: 'Programme pages not yet checked (SAMPLE).', sk: 'Stránky programu ešte neoverené (SAMPLE).' };
+    const routeScope = { qualification: 'a-levels', label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'] };
+    const partial = rule({ evidence_kind: 'partial-restrictions', routes: { partial_note: note, routes: [
+      { id: 'a', clauses: [fixtures.PHYSICS_HL5] }, { id: 'b', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['chemistry'] }], scope: routeScope }] } });
+    let answer = fixtures.rulesCsv([partial]);
+    const page = await openSubjects({ adapter: true, rules: () => answer });
+    try {
+      await check('1280', 'F01 partial', 'a partial rule lists its routes without saying any is enough, and shows a route\'s own scope, in English and Slovak', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        const en = (await page.ev(detailFacts('#pane'))).lines;
+        assert(en.includes(UI.en.rv_partial_routes) && !en.includes(UI.en.rv_any_route) && en.includes(`${UI.en.rv_route_scope} Applicants with A levels (SAMPLE fixture)`), JSON.stringify(en));
+        await page.ev(`window.__smokeLanguage('sk')`);
+        await page.waitFor(`({ok:document.querySelector('#pane .d-reviewed h4')?.textContent===${JSON.stringify(UI.sk.rv_heading)},why:'no Slovak heading'})`, 5000, 'Slovak');
+        const sk = (await page.ev(detailFacts('#pane'))).lines;
+        assert(sk.includes(UI.sk.rv_partial_routes) && !sk.includes(UI.sk.rv_any_route) && sk.includes(`${UI.sk.rv_route_scope} Uchádzači s A-levels (SAMPLE fixture)`), JSON.stringify(sk));
+        await page.ev(`window.__smokeLanguage('en')`);
+        noErrors(page);
+      });
+      await check('1280', 'F01 malformed quoting', 'a refreshed file with text after a closing quote removes the reviewed block and keeps the recorded wording', async () => {
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        answer = fixtures.rulesCsv([partial]).replace('\n1,', '\n"1" ,');
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(reviewedGone('#pane'), 5000, 'removal after a malformed file');
+        assert((await page.ev(detailFacts('#pane'))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
+      await check('1280', 'F01 scope citation', 'an unusable citation cannot dismiss a competing rule in the detail or Compare', async () => {
+        const refresh = `import('./js/subject-authority.js').then(m=>m.refreshAuthority())`;
+        await openCompareView(page);
+        answer = fixtures.rulesCsv([partial, rule({ scope: routeScope })]);
+        await page.ev(refresh);
+        assert((await page.ev(detailFacts('#pane'))).reviewed && (await page.ev(compareFacts)).reviewed, 'a supported separate scope hid the IB rule');
+        answer = fixtures.rulesCsv([partial, rule({ scope: routeScope, sources: { s1: { url: fixtures.SAMPLE_URL, quote: '' } } })]);
+        await page.ev(refresh);
+        const facts = await page.ev(detailFacts('#pane'));
+        assert(!facts.reviewed && !(await page.ev(compareFacts)).reviewed && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the failed citation still hid the competition or changed the catalogue wording');
+        noErrors(page);
+      });
+      for (const [label, dates, visible] of [
+        ['expiry stays in force', { recheck_by: iso(0) }, [true, false, false]],
+        ['a review cannot be in the future', { reviewed_on: iso(1), recheck_by: iso(4) }, [false, true, false]],
+      ]) await check('1280', 'F01 time zones', `${label} on a UTC to Bratislava round trip in detail and Compare`, async () => {
+        const day = iso(0);
+        const recheck = `import('./js/subject-authority.js').then(m=>m.recheckAuthority())`;
+        await page.send('Emulation.setTimezoneOverride', { timezoneId: 'UTC' });
+        await page.ev(`Date.now = () => ${Date.parse(`${day}T23:59:00Z`)}; 0`);
+        answer = fixtures.rulesCsv([rule(dates)]);
+        await page.ev(`import('./js/subject-authority.js').then(m=>m.refreshAuthority())`);
+        const requests = page.seen.rules.length;
+        for (const [i, timezoneId] of ['UTC', 'Europe/Bratislava', 'UTC'].entries()) {
+          await page.send('Emulation.setTimezoneOverride', { timezoneId });
+          await page.ev(recheck);
+          const pane = await page.ev(detailFacts('#pane'));
+          const cmp = await page.ev(compareFacts);
+          assert(pane.reviewed === visible[i] && !!cmp.reviewed === visible[i] && requests === page.seen.rules.length, `${label}: unexpected reviewed state or fetch at step ${i} (${timezoneId})`);
+        }
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 9. Expiry in an open tab, with no interaction: the page clock starts at
+  // 23:59:52 on the rule's recheck date.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ adapter: true, rules: fixtures.rulesCsv([rule({ recheck_by: iso(0) })]), clock: [23, 59, 52, 0] });
+    try {
+      await check('1280', 'F01 expiry', 'a rule whose recheck date ends at midnight disappears from the open pane on its own', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 4000, 'the reviewed block before midnight');
+        assert(await page.ev(`new Date(Date.now()).getHours() === 23`), 'midnight passed before the block was seen');
+        await page.waitFor(reviewedGone('#pane'), 15_000, 'expiry at midnight');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+}
+
+// F01 Phase 2: My subjects in My list, in the real Finder with the switch
+// on. The switch is turned on only by answering this tab's request for
+// js/config.js (never an address, storage or a flag the site reads), and
+// invented SAMPLE rules reach the page only through the test adapter, as in
+// runSubjectEvidence. Every scenario has its own browser context (its own
+// storage); tabs that must share storage share one context.
+async function runMySubjects(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-my-subjects';
+  await mkdir(shots, { recursive: true });
+  const fixtures = await import('./subject-rule-fixtures.mjs');
+  const { UI } = await import('../js/i18n.js');
+  const uniText = await readFile(join(root, 'data/universities.csv'), 'utf8');
+  const progText = await readFile(join(root, 'data/programmes.csv'), 'utf8');
+  const configText = await readFile(join(root, 'js/config.js'), 'utf8');
+  const adapterText = await readFile(join(here, 'subject-rules-sample-adapter.js'), 'utf8');
+  const EN = UI.en, SK = UI.sk;
+  const plural = (form, n) => (typeof form === 'string' ? form : n === 1 ? form.one : n >= 2 && n <= 4 && form.few ? form.few : form.other);
+  const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (_, k) => String(vars[k]));
+  const SAVES = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc', 'sdu-mma'];
+  const SHORTLIST = 'ib-university-finder:shortlist:v1';
+  const COMPARE = 'ib-university-finder:compare:v1';
+  const DB = 'ib-university-finder:my-subjects:v1';
+  const RULES = '/data/ib-subject-rules.csv';
+  const iso = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const dated = { checked_on: iso(-7), reviewed_on: iso(-2), recheck_by: iso(60) };
+  const catalogue = fixtures.servedCatalogue(uniText, progText);
+  const rule = (id, over = {}) => fixtures.sampleRuleRecord(catalogue, id, { ...dated, ...over });
+  const S = (courses, levels, min = null, extra = {}) => ({ type: 'subject', courses, levels, ...(min === null ? {} : { min_grade: min }), sources: ['s1'], ...extra });
+  const routes = (...list) => ({ routes: list.map((clauses, i) => ({ id: String.fromCharCode(97 + i), clauses })) });
+  const send64 = (text) => Buffer.from(text).toString('base64');
+  assert(/export const SHOW_MY_SUBJECTS = false;/.test(configText), 'js/config.js must ship SHOW_MY_SUBJECTS = false');
+  const enabledConfig = configText.replace('export const SHOW_MY_SUBJECTS = false;', 'export const SHOW_MY_SUBJECTS = true;');
+
+  // Instruments every tab: counts this database's opens, puts and deletes
+  // (through the real IndexedDB), records what the page posts on any
+  // BroadcastChannel and every CSV blob it makes, and lets a test hold an
+  // open (blocked or slow), abort a put or delete, or stop this tab from
+  // hearing other tabs and focus/visibility/pageshow. None of this is in the
+  // site; the page under test is unmodified apart from the config answer.
+  const INSTRUMENT = `(()=>{const DB=${JSON.stringify(DB)};const w=window;w.__ms={opens:0,puts:0,deletes:0,late:0,reads:0,requestErrors:[],posted:[],channels:0,blobs:[]};
+    w.__msSuppress=false;const o=IDBFactory.prototype.open;w.__msOpenReal=(n,v)=>o.call(indexedDB,n,v);
+    IDBFactory.prototype.open=function(n,v){if(n!==DB)return o.call(this,n,v);w.__ms.opens++;const mode=w.__msOpenMode;w.__msOpenMode=null;
+      if(!mode)return o.call(this,n,v);
+      const fake={onblocked:null,onupgradeneeded:null,onsuccess:null,onerror:null,_real:null,get result(){return this._real.result},get transaction(){return this._real.transaction},get error(){return this._real?.error}};
+      if(mode==='blocked')setTimeout(()=>fake.onblocked&&fake.onblocked(new Event('blocked')),0);
+      w.__msRelease=()=>{const real=o.call(indexedDB,n,v);fake._real=real;real.onupgradeneeded=e=>{w.__ms.late++;fake.onupgradeneeded&&fake.onupgradeneeded(e)};real.onsuccess=e=>{w.__ms.late++;fake.onsuccess&&fake.onsuccess(e)};real.onerror=e=>fake.onerror&&fake.onerror(e)};
+      return fake};
+    const transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...a){const tx=transaction.apply(this,a);if(this.name===DB&&tx.mode==='readonly')tx.addEventListener('complete',()=>w.__ms.reads++);return tx};
+    const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...a){if(this.name!=='profile')return put.apply(this,a);w.__ms.puts++;const r=put.apply(this,a);
+      r.addEventListener('error',e=>w.__ms.requestErrors.push([e.isTrusted,r.error.name]));
+      if(w.__msAbortPut){w.__msAbortPut=false;this.transaction.abort()}return r};
+    const del=IDBObjectStore.prototype.delete;IDBObjectStore.prototype.delete=function(...a){if(this.name!=='profile')return del.apply(this,a);w.__ms.deletes++;const r=del.apply(this,a);if(w.__msAbortDelete){w.__msAbortDelete=false;this.transaction.abort()}return r};
+    const BC=w.BroadcastChannel;if(BC)w.BroadcastChannel=class extends BC{constructor(n){super(n);w.__ms.channels++}postMessage(m){w.__ms.posted.push(m);return super.postMessage(m)}set onmessage(fn){super.onmessage=fn?(e)=>{if(!w.__msSuppress)fn(e)}:null}get onmessage(){return super.onmessage}};
+    for(const t of ['focus','pageshow'])w.addEventListener(t,e=>{if(w.__msSuppress)e.stopImmediatePropagation()},true);
+    document.addEventListener('visibilitychange',e=>{if(w.__msSuppress)e.stopImmediatePropagation()},true);
+    const blob=URL.createObjectURL;URL.createObjectURL=function(b){if(b instanceof Blob)b.text().then(t=>w.__ms.blobs.push(t));return blob.call(URL,b)};})();`;
+
+  // One tab. enabled: answer js/config.js with the switch on. rules: the
+  // rules file's text, or a function of nothing (null: the real header-only
+  // file). adapter: serve the SAMPLE test adapter. saves/compare: written the
+  // first time a context starts (null: leave storage alone). record: keep
+  // every request's method, address and body.
+  const newContext = async () => {
+    const { browserContextId } = await cdp.send('Target.createBrowserContext');
+    await cdp.send('Browser.grantPermissions', { origin: new URL(base).origin, browserContextId, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny', browserContextId }).catch(() => {});
+    return browserContextId;
+  };
+  const dropContext = (id) => cdp.send('Target.disposeBrowserContext', { browserContextId: id }, undefined, 5000).catch(() => {});
+  const openMS = async ({ width = 1280, height = 900, query = '?ui=en', enabled = true, rules = null, adapter = false,
+    saves = SAVES, compare = [], context = null, record = false, wait = true } = {}) => {
+    const seen = { requests: [] };
+    const ownContext = context ?? await newContext();
+    const page = await openPage(base + query, width, height, {
+      context: ownContext,
+      beforeNavigate: async (send) => {
+        const seed = saves === null ? '' : `if(!localStorage.getItem('__ms_seeded')){localStorage.setItem('__ms_seeded','1');localStorage.setItem(${JSON.stringify(SHORTLIST)},${JSON.stringify(JSON.stringify(saves))});localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});}`;
+        await send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed');${seed}${INSTRUMENT}` });
+        await send('Fetch.enable', { patterns: record ? [{ urlPattern: '*' }] : [{ urlPattern: '*/js/config.js*' }, { urlPattern: '*/data/ib-subject-rules.csv*' }, { urlPattern: '*/js/subject-rules.js*' }] });
+      },
+      paused: async (p, send) => {
+        const url = new URL(p.request.url);
+        if (record) seen.requests.push({ method: p.request.method, url: p.request.url, body: p.request.postData ?? null });
+        const fulfill = (body, type) => send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200,
+          responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Cache-Control', value: 'no-store' }], body: send64(body) });
+        if (url.pathname === '/js/config.js' && enabled) { await fulfill(enabledConfig, 'text/javascript; charset=utf-8'); return true; }
+        const answer = typeof rules === 'function' ? rules() : rules;
+        if (url.pathname === RULES && answer !== null) { await fulfill(answer, 'text/csv; charset=utf-8'); return true; }
+        if (adapter && url.pathname === '/js/subject-rules.js' && url.search === '') { await fulfill(adapterText, 'text/javascript; charset=utf-8'); return true; }
+        await send('Fetch.continueRequest', { requestId: p.requestId });
+        return true;
+      },
+    });
+    const close = page.close;
+    page.close = async () => { await close(); if (!context) await dropContext(ownContext); };
+    page.seen = seen;
+    page.context = ownContext;
+    if (wait) await ready(page);
+    return page;
+  };
+  const ready = (page) => page.waitFor(`({ok:!!document.querySelector('#loading')?.hidden && document.querySelector('#results').getAttribute('aria-busy')===null,why:'list not ready'})`, 20_000, 'the page');
+  const reload = async (page) => { await page.send('Page.reload', {}); await ready(page); };
+  const toList = async (page) => {
+    await page.click(`document.querySelector('#header-list')`, 'My list');
+    await page.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden]) .ms-edit'),why:'no strip'})`, 5000, 'the subjects strip');
+    await settled(page);
+  };
+  // No storage work pending: the first read in My list has landed.
+  const settled = (page) => page.waitFor(`new Promise(r=>setTimeout(()=>r({ok:true}),60))`, 3000, 'storage settles');
+  const strip = `(()=>{const s=document.querySelector('#ml-subjects');if(!s)return null;const e=s.querySelector('#ms-editor');return {shown:!s.hidden&&!!s.getClientRects().length,line:s.querySelector('.ms-line').textContent.replace(/\\s+/g,' ').trim(),names:s.querySelector('.ms-names').textContent,
+    summary:s.querySelector('.ms-summary').textContent,status:s.querySelector('.ms-status').textContent.replace(/\\u200b/g,''),warn:s.querySelector('.ms-warn').hidden?'':s.querySelector('.ms-warn').textContent,editor:!e.hidden,formError:e.querySelector('.ms-form-err')?.textContent??'',
+    remember:e.querySelector('#ms-remember')?.checked??null,more:s.querySelector('.ms-more').hidden?null:{text:s.querySelector('.ms-more').textContent,label:s.querySelector('.ms-more').getAttribute('aria-label')}}})()`;
+  const choose = (n, course, level, grade = '') => `(()=>{const r=document.querySelectorAll('#ms-editor .ms-erow')[${n}];if(!r)throw Error('no editor row ${n}');
+    const set=(s,v)=>{s.value=v;s.dispatchEvent(new Event('input',{bubbles:true}));s.dispatchEvent(new Event('change',{bubbles:true}))};
+    set(r.querySelector('.ms-f-course select'),${JSON.stringify(course)});set(r.querySelector('.ms-f-level select'),${JSON.stringify(level)});set(r.querySelector('.ms-f-grade select'),${JSON.stringify(String(grade))});return true})()`;
+  const openEditor = async (page) => {
+    await page.click(`document.querySelector('#ml-subjects .ms-edit')`, 'Add or Edit subjects');
+    await page.waitFor(`({ok:!document.querySelector('#ms-editor').hidden && document.activeElement?.closest('.ms-erow')===document.querySelector('#ms-editor .ms-erow') && document.activeElement.matches('.ms-f-course select'),why:'focus '+document.activeElement?.id})`, 3000, 'the editor with focus on the first field');
+  };
+  // Fill the editor with these entries ([course, level, grade?]) and Save.
+  const enter = async (page, entries, { remember = null, save = true } = {}) => {
+    await openEditor(page);
+    const have = await page.ev(`document.querySelectorAll('#ms-editor .ms-erow').length`);
+    for (let i = have; i < entries.length; i++) await page.click(`document.querySelector('#ms-editor .ms-add-row')`, 'Add another subject');
+    for (const [i, [course, level, grade]] of entries.entries()) await page.ev(choose(i, course, level, grade ?? ''));
+    for (let i = (await page.ev(`document.querySelectorAll('#ms-editor .ms-erow').length`)) - 1; i >= entries.length; i--) await page.click(`document.querySelectorAll('#ms-editor .ms-remove')[${i}]`, 'Remove');
+    if (remember !== null && (await page.ev(`document.querySelector('#ms-remember').checked`)) !== remember) await page.click(`document.querySelector('#ms-remember')`, 'Remember');
+    if (save) await saveEditor(page);
+  };
+  // Each finished action writes the status line anew (a repeat gets an
+  // invisible mark), so "finished" is "the status line changed".
+  const statusNow = (page) => page.ev(`document.querySelector('#ml-subjects .ms-status').textContent`);
+  const saveEditor = async (page, closes = true) => {
+    const was = await statusNow(page);
+    await page.click(`document.querySelector('#ms-editor .ms-save')`, 'Save');
+    if (closes) await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden && document.querySelector('#ml-subjects .ms-status').textContent!==${JSON.stringify(was)},why:'editor still open: '+document.querySelector('#ms-editor .ms-form-err')?.textContent})`, 8000, 'Save to finish');
+  };
+  const forget = async (page) => {
+    await openEditor(page);
+    const was = await statusNow(page);
+    await page.click(`document.querySelector('#ms-editor .ms-forget')`, 'Forget subjects');
+    await page.waitFor(`({ok:document.querySelector('#ml-subjects .ms-status').textContent!==${JSON.stringify(was)} && !document.querySelector('#ms-editor .ms-save'),why:'forget not finished'})`, 8000, 'Forget to finish');
+  };
+  const stored = `new Promise(res=>{const r=(window.__msOpenReal||((n,v)=>indexedDB.open(n,v)))(${JSON.stringify(DB)},1);r.onupgradeneeded=()=>{r.transaction.abort()};r.onerror=()=>res(null);
+    r.onsuccess=()=>{const db=r.result;if(!db.objectStoreNames.contains('profile')){db.close();res('no-store');return}const tx=db.transaction('profile');const k=tx.objectStore('profile').getKey('current');const g=tx.objectStore('profile').get('current');
+    tx.oncomplete=()=>{db.close();res(k.result===undefined?null:g.result===undefined?'undefined-value':g.result)}}})`;
+  const seedRecord = (value, { store = 'profile', key = 'current', unique = [] } = {}) => `new Promise((res,rej)=>{const r=window.__msOpenReal(${JSON.stringify(DB)},1);
+    r.onupgradeneeded=()=>{const os=r.result.createObjectStore(${JSON.stringify(store)});for(const index of ${JSON.stringify(unique)})os.createIndex(index,index,{unique:true})};
+    r.onsuccess=()=>{const db=r.result;if(${JSON.stringify(store)}!=='profile'){db.close();res(true);return}const tx=db.transaction('profile','readwrite');tx.objectStore('profile').put(${value},${JSON.stringify(key)});tx.oncomplete=()=>{db.close();res(true)};tx.onabort=()=>rej(Error('seed'))};r.onerror=()=>rej(Error('seed open'))})`;
+  const seedPhysics = `{version:1,revision:crypto.randomUUID(),entries:[{course:'physics',level:'HL',grade:6}]}`;
+  const holdOpen = (page) => page.ev(`window.__msRelease=null;window.__msOpenMode='delay'`);
+  const isHeld = (page) => page.waitFor(`({ok:!!window.__msRelease,why:'IndexedDB open has not started'})`, 2000, 'held open');
+  const releaseRead = async (page) => {
+    const reads = (await ms(page)).reads;
+    await page.ev('window.__msRelease()');
+    await page.waitFor(`({ok:window.__ms.reads>${reads},why:'readonly transaction has not completed'})`, 4000, 'read to settle');
+  };
+  const databases = `indexedDB.databases().then(l=>l.map(d=>d.name))`;
+  const order = `[...document.querySelectorAll('#results li.item')].map(li=>li.dataset.id+':'+(li.querySelector('.grp-h')?.textContent??''))`;
+  const counts = `document.querySelector('#result-count').textContent+'|'+document.querySelector('#shortlist-count-text').textContent`;
+  const rowLine = (id) => `document.querySelector('#results li[data-id="${id}"] .ms-row:not([hidden])')?.textContent??null`;
+  const detailBlock = (where) => `(()=>{const d=document.querySelector('${where} .ms-detail:not([hidden])');return d?d.textContent:null})()`;
+  const publicDetail = (where) => `(()=>{const sec=document.querySelector('${where} [data-reviewed-for]');if(!sec)return null;const c=sec.cloneNode(true);c.querySelectorAll('.ms-private').forEach(n=>n.remove());return c.textContent})()`;
+  const compareText = `(()=>{const b=document.querySelector('#cmp-body');return b?b.textContent:null})()`;
+  const focusIs = (js, what) => `({ok:document.activeElement===(${js}),why:'focus on '+(document.activeElement?.id||document.activeElement?.className||document.activeElement?.tagName)+' not ${what}'})`;
+  const noErrors = (page) => {
+    const other = page.errors.filter((e) => !/ib-subject-rules\.csv/.test(`${e.url} ${e.text}`));
+    assert(other.length === 0 && page.exceptions.length === 0, [...other.map((e) => e.text), ...page.exceptions].join(' | '));
+  };
+  const ms = (page) => page.ev('({...window.__ms,blobs:window.__ms.blobs.length})');
+  const lang = async (page, code) => { await page.ev(`window.__smokeLanguage(${JSON.stringify(code)})`); await page.waitFor(`({ok:document.documentElement.lang===${JSON.stringify(code)},why:'language'})`, 3000, 'language'); };
+
+  // Fixtures. eur-ibeor: case 1 (Maths AA/AI HL 5 with SL excluded, and
+  // Physics HL 5). arcada-it: the same without the cited SL exclusion.
+  const CASE1 = rule('eur-ibeor');
+  const CASE1_NO_EXCLUSION = rule('arcada-it', { routes: routes([S(['maths-aa', 'maths-ai'], ['HL'], 5), S(['physics'], ['HL'], 5)]) });
+
+  // ------------------------------------------------------------- 0. off
+  watchdog.refresh();
+  {
+    const page = await openMS({ enabled: false });
+    try {
+      await check('1280', 'MS off', 'as shipped (switch off): no private UI or storage activity, pre-existing profile and public requirements intact', async () => {
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'not in My list'})`, 5000, 'My list');
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('#pane [data-reviewed-for="eur-ibeor"]'),why:'no detail'})`, 5000, 'detail');
+        const facts = await page.ev(`({strip:!!document.querySelector('#ml-subjects,#ml-subject-notices,.ms-private,[data-ms-row],[data-ms-detail]'),subjects:${publicDetail('#pane')}})`);
+        assert(!facts.strip, 'a private node exists while the switch is off');
+        assert(facts.subjects.includes(catalogue.programmes.get('eur-ibeor').ib_subjects), 'public subject wording missing');
+        const counters = await ms(page);
+        assert(counters.opens === 0 && counters.puts === 1 && counters.deletes === 0 && counters.channels === 0 && counters.posted.length === 0, JSON.stringify(counters));
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'the pre-existing record changed');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // -------------------------------------------------------- 1. journey 1
+  watchdog.refresh();
+  {
+    const page = await openMS({ adapter: true, rules: fixtures.rulesCsv([CASE1, CASE1_NO_EXCLUSION]) });
+    try {
+      await check('1280', 'MS case 1', 'desktop: Cancel and Escape apply nothing and keep the pane; Save gives the named conflict; the variant without a cited exclusion needs checking; order and counts byte-identical', async () => {
+        await toList(page);
+        assert((await page.ev(databases)).length === 0, 'reading in My list created a database');
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'no reviewed block'})`, 6000, 'reviewed');
+        const before = { order: await page.ev(order), counts: await page.ev(counts), pub: await page.ev(publicDetail('#pane')) };
+        assert((await page.ev(strip)).line === `${EN.ms_label} ${EN.ms_not_added} ${EN.ms_add}`, 'strip without a profile');
+        // Cancel and Escape: no draft applied, pane and focus kept.
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]], { save: false });
+        await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+        await page.waitFor(focusIs(`document.querySelector('#ml-subjects .ms-edit')`, 'Add'), 3000, 'focus back on Add');
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]], { save: false });
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(focusIs(`document.querySelector('#ml-subjects .ms-edit')`, 'Add'), 3000, 'Escape closes the editor only');
+        let s = await page.ev(strip);
+        assert(s.names === EN.ms_not_added && !s.editor, `draft applied: ${s.names}`);
+        assert(await page.ev(`!!document.querySelector('#pane [data-reviewed-for="eur-ibeor"]')`), 'Escape closed the detail');
+        // Save.
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]]);
+        await page.waitFor(focusIs(`document.querySelector('#ml-subjects .ms-edit')`, 'Edit'), 3000, 'focus back on Edit');
+        s = await page.ev(strip);
+        assert(s.names === 'Maths AI SL · Physics HL' && s.status === EN.ms_saved_page, JSON.stringify(s));
+        const row = await page.ev(rowLine('eur-ibeor'));
+        assert(row === `${EN.ms_row_lead} ${EN.subj_status_conflicts} · ${EN.subj_status_rider}`, `row: ${row}`);
+        const detail = await page.ev(detailBlock('#pane'));
+        assert(detail.includes(EN.subj_status_conflicts) && detail.includes(fill(EN.ms_r_level_excluded, { level: 'SL', entry: 'Maths AI SL' })), `detail: ${detail}`);
+        assert(detail.includes(EN.rv_sample), 'the private block on an invented rule lacks its fixture warning');
+        const variant = await page.ev(rowLine('arcada-it'));
+        assert(variant === `${EN.ms_row_lead} ${EN.subj_status_needs} · ${EN.subj_status_rider}`, `no-exclusion variant: ${variant}`);
+        for (const id of ['eur-ibp', 'qub-environmental-management-bsc', 'sdu-mma']) assert((await page.ev(rowLine(id))) === null, `${id} has a personal line with no rule`);
+        const after = { order: await page.ev(order), counts: await page.ev(counts), pub: await page.ev(publicDetail('#pane')) };
+        assert(JSON.stringify(after) === JSON.stringify(before), `changed: ${JSON.stringify([before, after])}`);
+        assert(s.summary.includes(`${EN.subj_status_conflicts}: 1`) && s.summary.includes(`${EN.subj_status_needs}: 1`) && s.summary.includes(`${EN.subj_status_no_check}: 3`)
+          && s.summary.includes(EN.ms_denominator_mine), s.summary);
+        await page.screenshot(`${shots}/case1-1280.png`, { viewportOnly: true });
+        noErrors(page);
+      });
+      await check('1280', 'MS case 1 focus', 'a scrolled position where the strip is off screen: Save and Escape restore the scroll and focus the open programme, never jumping to the strip', async () => {
+        await page.ev(`window.scrollTo(0, 0)`);
+        for (const finish of ['save', 'escape']) {
+          // Scroll the list down so the strip is off screen, then open the
+          // editor from the keyboard there.
+          await page.ev(`window.scrollTo(0, document.querySelector('#results').getBoundingClientRect().top + scrollY + 300)`);
+          const y = await page.ev('scrollY');
+          await page.ev(`document.querySelector('#ml-subjects .ms-edit').focus({preventScroll:true})`);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`({ok:!document.querySelector('#ms-editor').hidden && document.activeElement.matches('.ms-f-course select'),why:'no editor'})`, 3000, 'editor by keyboard');
+          if (finish === 'save') await saveEditor(page); else await page.key('Escape', 'Escape', 27);
+          await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden,why:'open'})`, 3000, 'closed');
+          const at = await page.ev(`({y:scrollY,focus:document.activeElement===document.querySelector('#pane')||document.activeElement===document.querySelector('#results li[data-id="eur-ibeor"] button.open'),pane:!!document.querySelector('#pane [data-reviewed-for="eur-ibeor"]')})`);
+          assert(Math.abs(at.y - y) <= 1 && at.focus && at.pane, `${finish}: ${JSON.stringify(at)} (wanted y ${y})`);
+        }
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // ---------------------------------------------- 2. journey 2: public
+  watchdog.refresh();
+  {
+    const page = await openMS({ adapter: true, rules: fixtures.rulesCsv([CASE1]), compare: ['eur-ibeor', 'arcada-it'] });
+    try {
+      await check('1280', 'MS case 2', 'no profile, then two different profiles: the public reviewed line in the detail and Compare never changes, and no profile is made by reading', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'no reviewed block'})`, 6000, 'reviewed');
+        const openCmp = async () => {
+          await page.click(`document.querySelector('#header-compare')`, 'Compare');
+          await page.waitFor(`({ok:!document.querySelector('#compare').hidden && !!document.querySelector('#cmp-body tr[data-fact="reviewed"]'),why:'compare'})`, 5000, 'Compare');
+          const text = await page.ev(compareText);
+          assert(!(await page.ev(`!!document.querySelector('#compare .ms-private,#compare [data-ms-row],#compare [data-ms-detail]')`)), 'a private node in Compare');
+          assert(await page.ev(`document.querySelector('#shortlist-bar').hidden`), 'the bar shows over Compare');
+          await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+          await page.waitFor(`({ok:document.querySelector('#compare').hidden,why:'open'})`, 3000, 'Compare closed');
+          return text;
+        };
+        const none = { pane: await page.ev(publicDetail('#pane')), cmp: await openCmp() };
+        assert(none.cmp.includes('Maths AA or Maths AI at HL, grade 5 or higher') && none.cmp.includes('Physics at HL, grade 5 or higher'), 'public reviewed line in Compare');
+        assert((await page.ev(strip)).names === EN.ms_not_added && (await page.ev(stored)) === null, 'reading made a profile');
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]]);
+        const one = { pane: await page.ev(publicDetail('#pane')), cmp: await openCmp() };
+        await enter(page, [['maths-aa', 'HL', 7], ['chemistry', 'HL', 6], ['physics', 'HL', 7]]);
+        const two = { pane: await page.ev(publicDetail('#pane')), cmp: await openCmp() };
+        assert(JSON.stringify(none) === JSON.stringify(one) && JSON.stringify(one) === JSON.stringify(two), 'public subject facts changed with the profile');
+        assert((await page.ev(rowLine('eur-ibeor'))).includes(EN.subj_status_meets), 'the second profile meets');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // --------------------------------------------- 3. phone 393 x 852
+  watchdog.refresh();
+  {
+    const page = await openMS({ width: 393, height: 852, adapter: true, rules: fixtures.rulesCsv([CASE1]), compare: ['eur-ibeor', 'arcada-it'] });
+    const slot = `#results li[data-id="eur-ibeor"] .expand`;
+    try {
+      await check('393', 'MS case 3', 'phone: inline editor with focus on the first field; Save, Cancel and Escape keep the same open slot; Back, logo and Compare keep the profile; page-only is gone after reload, Remember keeps it', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('${slot} .d-reviewed .rv-line'),why:'slot'})`, 6000, 'the open slot');
+        await enter(page, [['physics', 'HL', 6], ['maths-aa', 'HL', 6]], { save: false });
+        assert(await page.ev(`(()=>{const e=document.querySelector('#ms-editor').getBoundingClientRect();return e.left>=0&&e.right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth})()`), 'the editor is not inline at 393');
+        await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden,why:'open'})`, 3000, 'cancel');
+        assert(await page.ev(`!!document.querySelector('${slot}') && !document.querySelector('${slot} .ms-detail:not([hidden])')`), 'Cancel: slot lost, or private block without a saved profile');
+        await enter(page, [['physics', 'HL', 6], ['maths-aa', 'HL', 6]], { save: false });
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden,why:'open'})`, 3000, 'Escape');
+        assert(await page.ev(`!!document.querySelector('${slot}')`), 'Escape closed the slot');
+        await enter(page, [['physics', 'HL', 6], ['maths-aa', 'HL', 6]]);
+        const block = await page.ev(detailBlock(slot));
+        assert(block?.includes(EN.subj_status_meets) && block.includes(EN.subj_status_predicted) && await page.ev(`!!document.querySelector('${slot}')`), `slot block: ${block}`);
+        await page.screenshot(`${shots}/case3-393.png`);
+        const statusOf = async () => ({ strip: (await page.ev(strip)).names, row: await page.ev(rowLine('eur-ibeor')) });
+        const want = await statusOf();
+        // Back to Browse, then My list.
+        await page.click(`document.querySelector('#f-shortlist-only')`, 'Back to all programmes');
+        await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'still in list'})`, 3000, 'Browse');
+        assert(await page.ev(`!document.querySelector('.ms-private:not([hidden])') && !document.querySelector('[data-ms-row]')`), 'private nodes in Browse');
+        await toList(page);
+        assert(JSON.stringify(await statusOf()) === JSON.stringify(want), 'Back and My list lost the profile');
+        // The logo.
+        await page.ev(`document.querySelector('a.mark').click()`);
+        await page.waitFor(`({ok:!document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'still in list'})`, 3000, 'logo home');
+        await toList(page);
+        assert(JSON.stringify(await statusOf()) === JSON.stringify(want), 'the logo lost the profile');
+        // Compare from My list, then back.
+        await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'no compare'})`, 3000, 'Compare');
+        assert(await page.ev(`document.querySelector('#ml-subjects').closest('[hidden]')!==null || !document.querySelector('#ml-subjects').getClientRects().length`), 'the strip shows over Compare');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(`({ok:document.querySelector('#compare').hidden && !document.querySelector('#ml-subjects').hidden,why:'still open'})`, 3000, 'Compare closed');
+        assert(JSON.stringify(await statusOf()) === JSON.stringify(want), 'Compare lost the profile');
+        // Reload: page-only is gone; Remember survives.
+        await reload(page);
+        await toList(page);
+        assert((await page.ev(strip)).names === EN.ms_not_added, 'page-only survived a reload');
+        await openEditor(page);
+        assert(await page.ev(`[...document.querySelectorAll('#ms-editor select')].every(s=>s.value==='') && !document.querySelector('#ms-remember').checked`), 'controls restored after reload');
+        await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+        await enter(page, [['physics', 'HL', 6], ['maths-aa', 'HL', 6]], { remember: true });
+        assert((await page.ev(strip)).status === EN.ms_saved_browser, 'remembered');
+        await reload(page);
+        await toList(page);
+        assert((await page.ev(strip)).names === 'Physics HL · Maths AA HL', 'Remember lost after reload');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  // ------------------------------------------- 4, 5. routes and buckets
+  watchdog.refresh();
+  {
+    const ALT = rule('eur-ibeor', { routes: routes([S(['physics'], ['HL'], 6)], [S(['chemistry'], ['HL'], 6)]) });
+    const MATHS5 = rule('eur-ibp', { routes: routes([S(['maths-aa', 'maths-ai'], ['HL'], 5)]) });
+    const ABSENT = rule('arcada-it', { evidence_kind: 'explicit-no-restrictions', routes: { absence_sources: ['s1'] } });
+    const NEED_PHYS = rule('sdu-mma', { routes: routes([S(['physics'], ['HL'], 5)]) });
+    const page = await openMS({ adapter: true, rules: fixtures.rulesCsv([ALT, MATHS5, ABSENT, NEED_PHYS]) });
+    try {
+      await check('1280', 'MS case 4', 'Physics HL 6 or Chemistry HL 6: a low Physics prediction needs checking and names Chemistry; Chemistry SL still needs checking; Chemistry HL 6 meets based on predictions; rows, details and summary agree in EN and SK', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'no reviewed'})`, 6000, 'reviewed');
+        const steps = [
+          [[['physics', 'HL', 5]], 'needs', fill(EN.ms_r_add, { course: 'Chemistry' })],
+          [[['physics', 'HL', 5], ['chemistry', 'SL']], 'needs', null],
+          [[['physics', 'HL', 5], ['chemistry', 'HL', 6]], 'meets', EN.subj_status_predicted],
+        ];
+        for (const [entries, want, words] of steps) {
+          await enter(page, entries);
+          const row = await page.ev(rowLine('eur-ibeor'));
+          const detail = await page.ev(detailBlock('#pane'));
+          const key = want === 'meets' ? EN.subj_status_meets : EN.subj_status_needs;
+          assert(row.includes(key) && detail.includes(key), `${JSON.stringify(entries)}: row ${row} / detail ${detail}`);
+          if (words) assert(detail.includes(words) || row.includes(words), `${JSON.stringify(entries)} lacks "${words}": ${detail}`);
+          assert(!detail.includes(EN.subj_status_conflicts), 'a conflict from missing or low entries');
+        }
+        assert((await page.ev(rowLine('eur-ibeor'))).includes(EN.subj_status_predicted), 'Meets without the prediction qualifier');
+        await lang(page, 'sk');
+        const skRow = await page.ev(rowLine('eur-ibeor'));
+        const skDetail = await page.ev(detailBlock('#pane'));
+        const skSummary = (await page.ev(strip)).summary;
+        assert(skRow.includes(SK.subj_status_meets) && skRow.includes(SK.subj_status_predicted) && skDetail.includes(SK.subj_status_meets) && skSummary.includes(SK.subj_status_meets), `SK: ${skRow} / ${skSummary}`);
+        await lang(page, 'en');
+        noErrors(page);
+      });
+      await check('1280', 'MS case 5', 'six entries without the needed Physics need checking, never conflict; Maths HL 6 against Maths HL 5 counts only as Meets (predicted) and the explicit-absence rule only as No listed restrictions', async () => {
+        await page.click(`document.querySelector('#results li[data-id="sdu-mma"] button.open')`, 'Open the Physics fixture');
+        const next = () => page.ev(`document.querySelector('#pane .ms-next')?.textContent`);
+        await enter(page, [['chemistry', 'HL', 6]]);
+        assert(await next() === 'Next step: If you take Physics, enter it in My subjects to check this route.', await next());
+        await lang(page, 'sk');
+        assert(await next() === 'Ďalší krok: Ak máš predmet Fyzika, zadaj ho do svojho zoznamu predmetov a over túto cestu.', await next());
+        await lang(page, 'en');
+        await enter(page, [['maths-aa', 'HL', 6], ['chemistry', 'HL', 6], ['biology', 'SL'], ['en-a-lit', 'HL'], ['history', 'SL'], ['visual-arts', 'SL']]);
+        const sdu = await page.ev(rowLine('sdu-mma'));
+        assert(sdu.includes(EN.subj_status_needs), `six entries: ${sdu}`);
+        const ibp = await page.ev(rowLine('eur-ibp'));
+        const arc = await page.ev(rowLine('arcada-it'));
+        assert(ibp === `${EN.ms_row_lead} ${EN.subj_status_meets} (${EN.subj_status_predicted}) · ${EN.subj_status_rider}`, `eur-ibp: ${ibp}`);
+        assert(arc === `${EN.ms_row_lead} ${EN.subj_status_no_restrictions} · ${EN.subj_status_rider}`, `arcada-it: ${arc}`);
+        for (const [code, T] of [['en', EN], ['sk', SK]]) {
+          await lang(page, code);
+          const detail = await page.ev(detailBlock('#pane'));
+          const missing = code === 'en' ? 'not decided: Physics not entered' : 'nerozhodnuté: v tvojom zozname chýba predmet Fyzika';
+          const advice = code === 'en' ? 'Next step: Check the official requirement for Physics and review your six entries.'
+            : 'Ďalší krok: Over si na oficiálnej stránke požiadavku na predmet Fyzika a skontroluj svojich šesť zadaných predmetov.';
+          assert(detail.includes(T.subj_status_needs) && detail.includes(missing) && await next() === advice, detail);
+          const summary = (await page.ev(strip)).summary;
+          // eur-ibeor (Chemistry HL 6) and eur-ibp meet, both on predictions.
+          for (const [key, n] of [['subj_status_meets', 2], ['subj_status_no_restrictions', 1], ['subj_status_needs', 1], ['subj_status_no_check', 1]]) {
+            const label = key === 'subj_status_meets' ? `${T[key]} (${T.subj_status_predicted})` : T[key];
+            assert(summary.includes(`${label}: ${n}`), `${code} summary lacks ${label}: ${n} — ${summary}`);
+          }
+          assert(!summary.includes(T.subj_status_conflicts), `${code}: a zero bucket shown`);
+        }
+        await lang(page, 'en');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // ---------------------------------------- 6. share between browsers
+  watchdog.refresh();
+  {
+    const A = await openMS({ saves: ['eur-ibeor', 'eur-ibp', 'arcada-it'], adapter: true, rules: fixtures.rulesCsv([CASE1]) });
+    let B = null, C = null;
+    try {
+      await check('1280', 'MS case 6', 'share: exact public query with and without points; B keeps its remembered profile and saves, sees its own results with the browser label, Save these unions; a clean C adds page-only entries after opening and loses them on reload; private-looking parameters never become entries', async () => {
+        await toList(A);
+        await enter(A, [['maths-ai', 'SL'], ['physics', 'HL']], { remember: true });
+        await A.click(`document.querySelector('#ml-share>summary')`, 'Share');
+        const link = async (points) => {
+          if ((await A.ev(`document.querySelector('#ml-share-points').checked`)) !== points) await A.click(`document.querySelector('#ml-share-points')`, 'Include my IB points');
+          await A.click(`document.querySelector('#ml-share-copy')`, 'Copy share link');
+          await A.waitFor(`navigator.clipboard.readText().then(t=>({ok:/[?]list=/.test(t),why:t}))`, 5000, 'clipboard');
+          return A.ev('navigator.clipboard.readText()');
+        };
+        const plain = await link(false);
+        assert(new URL(plain).search === '?list=eur-ibeor,eur-ibp,arcada-it', `share: ${plain}`);
+        await A.ev(`(()=>{const i=document.querySelector('#f-points');i.value='36';i.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+        await A.waitFor(`({ok:!document.querySelector('#ml-share-points').disabled,why:'points'})`, 3000, 'points');
+        const withPoints = await link(true);
+        assert(new URL(withPoints).search === '?list=eur-ibeor,eur-ibp,arcada-it&points=36', `share with points: ${withPoints}`);
+        // B: its own saves and a remembered profile, made before the link.
+        B = await openMS({ saves: ['sdu-mma'], adapter: true, rules: fixtures.rulesCsv([CASE1]) });
+        await toList(B);
+        await enter(B, [['maths-aa', 'HL', 6], ['chemistry', 'HL']], { remember: true });
+        const bRecord = await B.ev(stored);
+        const bSaves = await B.ev(`localStorage.getItem(${JSON.stringify(SHORTLIST)})`);
+        await B.send('Page.navigate', { url: withPoints });
+        await ready(B);
+        await B.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'no strip in the shared list'})`, 5000, 'strip');
+        await settled(B);
+        assert(JSON.stringify(await B.ev(stored)) === JSON.stringify(bRecord) && (await B.ev(`localStorage.getItem(${JSON.stringify(SHORTLIST)})`)) === bSaves, 'opening the link changed B');
+        const bStrip = await B.ev(strip);
+        assert(bStrip.names === 'Maths AA HL · Chemistry HL' && bStrip.summary.startsWith(EN.ms_context_shared) && bStrip.summary.includes(EN.ms_denominator_shared), JSON.stringify(bStrip));
+        assert((await B.ev(rowLine('eur-ibeor'))).includes(EN.subj_status_needs), 'B does not see its own result');
+        await B.click(`document.querySelector('#ml-save-shared')`, 'Save these to my list');
+        await B.waitFor(`({ok:JSON.parse(localStorage.getItem(${JSON.stringify(SHORTLIST)})).length===4,why:localStorage.getItem(${JSON.stringify(SHORTLIST)})})`, 3000, 'union');
+        assert(await B.ev(`document.querySelector('#shortlist-bar').classList.contains('is-list') && /list=/.test(location.search)`), 'the shared set closed');
+        assert(JSON.stringify(await B.ev(stored)) === JSON.stringify(bRecord), 'Save these changed the profile');
+        // C: a clean browser.
+        C = await openMS({ query: new URL(withPoints).search, saves: null, adapter: true, rules: fixtures.rulesCsv([CASE1]) });
+        await C.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'no strip'})`, 5000, 'strip');
+        await settled(C);
+        assert((await C.ev(strip)).names === EN.ms_not_added, 'C sees a profile');
+        await enter(C, [['physics', 'HL', 7]]);
+        assert((await C.ev(rowLine('eur-ibeor'))).includes(EN.subj_status_needs), 'C has no result');
+        await reload(C);
+        await C.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'no strip'})`, 5000, 'strip');
+        await settled(C);
+        assert((await C.ev(strip)).names === EN.ms_not_added && (await C.ev(stored)) === null, 'C page-only survived');
+        // Odd addresses: only public inputs count.
+        const odd = '?ui=en&list=eur-ibeor,eur-ibeor,not-a-programme,%E0%A4%A,eur-ibp&mymaths=AI%20SL&maths=1&points=33&subjects=maths-aa:HL:7&profile=physics-HL&ms=1&remember=1';
+        await C.send('Page.navigate', { url: base + odd });
+        await ready(C);
+        await C.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'no strip'})`, 5000, 'strip');
+        await settled(C);
+        const oddState = await C.ev(`({names:document.querySelector('#ml-subjects .ms-names').textContent,mymaths:document.querySelector('#f-mymaths').value,maths:document.querySelector('#f-maths').checked,points:document.querySelector('#f-points').value})`);
+        assert(oddState.names === EN.ms_not_added && oddState.mymaths === 'AI SL' && oddState.maths && oddState.points === '33', JSON.stringify(oddState));
+        assert((await C.ev(stored)) === null, 'an address wrote a profile');
+        for (const page of [A, B, C]) noErrors(page);
+      });
+    } finally { await A.close(); await B?.close(); await C?.close(); }
+  }
+
+  // ------------------------------------------------- 7. public outputs
+  watchdog.refresh();
+  for (const [width, height] of [[1280, 900], [393, 852]]) {
+    const page = await openMS({ width, height, record: true, compare: ['eur-ibeor', 'arcada-it'] });
+    try {
+      await check(String(width), 'MS case 7', 'CSV bytes, Share and Copy link payloads, the address, requests, storage and printed output are the same with and without a profile; only a fixed word goes on the channel; editor controls are non-submitting, autocomplete off', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('${width >= 1200 ? '#pane' : '#results li[data-id="eur-ibeor"] .expand'} [data-reviewed-for]'),why:'detail'})`, 5000, 'detail');
+        const capture = async () => {
+          if (width < 600 && !(await page.ev(`document.querySelector('#shortlist-bar').classList.contains('ml-more-open')`))) await page.click(`document.querySelector('#ml-more')`, 'More');
+          const blobs = (await ms(page)).blobs;
+          await page.click(`document.querySelector('#export-csv')`, 'Export CSV');
+          await page.waitFor(`({ok:window.__ms.blobs.length===${blobs + 1},why:'no CSV'})`, 3000, 'CSV');
+          const csv = await page.ev('window.__ms.blobs.at(-1)');
+          if (!(await page.ev(`document.querySelector('#ml-share').open`))) await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+          await page.click(`document.querySelector('#ml-share-copy')`, 'Copy share link');
+          await page.waitFor(`navigator.clipboard.readText().then(t=>({ok:/list=/.test(t),why:t}))`, 3000, 'share');
+          const share = await page.ev('navigator.clipboard.readText()');
+          await page.click(`document.querySelector('#ml-share>summary')`, 'Share');
+          await page.ev(`document.querySelector('#f-copy').click()`);
+          await page.waitFor(`navigator.clipboard.readText().then(t=>({ok:!/list=/.test(t),why:t}))`, 3000, 'copy link');
+          const copy = await page.ev('navigator.clipboard.readText()');
+          const storage = await page.ev(`JSON.stringify([Object.entries(localStorage).filter(([k])=>k!=='__ms_seeded').sort(),Object.entries(sessionStorage).sort()])`);
+          // Print: the real beforeprint, then print media.
+          await page.ev(`window.dispatchEvent(new Event('beforeprint'))`);
+          await page.send('Emulation.setEmulatedMedia', { media: 'print' });
+          let print;
+          try {
+            print = await page.ev(`({text:document.body.innerText,private:[...document.querySelectorAll('.ms-private')].filter(n=>n.getClientRects().length).length,pane:getComputedStyle(document.querySelector('#pane')).display,
+              folds:[...document.querySelectorAll('#results .expand details')].every(d=>d.open)})`);
+          } finally {
+            await page.send('Emulation.setEmulatedMedia', { media: '' });
+            await page.ev(`window.dispatchEvent(new Event('afterprint'))`);
+          }
+          return { csv, share, copy, address: await page.ev('location.href'), storage, print };
+        };
+        const before = await capture();
+        const requestsBefore = page.seen.requests.length;
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]]);
+        const pageOnly = await capture();
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]], { remember: true });
+        const remembered = await capture();
+        const newRequests = page.seen.requests.slice(requestsBefore);
+        for (const [name, after] of [['page-only', pageOnly], ['remembered', remembered]]) {
+          for (const key of ['csv', 'share', 'copy', 'address', 'storage']) assert(after[key] === before[key], `${name}: ${key} changed`);
+          assert(after.print.private === 0 && !/Maths AI SL|Your subjects|My IB subjects|predicted/.test(after.print.text), `${name}: private text on paper`);
+          assert(after.print.text === before.print.text, `${name}: printed text differs from the no-profile print`);
+        }
+        if (width >= 1200) assert(before.print.pane === 'none', 'the pane prints');
+        else assert(before.print.folds, 'the open slot folds do not expand for print');
+        const leaked = newRequests.filter((r) => /maths-ai|physics|revision|subject/i.test(`${r.url} ${r.body ?? ''}`) || r.method !== 'GET');
+        assert(leaked.length === 0, `requests: ${JSON.stringify(leaked)}`);
+        const counters = await ms(page);
+        assert(counters.posted.length >= 1 && counters.posted.every((m) => m === 'changed'), `channel: ${JSON.stringify(counters.posted)}`);
+        const form = await page.ev(`(async()=>{document.querySelector('#ml-subjects .ms-edit').click();await new Promise(r=>requestAnimationFrame(r));const e=document.querySelector('#ms-editor');
+          const out={selects:[...e.querySelectorAll('select')].every(s=>s.autocomplete==='off'),buttons:[...e.querySelectorAll('button')].every(b=>b.type==='button'),inputs:[...e.querySelectorAll('input')].every(i=>i.autocomplete==='off'),form:!!e.closest('form')};
+          document.querySelector('#ms-editor .ms-cancel').click();return out})()`);
+        assert(form.selects && form.buttons && form.inputs && !form.form, JSON.stringify(form));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // ------------------------------------- 8. real data, no signed rules
+  watchdog.refresh();
+  {
+    const page = await openMS({ compare: ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'] });
+    try {
+      await check('1280', 'MS case 8', 'header-only rules: with and without a profile the public detail and Compare are identical, no row line, no verdict, the zero-reviewed sentence once', async () => {
+        await toList(page);
+        const ids = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'];
+        const read = async () => {
+          const out = {};
+          for (const id of ids) {
+            await page.click(`document.querySelector('#results li[data-id="${id}"] button.open')`, id);
+            await page.waitFor(`({ok:!!document.querySelector('#pane [data-reviewed-for="${id}"]'),why:'detail'})`, 5000, id);
+            out[id] = { pub: await page.ev(publicDetail('#pane')), mine: await page.ev(detailBlock('#pane')), row: await page.ev(rowLine(id)) };
+          }
+          await page.click(`document.querySelector('#header-compare')`, 'Compare');
+          await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare'})`, 5000, 'Compare');
+          await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+          out.cmp = await page.ev(compareText);
+          out.unknownKept = await page.ev(`!!document.querySelector('#cmp-body tr[data-fact="subjects"]')`);
+          await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+          await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+          return out;
+        };
+        const none = await read();
+        assert((await page.ev(strip)).summary === EN.ms_sum_zero, `no profile: ${(await page.ev(strip)).summary}`);
+        await enter(page, [['maths-aa', 'SL', 6], ['physics', 'HL']]);
+        const some = await read();
+        assert((await page.ev(strip)).summary === EN.ms_sum_zero, 'the zero sentence');
+        for (const id of ids) {
+          assert(none[id].pub === some[id].pub, `${id}: public detail changed`);
+          assert(none[id].row === null && some[id].row === null, `${id}: a row line with no rule`);
+          assert(none[id].mine === null && some[id].mine.includes(EN.subj_status_no_check) && !/Meets|conflicts|Needs checking|No listed/.test(some[id].mine), `${id}: ${some[id].mine}`);
+        }
+        assert(some.eur_ibeor === undefined && none['eur-ibeor'].pub.includes('Maths AA SL 6 lets you sit the maths entrance exam instead'), 'exam alternative');
+        assert(none.cmp === some.cmp && none.unknownKept, 'Compare changed or lost the unknown');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const [query, shared] of [['?ui=en', false], ['?ui=en&list=no-such-programme', true]]) {
+    const page = await openMS({ query, saves: [] });
+    try {
+      await check('1280', `MS empty ${shared ? 'link' : 'list'}`, 'an empty list or link keeps Add subjects beside the existing empty-state actions, with its own sentence', async () => {
+        if (!shared) await page.click(`document.querySelector('#header-list')`, 'My list');
+        await page.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden]) .ms-edit') && !document.querySelector('#empty-state').hidden,why:'no strip or empty state'})`, 5000, 'empty');
+        const s = await page.ev(strip);
+        assert(s.summary === (shared ? EN.ms_sum_empty_shared : EN.ms_sum_empty_mine) && s.line.endsWith(EN.ms_add), JSON.stringify(s));
+        if (!shared) assert(await page.ev(`!document.querySelector('#empty-back').hidden`), 'the empty card lost its way back');
+        const wording = shared ? [
+          'This link has no programmes that are still listed, so there is nothing to compare your subjects with.',
+          'V tomto odkaze už nie sú žiadne uvedené programy, takže nie je s čím porovnať tvoje predmety.',
+        ] : [
+          'Save programmes to compare your IB subjects with the listed subject requirements.',
+          'Ulož si programy a porovnaj svoje IB predmety s uvedenými požiadavkami na predmety.',
+        ];
+        assert(s.summary === wording[0], s.summary);
+        await lang(page, 'sk');
+        assert((await page.ev(strip)).summary === wording[1], 'Slovak empty state');
+        await enter(page, [['physics', 'HL']]);
+        assert((await page.ev(strip)).summary === wording[1], 'Slovak empty state with a profile');
+        await lang(page, 'en');
+        assert((await page.ev(strip)).summary === wording[0], 'English empty state with a profile');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    // All five buckets, one of them hidden by a public filter.
+    const MIX = [
+      rule('eur-ibeor', { routes: routes([S(['physics'], ['HL'], 5)]) }),                       // meets
+      rule('eur-ibp', { routes: routes([S(['maths-aa'], ['HL'], null, { exclude_levels: ['SL'] })]) }), // conflict (AA SL)
+      rule('arcada-it', { routes: routes([S(['chemistry'], ['HL'])]) }),                        // needs
+      rule('sdu-mma', { evidence_kind: 'explicit-no-restrictions', routes: { absence_sources: ['s1'] } }), // no restrictions
+    ];
+    for (const shared of [false, true]) {
+      const page = await openMS({ adapter: true, rules: fixtures.rulesCsv(MIX), query: shared ? `?ui=en&list=${SAVES.join(',')}` : '?ui=en', saves: shared ? ['eur-ibeor'] : SAVES });
+      try {
+        await check('1280', `MS mixed ${shared ? 'link' : 'mine'}`, 'all five buckets over the full set while a reviewed row is filtered out; visible counts, order and grouping unchanged; denominator named', async () => {
+          if (!shared) await toList(page); else { await page.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'strip'})`, 5000, 'strip'); await settled(page); }
+          // A public filter that hides sdu-mma (Denmark), applied in the list.
+          await page.ev(`(()=>{const i=document.querySelector('#f-search');i.value='Rotterdam';i.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+          if (!shared) {
+            await page.waitFor(`({ok:!document.querySelector('#ml-show-all').hidden && document.querySelector('#ml-show-all').textContent===${JSON.stringify(EN.apply_my_filters)},why:document.querySelector('#ml-show-all').textContent})`, 3000, 'Apply my filters');
+            await page.click(`document.querySelector('#ml-show-all')`, 'Apply my filters');
+          }
+          await page.waitFor(`({ok:!document.querySelector('#results li[data-id="sdu-mma"]'),why:'sdu-mma still shown'})`, 5000, 'filtered');
+          const before = { order: await page.ev(order), counts: await page.ev(counts) };
+          await enter(page, [['physics', 'HL', 6], ['maths-aa', 'SL']]);
+          const after = { order: await page.ev(order), counts: await page.ev(counts) };
+          assert(JSON.stringify(before) === JSON.stringify(after), 'counts, order or grouping changed');
+          const summary = (await page.ev(strip)).summary;
+          for (const [key, n] of [['subj_status_meets', 1], ['subj_status_conflicts', 1], ['subj_status_needs', 1], ['subj_status_no_restrictions', 1], ['subj_status_no_check', 1]]) {
+            const label = key === 'subj_status_meets' ? `${EN[key]} (${EN.subj_status_predicted})` : EN[key];
+            assert(summary.includes(`${label}: ${n}`), `${label}: ${n} missing — ${summary}`);
+          }
+          assert(summary.includes(fill(plural(EN.ms_sum_lead, 5), { count: 5, denominator: shared ? EN.ms_denominator_shared : EN.ms_denominator_mine })), summary);
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // ------------------------------- 9. a rule withdrawn in an open tab
+  watchdog.refresh();
+  {
+    let answer = fixtures.rulesCsv([CASE1]);
+    const page = await openMS({ adapter: true, rules: () => answer });
+    try {
+      await check('1280', 'MS case 9', 'a withdrawal on refresh removes the row line, the private verdict and the summary bucket together, with the public line', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'reviewed'})`, 6000, 'reviewed');
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL', 6]]);
+        assert((await page.ev(rowLine('eur-ibeor'))).includes(EN.subj_status_conflicts), 'no conflict');
+        answer = fixtures.rulesCsv([CASE1, rule('eur-ibeor', { status: 'withdrawn' })]);
+        await page.ev(`import('./js/subject-authority.js').then(m=>m.refreshAuthority())`);
+        await page.waitFor(`({ok:!document.querySelector('#pane .d-reviewed') && !document.querySelector('#results .ms-row:not([hidden])'),why:'still shown'})`, 5000, 'withdrawal');
+        const block = await page.ev(detailBlock('#pane'));
+        assert(block.includes(EN.subj_status_no_check) && !block.includes(EN.subj_status_conflicts) && (await page.ev(strip)).summary === EN.ms_sum_zero, block);
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // --------------------------------------------- 10. storage (E1–E5)
+  // Two tabs of one browser share one context, so they share storage.
+  const twoTabs = async (options = {}) => {
+    const context = await newContext();
+    const a = await openMS({ context, ...options });
+    const b = await openMS({ context, ...options });
+    return { context, a, b, close: async () => { await a.close(); await b.close(); await dropContext(context); } };
+  };
+  const staleCheck = async (b, label) => {
+    const s = await b.ev(strip);
+    assert(s.editor && s.formError === EN.ms_stale && s.remember === true, `${label}: ${JSON.stringify(s)}`);
+  };
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F1 request error', 'a native unique-index ConstraintError aborts Save, preserves disk data, and the next mutation succeeds', async () => {
+        await page.ev(seedRecord('{version:1}', { key: 'other', unique: ['version', 'revision'] }));
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true });
+        const first = await page.ev(strip);
+        assert(JSON.stringify((await ms(page)).requestErrors) === '[[true,"ConstraintError"]]', 'no genuine async ConstraintError');
+        assert(first.names === 'Chemistry HL' && first.warn.includes(EN.ms_write_failed_old) && first.status.includes(EN.ms_write_failed)
+          && (await page.ev(stored)) === null, JSON.stringify(first));
+        const collision = '0f8fad5b-d9cb-469f-a165-70867728950e';
+        await page.ev(seedRecord(`{version:2,revision:'${collision}'}`, { key: 'other' }));
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        const kept = await page.ev(stored);
+        assert(kept?.entries[0]?.course === 'physics', 'queue stalled after a request error');
+        await page.ev(`window.__msUUID=crypto.randomUUID;crypto.randomUUID=()=>'${collision}'`);
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true });
+        await page.ev('crypto.randomUUID=window.__msUUID');
+        const next = await page.ev(strip);
+        assert((await ms(page)).requestErrors.length === 2 && next.status.includes(EN.ms_write_failed_old)
+          && JSON.stringify(await page.ev(stored)) === JSON.stringify(kept), JSON.stringify(next));
+        await enter(page, [['biology', 'HL', 5]], { remember: true });
+        assert((await page.ev(stored))?.entries[0]?.course === 'biology' && (await page.ev(strip)).status === EN.ms_saved_browser, 'subsequent Save did not commit');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const remember of [false, true]) for (const beforeRead of [false, true]) {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 initial draft', `pre-seeded record survives a blank draft: Remember ${remember}, Save before read ${beforeRead}`, async () => {
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
+        await page.ev('window.__msSuppress=true');
+        await holdOpen(page);
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await isHeld(page);
+        const loading = (await page.ev(strip)).names;
+        const { puts, deletes } = await ms(page);
+        await openEditor(page);
+        assert(await page.ev(`document.querySelector('#ms-c-1').value==='' && !document.querySelector('#ms-remember').checked`), 'draft loaded unseen entries');
+        await page.ev(choose(0, 'chemistry', 'HL', 7));
+        if (remember) await page.click(`document.querySelector('#ms-remember')`, 'Remember');
+        if (beforeRead) {
+          await saveEditor(page, !remember);
+          if (remember) assert((await page.ev(strip)).formError === EN.ms_refused_pending, 'early Remember did not wait');
+        }
+        await releaseRead(page);
+        if (remember || !beforeRead) {
+          await saveEditor(page, false);
+          await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden || document.querySelector('.ms-form-err').textContent===${JSON.stringify(EN.ms_stale)},why:'Save has not answered'})`, 4000, 'Save outcome');
+        }
+        const after = await page.ev(strip);
+        if (remember) await staleCheck(page, 'unseen initial copy');
+        else assert(after.status === EN.ms_saved_page && after.names === 'Chemistry HL', JSON.stringify(after));
+        assert(loading !== EN.ms_not_added && loading !== 'Physics HL', 'pending read claimed no saved subjects');
+        const counts = await ms(page);
+        assert(counts.puts === puts && counts.deletes === deletes && JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'Save touched the unseen copy');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 reread', 'a post-open focus reread leaves an independent page draft alone and cannot authorize its later replacement of the remembered record', async () => {
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]]);
+        await openEditor(page);
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
+        const reads = (await ms(page)).reads;
+        await page.ev(`window.dispatchEvent(new Event('focus'))`);
+        await page.waitFor(`({ok:window.__ms.reads>${reads},why:'no reread'})`, 4000, 'reread');
+        await page.ev(choose(0, 'biology', 'HL', 5));
+        await saveEditor(page);
+        assert((await page.ev(strip)).names === 'Biology HL', 'reread changed the draft');
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true, save: false });
+        await saveEditor(page, false);
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden || !!document.querySelector('.ms-form-err')?.textContent,why:'no outcome'})`, 4000, 'Save outcome');
+        await staleCheck(page, 'unseen reread copy');
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'independent draft touched the remembered copy');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 unavailable', 'after a failed initial read, page-only Save remains usable and leaves the storage warning visible', async () => {
+        await page.ev(seedRecord('null', { store: 'other' }));
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]]);
+        const s = await page.ev(strip);
+        assert(s.status === EN.ms_saved_page && s.names === 'Chemistry HL' && s.warn.includes(EN.ms_w_read_failed)
+          && (await ms(page)).deletes === 0, JSON.stringify(s));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      const disabled = `['.ms-edit','.ms-cancel','.ms-save','.ms-forget','.ms-add-row'].every(q=>document.querySelector('#ml-subjects '+q)?.disabled)`;
+      await check('1280', 'MS F3 busy Save', 'Save guards editor actions while pending and preserves fallback feedback across navigation', async () => {
+        await toList(page);
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true, save: false });
+        await page.ev('window.__msSuppress=true;window.__msAbortPut=true');
+        await holdOpen(page);
+        await saveEditor(page, false);
+        await isHeld(page);
+        const saveDisabled = await page.ev(disabled);
+        await page.ev(`document.querySelector('.ms-edit').click();document.querySelector('.ms-cancel')?.click();document.querySelector('.ms-add-row')?.click()`);
+        await page.key('Escape', 'Escape', 27);
+        const saveStayed = await page.ev(`!document.querySelector('#ms-editor').hidden && document.querySelectorAll('#ms-editor .ms-erow').length===1`);
+        await page.click(`document.querySelector('#f-shortlist-only')`, 'Back');
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('.ms-status').textContent.includes(${JSON.stringify(EN.ms_write_failed)}),why:'lost Save outcome'})`, 4000, 'settled Save in Browse');
+        await toList(page);
+        const s = await page.ev(strip);
+        assert(saveDisabled && saveStayed && s.names === 'Chemistry HL' && s.status.includes(EN.ms_write_failed_old), JSON.stringify({ saveDisabled, saveStayed, s }));
+        noErrors(page);
+      });
+      await check('1280', 'MS F3 busy Forget', 'Forget and retry keep deletion unconfirmed and block Add until settlement; Forget needs no extra read', async () => {
+        if (!(await page.ev(strip)).shown) await toList(page);
+        const prior = await page.ev(stored);
+        const names = (await page.ev(strip)).names;
+        await openEditor(page);
+        const opens = (await ms(page)).opens;
+        await holdOpen(page);
+        await page.click(`document.querySelector('#ms-editor .ms-forget')`, 'Forget subjects');
+        await isHeld(page);
+        let s = await page.ev(strip);
+        assert(s.editor && s.names === names && s.status !== EN.ms_forgotten && await page.ev(disabled)
+          && JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), JSON.stringify(s));
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden && document.querySelector('.ms-status').textContent===${JSON.stringify(EN.ms_forgotten)},why:'pending Forget'})`, 4000, 'settled Forget');
+        assert((await ms(page)).opens === opens + 1 && (await page.ev(stored)) === null, 'Forget queued an extra read or left data');
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        await page.ev('window.__msAbortDelete=true');
+        await enter(page, [['biology', 'SL']], { remember: false });
+        await holdOpen(page);
+        await page.click(`document.querySelector('.ms-retry')`, 'Try again');
+        await isHeld(page);
+        await page.ev(`document.querySelector('.ms-edit').click()`);
+        s = await page.ev(strip);
+        assert(!s.editor && s.status !== EN.ms_forgotten && await page.ev(`document.querySelector('.ms-edit').disabled && document.querySelector('.ms-retry').disabled`)
+          && (await page.ev(stored))?.entries[0].course === 'physics', JSON.stringify(s));
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('.ms-status').textContent===${JSON.stringify(EN.ms_saved_page_removed)},why:'pending retry'})`, 4000, 'settled retry');
+        assert((await page.ev(stored)) === null && (await page.ev(strip)).names === 'Biology SL'
+          && !await page.ev(`document.querySelector('.ms-edit').disabled`), 'retry did not settle or lost the page-only entries');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const waiver = { type: 'waiver', en: 'A documented exemption (SAMPLE)', sk: 'Zdokumentovaná výnimka (SAMPLE)', sources: ['s1'] };
+    const exam = { type: 'exam', en: 'Pass the test (SAMPLE)', sk: 'Úspešne absolvovať skúšku (SAMPLE)', sources: ['s1'] };
+    const words = rule('eur-ibeor', { routes: routes(
+      [waiver, S(['design-technology'], ['HL'], 5), S(['theatre'], ['HL']), S(['physics'], ['HL'], 5)], [exam],
+    ) });
+    const page = await openMS({ adapter: true, rules: fixtures.rulesCsv([words]), compare: ['eur-ibeor'] });
+    try {
+      await check('1280', 'MS bilingual editor', 'a new empty edit offers Add, a remembered edit offers Forget, and the confirmation describes only the profile', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'Open the fixture');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'no reviewed block'})`, 5000, 'the reviewed block');
+        await page.ev(`(()=>{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+        const unrelated = `[${JSON.stringify(SHORTLIST)},${JSON.stringify(COMPARE)},'ibuf.filters.v1'].map(k=>localStorage.getItem(k))`;
+        await page.waitFor(`(()=>{const values=${unrelated};return {ok:values.every(Boolean)&&JSON.parse(values[2]).filters.myIbPoints===36,why:'test preferences not stored'}})()`, 5000, 'saved programmes and preferences');
+        const forgetShown = `!document.querySelector('#ms-editor .ms-forget').hidden`;
+        const remaining = `document.querySelector('#ms-editor .ms-empty:not([hidden])')?.textContent`;
+        const samples = [
+          ['en', EN, 'Check the marked subject rows.', 'No subjects left. Add a subject.', 'No predicted grade',
+            'Finder has forgotten your IB subjects in this browser.', 'Physics HL, predicted grade 6', 'met; you entered Theatre HL',
+            'no predicted grade for Design technology', 'not decided: it depends on a waiver the page can\'t confirm', 'not decided: it depends on an exam result the page can\'t know',
+            'Next step: Check the official page for the waiver'],
+          ['sk', SK, 'Skontroluj označené riadky.', 'Nezostal žiadny predmet. Pridaj predmet.', 'Bez predpokladanej známky',
+            'Finder v tomto prehliadači zabudol tvoje IB predmety.', 'Fyzika HL, predpokladaná známka 6', 'splnené. V tvojom zozname: Divadlo HL',
+            'pri predmete Dizajn a technológie chýba predpokladaná známka', 'nerozhodnuté: závisí od výnimky, ktorú stránka nemôže potvrdiť',
+            'nerozhodnuté: závisí od výsledku skúšky, ktorý stránka nemôže poznať', 'Ďalší krok: Over si na oficiálnej stránke, či sa na teba vzťahuje výnimka'],
+        ];
+        for (const [code, T, marked, empty, optional, forgotten, predicted, met, missing, exception, test, next] of samples) {
+          await lang(page, code);
+          await openEditor(page);
+          assert(await page.ev(`document.querySelector('#ms-g-1 option').textContent`) === optional, 'optional predicted grade');
+          await page.ev(choose(0, 'physics', ''));
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === marked, 'row guidance must not depend on direction');
+          await page.click(`document.querySelector('#ms-editor .ms-remove')`, 'Remove the only row');
+          assert(await page.ev(remaining) === empty && !await page.ev(forgetShown), 'a new edit suggested unavailable Forget');
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === T.ms_e_empty, 'new empty draft validation');
+          await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+          await enter(page, [['design-technology', 'HL'], ['theatre', 'HL'], ['physics', 'HL', 6]], { remember: true });
+          const detail = await page.ev(detailBlock('#pane'));
+          assert([T.subj_status_needs, predicted, met, missing, exception, test, next].every((text) => detail.includes(text)), detail);
+          assert((await page.ev(stored))?.entries.length === 3, 'remembered fixture was not committed');
+          await openEditor(page);
+          for (let i = 0; i < 3; i++) await page.click(`document.querySelector('#ms-editor .ms-remove')`, 'Remove a subject from the draft');
+          assert(await page.ev(remaining) === empty && await page.ev(forgetShown), 'Forget vanished while editing a remembered profile');
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === T.ms_e_empty_forget && await page.ev(`document.activeElement.matches('.ms-forget')`), 'empty edit lost the explicit Forget action');
+          const before = await page.ev(unrelated);
+          await page.click(`document.querySelector('#ms-editor .ms-forget')`, 'Forget subjects');
+          await page.waitFor(`({ok:document.querySelector('.ms-status').textContent===${JSON.stringify(forgotten)},why:'no scoped confirmation'})`, 5000, 'Forget confirmation');
+          assert((await page.ev(stored)) === null && (await page.ev(strip)).names === T.ms_not_added, 'subjects were not forgotten');
+          assert(JSON.stringify(await page.ev(unrelated)) === JSON.stringify(before), 'Forget changed saves, Compare or preferences');
+        }
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const width of [1280, 393]) {
+    const page = await openMS({ width });
+    try {
+      await check(String(width), 'MS F4 duplicate maths', 'the error stays specific across EN/SK with the same values and focus', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        const detail = `!!document.querySelector('${width === 1280 ? '#pane' : '#results'} [data-reviewed-for="eur-ibeor"]')`;
+        await page.waitFor(`({ok:${detail},why:'detail not open'})`, 4000, 'pane or slot');
+        await enter(page, [['maths-aa', 'HL', 6], ['maths-ai', 'SL', 5]], { save: false });
+        await saveEditor(page, false);
+        const values = `[...document.querySelectorAll('#ms-editor select')].map(s=>s.value).join(',')`;
+        const inspect = () => page.ev(`[document.querySelector('#ms-e-2').textContent,document.activeElement.id,${values}]`);
+        const first = await inspect();
+        await lang(page, 'sk');
+        const second = await inspect();
+        await lang(page, 'en');
+        const third = await inspect();
+        const expectedValues = 'maths-aa,HL,6,maths-ai,SL,5';
+        assert(JSON.stringify([first, second, third]) === JSON.stringify([EN, SK, EN].map((T) => [T.ms_e_duplicate_maths, 'ms-c-2', expectedValues])),
+          JSON.stringify([first, second, third]));
+      });
+      await check(String(width), 'MS F5 strip Escape', 'Escape on the strip leaves the programme open and yields to a native open modal', async () => {
+        if (!(await page.ev(strip)).shown) await toList(page);
+        const detail = `!!document.querySelector('${width === 1280 ? '#pane' : '#results'} [data-reviewed-for="eur-ibeor"]')`;
+        if (!await page.ev(detail)) await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        if (!await page.ev(`!document.querySelector('#ms-editor').hidden`)) await openEditor(page);
+        await page.ev(`(()=>{document.querySelector('.ms-edit').focus();const d=document.createElement('dialog');d.id='ms-test-dialog';d.append(document.createElement('button'));document.body.append(d);d.showModal()})()`);
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#ms-test-dialog').open,why:'modal did not close'})`, 4000, 'native Escape');
+        assert((await page.ev(strip)).editor && await page.ev(detail), 'Escape also closed the editor or programme');
+        await page.ev(`document.querySelector('.ms-edit').focus()`);
+        await page.key('Escape', 'Escape', 27);
+        assert(!(await page.ev(strip)).editor && await page.ev(detail), 'Escape missed the editor or closed the programme');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const how of ['forget', 'page-only', 'clear indexeddb', 'clear local_storage,indexeddb']) {
+    const tabs = await twoTabs();
+    try {
+      await check('1280', 'MS E stale', `tab A ${how} completes; tab B, hearing nothing, Saves at once: refused with fresh-edit guidance, no switch to page-only, nothing stored after reload or in a third tab`, async () => {
+        const { a, b } = tabs;
+        await toList(a);
+        await enter(a, [['physics', 'HL', 6]], { remember: true });
+        await toList(b);
+        assert((await b.ev(strip)).names === 'Physics HL', 'B did not read the remembered profile');
+        await b.ev('window.__msSuppress = true');
+        await openEditor(b);
+        await b.ev(choose(0, 'chemistry', 'HL', 7));
+        if (how === 'forget') await forget(a);
+        else if (how === 'page-only') {
+          await enter(a, [['physics', 'HL', 6]], { remember: false });
+          assert((await a.ev(strip)).status === EN.ms_saved_page_removed, 'page-only did not remove the copy');
+        } else {
+          // The browser's own "clear site data", for this browser context.
+          await a.send('Storage.clearDataForOrigin', { origin: new URL(base).origin, storageTypes: how.slice(6) }, 10_000);
+        }
+        assert((await a.ev(stored)) === null, 'A did not finish');
+        await saveEditor(b, false);
+        await b.waitFor(`({ok:document.querySelector('#ms-editor .ms-form-err')?.textContent!=='',why:'no answer'})`, 5000, 'refusal');
+        await staleCheck(b, how);
+        const counters = await ms(b);
+        assert(counters.puts === 0, `B wrote ${counters.puts} times`);
+        await reload(b);
+        await toList(b);
+        assert((await b.ev(stored)) === null && (await b.ev(strip)).names === EN.ms_not_added, 'resurrected after reload');
+        const third = await openMS({ context: tabs.context, saves: null });
+        try {
+          await third.click(`document.querySelector('#header-list')`, 'My list');
+          await third.waitFor(`({ok:!!document.querySelector('#ml-subjects:not([hidden])'),why:'strip'})`, 5000, 'strip');
+          await settled(third);
+          assert((await third.ev(stored)) === null && (await third.ev(strip)).names === EN.ms_not_added, 'the third tab sees a profile');
+        } finally { await third.close(); }
+        noErrors(a); noErrors(b);
+      });
+    } finally { await tabs.close(); }
+  }
+  watchdog.refresh();
+  {
+    const tabs = await twoTabs();
+    try {
+      await check('1280', 'MS E ABA', 'rev1, Forget, a new rev2 in tab A: tab B, still on rev1, is refused and rev2 stays; two tabs creating from nothing at once: exactly one commits, the other is stale', async () => {
+        const { a, b } = tabs;
+        await toList(a);
+        await enter(a, [['physics', 'HL', 6]], { remember: true });
+        await toList(b);
+        await b.ev('window.__msSuppress = true');
+        await openEditor(b);
+        await forget(a);
+        await enter(a, [['biology', 'HL', 5]], { remember: true });
+        const rev2 = await a.ev(stored);
+        await saveEditor(b, false);
+        await b.waitFor(`({ok:document.querySelector('#ms-editor .ms-form-err')?.textContent!=='',why:'no answer'})`, 5000, 'refusal');
+        await staleCheck(b, 'ABA');
+        assert(JSON.stringify(await b.ev(stored)) === JSON.stringify(rev2), 'rev2 was overwritten');
+        // The creation race.
+        await b.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+        await forget(a);
+        await b.ev('window.__msSuppress = false');
+        await b.ev(`window.dispatchEvent(new Event('focus'))`);
+        await settled(b);
+        for (const [tab, course] of [[a, 'history'], [b, 'geography']]) {
+          await openEditor(tab);
+          await tab.ev(choose(0, course, 'HL'));
+          if (!(await tab.ev(`document.querySelector('#ms-remember').checked`))) await tab.click(`document.querySelector('#ms-remember')`, 'Remember');
+        }
+        await Promise.all([a, b].map((tab) => tab.ev(`document.querySelector('#ms-editor .ms-save').click()`)));
+        const outcomes = [];
+        for (const tab of [a, b]) {
+          await tab.waitFor(`({ok:document.querySelector('#ms-editor').hidden || !!document.querySelector('#ms-editor .ms-form-err')?.textContent,why:'pending'})`, 8000, 'race answer');
+          outcomes.push(await tab.ev(strip));
+        }
+        const won = outcomes.filter((s) => s.status === EN.ms_saved_browser).length;
+        const lost = outcomes.filter((s) => s.formError === EN.ms_stale).length;
+        assert(won === 1 && lost === 1, JSON.stringify(outcomes));
+        noErrors(a); noErrors(b);
+      });
+    } finally { await tabs.close(); }
+  }
+  watchdog.refresh();
+  for (const [name, seed, warning] of [
+    ['corrupt', `{corrupt:true}`, 'invalid'], ['future version', `{version:2,revision:crypto.randomUUID(),entries:[{course:'physics',level:'HL',grade:null}]}`, 'invalid'],
+    ['bad entries', `{revision:'r1',entries:'bad'}`, 'invalid'], ['undefined value', `undefined`, 'invalid'], ['missing store', null, 'read-failed'],
+  ]) {
+    const context = await newContext();
+    const page = await openMS({ context });
+    try {
+      await check('1280', `MS E ${name}`, 'an unreadable stored copy: empty profile with a notice; Browse and Compare never open the database; Remember refuses to overwrite; Forget removes it or fails honestly', async () => {
+        await page.ev(seed === null ? seedRecord('null', { store: 'other' }) : seedRecord(seed));
+        await reload(page);
+        await page.click(`document.querySelector('#header-compare')`, 'Compare');
+        await page.waitFor(`({ok:!document.querySelector('#compare').hidden,why:'compare'})`, 3000, 'Compare');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close');
+        assert((await ms(page)).opens === 0, 'Browse or Compare opened the database');
+        await toList(page);
+        const s = await page.ev(strip);
+        assert(s.names === EN.ms_not_added && s.warn.includes(warning === 'invalid' ? EN.ms_w_invalid : EN.ms_w_read_failed), JSON.stringify(s));
+        const before = await page.ev(stored);
+        await enter(page, [['physics', 'HL']], { remember: true, save: false });
+        await saveEditor(page, false);
+        await page.waitFor(`({ok:!!document.querySelector('#ms-editor .ms-form-err')?.textContent,why:'no refusal'})`, 3000, 'refusal');
+        assert((await page.ev(strip)).formError === (warning === 'invalid' ? EN.ms_refused_invalid : EN.ms_refused_error), (await page.ev(strip)).formError);
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(before) && (await ms(page)).puts === 0, 'overwritten');
+        await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+        await page.click(`document.querySelector('#ml-subjects .ms-forget-stored')`, 'Forget subjects');
+        await page.waitFor(`({ok:!!document.querySelector('#ml-subjects .ms-status').textContent,why:'no answer'})`, 5000, 'Forget');
+        const after = await page.ev(strip);
+        if (warning === 'invalid') assert(after.status === EN.ms_forgotten && (await page.ev(stored)) === null, JSON.stringify(after));
+        else assert(after.status === EN.ms_delete_failed && after.warn.includes(EN.ms_delete_failed) && /site's data/.test(after.warn), JSON.stringify(after));
+        noErrors(page);
+      });
+    } finally { await page.close(); await dropContext(context); }
+  }
+  watchdog.refresh();
+  {
+    const context = await newContext();
+    const page = await openMS({ context });
+    try {
+      await check('1280', 'MS E late', 'blocked and slow opens, and aborted transactions, for Remember and Forget: honest failure, entries kept with the older-copy warning, and no late put or delete', async () => {
+        await toList(page);
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        const rev1 = await page.ev(stored);
+        const late = async (mode) => {
+          await page.ev(`window.__msOpenMode=${JSON.stringify(mode)}`);
+          return page.ev('({...window.__ms,blobs:0})');
+        };
+        // Remember with a blocked open.
+        let c0 = await late('blocked');
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true });
+        let s = await page.ev(strip);
+        assert(s.names === 'Chemistry HL' && s.warn.includes(EN.ms_write_failed) && s.warn.includes(EN.ms_write_failed_old), JSON.stringify(s));
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:window.__ms.late>=1,why:'late callbacks not delivered'})`, 5000, 'late open');
+        await settled(page);
+        let c1 = await ms(page);
+        assert(c1.puts === c0.puts && c1.deletes === c0.deletes, `late open wrote: ${JSON.stringify([c0, c1])}`);
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(rev1), 'the stored copy changed');
+        // Reread on focus keeps the fallback (E4).
+        await page.ev(`window.dispatchEvent(new Event('focus'))`);
+        await settled(page);
+        assert((await page.ev(strip)).names === 'Chemistry HL', 'focus re-adopted the stored copy over the write-failure fallback');
+        // Forget with a slow open (times out), then a newer Forget succeeds;
+        // the late open then deletes nothing.
+        c0 = await late('delay');
+        await forget(page);
+        s = await page.ev(strip);
+        assert(s.status === EN.ms_delete_failed && s.warn.includes(EN.ms_retry) && s.names === EN.ms_not_added, JSON.stringify(s));
+        await page.ev(`window.dispatchEvent(new Event('focus'))`);
+        await settled(page);
+        assert((await page.ev(strip)).names === EN.ms_not_added && (await page.ev(strip)).warn.includes(EN.ms_delete_failed), 'focus re-adopted the record after a failed Forget');
+        await page.click(`document.querySelector('#ml-subjects .ms-retry')`, 'Try again');
+        await page.waitFor(`({ok:document.querySelector('#ml-subjects .ms-status').textContent.startsWith(${JSON.stringify(EN.ms_forgotten)}),why:'retry'})`, 5000, 'retry');
+        assert((await page.ev(stored)) === null && !(await page.ev(strip)).warn, 'retry did not clear');
+        const deletes = (await ms(page)).deletes;
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:window.__ms.late>=${c0.late + 1},why:'late open not delivered'})`, 5000, 'late open');
+        await settled(page);
+        c1 = await ms(page);
+        assert(c1.deletes === deletes && c1.puts === c0.puts, `late Forget open touched storage: ${JSON.stringify(c1)}`);
+        // Aborted put and delete.
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        const kept = await page.ev(stored);
+        await page.ev('window.__msAbortPut = true');
+        await enter(page, [['biology', 'HL', 4]], { remember: true });
+        s = await page.ev(strip);
+        assert(s.names === 'Biology HL' && s.warn.includes(EN.ms_write_failed_old) && JSON.stringify(await page.ev(stored)) === JSON.stringify(kept), JSON.stringify(s));
+        await page.ev('window.__msAbortDelete = true');
+        await forget(page);
+        s = await page.ev(strip);
+        assert(s.status === EN.ms_delete_failed && JSON.stringify(await page.ev(stored)) === JSON.stringify(kept), JSON.stringify(s));
+        noErrors(page);
+      });
+    } finally { await page.close(); await dropContext(context); }
+  }
+  watchdog.refresh();
+  {
+    const tabs = await twoTabs();
+    try {
+      await check('1280', 'MS E page-only', 'an independent page-only profile in tab B never touches tab A\'s remembered copy, and rereads keep it', async () => {
+        const { a, b } = tabs;
+        await toList(b);
+        await enter(b, [['history', 'SL']]);
+        await toList(a);
+        await enter(a, [['physics', 'HL', 6]], { remember: true });
+        const kept = await a.ev(stored);
+        const c0 = await ms(b);
+        await enter(b, [['history', 'HL'], ['film', 'SL']]);
+        await b.ev(`window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'))`);
+        await settled(b);
+        const c1 = await ms(b);
+        assert(c1.puts === c0.puts && c1.deletes === c0.deletes, 'page-only Save touched storage');
+        assert(JSON.stringify(await a.ev(stored)) === JSON.stringify(kept) && (await b.ev(strip)).names === 'History HL · Film SL', 'B adopted or changed A\'s copy');
+        noErrors(a); noErrors(b);
+      });
+    } finally { await tabs.close(); }
+  }
+
+  // ---------------------------------------------- 11. legacy notices
+  watchdog.refresh();
+  for (const [width, height] of [[1280, 900], [393, 852]]) {
+    const page = await openMS({ width, height, compare: ['eur-ibeor'] });
+    try {
+      await check(String(width), 'MS case 11', 'the My maths and HL Maths 4+ notices, apart and together, only in My list; their links reach the controls; Save, Forget, Clear all and Clear my list leave filters and the profile as they should', async () => {
+        await toList(page);
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL']]);
+        const notices = `[...document.querySelectorAll('#ml-subject-notices:not([hidden]) .ms-notice')].map(n=>n.dataset.notice).join()`;
+        const setFilter = (js) => page.ev(`(()=>{${js}})()`);
+        await setFilter(`const s=document.querySelector('#f-mymaths');s.value='AA HL';s.dispatchEvent(new Event('change',{bubbles:true}))`);
+        await page.waitFor(`({ok:${notices}==='mymaths',why:${notices}})`, 3000, 'My maths notice');
+        await setFilter(`const c=document.querySelector('#f-maths');c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))`);
+        await page.waitFor(`({ok:${notices}==='mymaths,hl',why:${notices}})`, 3000, 'both notices');
+        assert(await page.ev(`!document.querySelector('#ml-note').hidden || document.querySelector('#ml-note').textContent===''`), 'ml-note overwritten');
+        const filterState = `JSON.stringify([location.href,document.querySelector('#f-mymaths').value,document.querySelector('#f-maths').checked,document.querySelector('#f-points').value,document.querySelector('#f-sort').value,document.querySelector('#ml-group').value,localStorage.getItem(${JSON.stringify(COMPARE)})])`;
+        const fs0 = await page.ev(filterState);
+        await enter(page, [['maths-ai', 'HL', 3], ['physics', 'HL']]);
+        await page.waitFor(`({ok:${notices}==='mymaths,hl',why:${notices}})`, 3000, 'HL below 4');
+        for (const [code, grade, link] of [
+          ['en', 'AI HL, predicted grade 3', 'Change “HL Maths 4+”'],
+          ['sk', 'AI HL, predpokladaná známka 3', 'Zmeniť „HL matematika 4+“'],
+        ]) {
+          await lang(page, code);
+          const [label, notice, button] = await page.ev(`[document.querySelector('[data-i18n="hl_maths_4"]').textContent,
+            document.querySelector('.ms-notice[data-notice="hl"]').firstChild.textContent,
+            document.querySelector('.ms-notice[data-notice="hl"] button').textContent]`);
+          assert(notice.includes(label) && notice.includes(grade) && button.includes(label) && button === link, JSON.stringify([label, notice, button]));
+        }
+        await lang(page, 'en');
+        await enter(page, [['maths-aa', 'HL'], ['physics', 'HL']]);
+        await page.waitFor(`({ok:${notices}==='',why:${notices}})`, 3000, 'HL with no grade and AA HL: no notice');
+        await enter(page, [['maths-ai', 'SL'], ['physics', 'HL']]);
+        assert((await page.ev(filterState)) === fs0, 'Save changed a filter, sort, group, Compare or the address');
+        // Links.
+        await page.click(`document.querySelector('#ml-subject-notices [data-notice="hl"] button')`, 'HL notice link');
+        await page.waitFor(focusIs(`document.querySelector('#f-maths')`, 'HL Maths 4+'), 3000, 'HL Maths 4+ focus');
+        if (width < 600) { await page.key('Escape', 'Escape', 27); await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet'})`, 3000, 'sheet closed'); }
+        await page.click(`document.querySelector('#ml-subject-notices [data-notice="mymaths"] button')`, 'My maths notice link');
+        await page.waitFor(`({ok:document.activeElement===document.querySelector('#f-mymaths')||document.activeElement?.closest('#maths-seg'),why:'focus on '+document.activeElement?.id})`, 3000, 'My maths focus');
+        if (width < 600) { await page.key('Escape', 'Escape', 27); await page.waitFor(`({ok:!document.querySelector('#filter-sheet').open,why:'sheet'})`, 3000, 'sheet closed'); }
+        // Only in My list.
+        await page.click(`document.querySelector('#f-shortlist-only')`, 'Back');
+        assert(await page.ev(`document.querySelector('#ml-subject-notices').hidden`), 'notices in Browse');
+        await toList(page);
+        // Clear all (bar or sheet) keeps the profile.
+        if (width >= 600) await page.click(`document.querySelector('#f-clear')`, 'Clear all');
+        else { await page.click(`document.querySelector('#f-more')`, 'Filters'); await page.click(`document.querySelector('#f-clear')`, 'Clear all'); await page.click(`document.querySelector('#sheet-done')`, 'Done'); }
+        assert((await page.ev(strip)).names === 'Maths AI SL · Physics HL', 'Clear all lost the profile');
+        await forget(page);
+        assert((await page.ev(`JSON.parse(${filterState})[3]`)) === '' && (await page.ev(strip)).names === EN.ms_not_added, 'Forget');
+        await enter(page, [['maths-ai', 'SL']]);
+        if (width < 600 && !(await page.ev(`document.querySelector('#shortlist-bar').classList.contains('ml-more-open')`))) await page.click(`document.querySelector('#ml-more')`, 'More');
+        await page.ev(`window.confirm=()=>true`);
+        await page.click(`document.querySelector('#clear-shortlist')`, 'Clear my list');
+        await toList(page);
+        assert((await page.ev(strip)).names === 'Maths AI SL', 'Clear my list lost the profile');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // ------------------------------------------------- 12. accessibility
+  watchdog.refresh();
+  for (const theme of ['light', 'dark']) {
+    for (const code of ['en', 'sk']) {
+      const T = UI[code];
+      const page = await openMS({ width: 320, height: 760, query: `?ui=${code}`, adapter: true, rules: fixtures.rulesCsv([CASE1]) });
+      try {
+        await check('320', `MS a11y ${theme} ${code}`, 'keyboard only: Add, choose, error announced, fix, Save announced; +2 has a spoken label; no sideways scroll at 320 px with the editor and the detail open', async () => {
+          if (theme === 'dark') await page.ev(`(()=>{const r=document.querySelector('[data-theme-choice="dark"]');r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+          await toList(page);
+          await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+          await page.ev(`document.querySelector('#ml-subjects .ms-edit').focus()`);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`({ok:document.activeElement?.id==='ms-c-1',why:document.activeElement?.id})`, 3000, 'first field');
+          // A level without a subject, by keyboard: Tab to Level, pick HL.
+          await page.key('Tab', 'Tab', 9, [], '\t');
+          assert(await page.ev(`document.activeElement?.id==='ms-l-1'`), 'Tab did not reach Level');
+          await page.ev(`(()=>{const s=document.activeElement;s.value='HL';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+          // Tab on to Save and press it.
+          for (let i = 0; i < 12 && !(await page.ev(`document.activeElement?.classList.contains('ms-save')`)); i++) await page.key('Tab', 'Tab', 9, [], '\t');
+          assert(await page.ev(`document.activeElement?.classList.contains('ms-save')`), 'Tab never reached Save');
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`({ok:document.querySelector('#ms-e-1')?.textContent===${JSON.stringify(T.ms_e_incomplete)} && document.querySelector('#ms-editor .ms-form-err').getAttribute('aria-live')==='polite' && document.activeElement?.id==='ms-c-1',why:document.querySelector('#ms-e-1')?.textContent+' / '+document.activeElement?.id})`, 3000, 'the error, announced, with focus on the field');
+          assert(await page.ev(`document.querySelector('#ms-c-1').getAttribute('aria-invalid')==='true' && document.querySelector('#ms-c-1').getAttribute('aria-describedby')==='ms-e-1'`), 'error not tied to the field');
+          await page.ev(`(()=>{const s=document.activeElement;s.value='physics';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+          // Five more rows, so the strip overflows.
+          for (const [i, c] of ['biology', 'chemistry', 'history', 'film', 'maths-aa'].entries()) {
+            await page.ev(`document.querySelector('#ms-editor .ms-add-row').focus()`);
+            await page.key('Enter', 'Enter', 13, [], '\r');
+            await page.ev(choose(i + 1, c, 'SL'));
+          }
+          assert(await page.ev(`document.querySelector('#ms-editor .ms-add-row').hidden`), 'a seventh row is offered');
+          assert(await page.ev(`document.documentElement.scrollWidth<=document.documentElement.clientWidth`), 'sideways scroll with the editor open');
+          await page.ev(`document.querySelector('#ms-editor .ms-save').focus()`);
+          await page.key('Enter', 'Enter', 13, [], '\r');
+          await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden,why:'open'})`, 3000, 'saved');
+          const s = await page.ev(strip);
+          assert(s.status === T.ms_saved_page && (await page.ev(`document.querySelector('#ml-subjects .ms-status').getAttribute('role')==='status'`)), `save not announced: ${s.status}`);
+          assert(s.more && s.more.text.trim() === '+2' && s.more.label === fill(plural(T.ms_more_label, 2), { count: 2 }), JSON.stringify(s.more));
+          assert(await page.ev(`document.documentElement.scrollWidth<=document.documentElement.clientWidth`), 'sideways scroll with the detail open');
+          await page.screenshot(`${shots}/a11y-${theme}-${code}-320.png`, { viewportOnly: true });
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -6681,7 +8448,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop, runSubjectEvidence, runMySubjects };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6755,6 +8522,8 @@ async function main() {
       await runPr7Polish(base);
       await runSelectedFirst(base);
       await runBestMatchDesktop(base);
+      await runSubjectEvidence(base);
+      await runMySubjects(base);
       await runPr2(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }

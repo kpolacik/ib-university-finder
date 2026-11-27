@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { csvToObjects } = await import(new URL('../js/csv.js', import.meta.url));
 const { SHEET_CSV_URLS, SAMPLE_CSV_URLS } = await import(new URL('../js/config.js', import.meta.url));
+const { readRuleRecords, RULES_PATH } = await import(new URL('../js/subject-rules.js', import.meta.url));
 
 const live = Boolean(SHEET_CSV_URLS.universities && SHEET_CSV_URLS.programmes);
 const sources = live ? SHEET_CSV_URLS : SAMPLE_CSV_URLS;
@@ -46,6 +47,13 @@ async function fetchCsv(url) {
   return res.text();
 }
 
+// The reviewed IB subject rules, read by the page's own reader. Kept in the
+// saved copy for checks and maintenance only: the page never approves a rule
+// from here, only from a live answer from the rules file (F01). A broken file
+// stops the rebuild rather than saving a copy nobody can trust.
+const rules = readRuleRecords(readFileSync(join(root, RULES_PATH), 'utf8'));
+if (!rules.ok) throw new Error(`${RULES_PATH} could not be read (${rules.reason}). Fix it before rebuilding the saved copy.`);
+
 const anySample = programmes.some((row) => (row.verified_by || '').includes('SAMPLE'));
 
 const snapshot = {
@@ -58,9 +66,10 @@ const snapshot = {
   universities,
   programmes,
   translations: csvToObjects(readFileSync(join(root, 'data/i18n/sk.csv'), 'utf8'), 'data/i18n/sk.csv').rows.map(({ __row, ...row }) => row),
+  subject_rules: { schema_version: 1, records: rules.records },
 };
 
 writeFileSync(join(root, 'data/fallback.json'), `${JSON.stringify(snapshot, null, 2)}\n`);
 
-console.log(`Wrote data/fallback.json — ${universities.length} universities, ${programmes.length} programmes.`);
+console.log(`Wrote data/fallback.json — ${universities.length} universities, ${programmes.length} programmes, ${rules.records.length} subject rules.`);
 if (anySample) console.log('WARNING: some rows are still marked SAMPLE.');
