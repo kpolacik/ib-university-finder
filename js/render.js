@@ -412,8 +412,16 @@ function rowRequirements(row) {
     if (label) line.append(el('b', '', label), document.createTextNode(' '));
     line.append(typeof text === 'string' ? document.createTextNode(text) : text);
   };
-  const requires = [row.ibSubjects, ...row.otherRequirements].filter(Boolean);
-  if (requires.length) group(t('requires'), dataValue('ib_subjects', requires.join(' · ')));
+  // Look up subjects and other requirements under their own fields, as detail
+  // view does; joining them under ib_subjects hid other_requirements rows and
+  // missed whole-cell ib_subjects keys whenever otherRequirements was non-empty.
+  if (row.ibSubjects || row.otherRequirements.length) {
+    const requires = el('span');
+    if (row.ibSubjects) requires.append(dataValue('ib_subjects', row.ibSubjects));
+    if (row.ibSubjects && row.otherRequirements.length) requires.append(document.createTextNode(' · '));
+    if (row.otherRequirements.length) requires.append(dataValue('other_requirements', row.otherRequirements.join(' · ')));
+    group(t('requires'), requires);
+  }
   if (row.languages.length && !(row.languages.length === 1 && row.languages[0] === 'English')) {
     group(t('taught_in'), row.languages.map(facetLabel).join(', '));
   }
