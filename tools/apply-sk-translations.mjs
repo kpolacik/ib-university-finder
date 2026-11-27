@@ -187,6 +187,11 @@ export function heldDisplayKeys({
   const { rows: progRaw, issues: progIssues } = csvToObjects(programmesCsv, 'programmes.csv');
   if (progIssues.length) throw new Error(`Invalid programmes.csv: ${progIssues.join('; ')}`);
   const built = readSheets(universitiesCsv, programmesCsv, today);
+  // The UI can display a partial sheet. A missing programme can hide a held
+  // use of wording shared with a programme that did load.
+  if (built.programmes.length !== progRaw.length) {
+    throw new Error(`Cannot check held cells: readSheets skipped programme rows. ${built.issues.join('; ')}`);
+  }
   const heldCells = collectHeldCells(progRaw, batchTexts, extraHolds);
   const heldKeys = new Map();
   const record = (field, text, sourceLabel) => {
@@ -242,9 +247,7 @@ function liveDisplayKeys(programmes, heldCells) {
 
 // Strict line-aware CSV reader (same guard as tools/reword-prose.mjs:138-160),
 // so a malformed quote in a batch or review file fails cleanly with exit 1.
-function records(file, fail) {
-  let raw;
-  try { raw = readFileSync(file, 'utf8'); } catch (e) { fail(`Cannot read ${file}: ${e.message}`); }
+function records(file, raw, fail) {
   if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
   const out = [];
   let start = 0, line = 1, startLine = 1, inQuotes = false;
@@ -254,6 +257,9 @@ function records(file, fail) {
     if (i === raw.length || (ch === '\n' && !inQuotes)) {
       const part = raw.slice(start, i).replace(/\r$/, '');
       if (part.trim()) {
+        // parseCsv strips a file BOM. Passing it one record must not turn a
+        // different review field into an exact match after the header.
+        if (part.startsWith('\uFEFF')) fail(`${file}:${startLine}: unexpected BOM inside CSV`);
         if (inQuotes || !/^(?:"(?:[^"]|"")*"|[^",\r\n]*)(?:,(?:"(?:[^"]|"")*"|[^",\r\n]*))*$/.test(part)) {
           fail(`${file}:${startLine}: malformed CSV record`);
         }
@@ -298,17 +304,16 @@ function main(argv) {
   const skPath = join(dataDir, 'i18n/sk.csv');
   let skBytes;
   try { skBytes = readFileSync(skPath); } catch (e) { fail(`Cannot read ${skPath}: ${e.message}`); }
-  const skText = skBytes.toString('utf8');
-  const skGrid = parseCsv(skText);
-  if (!skGrid[0] || skGrid[0].length !== 4 || skGrid[0].join(',') !== 'field,en,sk,verified_by') {
+  const [skHeader, ...skRows] = records(skPath, skBytes.toString('utf8'), fail);
+  if (!skHeader || skHeader.cells.length !== 4 || skHeader.cells.join(',') !== 'field,en,sk,verified_by') {
     fail(`${skPath}: unexpected header (expected field,en,sk,verified_by)`);
   }
   const existingSk = new Map();
-  for (let i = 1; i < skGrid.length; i++) {
-    const r = skGrid[i];
-    if (r.length !== 4) fail(`${skPath}:${i + 1}: expected 4 columns, got ${r.length}`);
-    const k = pairKey(r[0], normaliseEnglish(r[1]));
-    if (existingSk.has(k)) fail(`${skPath}:${i + 1}: duplicate normalised key ${r[0]} ${JSON.stringify(r[1])}`);
+  for (const { line, cells: r } of skRows) {
+    if (r.length !== 4) fail(`${skPath}:${line}: expected 4 columns, got ${r.length}`);
+    // The live loader's csvToObjects trims the field name before lookup.
+    const k = pairKey(r[0].trim(), normaliseEnglish(r[1]));
+    if (existingSk.has(k)) fail(`${skPath}:${line}: duplicate normalised key ${r[0]} ${JSON.stringify(r[1])}`);
     existingSk.set(k, r[2]);
   }
 
@@ -321,7 +326,7 @@ function main(argv) {
   const liveKeys = liveDisplayKeys(programmes, heldCells);
 
   // Parse batch CSV (exact header: field,en,sk).
-  const [batchHead, ...batchRows] = records(batchFile, fail);
+  const [batchHead, ...batchRows] = records(batchFile, readUtf8(batchFile), fail);
   if (!batchHead || batchHead.cells.length !== BATCH_HEADER.length || BATCH_HEADER.some((h, i) => batchHead.cells[i] !== h)) {
     fail(`${batchFile}: the header must be exactly ${BATCH_HEADER.join(',')}`);
   }
@@ -332,7 +337,7 @@ function main(argv) {
   const reviewsByNorm = new Map();
   const keptByPair = new Map();
   if (reviewFile) {
-    const [revHead, ...revRows] = records(reviewFile, fail);
+    const [revHead, ...revRows] = records(reviewFile, readUtf8(reviewFile), fail);
     if (!revHead || revHead.cells.length !== REVIEW_HEADER.length || REVIEW_HEADER.some((h, i) => revHead.cells[i] !== h)) {
       fail(`${reviewFile}: the header must be exactly ${REVIEW_HEADER.join(',')}`);
     }
@@ -471,15 +476,16 @@ function main(argv) {
 
   if (refusals) {
     console.log(apply ? 'Nothing written: fix or remove the refused lines, then run again.' : 'Dry run: nothing written. Fix or remove the refused lines.');
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
   if (!apply) {
     console.log('Dry run: nothing written. Add --apply --review FILE to write.');
-    process.exit(0);
+    return;
   }
   if (!add.length) {
     console.log('All rows already present in sk.csv; nothing written.');
-    process.exit(0);
+    return;
   }
 
   // Append-only atomic write: existing bytes stay an exact prefix, written via

@@ -8015,10 +8015,11 @@ section('Slovak prose translation tooling (issue #18)');
       return bytes();
     };
 
-    const run = (batchRows, { apply = false, reviewRows = null, reviewText = null, fault = false } = {}) => {
+    const run = (batchRows, { apply = false, reviewRows = null, reviewText = null, fault = false, deferOutput = false } = {}) => {
       put('batch.csv', csv([['field', 'en', 'sk'], ...batchRows]));
       const args = [
         ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        ...(deferOutput ? ['--require', join(dir, 'slow-output.cjs')] : []),
         join(root, 'tools/apply-sk-translations.mjs'),
         '--data', dir,
       ];
@@ -8043,12 +8044,45 @@ section('Slovak prose translation tooling (issue #18)');
     ];
     const goodReview = goodBatch.map(([f, en, skv]) => [f, en, skv, 'keep']);
 
+    // The UI trims field names. A padded row is already signed for this key.
+    reset(progs, unis, [...baseSk, sk(' other_requirements ', 'Portfolio', 'Prior wording', 'JK')]);
+    const signedInput = bytes();
+    const signedConflict = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: a signed translation with a padded field name blocks a conflicting addition',
+      signedConflict.status === 2 && /already has a different translation/.test(signedConflict.log) && sameBytes(signedInput), signedConflict.log);
+
+    put(paths[2], sheet(2, baseSk) + 'admission,Prior,Text,"JK');
+    const truncatedInput = bytes();
+    const truncated = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: refuses to append inside an unclosed final sk.csv field',
+      truncated.status === 1 && /malformed CSV/.test(truncated.log) && sameBytes(truncatedInput), truncated.log);
+
+    reset(progs.map((row) => row.programme_id === 'p3' ? { ...row, university_id: 'missing-uni' } : row));
+    const partialInput = bytes();
+    const shared = ['other_requirements', 'Shared held leaf', 'Fixture'];
+    const skippedHold = run([shared], { apply: true, reviewRows: [[...shared, 'keep']] });
+    check('apply-sk: a skipped programme cannot hide a held use of a shared key',
+      skippedHold.status === 1 && /skipped programme rows/.test(skippedHold.log) && sameBytes(partialInput), skippedHold.log);
+
     const original = reset();
     for (const p of paths) utimesSync(join(dir, p), 1, 1);
     const dry = run(goodBatch);
     check('apply-sk: dry run writes nothing and leaves all files and mtimes untouched',
       dry.status === 0 && /To add: 4/.test(dry.stdout) && /Refused: 0/.test(dry.stdout)
         && sameBytes(original) && paths.every((p) => stamp(p) === 1000) && cleanTemps(), dry.log);
+
+    // A piped CLI may still have queued writes after printing its totals.
+    put('slow-output.cjs', `
+const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = (...args) => { setImmediate(() => write(...args)); return true; };
+`);
+    const pipedDry = run(goodBatch, { deferOutput: true });
+    const pipedRefusal = run([...goodBatch, goodBatch[0]], { deferOutput: true });
+    check('apply-sk: piped dry runs and refusals deliver every decision and the final totals',
+      [pipedDry, pipedRefusal].every((r) => (r.stdout.match(/^ADD /gm) || []).length === goodBatch.length)
+        && pipedDry.status === 0 && /Refused: 0/.test(pipedDry.stdout)
+        && pipedRefusal.status === 2 && /^REFUSE /m.test(pipedRefusal.stdout) && /Refused: 1/.test(pipedRefusal.stdout)
+        && sameBytes(original), pipedDry.log + pipedRefusal.log);
 
     const noRev = run(goodBatch, { apply: true });
     check('apply-sk: --apply without --review exits 1 and writes nothing',
@@ -8105,6 +8139,9 @@ require('node:module').syncBuiltinESMExports();
     refuse('refuses dropped fixed hard token (HL)', [['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika 6.5 alebo ekvivalent']], /hard tokens differ/);
     refuse('refuses separator count change', [['other_requirements', 'Portfolio · Interview; online', 'Portfólio; Pohovor; online']], /separator counts/);
     refuse('refuses missing review row in --apply mode', [goodBatch[0]], /no review row/, { apply: true, reviewRows: [] });
+    refuse('a byte order mark on a review record cannot create an exact approval', [goodBatch[0]], /unexpected BOM/, {
+      apply: true, reviewRows: [['\uFEFF' + goodBatch[0][0], ...goodBatch[0].slice(1), 'keep']],
+    }, 1);
     refuse('refuses non-keep review verdict', [goodBatch[0]], /not "keep"/, { apply: true, reviewRows: [[...goodBatch[0], 'revise']] });
     refuse('rejects conflicting review verdicts (reject then keep) instead of last-match', [goodBatch[0]], /conflicting review verdicts/, {
       apply: true,
