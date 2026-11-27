@@ -7948,6 +7948,277 @@ appCheck('switching the interface language never touches the teaching-language f
 i18n.initLanguage('', { getItem: () => 'en' });
 // END i18n checks
 
+section('Slovak prose translation tooling (issue #18)');
+{
+  const { translationInventory } = await import('./i18n-missing.mjs');
+  const { heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS } = await import('./apply-sk-translations.mjs');
+  const renderMod = await import('../js/render.js');
+
+  const dir = mkdtempSync(join(tmpdir(), 'ib-apply-sk-'));
+  try {
+    mkdirSync(join(dir, 'i18n'));
+    const paths = ['programmes.csv', 'universities.csv', 'i18n/sk.csv'];
+    const heads = paths.map((p) => parseCsv(read(`data/${p}`))[0]);
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    const csv = (grid) => grid.map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const sheet = (i, rows) => csv([heads[i], ...rows.map((r) => heads[i].map((h) => r[h] ?? ''))]);
+    const put = (p, text) => writeFileSync(join(dir, p), text);
+    const get = (p) => readFileSync(join(dir, p), 'utf8');
+    const bytes = () => paths.map(get);
+    const sameBytes = (expected) => bytes().every((text, i) => text === expected[i]);
+    const stamp = (p) => statSync(join(dir, p)).mtimeMs;
+    const cleanTemps = () => !readdirSync(join(dir, 'i18n')).some((n) => n.startsWith('.sk-apply-'));
+
+    const sign = { verified_by: 'AI-DRAFT', last_verified: '2026-10-03' };
+    const unis = [
+      { university_id: 'u1', name: 'Test University', city: 'Dublin', country: 'Ireland', ...sign },
+      { university_id: 'tul', name: 'TUL', city: 'Liberec', country: 'Czechia', ...sign },
+    ];
+    const prog = (id, extra = {}) => ({
+      programme_id: id, university_id: 'u1', programme: `Programme ${id}`,
+      subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, ...sign, ...extra,
+    });
+    const sk = (field, en, text, verified_by = 'AI-DRAFT') => ({ field, en, sk: text, verified_by });
+    const progs = [
+      prog('p1', {
+        ib_subjects: 'HL Maths 6.5 or equivalent',
+        other_requirements: 'Portfolio · Interview; online',
+        deadline_notes: 'Apply by 15 January 2027',
+      }),
+      prog('p2', {
+        ib_subjects: 'Shared held subject',
+        other_requirements: 'Shared held leaf · Normal item',
+        deadline_notes: 'Shared held whole',
+      }),
+      // Held via live selector60 rules: "programme page" and "Check manually".
+      prog('p3', {
+        ib_subjects: 'Cross-field held subject',
+        other_requirements: 'See programme page · Shared held leaf · Cross-field piece',
+        deadline_notes: 'Check manually; Shared held whole',
+      }),
+      prog('p4', { ib_subjects: 'Cross-field piece' }),
+      prog('p5', { ib_subjects: 'Cross-field held subject' }),
+      // Held via NON_SELECTOR_HOLDS (K8) and shared by unheld p7.
+      prog('tul-anglophone-studies', { university_id: 'tul', deadline_notes: 'Pinned K8 note' }),
+      prog('p7', { deadline_notes: 'Pinned K8 note' }),
+      prog('p8', { ib_subjects: 'none', other_requirements: '?', deadline_notes: '?' }),
+      prog('p9', { ib_subjects: 'Existing normal key', other_requirements: 'Existing spaced key' }),
+    ];
+    const orphanRow = sk('admission', 'Legacy orphan row', 'Zastaralý riadok');
+    const baseSk = [
+      orphanRow,
+      sk('ib_subjects', 'Existing normal key', 'Existujúci kľúč'),
+      sk('other_requirements', 'Existing  spaced  key', 'Existujúci medzerníkový kľúč'),
+    ];
+    const reset = (p = progs, u = unis, s = baseSk) => {
+      [p, u, s].forEach((rows, i) => put(paths[i], sheet(i, rows)));
+      return bytes();
+    };
+
+    const run = (batchRows, { apply = false, reviewRows = null, reviewText = null, fault = false } = {}) => {
+      put('batch.csv', csv([['field', 'en', 'sk'], ...batchRows]));
+      const args = [
+        ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        join(root, 'tools/apply-sk-translations.mjs'),
+        '--data', dir,
+      ];
+      if (apply) args.push('--apply');
+      if (reviewText !== null) {
+        put('review.csv', reviewText);
+        args.push('--review', join(dir, 'review.csv'));
+      } else if (reviewRows !== null) {
+        put('review.csv', csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
+        args.push('--review', join(dir, 'review.csv'));
+      }
+      args.push(join(dir, 'batch.csv'));
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, stdout: r.stdout, stderr: r.stderr, log: r.stdout + r.stderr };
+    };
+
+    const goodBatch = [
+      ['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika HL 6.5 alebo ekvivalent'],
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+      ['other_requirements', 'Interview', 'Pohovor'],
+      ['deadline_notes', 'Apply by 15 January 2027', 'Prihlášku podaj do 15. januára 2027'],
+    ];
+    const goodReview = goodBatch.map(([f, en, skv]) => [f, en, skv, 'keep']);
+
+    const original = reset();
+    for (const p of paths) utimesSync(join(dir, p), 1, 1);
+    const dry = run(goodBatch);
+    check('apply-sk: dry run writes nothing and leaves all files and mtimes untouched',
+      dry.status === 0 && /To add: 4/.test(dry.stdout) && /Refused: 0/.test(dry.stdout)
+        && sameBytes(original) && paths.every((p) => stamp(p) === 1000) && cleanTemps(), dry.log);
+
+    const noRev = run(goodBatch, { apply: true });
+    check('apply-sk: --apply without --review exits 1 and writes nothing',
+      noRev.status === 1 && /--apply needs --review/.test(noRev.stderr) && sameBytes(original) && cleanTemps(), noRev.log);
+
+    put('fault-rename.cjs', `
+const fs = require('node:fs');
+fs.renameSync = () => { const e = new Error('simulated rename failure'); e.code = 'EIO'; throw e; };
+require('node:module').syncBuiltinESMExports();
+`);
+    const atomicFail = run(goodBatch, { apply: true, reviewRows: goodReview, fault: true });
+    check('apply-sk: atomic rename failure leaves sk.csv untouched and cleans temp file',
+      atomicFail.status === 1 && /Atomic write failed/.test(atomicFail.stderr) && sameBytes(original) && cleanTemps(), atomicFail.log);
+
+    for (const p of paths) utimesSync(join(dir, p), 1, 1);
+    const applied = run(goodBatch, { apply: true, reviewRows: goodReview });
+    const afterSk = get('i18n/sk.csv');
+    const addedRows = parseCsv(afterSk).slice(1);
+    check('apply-sk: --apply --review appends exact N AI-DRAFT rows with old bytes as prefix and leaves inputs untouched',
+      applied.status === 0 && afterSk.startsWith(original[2])
+        && addedRows.length === baseSk.length + goodBatch.length
+        && addedRows.slice(-goodBatch.length).every((r, i) => r[0] === goodBatch[i][0] && r[1] === goodBatch[i][1] && r[2] === goodBatch[i][2] && r[3] === 'AI-DRAFT')
+        && afterSk.includes(`${orphanRow.field},${orphanRow.en},${orphanRow.sk},${orphanRow.verified_by}\n`)
+        && get('programmes.csv') === original[0] && get('universities.csv') === original[1]
+        && stamp('programmes.csv') === 1000 && stamp('universities.csv') === 1000
+        && /make-snapshot\.mjs/.test(applied.stdout) && /check\.mjs/.test(applied.stdout) && cleanTemps(), applied.log);
+
+    const afterApplyBytes = bytes();
+    utimesSync(join(dir, 'i18n/sk.csv'), 1, 1);
+    const retry = run(goodBatch, { apply: true, reviewRows: goodReview });
+    check('apply-sk: exact retry is all SKIP with sk.csv bytes and mtime unchanged',
+      retry.status === 0 && /To add: 0/.test(retry.stdout) && /Skipped: 4/.test(retry.stdout) && /Refused: 0/.test(retry.stdout)
+        && sameBytes(afterApplyBytes) && stamp('i18n/sk.csv') === 1000 && cleanTemps(), retry.log);
+
+    const refuse = (name, rows, pattern, opts = {}, code = 2) => {
+      reset();
+      const before = bytes();
+      const r = run(rows, opts);
+      check(`apply-sk: ${name}`, r.status === code && pattern.test(r.log) && sameBytes(before) && cleanTemps(), r.log);
+    };
+
+    refuse('refuses unsupported field', [['admission', 'HL Maths 6.5 or equivalent', 'Matematika HL 6.5 alebo ekvivalent']], /unsupported field/);
+    refuse('refuses empty Slovak text', [['other_requirements', 'Portfolio', '   ']], /Slovak text is empty/);
+    refuse('refuses non-normalised English key', [['other_requirements', ' Portfolio ', 'Portfólio']], /normalised/);
+    refuse('refuses ? and none markers', [['ib_subjects', 'none', 'žiadne'], ['other_requirements', '?', 'neznáme']], /marker value/);
+    refuse('refuses non-live English key', [['deadline_notes', 'Text not in any programme', 'Text mimo dát']], /not a live lookup key/);
+    refuse('refuses duplicate (field, en) within batch', [
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+      ['other_requirements', 'Portfolio', 'Portfólio'],
+    ], /duplicate/);
+    refuse('refuses different sk for existing key', [['ib_subjects', 'Existing normal key', 'Iný kľúč']], /already has a different translation/);
+    refuse('refuses normalised duplicate with different sk in sk.csv', [['other_requirements', 'Existing spaced key', 'Iný preklad']], /already has a different translation/);
+    refuse('refuses decimal hard-token change (6.5 -> 6,5)', [['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika HL 6,5 alebo ekvivalent']], /hard tokens differ/);
+    refuse('refuses dropped fixed hard token (HL)', [['ib_subjects', 'HL Maths 6.5 or equivalent', 'Matematika 6.5 alebo ekvivalent']], /hard tokens differ/);
+    refuse('refuses separator count change', [['other_requirements', 'Portfolio · Interview; online', 'Portfólio; Pohovor; online']], /separator counts/);
+    refuse('refuses missing review row in --apply mode', [goodBatch[0]], /no review row/, { apply: true, reviewRows: [] });
+    refuse('refuses non-keep review verdict', [goodBatch[0]], /not "keep"/, { apply: true, reviewRows: [[...goodBatch[0], 'revise']] });
+    refuse('rejects conflicting review verdicts (reject then keep) instead of last-match', [goodBatch[0]], /conflicting review verdicts/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'reject'], [...goodBatch[0], 'keep']],
+    }, 1);
+    refuse('rejects conflicting review verdicts (keep then reject)', [goodBatch[0]], /conflicting review verdicts/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'keep'], [...goodBatch[0], 'reject']],
+    }, 1);
+    refuse('rejects ambiguous conflicting keep rows for same key', [goodBatch[0]], /conflicting keep review rows/, {
+      apply: true,
+      reviewRows: [[...goodBatch[0], 'keep'], [goodBatch[0][0], goodBatch[0][1], 'Alternatíva HL 6.5', 'keep']],
+    }, 1);
+    refuse('rejects malformed review CSV', [goodBatch[0]], /malformed CSV/, {
+      apply: true,
+      reviewText: 'field,en,sk,verdict\nib_subjects,"unclosed quote,sk,keep\n',
+    }, 1);
+    refuse('mixed batch with one valid and one refused line writes nothing', [
+      goodBatch[1],
+      ['deadline_notes', 'Not live anywhere', 'Nie je v dátach'],
+    ], /not a live lookup key/, { apply: true, reviewRows: [[...goodBatch[1], 'keep'], ['deadline_notes', 'Not live anywhere', 'Nie je v dátach', 'keep']] });
+
+    // Held refusals: whole, shared leaf, cross-field piece, cross-field compact crossover, pinned non-selector.
+    refuse('refuses held whole cell', [['deadline_notes', 'Check manually; Shared held whole', 'Skontroluj ručne; Zdieľaná časť']], /held cell.*prog\|p3\|deadline_notes/);
+    refuse('refuses key shared by held cell and unheld row (deadline_notes leaf)', [['deadline_notes', 'Shared held whole', 'Zdieľaná poznámka']], /held cell.*prog\|p3\|deadline_notes/);
+    refuse('refuses key shared by held cell and unheld row (other_requirements leaf)', [['other_requirements', 'Shared held leaf', 'Zdieľaná položka']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses cross-field ib_subjects key equal to a piece of a held other_requirements cell', [['ib_subjects', 'Cross-field piece', 'Krížová položka']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses cross-field ib_subjects key read via compact lookup of a held other_requirements cell', [['ib_subjects', 'Cross-field held subject', 'Krížový predmet']], /held cell.*prog\|p3\|other_requirements/);
+    refuse('refuses pinned NON_SELECTOR_HOLDS key even when shared with an unheld row', [['deadline_notes', 'Pinned K8 note', 'Poznámka K8']], /held cell.*prog\|tul-anglophone-studies\|deadline_notes/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // Inventory: prose translations lower freeText, are not orphans, and leave missing unchanged.
+  {
+    const sampleProgs = [
+      { admission: 'Open entry', ib_subjects: 'HL Maths 6', other_requirements: 'Portfolio · Interview', deadline_notes: 'Apply by January' },
+      { admission: 'Open entry', ib_subjects: 'none', other_requirements: 'Portfolio', deadline_notes: '?' },
+    ];
+    const baseInv = translationInventory([], sampleProgs, []);
+    const proseSk = [
+      { field: 'ib_subjects', en: 'HL Maths 6', sk: 'Matematika HL 6' },
+      { field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio' },
+      { field: 'deadline_notes', en: 'Apply by January', sk: 'Prihlás sa do januára' },
+    ];
+    const withProse = translationInventory([], sampleProgs, proseSk);
+    const withDeadProse = translationInventory([], sampleProgs, [
+      ...proseSk,
+      { field: 'ib_subjects', en: 'Dead prose key', sk: 'Mŕtvy kľúč' },
+      { field: 'ib_subjects', en: 'none', sk: 'žiadne' },
+      { field: 'deadline_notes', en: '?', sk: 'neznáme' },
+    ]);
+    equal('inventory: live prose translations lower freeText, add no orphans, and keep missing unchanged', [
+      baseInv.freeText, withProse.freeText, withProse.orphans.length, withProse.missing,
+    ], [
+      { ib_subjects: 1, other_requirements: 2, deadline_notes: 1 },
+      { ib_subjects: 0, other_requirements: 1, deadline_notes: 0 },
+      0, baseInv.missing,
+    ]);
+    equal('inventory: dead, none, and ? prose rows remain orphans',
+      withDeadProse.orphans.map((r) => `${r.field}:${r.en}`),
+      ['ib_subjects:Dead prose key', 'ib_subjects:none', 'deadline_notes:?']);
+  }
+
+  // Compact row: separate ib_subjects and other_requirements lookups in Slovak and preserved EN order.
+  {
+    const baseRow = live.find((r) => r.ibSubjects && r.otherRequirements.length);
+    const testRow = { ...baseRow, ibSubjects: 'HL Maths 5', otherRequirements: ['Portfolio', 'Interview'], admission: [], languages: ['English'] };
+    const bothRow = { ...baseRow, ibSubjects: 'HL Maths 6', otherRequirements: ['Interview'], admission: [], languages: ['English'] };
+    const compactOk = withStubDocument(() => {
+      i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+      i18n.setDataTranslations([
+        { field: 'other_requirements', en: 'Portfolio', sk: 'Portfólio', verified_by: 'AI-DRAFT' },
+        { field: 'ib_subjects', en: 'HL Maths 6', sk: 'Matematika HL 6', verified_by: 'AI-DRAFT' },
+      ]);
+      const list = new ChromeNode('ul');
+      renderMod.renderRows(list, [testRow, bothRow], { state: noFilters() });
+      const lines = list.querySelectorAll('.line');
+      const [line1, line2] = lines;
+      const untrans1 = line1.querySelectorAll('[data-untranslated]').map((n) => `${n.lang}:${n.textContent}`);
+      const untrans2 = line2.querySelectorAll('[data-untranslated]').map((n) => `${n.lang}:${n.textContent}`);
+      const noMarkers = !list.querySelector('.data-en, .data-original, .detail-originals');
+      i18n.setDataTranslations([]);
+      i18n.initLanguage('', { getItem: () => 'en' });
+      return line1.textContent.includes('HL Maths 5 · Portfólio · Interview')
+        && JSON.stringify(untrans1) === JSON.stringify(['en:HL Maths 5', 'en:Interview'])
+        && line2.textContent.includes('Matematika HL 6 · Interview')
+        && JSON.stringify(untrans2) === JSON.stringify(['en:Interview'])
+        && noMarkers;
+    });
+    check('compact row translates other_requirements and whole ib_subjects separately in Slovak with lang=en on untranslated pieces and no reveal markers', compactOk);
+    check('every live row English Requires line contains [ibSubjects, ...otherRequirements].join(" · ") in order',
+      live.every((row) => {
+        const expected = [row.ibSubjects, ...row.otherRequirements].filter(Boolean).join(' · ');
+        if (!expected) return true;
+        const line = byClass(rowOf(row), 'line')[0];
+        return Boolean(line && line.textContent.includes(expected));
+      }));
+  }
+
+  // Permanent data guard: no prose sk.csv row is read by any held cell.
+  {
+    equal('writer pins all 23 non-selector holds', NON_SELECTOR_HOLDS.length, 23);
+    const { heldKeys } = heldDisplayKeys({
+      universitiesCsv: read('data/universities.csv'),
+      programmesCsv: read('data/programmes.csv'),
+    });
+    const skLive = csvToObjects(read('data/i18n/sk.csv')).rows;
+    const heldProseConflicts = skLive.filter((row) =>
+      PROSE_FIELDS.includes(row.field) && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('no prose sk.csv row is read by a held cell', heldProseConflicts, []);
+  }
+}
+
 section('Batch 2 · A');
 // batch 2 · A checks go here
 // The app harness stubs wireCompactHeader and wireRound2, so code in them would

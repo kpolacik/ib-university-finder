@@ -598,6 +598,14 @@ It does not change any files. After updating translations, rebuild the offline
 copy with `node tools/make-snapshot.mjs`, then run `node tools/check.mjs`.
 Translations gathered by AI keep `AI-DRAFT`; never sign for another person.
 
+To add reviewed Slovak rows for `ib_subjects`, `other_requirements` or
+`deadline_notes` in bulk, preview a `field,en,sk` batch with
+`node tools/apply-sk-translations.mjs batch.csv` and write it with
+`--apply --review review.csv`. The script only appends `AI-DRAFT` rows for live
+wording that is not held for source review, checks that numbers, test names and
+separators stay unchanged, skips exact rows already in `data/i18n/sk.csv`, and
+writes nothing if any line is refused.
+
 CSV exports use headings in the selected language and keep **all data cells
 in English**, including requirement wording. Numbers inside data text keep
 decimal dots, such as IELTS 6.5. Quotes from official pages stay in English.

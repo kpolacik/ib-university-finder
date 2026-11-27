@@ -24,12 +24,27 @@ export function translationInventory(universities, programmes, translations) {
   const known = new Set(translations.filter((row) => row.sk?.trim()).map((row) => `${row.field}\u0000${normaliseEnglish(row.en)}`));
   const pieces = new Set();
   for (const { field, en } of wanted.values()) for (const item of en.split(/ · |;/)) pieces.add(`${field}\u0000${normaliseEnglish(item)}`);
+  const freeTextFields = ['ib_subjects', 'other_requirements', 'deadline_notes'];
+  const freeTextKnown = new Set();
+  for (const row of programmes) {
+    for (const field of freeTextFields) {
+      const en = normaliseEnglish(row[field]);
+      if (!en || en === '?' || en === 'none') continue;
+      freeTextKnown.add(`${field}\u0000${en}`);
+      for (const item of en.split(/ · |;/)) {
+        const piece = normaliseEnglish(item);
+        if (piece && piece !== '?' && piece !== 'none') freeTextKnown.add(`${field}\u0000${piece}`);
+      }
+    }
+  }
   const has = (field, en) => known.has(`${field}\u0000${en}`);
   const missing = [...wanted.values()].filter(({ field, en }) => !has(field, en)
     && !en.split(/ · |;/).every((item) => has(field, normaliseEnglish(item))));
-  const orphans = translations.filter((row) => !wanted.has(`${row.field}\u0000${normaliseEnglish(row.en)}`)
-    && !pieces.has(`${row.field}\u0000${normaliseEnglish(row.en)}`));
-  const freeText = Object.fromEntries(['ib_subjects', 'other_requirements', 'deadline_notes'].map((field) => [field,
+  const orphans = translations.filter((row) => {
+    const key = `${row.field}\u0000${normaliseEnglish(row.en)}`;
+    return !wanted.has(key) && !pieces.has(key) && !freeTextKnown.has(key);
+  });
+  const freeText = Object.fromEntries(freeTextFields.map((field) => [field,
     programmes.filter((row) => {
       const en = normaliseEnglish(row[field]);
       return en && !['?', 'none'].includes(en) && !has(field, en)
