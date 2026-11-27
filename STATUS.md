@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, Phase 4b translated fields (2026-11-27, draft stack).** Independent reviewers approved 194 English wording edits in 39 groups. The existing Slovak translations follow 28 new English keys; the Slovak wording and coverage stay the same. The Leeds baseline and its translation still use the old wording because the repair review could not see both full texts. Photos, signatures, dates, IDs and the 54 notes held for research are unchanged. The offline copy uses the same new wording.
+
 **Source prose #17, Phase 4a writer (2026-11-27, draft stack).** `tools/reword-prose.mjs --translated` can reword approved programme and university prose while keeping existing Slovak text, coverage and application conditions. This layer changes the writer, checks and instructions only; no data changes. The maintenance guide covers how to restore the CSVs if a write stops partway through.
 
 **Source prose #17, Phase 3 remaining research notes (2026-11-27, draft stack).** Independent reviewers approved 149 wording edits at 45 universities, including four edits approved after a fresh review of revised wording. The selector now lists 54 held cells. The Kempten deadline note conflicts with the date in its deadline field, and the 29 Slovak and 24 UK holds still need evidence or a decision.
