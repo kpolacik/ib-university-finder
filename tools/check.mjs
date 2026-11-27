@@ -193,7 +193,7 @@ function withStubDocument(fn) {
     if (original === undefined) delete globalThis.document; else globalThis.document = original;
   }
 }
-const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare } = await import(new URL('../js/render.js', import.meta.url));
+const { renderDetail, renderRows, appendRows, renderSlot, renderCount, renderPane, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, fillReviewed } = await import(new URL('../js/render.js', import.meta.url));
 // My list (2026-11-03): the pure share, group and compare functions app.js
 // imports, given to the harness below like the filter functions.
 const shortlistMod = await import(new URL('../js/shortlist.js', import.meta.url));
@@ -4669,7 +4669,9 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       getComputedStyle: (n) => { styleReads.push({ node: n, state: n.getAttribute?.('data-state') ?? null }); return n.computed ?? { scrollMarginTop: '0px', scrollMarginBottom: '0px', getPropertyValue() { return '180px'; } }; },
       ...filtersMod, applyToday: applyTodayEarly, loadShortlist: () => new Set(), loadData: () => new Promise((resolve) => { context.resolveData = resolve; }),
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
-      renderSourceBanner() {}, renderIssues() {} };
+      renderSourceBanner() {}, renderIssues() {},
+      // F01: the rules file is fetched only in a browser; here nothing is current.
+      fillReviewed, startSubjectAuthority: (options) => { context.subjectAuthority = options; }, recheckAuthority: () => { context.rechecks = (context.rechecks ?? 0) + 1; } };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(read('js/theme.js').replace(/^export /gm, '') + '\n' + code, context);
@@ -6983,8 +6985,10 @@ section('My list: share link, shared links, address, groups, compare (2026-11-03
     const base = live.find((r) => r.tuitionEu !== null && r.tuitionEu > 0 && r.deadline && r.mathsAccepted && r.entranceExam && r.officialUrl);
     const twin = { ...base, id: 'twin', tuitionEu: base.tuitionEu + 1000 };
     const table = compareTable([base, twin], noFilters());
+    // F01: IB subjects always; Other requirements only when a column has any;
+    // the reviewed line only with a current rule (none here).
     equal('compare rows: the facts in order, the official link last', table.map((x) => x.label),
-      ['IB points', 'Maths courses accepted', 'Entrance exam', 'EU fee', 'Fee + 12 months\' living (estimate)', 'Deadline', 'Language', 'City', 'Apply via', 'Official page']);
+      ['IB points', 'IB subjects', 'Maths courses accepted', ...(base.otherRequirements.length ? ['Other requirements'] : []), 'Entrance exam', 'EU fee', 'Fee + 12 months\' living (estimate)', 'Deadline', 'Language', 'City', 'Apply via', 'Official page']);
     const shown = visibleFacts(table, true).map((x) => x.key);
     check('only differences on two rows that differ only in fee: the fee and the yearly estimate stay (and any unknown), the rest go',
       shown.includes('fee') && shown.includes('link') && !shown.includes('deadline') && !shown.includes('exam') && !shown.includes('city')
@@ -11534,6 +11538,571 @@ check('A12 the gesture helper is shared and owns no spring: both sheets call wir
   /wireSheetDrag\(dom\.sheet, \{ regions: '\.grab,\.sheet-h'/.test(appSrc) && /wireSheetDrag\(panel, \{ regions: '\.grab,\.faqp-h'/.test(read('js/faq.js'))
     && (appSrc.match(/sheetDrag\?\.reset\(\);/g) ?? []).length === 3 && !/spring|requestAnimationFrame/.test(read('js/sheet-drag.js').replace(/\/\/.*$/gm, ''))
     && indexHtml.includes('<link rel="modulepreload" href="js/sheet-drag.js">'));
+
+// ------------------------------------------------- F01 public subject evidence
+// Phase 1 of My subjects: the public subject wording in the detail and
+// Compare, the optional reviewed-rule file, its strict reader, the rule
+// authority (current answers only) and the pure checker. Rules shown here are
+// SAMPLE fixtures from tools/subject-rule-fixtures.mjs; the shipped table has
+// a header and no rows. Positive cases go through the test-only adapter
+// (tools/subject-rules-sample-adapter.js), loaded the way smoke.mjs serves it.
+section('F01 public subject evidence and reviewed subject rules');
+{
+  const rulesMod = await import(new URL('../js/subject-rules.js', import.meta.url));
+  const subjectsMod = await import(new URL('../js/ib-subjects.js', import.meta.url));
+  const fixtures = await import(new URL('./subject-rule-fixtures.mjs', import.meta.url));
+  const { readRuleRecords, acceptRule, inspectRule, combineRules, RULE_COLUMNS, RULES_PATH } = rulesMod;
+  const { evaluateSubjects, normalizeProfile, STATUS, STATUS_KEYS, SUBJECTS_ONLY_KEY, PREDICTED_KEY, IB_COURSES } = subjectsMod;
+  const { registerHooks } = await import('node:module');
+
+  // --- the shipped table and its saved copy --------------------------------
+  const shipped = read(RULES_PATH);
+  equal('F01 the shipped rules file is exactly the header, with no rows (Track A)', shipped, `${RULE_COLUMNS.join(',')}\n`);
+  const shippedRead = readRuleRecords(shipped);
+  check('F01 the shipped rules file reads as a valid empty table', shippedRead.ok && shippedRead.records.length === 0, JSON.stringify(shippedRead));
+  const snap = JSON.parse(read('data/fallback.json'));
+  equal('F01 the saved copy carries the same rule records, read by the page\'s reader', snap.subject_rules, { schema_version: 1, records: shippedRead.records });
+  equal('F01 the saved copy has no other new top-level field', Object.keys(snap), ['meta', 'universities', 'programmes', 'translations', 'subject_rules']);
+
+  // The generator is reproducible: run the real script on a copy of the repo
+  // files and compare bytes (only the date line may differ).
+  {
+    const dir = mkdtempSync(join(tmpdir(), 'ib-f01-snapshot-'));
+    try {
+      for (const sub of ['js', 'tools', 'data/i18n']) mkdirSync(join(dir, sub), { recursive: true });
+      for (const name of readdirSync(join(root, 'js')).filter((n) => n.endsWith('.js'))) writeFileSync(join(dir, 'js', name), read(`js/${name}`));
+      for (const path of ['tools/make-snapshot.mjs', 'data/universities.csv', 'data/programmes.csv', 'data/i18n/sk.csv', RULES_PATH]) writeFileSync(join(dir, path), read(path));
+      const made = spawnSync(process.execPath, [join(dir, 'tools/make-snapshot.mjs')], { encoding: 'utf8' });
+      const fresh = made.status === 0 ? readFileSync(join(dir, 'data/fallback.json'), 'utf8') : '';
+      const sameDate = fresh.replace(/"generated_at": "\d{4}-\d{2}-\d{2}"/, `"generated_at": "${snap.meta.generated_at}"`);
+      check('F01 make-snapshot.mjs regenerates data/fallback.json byte for byte from the repo files', made.status === 0 && sameDate === read('data/fallback.json'), made.stderr || made.stdout);
+      writeFileSync(join(dir, RULES_PATH), `${RULE_COLUMNS.join(',')}\n"unclosed\n`);
+      const broken = spawnSync(process.execPath, [join(dir, 'tools/make-snapshot.mjs')], { encoding: 'utf8' });
+      check('F01 a broken rules file stops the snapshot rebuild instead of saving an untrusted copy',
+        broken.status !== 0 && /ib-subject-rules\.csv could not be read/.test(broken.stderr) && readFileSync(join(dir, 'data/fallback.json'), 'utf8') === fresh, broken.stderr);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  // --- the strict reader -----------------------------------------------------
+  const header = RULE_COLUMNS.join(',');
+  for (const [name, text, reason] of [
+    ['an empty file', '', 'empty'],
+    ['a file of blank lines', '\n\n', 'empty'],
+    ['a renamed column', header.replace('reviewer', 'checker') + '\n', 'header'],
+    ['columns in another order', [...RULE_COLUMNS].reverse().join(',') + '\n', 'header'],
+    ['a short row', `${header}\n1,x\n`, 'malformed'],
+    ['an unclosed quote', `${header}\n"1,x\n`, 'malformed'],
+    ['an HTML error page', '<!doctype html><html><body>Not found</body></html>\n', 'header'],
+  ]) {
+    const got = readRuleRecords(text);
+    check(`F01 reader: ${name} is not a table (${reason}), so no rule is current`, !got.ok && got.reason === reason && got.records.length === 0, JSON.stringify(got));
+  }
+  check('F01 reader: a header with a byte-order mark and CRLF still reads as the empty table',
+    readRuleRecords(`﻿${header}\r\n`).ok && readRuleRecords(`﻿${header}\r\n`).records.length === 0);
+
+  // --- raw catalogue rows, as loaded ----------------------------------------
+  const servedUni = read('data/universities.csv');
+  const servedProg = read('data/programmes.csv');
+  const served = fixtures.servedCatalogue(servedUni, servedProg);
+  const liveLoad = await load(servedUni, servedProg);
+  const raw = liveLoad.raw;
+  check('F01 loadData returns the exact raw rows behind every programme, outside meta',
+    raw instanceof Map && raw.size === liveLoad.programmes.length && !('raw' in liveLoad.meta)
+      && liveLoad.programmes.every((p) => raw.get(p.id)?.programme.programme_id === p.id && raw.get(p.id).university.university_id === p.universityId && raw.get(p.id).unsafe === false));
+  check('F01 raw rows keep "none" and the four maths courses apart, which the parsed rows do not',
+    raw.get('eur-ibp').programme.ib_maths === 'none' && raw.get('arcada-it').programme.ib_maths === 'AA HL · AA SL · AI HL · AI SL'
+      && JSON.stringify(liveLoad.programmes.find((p) => p.id === 'eur-ibp').mathsAccepted) === JSON.stringify(liveLoad.programmes.find((p) => p.id === 'arcada-it').mathsAccepted));
+  {
+    const dupUni = `${uni}u2,Other,Town,Testland,,,,,,,2026-08-14,TT\nu,Again,Town,Testland,,,,,,,2026-08-14,TT\n`;
+    const rows = [head, 'p1,u,,One,BSc,Engineering,English,,?,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p2,u2,,Two,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p2,u2,,Two again,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n';
+    const res = await load(dupUni, rows);
+    check('F01 an id used twice on either tab makes its raw rows unsafe to bind a rule to; the first row still shows',
+      res.raw.get('p1').unsafe === true && res.raw.get('p2').unsafe === true && res.raw.get('p2').programme.programme === 'Two'
+        && res.programmes.map((p) => p.id).join() === 'p1,p2', JSON.stringify([...res.raw].map(([id, e]) => [id, e.unsafe])));
+    const q = res.programmes.find((p) => p.id === 'p1');
+    check('F01 "?" in ib_subjects is unknown: no literal "?", and the detail says "Not checked yet"',
+      q.ibSubjects === '' && !q.noSubjectsRequired && kvOf(detailOf(q))['IB subjects']?.textContent === 'Not checked yet');
+    const snapRes = await load(uni, '', undefined, { snapshot: { ...snapFixture, subject_rules: { schema_version: 1, records: [fixtures.sampleRuleRecord(served, 'eur-ibeor')] } } });
+    check('F01 the saved copy also gives raw rows; its embedded rule records are not read by the loader',
+      snapRes.meta.source === 'snapshot' && snapRes.raw.get('snap-1')?.programme.programme === 'Saved' && !('subject_rules' in snapRes) && !JSON.stringify(snapRes.meta).includes('SAMPLE'));
+  }
+
+  // --- one record: the acceptance boundary -----------------------------------
+  const today = new Date(2026, 10, 27, 12, 0, 0);
+  const ctx = { raw, today };
+  const rec = (over = {}, id = 'eur-ibeor') => fixtures.sampleRuleRecord(served, id, over);
+  const base = inspectRule(rec(), ctx);
+  equal('F01 production rejects a SAMPLE rule for exactly one distinct reason, "sample"', acceptRule(rec(), ctx).reasons, ['sample']);
+  check('F01 the inspected SAMPLE rule is otherwise complete (it only becomes usable through the test adapter)',
+    base.rule && base.rule.programmeId === 'eur-ibeor' && base.rule.routes.length === 1 && base.rule.sample === false && !acceptRule(rec(), ctx).rule);
+  const pDeps = JSON.parse(rec().programme_dependencies);
+  const uDeps = JSON.parse(rec().university_dependencies);
+  const reasonCases = [
+    ['a draft', { status: 'draft' }, 'draft'],
+    ['an unknown status', { status: 'signed' }, 'status'],
+    ['another schema version', { schema_version: '2' }, 'schema'],
+    ['last year\'s intake', { intake: '2026/27' }, 'intake'],
+    ['an AI-DRAFT author', { author: 'AI-DRAFT' }, 'ai-draft'],
+    ['an AI-DRAFT reviewer', { reviewer: 'SAMPLE AI-DRAFT' }, 'ai-draft'],
+    ['no reviewer', { reviewer: '' }, 'unsigned'],
+    ['a reviewer who is not initials', { reviewer: 'SAMPLE reviewed' }, 'unsigned'],
+    ['self-review', { reviewer: 'SAMPLE AB' }, 'self-review'],
+    ['an unsafe source link', { sources: { s1: { url: 'javascript:alert(1)', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
+    ['a link with a user name', { sources: { s1: { url: 'https://www.eur.nl@evil.example/', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
+    ['a source with no quote', { sources: { s1: { url: fixtures.SAMPLE_URL, quote: ' ' } } }, 'sources'],
+    ['an impossible date', { checked_on: '2026-02-31' }, 'dates'],
+    ['dates out of order', { checked_on: '2026-11-26', reviewed_on: '2026-11-25' }, 'dates'],
+    ['a review in the future', { reviewed_on: '2026-11-28', recheck_by: '2027-01-31' }, 'dates'],
+    ['a passed recheck date', { checked_on: '2026-10-01', reviewed_on: '2026-10-02', recheck_by: '2026-11-26' }, 'expired'],
+    ['no scope', { scope: '' }, 'scope'],
+    ['a scope with no source', { scope: { qualification: 'ib-diploma', label: { en: 'IB' }, sources: [] } }, 'scope'],
+    ['a scope for another qualification', { scope: { qualification: 'a-levels', label: { en: 'A levels' }, sources: ['s1'] } }, 'scope-inapplicable'],
+    ['an unknown evidence kind', { evidence_kind: 'complete' }, 'evidence-kind'],
+    ['a typo in a clause key', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, min_grde: 5 }] }] } }, 'routes'],
+    ['HL for an SL-only course', { routes: { routes: [{ id: 'a', clauses: [{ type: 'subject', courses: ['fr-ab-initio'], levels: ['HL'], sources: ['s1'] }] }] } }, 'routes'],
+    ['a level both required and excluded', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, exclude_levels: ['HL'] }] }] } }, 'routes'],
+    ['an unsupported course', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['further-maths'] }] }] } }, 'routes'],
+    ['a clause citing no source', { routes: { routes: [{ id: 'a', clauses: [{ ...fixtures.PHYSICS_HL5, sources: [] }] }] } }, 'routes'],
+    ['an absence with routes', { evidence_kind: 'explicit-no-restrictions' }, 'routes'],
+    ['a partial check without its note', { evidence_kind: 'partial-restrictions' }, 'routes'],
+    ['an unknown dependency column', { programme_dependencies: { ...pDeps, ib_sujects: '' } }, 'dependencies'],
+    ['a missing required dependency', { university_dependencies: Object.fromEntries(Object.entries(uDeps).filter(([k]) => k !== 'english_requirement_default')) }, 'dependencies'],
+    ['dependencies for another programme', { programme_dependencies: { ...pDeps, programme_id: 'eur-ibp' } }, 'dependencies'],
+    ['a changed maths cell', { programme_dependencies: { ...pDeps, ib_maths: 'AA HL' } }, 'drift'],
+    ['a changed university cell', { university_dependencies: { ...uDeps, baseline_requirement: `${uDeps.baseline_requirement} (changed)` } }, 'drift'],
+    ['a blank recorded where the file says nothing (column present)', { programme_dependencies: { ...pDeps, ib_offer: null } }, 'drift'],
+  ];
+  for (const [name, over, reason] of reasonCases) {
+    const got = acceptRule(rec(over), ctx);
+    check(`F01 rule not used: ${name} (${reason})`, !got.ok && got.reasons.includes(reason) && !got.rule, JSON.stringify(got.reasons));
+  }
+  {
+    // "none" and the four courses parse the same, and "?" and blank both read
+    // "Not checked yet"; a rule bound to one must not survive the other.
+    const fourTracks = acceptRule(rec({ programme_dependencies: { ...JSON.parse(rec({}, 'eur-ibp').programme_dependencies), ib_maths: 'AA HL · AA SL · AI HL · AI SL' } }, 'eur-ibp'), ctx);
+    const qOverBlank = new Map(raw); qOverBlank.set('qub-environmental-management-bsc', { ...raw.get('qub-environmental-management-bsc'), programme: { ...raw.get('qub-environmental-management-bsc').programme, ib_subjects: '?' } });
+    const blankBound = acceptRule(rec({}, 'qub-environmental-management-bsc'), { raw: qOverBlank, today });
+    const missingColumn = new Map(raw); const { ib_maths: _gone, ...withoutMaths } = raw.get('eur-ibeor').programme;
+    missingColumn.set('eur-ibeor', { ...raw.get('eur-ibeor'), programme: withoutMaths });
+    const unsafe = new Map(raw); unsafe.set('eur-ibeor', { ...raw.get('eur-ibeor'), unsafe: true });
+    check('F01 drift: "none" bound, four maths courses loaded (same parsed value) blocks the rule', fourTracks.reasons.includes('drift'), JSON.stringify(fourTracks.reasons));
+    check('F01 drift: blank bound, "?" loaded blocks the rule', blankBound.reasons.includes('drift'), JSON.stringify(blankBound.reasons));
+    check('F01 drift: a column missing from the loaded source blocks the rule', acceptRule(rec(), { raw: missingColumn, today }).reasons.includes('drift'));
+    check('F01 a programme that did not load, or loaded from a duplicated id, cannot carry a rule',
+      acceptRule(rec(), { raw: new Map(), today }).reasons.includes('unbound') && acceptRule(rec(), { raw: unsafe, today }).reasons.includes('unbound'));
+    check('F01 recheck-by counts through its local day: usable at 23:59 that day, expired at 00:00 the next',
+      acceptRule(rec({ recheck_by: '2026-11-27' }), { raw, today: new Date(2026, 10, 27, 23, 59, 59) }).reasons.join() === 'sample'
+        && acceptRule(rec({ recheck_by: '2026-11-27' }), { raw, today: new Date(2026, 10, 28, 0, 0, 0) }).reasons.includes('expired'));
+  }
+
+  // --- the adapter graph: the page's modules with only the acceptance
+  // boundary swapped, exactly as smoke.mjs serves it ---------------------------
+  const jsDir = new URL('../js/', import.meta.url).href;
+  const adapterUrl = new URL('./subject-rules-sample-adapter.js', import.meta.url).href;
+  const TAG = '?f01-adapter-graph';
+  registerHooks({
+    resolve(specifier, context, next) {
+      const parent = context.parentURL ?? '';
+      if (parent === adapterUrl && specifier === './subject-rules.js?production') return { url: `${jsDir}subject-rules.js?production`, shortCircuit: true };
+      const result = next(specifier, context);
+      if (parent.endsWith(TAG) && result.url.startsWith(jsDir) && !result.url.includes('?')) {
+        return { ...result, url: result.url === `${jsDir}subject-rules.js` ? adapterUrl : `${result.url}${TAG}` };
+      }
+      return result;
+    },
+  });
+  const graph = (name) => import(`${jsDir}${name}${TAG}`);
+  const authority = await graph('subject-authority.js');
+  const adapted = await graph('compare.js');
+  const adaptedRender = await graph('render.js');
+  const adaptedI18n = await graph('i18n.js');
+  const adapter = await import(adapterUrl);
+  const adapterSrc = read('tools/subject-rules-sample-adapter.js');
+  const productionFiles = ['index.html', ...readdirSync(join(root, 'js')).map((n) => `js/${n}`)];
+  check('F01 R8: no production file references the test adapter or fixtures, or carries a test flag',
+    productionFiles.every((path) => !/sample-adapter|subject-rule-fixtures|\?production|f01-adapter/.test(read(path))));
+  check('F01 R8: the adapter imports the unmodified production module at a distinct address and overrides only acceptRule',
+    /import \* as production from '\.\/subject-rules\.js\?production';/.test(adapterSrc) && /export \* from '\.\/subject-rules\.js\?production';/.test(adapterSrc)
+      && [...adapterSrc.matchAll(/^export (?:function|const|let|class) (\w+)/gm)].map((m) => m[1]).join() === 'acceptRule'
+      && Object.keys(adapter).sort().join() === Object.keys(rulesMod).sort().join());
+  check('F01 R8: the authority calls only the acceptance boundary, and holds the state the adapter must not',
+    !/inspectRule/.test(read('js/subject-authority.js')) && /acceptRule\(record/.test(read('js/subject-authority.js')) && !/^let |^const s\b/m.test(adapterSrc.replace(/^\/\/.*$/gm, '')));
+  const waived = adapter.acceptRule(rec(), ctx);
+  check('F01 R8: the adapter accepts a rule whose only problem is "sample", and marks it sample', waived.ok && waived.rule.sample === true && waived.reasons.length === 0);
+  check('F01 R8: the adapter still rejects every other problem, alone or next to "sample"',
+    reasonCases.every(([, over]) => !adapter.acceptRule(rec(over), ctx).ok));
+
+  // combineRules through the adapter
+  const ok = (r) => adapter.acceptRule(r, ctx);
+  const one = (records) => adapter.combineRules(records.map(ok)).rules;
+  check('F01 one approved record gives one usable rule', one([rec()]).get('eur-ibeor')?.sample === true && one([rec()]).size === 1);
+  check('F01 a withdrawal wins over an approval, in either order',
+    one([rec(), rec({ status: 'withdrawn' })]).size === 0 && one([rec({ status: 'withdrawn' }), rec()]).size === 0);
+  check('F01 two approvals for one programme are ambiguous: neither is used', one([rec(), rec({ reviewer: 'SAMPLE EF' })]).size === 0);
+  check('F01 a rejected record for the same programme blocks a valid one', one([rec(), rec({ reviewer: '' })]).size === 0);
+  check('F01 a record for another, well-formed intake does not block this intake\'s rule', one([rec(), rec({ intake: '2026/27' })]).size === 1);
+  check('F01 a record whose intake cannot be read blocks the programme', one([rec(), rec({ intake: 'soon' })]).size === 0);
+  check('F01 a record whose programme cannot be read makes the whole table untrusted',
+    one([rec(), rec({}, 'eur-ibp'), rec({ programme_id: '' })]).size === 0 && one([rec(), rec({}, 'eur-ibp')]).size === 2);
+
+  // --- the authority: what is current, with a fake clock --------------------
+  const T0 = new Date(2026, 10, 27, 12, 0, 0).getTime();
+  const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve)); };
+  function harness({ start = T0, body, timeoutMs } = {}) {
+    let now = start, seq = 0;
+    const queue = new Map();
+    const calls = [];
+    const h = { changes: 0, online: true, body, calls, pendingFetches: [],
+      now: () => now,
+      timers: { set: (fn, ms) => { queue.set(++seq, { at: now + ms, fn }); return seq; }, clear: (id) => { queue.delete(id); } },
+      async advance(ms) {
+        const end = now + ms;
+        for (;;) {
+          const next = [...queue].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+          if (!next) break;
+          queue.delete(next[0]); now = next[1].at; next[1].fn(); await flush();
+        }
+        now = end; await flush();
+      },
+      jump(ms) { now += ms; },
+      timerCount: () => queue.size,
+      fetchImpl: (url, init) => {
+        calls.push({ url, init });
+        const answer = typeof h.body === 'function' ? h.body() : h.body;
+        if (answer === 'hang' || answer?.defer) {
+          return new Promise((resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+            if (answer?.defer) h.pendingFetches.push((text) => resolve({ ok: true, status: 200, text: async () => text }));
+          });
+        }
+        if (answer instanceof Error) return Promise.reject(answer);
+        if (answer?.status) return Promise.resolve({ ok: false, status: answer.status, text: async () => 'Not found' });
+        return Promise.resolve({ ok: true, status: 200, text: async () => answer });
+      },
+      target: null,
+    };
+    h.start = (mod = authority, extra = {}) => mod.startSubjectAuthority({ raw, onChange: () => { h.changes++; }, now: h.now, timers: h.timers,
+      fetchImpl: h.fetchImpl, online: () => h.online, target: h.target, ...(timeoutMs ? { timeoutMs } : {}), ...extra });
+    return h;
+  }
+  const approved = fixtures.rulesCsv([rec()]);
+  const has = (mod = authority) => mod.reviewedRule('eur-ibeor') !== null;
+
+  {
+    const h = harness({ body: `${header}\n` });
+    await h.start();
+    const call = h.calls[0];
+    check('F01 authority: one same-origin request for the fixed file, never cached, with nothing about the student',
+      h.calls.length === 1 && call.url === 'data/ib-subject-rules.csv' && call.init.cache === 'no-store' && call.init.credentials === 'same-origin'
+        && call.init.body === undefined && call.init.method === undefined && Object.keys(call.init).sort().join() === 'cache,credentials,signal');
+    check('F01 authority: the header-only table makes nothing current, announces nothing and is not polled', !has() && h.changes === 0 && h.timerCount() === 0);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start(await import(new URL('../js/subject-authority.js', import.meta.url)));
+    const prod = await import(new URL('../js/subject-authority.js', import.meta.url));
+    check('F01 authority (unmodified page modules): a served SAMPLE rule is never current', !has(prod) && h.changes === 0);
+    prod.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    check('F01 authority: a current approval shows once, with a refresh and an age limit scheduled', has() && h.changes === 1 && h.timerCount() === 3);
+    const before = h.calls.length;
+    await h.advance(45_000);
+    check('F01 authority R4: the file is asked again 45 s after the last good answer; an unchanged answer redraws nothing',
+      h.calls.length === before + 1 && has() && h.changes === 1);
+    await h.advance(40_000);
+    check('F01 authority R4: steady good answers keep the rule current past 60 s without a flicker', has() && h.changes === 1 && h.calls.length === before + 1);
+    h.body = new Error('offline-ish failure');
+    await h.advance(5_000);
+    check('F01 authority: a failed refresh removes the rule at once', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved, timeoutMs: 30_000 });
+    await h.start();
+    h.body = 'hang';
+    await h.advance(45_000);
+    check('F01 authority R4: a refresh still in flight at 45 s leaves the rule current', has() && h.changes === 1);
+    await h.advance(15_002);
+    check('F01 authority R4: 60 s with no newer good answer: the rule stops counting, even with the request still out', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    h.jump(61_000);
+    check('F01 authority: a throttled tab whose timers slept never shows an aged-out rule (checked at use)', !has());
+    authority.stopSubjectAuthority();
+  }
+  for (const [name, body] of [['a missing file (404)', { status: 404 }], ['a malformed file', `${header}\n"broken`], ['an empty file', ''],
+    ['an HTML page', '<!doctype html><p>Sign in</p>'], ['a request that never answers', 'hang']]) {
+    const h = harness({ body });
+    const started = h.start();
+    await h.advance(3_000);
+    await started;
+    check(`F01 authority: ${name} makes nothing current and is given up within 3 s`, !has() && h.changes === 0 && h.calls.length === 1);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: { defer: true } });
+    const listeners = {};
+    const fakeTarget = { addEventListener: (type, fn) => { (listeners[type] ??= []).push(fn); }, removeEventListener() {},
+      document: { visibilityState: 'visible', addEventListener: (type, fn) => { (listeners[`doc:${type}`] ??= []).push(fn); }, removeEventListener() {} } };
+    h.target = fakeTarget;
+    h.start();
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    h.pendingFetches.shift()(approved);
+    await flush();
+    check('F01 authority: going offline voids an answer still on its way, even an approval', !has() && h.changes === 0);
+    h.online = true;
+    h.body = approved;
+    listeners.online.forEach((fn) => fn());
+    await flush();
+    check('F01 authority: back online, a fresh answer can make the rule current again', has() && h.changes === 1);
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    check('F01 authority: offline removes a current rule at once', !has() && h.changes === 2);
+    // An answer to an older request arrives after a newer one withdrew the rule.
+    h.online = true;
+    h.body = { defer: true };
+    listeners['doc:visibilitychange'].forEach((fn) => fn());
+    const older = h.pendingFetches.shift();
+    h.online = false;
+    listeners.offline.forEach((fn) => fn());
+    h.online = true;
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    listeners.online.forEach((fn) => fn());
+    await flush();
+    older(approved);
+    await flush();
+    check('F01 authority: a late answer to an older request never revives an approval after a newer withdrawal', !has() && h.calls.length === 4);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: fixtures.rulesCsv([rec(), rec({ status: 'withdrawn' })]) });
+    await h.start();
+    check('F01 authority: a current withdrawal wins over an approval in the same answer', !has() && h.changes === 0);
+    authority.stopSubjectAuthority();
+    const drifted = new Map(raw);
+    drifted.set('eur-ibeor', { ...raw.get('eur-ibeor'), programme: { ...raw.get('eur-ibeor').programme, ib_subjects: `${raw.get('eur-ibeor').programme.ib_subjects} ` + 'Updated.' } });
+    const d = harness({ body: approved });
+    await d.start(authority, { raw: drifted });
+    check('F01 authority: a catalogue cell that changed since review blocks the rule', !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ start: new Date(2026, 10, 27, 23, 59, 30).getTime(), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+    await h.start();
+    check('F01 authority: a rule whose recheck date is today is current until midnight', has() && h.changes === 1);
+    await h.advance(30_001);
+    check('F01 authority: at local midnight the rule expires in an open tab with no interaction, and the change is announced', !has() && h.changes === 2);
+    authority.stopSubjectAuthority();
+  }
+
+  // --- the views, with a current SAMPLE rule (adapter graph) ----------------
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    const ibeor = live.find((r) => r.id === 'eur-ibeor');
+    const ibp = live.find((r) => r.id === 'eur-ibp');
+    const detail = withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters()));
+    const block = byClass(detail, 'd-reviewed')[0];
+    const subjectsDd = kvOf(detail)['IB subjects'];
+    check('F01 detail: the reviewed rule sits in the IB subjects row, under the recorded wording, with its fixture warning',
+      block && subjectsDd.contains(block) && subjectsDd.textContent.startsWith(ibeor.ibSubjects)
+        && byTag(block, 'h4')[0]?.textContent === 'Subject requirement (reviewed)' && byClass(block, 'rv-sample').length === 1);
+    equal('F01 detail: the reviewed rule\'s scope, route, source and dates, in words', byClass(block, 'rv-line').map((n) => n.textContent).concat(byClass(block, 'rv-meta').map((n) => n.textContent)), [
+      'Applies to: Applicants with the IB Diploma (SAMPLE fixture)',
+      'Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher',
+      'Intake 2027/28 · checked 20 November 2026 · reviewed by CD on 25 November 2026 · recheck by 31 January 2027',
+    ]);
+    const link = byTag(block, 'a')[0];
+    const quote = byTag(block, 'q')[0];
+    check('F01 detail: each source is a safe external link with its exact quote, language marked',
+      link?.href === fixtures.SAMPLE_URL && link.target === '_blank' && link.rel === 'noopener noreferrer' && quote?.textContent === fixtures.SAMPLE_QUOTE && quote.lang === 'en');
+    const table = adapted.compareTable([ibeor, ibp], noFilters());
+    const reviewedRow = table.find((f) => f.key === 'reviewed');
+    check('F01 Compare: a reviewed row appears with the same words; the column without a rule says so and stays under Show only differences',
+      reviewedRow?.label === 'Subject requirement (reviewed)' && reviewedRow.cells[0].lines.some((l) => l.parts?.map((p) => p.text).join('') === 'Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher')
+        && reviewedRow.cells[1].unknown && reviewedRow.cells[1].lines[0].tag === 'No subject check yet'
+        && adapted.visibleFacts(table, true).some((f) => f.key === 'reviewed'));
+    adaptedI18n.setLanguage('sk');
+    const sk = withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters()));
+    const skBlock = byClass(sk, 'd-reviewed')[0];
+    check('F01 detail in Slovak: Slovak words, rule text in Slovak where given, the quote still marked English',
+      byTag(skBlock, 'h4')[0]?.textContent === 'Požiadavka na predmety (overená)'
+        && byClass(skBlock, 'rv-line')[1]?.textContent === 'Matematika AA alebo Matematika AI na úrovni HL, známka aspoň 5 (SL sa neuznáva) a Fyzika na úrovni HL, známka aspoň 5'
+        && byClass(skBlock, 'rv-line')[0]?.textContent === 'Platí pre: Uchádzači s IB diplomom (SAMPLE fixture)' && byTag(skBlock, 'q')[0]?.lang === 'en');
+    adaptedI18n.setLanguage('en');
+    // A withdrawal arrives: the same anchors are patched, nothing else.
+    const section = byClass(detail, 'd-must')[0];
+    const childrenBefore = section.children.length;
+    check('F01 an unchanged rule leaves a mounted anchor alone', withStubDocument(() => adaptedRender.fillReviewed(section, ibeor)) === false);
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    await authority.refreshAuthority();
+    const patched = withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    check('F01 a withdrawal removes the mounted reviewed block, leaving the recorded wording and the rest of the section',
+      patched && h.changes === 2 && byClass(detail, 'd-reviewed').length === 0 && kvOf(detail)['IB subjects'].textContent === ibeor.ibSubjects && section.children.length === childrenBefore);
+    check('F01 Compare drops the reviewed row once no compared programme has a current rule',
+      !adapted.compareTable([ibeor, ibp], noFilters()).some((f) => f.key === 'reviewed'));
+    authority.stopSubjectAuthority();
+    const absence = harness({ body: fixtures.rulesCsv([rec({ evidence_kind: 'explicit-no-restrictions', routes: { absence_sources: ['s1'] } }, 'eur-ibp')]) });
+    await absence.start();
+    const absenceBlock = byClass(withStubDocument(() => adaptedRender.renderDetail(ibp, noFilters())), 'd-reviewed')[0];
+    check('F01 detail: a reviewed full-scope absence says so, and cites its source',
+      byClass(absenceBlock, 'rv-line').map((n) => n.textContent).includes('No IB subject restrictions, stated for everyone this applies to.') && byTag(absenceBlock, 'a').length === 1);
+    authority.stopSubjectAuthority();
+  }
+
+  // --- the public journey on the real rows, with zero rules ---------------
+  {
+    const rows = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'].map((id) => live.find((r) => r.id === id));
+    const [ibeor, arcada, ibp, qub] = rows;
+    const subjectsOf = (row) => kvOf(detailOf(row))['IB subjects']?.textContent;
+    check('F01 eur-ibeor: the whole recorded wording, including the AA SL 6 exam alternative, and no reviewed line',
+      subjectsOf(ibeor) === served.programmes.get('eur-ibeor').ib_subjects && /AA SL 6 lets you sit the maths entrance exam instead/.test(subjectsOf(ibeor))
+        && byClass(detailOf(ibeor), 'd-reviewed').length === 0);
+    check('F01 arcada-it: blank subjects read "Not checked yet"; the recorded maths wording stays under Other requirements',
+      subjectsOf(arcada) === 'Not checked yet' && kvOf(detailOf(arcada))['Other requirements']?.textContent.includes('Maths: advanced course at IB grade 2 (A) or better'));
+    check('F01 eur-ibp: literal "none" keeps its public meaning, "None required"', subjectsOf(ibp) === 'None required');
+    check('F01 qub-environmental-management-bsc: no subject or maths evidence reads "Not checked yet", with its official link',
+      subjectsOf(qub) === 'Not checked yet' && !!qub.officialUrl && byClass(detailOf(qub), 'd-apply').length === 1);
+    const table = compareMod.compareTable(rows, noFilters());
+    const cellsOf = (key) => table.find((f) => f.key === key)?.cells;
+    equal('F01 Compare: an IB subjects row with the recorded wording, None required and Not checked yet',
+      cellsOf('subjects').map((c) => c.lines.map((l) => l.tag ?? l.text).join('|')), [ibeor.ibSubjects, 'Not checked yet', 'None required', 'Not checked yet']);
+    check('F01 Compare: the subjects cell uses the whole recorded field for translation', cellsOf('subjects')[0].lines[0].field === 'ib_subjects');
+    equal('F01 Compare: the maths courses row is unchanged and separate',
+      cellsOf('maths').map((c) => c.lines.map((l) => l.tag ?? l.text).join('|')), ['AA HL · AA SL', 'AA HL · AA SL · AI HL · AI SL', 'AA HL · AA SL · AI HL · AI SL', 'Not checked yet']);
+    check('F01 Compare: Other requirements is its own labelled row with each whole field, so Arcada\'s maths wording stays available',
+      cellsOf('other')[1].lines[0].field === 'other_requirements' && cellsOf('other')[1].lines[0].text === arcada.otherRequirements.join(' · ')
+        && cellsOf('other')[3].lines[0].text === 'Nothing else listed');
+    const shown = compareMod.visibleFacts(table, true).map((f) => f.key);
+    check('F01 Compare: Show only differences keeps the unknown subjects cell, and no reviewed row exists without a rule',
+      shown.includes('subjects') && shown.includes('link') && !table.some((f) => f.key === 'reviewed'));
+    const missing = { ...qub, ibSubjects: '', officialUrl: null };
+    const missingTable = compareMod.compareTable([ibeor, missing], noFilters());
+    check('F01 a row with no official link keeps the existing missing-link message in the detail and Compare',
+      byClass(detailOf(missing), 'note-strong').some((n) => n.textContent === 'No official admissions link. Do not rely on this entry.')
+        && missingTable.find((f) => f.key === 'link').cells[1].lines[0].strong === true && missingTable.find((f) => f.key === 'link').cells[1].unknown);
+  }
+
+  // --- the checker: five exclusive results ---------------------------------
+  {
+    const S = (courses, levels, min = null, { exL = [], exC = [], routes } = {}) => ({ type: 'subject', courses, levels, minGrade: min, excludeLevels: exL, excludeCourses: exC, sources: ['s1'], ...(routes ? { routes } : {}) });
+    const X = (type) => ({ type, text: { en: `${type} (SAMPLE)`, sk: '' }, sources: ['s1'] });
+    const R = (kind, routes, { general = [], conditions = [] } = {}) => ({ kind, scope: { conditions }, general,
+      routes: routes.map((clauses, i) => (Array.isArray(clauses) ? { id: `r${i + 1}`, clauses, conditions: [] } : { id: `r${i + 1}`, ...clauses })) });
+    const E = (course, level, grade = null) => ({ course, level, grade });
+    const C = 'complete-restrictions';
+    const status = (rule, entries) => evaluateSubjects(rule, entries).status;
+    const case1 = R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5, { exL: ['SL'] }), S(['physics'], ['HL'], 5)]]);
+    const case1Result = evaluateSubjects(case1, [E('maths-ai', 'SL'), E('physics', 'HL', 6)]);
+    check('F01 checker case 1: AI SL against a cited SL exclusion is a conflict, naming the maths clause and the entry',
+      case1Result.status === STATUS.CONFLICT && case1Result.routes[0].clauses[0].reason.kind === 'level-excluded' && case1Result.routes[0].clauses[0].reason.course === 'maths-ai');
+    const case1Open = evaluateSubjects(R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5), S(['physics'], ['HL'], 5)]]), [E('maths-ai', 'SL'), E('physics', 'HL', 6)]);
+    check('F01 checker case 1 without the cited exclusion: SL is unmentioned, so Needs checking, never a conflict',
+      case1Open.status === STATUS.NEEDS && case1Open.next?.kind === 'level-unstated');
+    const hl5 = R(C, [[S(['maths-aa', 'maths-ai'], ['HL'], 5)]]);
+    const meets = evaluateSubjects(hl5, [E('maths-aa', 'HL', 6)]);
+    check('F01 checker exclusive pair: Maths HL 5 required, HL predicted 6 → Meets only, based on predictions',
+      meets.status === STATUS.MEETS && meets.predicted === true && meets.status !== STATUS.NO_RESTRICTIONS);
+    const absence = { kind: 'explicit-no-restrictions', scope: { conditions: [] }, general: [], routes: [] };
+    check('F01 checker exclusive pair: a reviewed full-scope absence → No listed subject restrictions only, whatever was entered',
+      status(absence, [E('maths-ai', 'SL')]) === STATUS.NO_RESTRICTIONS && status(absence, []) === STATUS.NO_RESTRICTIONS && evaluateSubjects(absence, []).predicted === false);
+    check('F01 checker: an absence whose applicability is unknown is Needs checking',
+      status({ ...absence, scope: { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] } }, []) === STATUS.NEEDS);
+    check('F01 checker: no usable rule is "No subject check yet" (coverage, not a verdict)', status(null, [E('physics', 'HL', 7)]) === STATUS.NO_CHECK);
+    check('F01 checker: meeting a restriction never counts as no restrictions; four accepted maths tracks are still a restriction',
+      status(R(C, [[S(['maths-aa', 'maths-ai'], ['HL', 'SL'])]]), [E('maths-ai', 'SL')]) === STATUS.MEETS);
+    const alt = R(C, [[S(['physics'], ['HL'], 6)], [S(['chemistry'], ['HL'], 6)]]);
+    const p5 = evaluateSubjects(alt, [E('physics', 'HL', 5)]);
+    check('F01 checker case 4: Physics HL predicted 5 and no Chemistry → Needs checking; Chemistry HL 6 is another open route',
+      p5.status === STATUS.NEEDS && p5.routes[1].outcome === 'open' && p5.routes[1].clauses[0].reason.kind === 'add' && p5.routes[1].clauses[0].reason.course === 'chemistry');
+    check('F01 checker case 4: adding Chemistry SL still Needs checking (SL is not mentioned)', status(alt, [E('physics', 'HL', 5), E('chemistry', 'SL')]) === STATUS.NEEDS);
+    const chem6 = evaluateSubjects(alt, [E('physics', 'HL', 5), E('chemistry', 'HL', 6)]);
+    check('F01 checker case 4: Chemistry HL predicted 6 → Meets, based on predictions', chem6.status === STATUS.MEETS && chem6.predicted);
+    const withAa = R(C, [[S(['physics'], ['HL'], 6)], [S(['chemistry'], ['HL'], 6), S(['maths-aa'], ['HL'], null, { exC: ['maths-ai'] })]]);
+    const aiSl = evaluateSubjects(withAa, [E('maths-ai', 'SL'), E('physics', 'HL', 5), E('chemistry', 'HL', 6)]);
+    check('F01 checker case 4: a route needing Maths AA HL shows its own mismatch for AI SL, but no overall conflict while another route is open',
+      aiSl.status === STATUS.NEEDS && aiSl.routes[1].outcome === 'excluded' && aiSl.routes[1].clauses[1].reason.kind === 'course-excluded' && aiSl.routes[0].outcome === 'open');
+    check('F01 checker: a valid scope whose applicability is unknown never gives Meets or a conflict',
+      status(R(C, [[S(['physics'], ['HL'])]], { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] }), [E('physics', 'HL')]) === STATUS.NEEDS
+        && status(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })]], { conditions: [{ text: { en: 'x' }, sources: ['s1'] }] }), [E('physics', 'SL')]) === STATUS.NEEDS);
+    check('F01 checker: SL-only wording with HL entered is Needs checking (the source says nothing about HL)',
+      evaluateSubjects(R(C, [[S(['physics'], ['SL'], 5)]]), [E('physics', 'HL', 7)]).next?.kind === 'level-unstated');
+    const exam = evaluateSubjects(R(C, [[S(['maths-aa'], ['SL'], 6), X('exam')]]), [E('maths-aa', 'SL', 6)]);
+    check('F01 checker: matching grades plus an exam whose result is unknown → Needs checking; permission to sit is not a pass',
+      exam.status === STATUS.NEEDS && exam.next?.kind === 'exam');
+    check('F01 checker: an unresolved waiver keeps its route open, never failed',
+      evaluateSubjects(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], [X('waiver')]]), [E('physics', 'SL')]).status === STATUS.NEEDS);
+    check('F01 checker: when every route is excluded by documented incompatibilities, the result is a conflict',
+      status(R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], [S(['chemistry'], ['HL'], null, { exL: ['SL'] })]]), [E('physics', 'SL'), E('chemistry', 'SL')]) === STATUS.CONFLICT);
+    const six = [E('maths-aa', 'HL', 7), E('en-a-lit', 'HL', 6), E('biology', 'HL', 6), E('economics', 'SL', 6), E('de-b', 'SL', 6), E('visual-arts', 'SL', 6)];
+    const sixResult = evaluateSubjects(R(C, [[S(['physics'], ['HL'], 5, { exL: ['SL'] })]]), six);
+    check('F01 checker case 5: six entries, the required subject missing → Needs checking with "add", never conflict',
+      sixResult.status === STATUS.NEEDS && sixResult.next?.kind === 'add' && sixResult.next?.course === 'physics');
+    check('F01 checker: a predicted grade below the minimum, or no grade, is Needs checking, never a conflict',
+      evaluateSubjects(hl5, [E('maths-aa', 'HL', 4)]).next?.kind === 'grade-below' && evaluateSubjects(hl5, [E('maths-aa', 'HL')]).next?.kind === 'grade-missing');
+    check('F01 checker: an independently met route counts even while another stays open',
+      status(R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'], 7), X('exam')]]), [E('physics', 'HL')]) === STATUS.MEETS
+        && evaluateSubjects(R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'], 7)]]), [E('physics', 'HL'), E('chemistry', 'HL', 6)]).predicted === false);
+    check('F01 checker: a partial check never gives Meets or a conflict, and says why',
+      evaluateSubjects(R('partial-restrictions', [[S(['physics'], ['HL'])]]), [E('physics', 'HL')]).next?.kind === 'partial'
+        && status(R('partial-restrictions', [[S(['physics'], ['HL'], null, { exL: ['SL'] })]]), [E('physics', 'SL')]) === STATUS.NEEDS);
+    // R5: university-wide clauses join every route they govern.
+    const general = (clause) => R(C, [[S(['physics'], ['HL'])], [S(['chemistry'], ['HL'])]], { general: [clause] });
+    check('F01 checker R5: an unmet university-wide clause leaves governed routes open',
+      status(general(S(['en-a-lit', 'en-a-lang-lit'], ['HL', 'SL'])), [E('physics', 'HL')]) === STATUS.NEEDS);
+    check('F01 checker R5: a met university-wide clause lets a route meet',
+      status(general(S(['en-a-lit', 'en-a-lang-lit'], ['HL', 'SL'])), [E('physics', 'HL'), E('en-a-lit', 'SL')]) === STATUS.MEETS);
+    check('F01 checker R5: a documented incompatibility in a university-wide clause excludes every route it governs',
+      status(general(S(['maths-aa'], ['HL'], null, { exL: ['SL'] })), [E('physics', 'HL'), E('chemistry', 'HL'), E('maths-aa', 'SL')]) === STATUS.CONFLICT);
+    check('F01 checker R5: a university-wide clause naming one route governs only that route',
+      status(general(S(['maths-aa'], ['HL'], null, { exL: ['SL'], routes: ['r2'] })), [E('physics', 'HL'), E('maths-aa', 'SL')]) === STATUS.MEETS);
+    check('F01 checker: a route with only an exam and no subject clause never gives Meets', status(R(C, [[X('exam')]]), []) === STATUS.NEEDS);
+    check('F01 every result has English and Slovak words and the subjects-only rider',
+      Object.values(STATUS).every((s) => UI.en[STATUS_KEYS[s]] && UI.sk[STATUS_KEYS[s]]) && UI.en[SUBJECTS_ONLY_KEY] === 'Subjects only: not points, exams or a place'
+        && UI.sk[SUBJECTS_ONLY_KEY] === 'Len predmety: nie body, skúšky ani prijatie' && UI.sk[PREDICTED_KEY] === 'podľa tvojich predpokladaných známok');
+
+    const norm = (rows) => normalizeProfile(rows);
+    check('F01 profile: untouched blank rows are ignored; one to six valid entries are kept with integer grades',
+      norm([{ course: '', level: '', grade: '' }, { course: 'physics', level: 'HL', grade: '6' }, { course: 'maths-ai', level: 'SL' }]).ok
+        && JSON.stringify(norm([{ course: 'physics', level: 'HL', grade: '6' }]).entries) === JSON.stringify([{ course: 'physics', level: 'HL', grade: 6 }]));
+    const codes = (rows) => norm(rows).errors.map((e) => e.code).join();
+    equal('F01 profile: every invalid input is its own error, never coerced',
+      [codes([{ course: 'physics' }]), codes([{ course: 'further-maths', level: 'HL' }]), codes([{ course: 'fr-ab-initio', level: 'HL' }]),
+        codes([{ course: 'physics', level: 'HL', grade: '8' }]), codes([{ course: 'physics', level: 'HL', grade: '5.5' }]), codes([{ course: 'physics', level: 'HL', grade: 'six' }]),
+        codes([{ course: 'maths-aa', level: 'HL' }, { course: 'maths-ai', level: 'SL' }]), codes([{ course: 'physics', level: 'HL' }, { course: 'physics', level: 'SL' }]),
+        codes([]), codes(IB_COURSES.slice(0, 7).map((c) => ({ course: c.id, level: 'SL' })))],
+      ['incomplete', 'unsupported', 'level', 'grade', 'grade', 'grade', 'duplicate', 'duplicate', 'empty', 'too-many']);
+  }
+
+  {
+    // The maintenance guide's worked example is real syntax: the reader takes
+    // it, the site refuses it only for its SAMPLE signers and the shortened
+    // dependencies, and the checker gives the result the guide describes.
+    const guide = read('MAINTENANCE.md').split('### A worked example (invented, never to be added)\n')[1] ?? '';
+    const line = guide.split('```text\n')[1]?.split('\n```')[0] ?? '';
+    const parsed = readRuleRecords(`${RULE_COLUMNS.join(',')}\n${line}\n`);
+    const inspected = parsed.ok ? inspectRule(parsed.records[0], { raw, today }) : null;
+    const student = [{ course: 'maths-aa', level: 'SL', grade: 6 }, { course: 'physics', level: 'SL', grade: null }, { course: 'en-b', level: 'SL', grade: null }];
+    const result = inspected?.rule ? evaluateSubjects(inspected.rule, student) : null;
+    check('F01 MAINTENANCE.md: the worked example parses, is refused only as SAMPLE with shortened dependencies, and reads "needs checking" as described',
+      /This is a SAMPLE\./.test(guide) && parsed.ok && inspected.reasons.join() === 'sample,dependencies' && inspected.rule.routes.length === 2 && inspected.rule.general.length === 1
+        && result.status === STATUS.NEEDS && result.routes.map((r) => r.outcome).join() === 'open,open' && /needs checking/.test(guide),
+      JSON.stringify(inspected?.reasons));
+  }
+  check('F01 app.js starts the rule authority after the catalogue, with the loaded raw rows, and rechecks before printing',
+    /const \{ programmes, meta, translations, raw \} = await loadData\(\);/.test(appSrc) && /startSubjectAuthority\(\{ raw, onChange: redrawReviewed \}\);/.test(appSrc)
+      && appSrc.indexOf('startSubjectAuthority({ raw') > appSrc.indexOf('loaded = true;') && /addEventListener\('beforeprint', \(\) => \{\s*\/\/[^\n]*\n\s*recheckAuthority\(\);/.test(appSrc));
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

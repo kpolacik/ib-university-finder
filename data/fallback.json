@@ -152117,5 +152117,9 @@
       "sk": "Program vyžaduje angličtinu na úrovni CEFR B1; uznáva doklad o ukončení strednej školy s angličtinou ako vyučovacím jazykom, ak to tvoja škola potvrdí. Všeobecné pokyny k prijímaniu uvádzajú IB diplom (anglofónna sekcia) z anglofónnej školy.",
       "verified_by": "AI-DRAFT"
     }
-  ]
+  ],
+  "subject_rules": {
+    "schema_version": 1,
+    "records": []
+  }
 }

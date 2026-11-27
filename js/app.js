@@ -20,8 +20,9 @@ import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
-  setSaved, setInCompare, renderCompare,
+  setSaved, setInCompare, renderCompare, fillReviewed,
 } from './render.js';
+import { startSubjectAuthority, recheckAuthority } from './subject-authority.js';
 
 const dom = {
   banner: document.getElementById('source-banner'),
@@ -323,6 +324,8 @@ async function start() {
   // Print needs every filtered row (A08). The print media query changes only
   // after Chrome's print snapshot, so beforeprint is the one place to flush.
   window.addEventListener('beforeprint', () => {
+    // A reviewed subject rule that expired while the tab slept must not reach paper.
+    recheckAuthority();
     printing = true;
     settleSlots();
     printFlushed = !compareOpen;
@@ -342,7 +345,7 @@ async function start() {
 
   try {
     dataDay = localDay(new Date());
-    const { programmes, meta, translations } = await loadData();
+    const { programmes, meta, translations, raw } = await loadData();
     setDataTranslations(translations);
     sourceMeta = meta;
     allRows = programmes;
@@ -367,6 +370,9 @@ async function start() {
     readFields();
     loaded = true;
     update();
+    // F01: reviewed subject rules arrive separately and never hold up or
+    // replace the catalogue; until a current answer comes, none is shown.
+    startSubjectAuthority({ raw, onChange: redrawReviewed });
     scheduleSheetWarm();
     setupOnboarding({ state, facets, flags: COUNTRY_FLAGS, closeSheet, results: dom.resultsSection, firstVisit: restored?.onboarding === true,
       // Compare covers the results, so "Show my programmes" closes it first.
@@ -1121,6 +1127,16 @@ function openCompare(trigger) {
   syncCompareControls();
   dom.compare.scrollIntoView?.({ block: 'start' });
   dom.compareHeading.focus({ preventScroll: true });
+}
+
+// The current reviewed subject rules changed (one arrived, was withdrawn or
+// expired): patch every mounted anchor in the pane and the open slots, and
+// redraw Compare, which keeps its focus and sideways scroll. Nothing else on
+// the page is redrawn.
+function redrawReviewed() {
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  for (const node of document.querySelectorAll('[data-reviewed-for]')) fillReviewed(node, byId.get(node.getAttribute('data-reviewed-for')));
+  drawCompare();
 }
 
 // The compare set's programmes from the whole data, never the filtered list:

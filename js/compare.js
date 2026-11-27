@@ -17,6 +17,8 @@ import { t, dateFormatter, facetLabel, getLanguage } from './i18n.js';
 import { pointsLines, pointsLineText } from './points.js';
 import { pointsBucket } from './filters.js';
 import { yearlyCost, floorLabel, UNKNOWN_REASON, poundNote } from './cost.js';
+import { reviewedRule } from './subject-authority.js';
+import { publicRuleView } from './ib-subjects.js';
 
 // Euros follow the interface language: "€2,771" in English, "2 771 €" in
 // Slovak (Leon, 2026-11-03). A Slovak reads "€1,000" as one euro, because the
@@ -89,6 +91,33 @@ function pointsVerdict(row, state) {
 
 const tag = (text, after) => (after ? { tag: text, text: after } : { tag: text });
 
+// The IB subjects cell, also used by the detail's IB subjects row (F01):
+// "none" is the university saying there are none; blank or "?" is nobody
+// checked, never "nothing to meet". Text is the whole recorded field, so the
+// Slovak lookup and its English fallback work as everywhere else.
+export function subjectLines(row) {
+  if (row.noSubjectsRequired) return [{ text: t('none_required') }];
+  if (row.ibSubjects) return [{ text: row.ibSubjects, field: 'ib_subjects' }];
+  return [tag(t('not_checked_yet'))];
+}
+
+// A current reviewed subject rule in words (publicRuleView in ib-subjects.js).
+// A column without one says so, and counts as unknown, so "Show only
+// differences" keeps the row.
+function reviewedLines(row) {
+  const rule = reviewedRule(row.id);
+  if (!rule) return [tag(t('rv_no_check'))];
+  const view = publicRuleView(rule);
+  const lines = [];
+  if (view.sample) lines.push({ text: t('rv_sample'), strong: true });
+  for (const parts of view.lines) lines.push({ parts });
+  for (const source of view.sources) {
+    lines.push({ text: t('rv_source_link', { n: source.n }), href: source.url, name: t('for_2', { value1: row.programme, value2: row.university }) });
+  }
+  lines.push({ text: view.meta });
+  return lines;
+}
+
 const CELLS = () => [
   ['points', t('ib_points'), (row, state) => {
     const lines = pointsLines(row).map((line) => (line.number === null ? tag(line.qualifier) : { text: pointsLineText(line) }));
@@ -96,10 +125,18 @@ const CELLS = () => [
     if (verdict) lines.push({ text: verdict.text, verdict: verdict.kind });
     return lines;
   }],
+  ['subjects', t('ib_subjects'), (row) => subjectLines(row)],
   // ib_maths: the IB maths courses the programme accepts ("none" reads as all
   // four, data.js). Blank or "?" is not known.
   ['maths', t('maths_courses_accepted'), (row) => (row.mathsAccepted === null
     ? [tag(t('not_checked_yet'))] : [{ text: row.mathsAccepted.join(' · ') }])],
+  // Shown only when a compared programme has any (see compareTable). The
+  // whole recorded field, never split up: Arcada's maths wording lives here,
+  // and must not read as if it came from ib_subjects.
+  ['other', t('other_requirements'), (row) => (row.otherRequirements.length
+    ? [{ text: row.otherRequirements.join(' · '), field: 'other_requirements' }] : [{ text: t('cmp_nothing_else_listed') }])],
+  // Shown only when a compared programme has a current reviewed rule.
+  ['reviewed', t('rv_heading'), reviewedLines],
   ['exam', t('entrance_exam'), (row) => [EXAM_TEXT[row.entranceExam] ? { text: EXAM_TEXT[row.entranceExam] } : tag(t('not_checked_yet'))]],
   // Blank is not zero: a null fee is "Not published", a 0 is a real claim.
   ['fee', t('eu_fee'), (row) => {
@@ -133,7 +170,11 @@ const CELLS = () => [
 // One entry per fact, one cell per programme, in the order given. The
 // official link is last and always shown: it is where every fact is checked.
 export function compareTable(rows, state) {
-  const table = CELLS().map(([key, label, read]) => ({
+  const optional = {
+    other: rows.some((row) => row.otherRequirements.length),
+    reviewed: rows.some((row) => reviewedRule(row.id)),
+  };
+  const table = CELLS().filter(([key]) => optional[key] ?? true).map(([key, label, read]) => ({
     key, label, always: false,
     cells: rows.map((row) => {
       const lines = read(row, state);

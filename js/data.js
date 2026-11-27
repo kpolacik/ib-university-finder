@@ -38,6 +38,9 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
       return {
         programmes: built.programmes,
         translations,
+        // The exact rows behind each programme, for reviewed subject rules
+        // (js/subject-rules.js). Never shown, never part of meta.
+        raw: built.raw,
         meta: {
           source: source.kind,
           sampleCount: built.sampleCount,
@@ -85,6 +88,9 @@ export async function loadData(today = new Date(), { timeoutMs = 10000 } = {}) {
   return {
     programmes: built.programmes,
     translations: snapshot.translations || [],
+    // The saved copy's own rows. Its subject_rules field is never read here:
+    // only a live answer from the rules file can approve a rule.
+    raw: built.raw,
     meta: {
       source: 'snapshot',
       // No is_sample override here: build() already counted the rows marked
@@ -172,6 +178,15 @@ function withRowNumbers(rows) {
 function build(universityRows, programmeRows, today) {
   const issues = [];
   const universities = new Map();
+  // F01: the accepted raw rows, before any parsing, so a reviewed subject rule
+  // can be bound to exactly what this page loaded ("none" and the four maths
+  // courses parse the same; a rule must still notice the difference). An id
+  // used twice on either tab is unsafe to bind a rule to, even though the
+  // first row is shown as before.
+  const rawUniversities = new Map();
+  const duplicateUniversities = new Set();
+  const duplicateProgrammes = new Set();
+  const raw = new Map();
 
   for (const row of universityRows) {
     const id = text(row.university_id);
@@ -181,8 +196,10 @@ function build(universityRows, programmeRows, today) {
     }
     if (universities.has(id)) {
       issues.push(t('universities_row_university_id_is_used_twice_second_row_skipped', { value1: row.__row, value2: id }));
+      duplicateUniversities.add(id);
       continue;
     }
+    rawUniversities.set(id, row);
     universities.set(id, {
       id,
       newFields: parseNewUniversity(row, issues, t('universities_row', { value1: row.__row })),
@@ -225,6 +242,7 @@ function build(universityRows, programmeRows, today) {
     }
     if (seen.has(id)) {
       issues.push(t('programme_id_is_used_twice_second_row_skipped', { value1: where, value2: id }));
+      duplicateProgrammes.add(id);
       continue;
     }
     const uni = universities.get(text(row.university_id));
@@ -233,6 +251,7 @@ function build(universityRows, programmeRows, today) {
       continue;
     }
     seen.add(id);
+    raw.set(id, { programme: row, university: rawUniversities.get(uni.id) });
 
     const tuitionEu = inheritNumber(row.tuition_eu, uni.tuitionEuDefault, issues, t('tuition_eu', { value1: where }));
     const tuitionNonEu = inheritNumber(row.tuition_noneu, uni.tuitionNonEuDefault, issues, t('tuition_noneu', { value1: where }));
@@ -330,8 +349,9 @@ function build(universityRows, programmeRows, today) {
       //   blank   -> nobody has checked yet (NOT the same thing)
       //   text    -> the requirements
       // Blank defaulting to "not checked" is deliberate: a cell someone forgot
-      // to fill in must never read as "there is nothing to meet".
-      ibSubjects: subjects === NO_REQUIREMENT ? '' : subjects,
+      // to fill in must never read as "there is nothing to meet". "?" is
+      // unknown too, so it reads "Not checked yet", never a literal "?" (F01).
+      ibSubjects: subjects === NO_REQUIREMENT || subjects === UNKNOWN ? '' : subjects,
       noSubjectsRequired: subjects === NO_REQUIREMENT,
       // Jakub's columns (upstream, 2026-10-26/27): which IB maths courses the
       // programme accepts, and whether every applicant sits an entrance exam.
@@ -392,6 +412,9 @@ function build(universityRows, programmeRows, today) {
 
   addProgrammeIdentity(programmes);
   applyToday(programmes, today);
+  for (const [id, entry] of raw) {
+    entry.unsafe = duplicateProgrammes.has(id) || duplicateUniversities.has(text(entry.programme.university_id));
+  }
 
   if (programmes.length === 0 && programmeRows.length > 0) {
     throw new Error(t('every_programme_row_failed_to_load'));
@@ -404,7 +427,7 @@ function build(universityRows, programmeRows, today) {
   // signer keeps the research banner up instead of taking it down (T04).
   const draftCount = programmes.filter((p) => !p.isChecked && !p.isSample).length;
 
-  return { programmes, issues, sampleCount, draftCount };
+  return { programmes, issues, sampleCount, draftCount, raw };
 }
 
 // SIS codes identify faculties independently of CSV order and programme ids.

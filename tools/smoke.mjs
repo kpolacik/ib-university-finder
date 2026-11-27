@@ -16,6 +16,7 @@
 //   node tools/smoke.mjs --only=runSelectedFirst # ticked pick-list options first on the next open
 //   node tools/smoke.mjs --only=runBestMatchDesktop # desktop Sort strip: Best match reachable (SMOKE_SHOTS=<dir> saves screenshots)
 //   node tools/smoke.mjs --only=runPr7Polish # PR 7 points box, FAQ answers, settings, sheet drag
+//   node tools/smoke.mjs --only=runSubjectEvidence # F01 public subject wording, reviewed-rule pipeline (fixtures)
 //   node tools/smoke.mjs --keep            # keep Chrome's profile and log afterwards
 //   node tools/smoke.mjs --sort-only # smarter sort and Setup points only
 //   node tools/smoke.mjs --setup-only # Setup regressions and existing Setup sections only
@@ -6702,6 +6703,341 @@ async function runPr2(base) {
   }
 }
 
+// F01 Phase 1: the public subject evidence in the detail (pane and phone
+// slot) and Compare, with the shipped header-only rules file, and the reviewed
+// rule pipeline in a real browser. Invented SAMPLE rules reach the page only
+// through request interception: the rules file is answered with a fixture,
+// and js/subject-rules.js with the test adapter, which imports the unmodified
+// module at a distinct address (tools/subject-rules-sample-adapter.js). Rule
+// dependencies are read from the catalogue text actually served.
+async function runSubjectEvidence(base) {
+  watchdog.refresh();
+  const shots = '/tmp/ib-subject-evidence';
+  await mkdir(shots, { recursive: true });
+  const fixtures = await import('./subject-rule-fixtures.mjs');
+  const { UI } = await import('../js/i18n.js');
+  const { RULE_COLUMNS } = await import('../js/subject-rules.js');
+  const uniText = await readFile(join(root, 'data/universities.csv'), 'utf8');
+  const progText = await readFile(join(root, 'data/programmes.csv'), 'utf8');
+  const snapshotText = await readFile(join(root, 'data/fallback.json'), 'utf8');
+  const configText = await readFile(join(root, 'js/config.js'), 'utf8');
+  const adapterText = await readFile(join(here, 'subject-rules-sample-adapter.js'), 'utf8');
+  const IDS = ['eur-ibeor', 'arcada-it', 'eur-ibp', 'qub-environmental-management-bsc'];
+  const COMPARE = 'ib-university-finder:compare:v1';
+  // Dates around the real day, so the fixtures never age out of the test.
+  const iso = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const dated = { checked_on: iso(-7), reviewed_on: iso(-2), recheck_by: iso(60) };
+  const catalogue = fixtures.servedCatalogue(uniText, progText);
+  const rule = (over = {}, id = 'eur-ibeor', cat = catalogue) => fixtures.sampleRuleRecord(cat, id, { ...dated, ...over });
+  const csvCell = (v) => (/[",\n\r]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
+  // The served programmes file with one row changed: every other byte kept.
+  const withProgramme = (id, change) => {
+    const parsed = csvToObjects(progText, 'programmes.csv');
+    const lines = [parsed.header.join(',')];
+    for (const { __row, ...row } of parsed.rows) lines.push(parsed.header.map((c) => csvCell(row.programme_id === id ? (change[c] ?? row[c]) : row[c])).join(','));
+    return `${lines.join('\n')}\n`;
+  };
+
+  const RULES = '/data/ib-subject-rules.csv';
+  const send64 = (text) => Buffer.from(text).toString('base64');
+  // One page. `rules` answers the rules file: a string, { status }, 'hang'
+  // (never answered), or a function of the request count. `adapter` serves the
+  // test adapter for js/subject-rules.js. `programmes`, `snapshot` and
+  // `sheet` replace what the page reads. `block` fails requests outright.
+  const openSubjects = async ({ width = 1280, height = 900, query = `?ui=en&list=${IDS.join(',')}`, rules = null, adapter = false,
+    programmes = null, snapshot = null, sheet = null, block = [], compare = IDS, clock = null } = {}) => {
+    const seen = { rules: [], held: [] };
+    const page = await openPage(base + query, width, height, {
+      beforeNavigate: async (send) => {
+        await send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('ibuf.onboarding.v1','dismissed');localStorage.setItem(${JSON.stringify(COMPARE)},${JSON.stringify(JSON.stringify(compare))});`
+          + (clock ? `(()=>{const real=Date.now.bind(Date);const d=new Date();const target=new Date(d.getFullYear(),d.getMonth(),d.getDate(),${clock.join(',')}).getTime();const offset=target-real();Date.now=()=>real()+offset;})();` : '') });
+        const patterns = ['*/data/ib-subject-rules.csv*', ...(adapter ? ['*/js/subject-rules.js*'] : []), ...(programmes ? ['*/data/programmes.csv*'] : []),
+          ...(snapshot ? ['*/data/fallback.json*'] : []), ...(sheet ? ['*/js/config.js*', 'https://sheet.invalid/*'] : []), ...block];
+        await send('Fetch.enable', { patterns: patterns.map((urlPattern) => ({ urlPattern })) });
+      },
+      paused: async (p, send) => {
+        const url = new URL(p.request.url);
+        const fulfill = (body, type = 'text/csv; charset=utf-8', code = 200) => send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: code,
+          responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: send64(body) });
+        if (block.some((b) => new RegExp(b.replaceAll('.', '\\.').replaceAll('*', '.*')).test(p.request.url))) return false;
+        if (url.pathname === RULES) {
+          seen.rules.push({ url: p.request.url, method: p.request.method, body: p.request.postData ?? null });
+          const answer = typeof rules === 'function' ? rules(seen.rules.length) : rules;
+          if (answer === null) { await send('Fetch.continueRequest', { requestId: p.requestId }); return true; }
+          if (answer === 'hang') return true;
+          if (answer === 'hold') { seen.held.push((text) => fulfill(text)); return true; }
+          if (answer?.status) { await fulfill('Not found', 'text/plain', answer.status); return true; }
+          await fulfill(answer); return true;
+        }
+        if (adapter && url.pathname === '/js/subject-rules.js' && url.search === '') { await fulfill(adapterText, 'text/javascript; charset=utf-8'); return true; }
+        if (programmes && url.pathname === '/data/programmes.csv') { await fulfill(programmes); return true; }
+        if (snapshot && url.pathname === '/data/fallback.json') { await fulfill(snapshot, 'application/json'); return true; }
+        if (sheet && url.pathname === '/js/config.js') {
+          await fulfill(configText.replace("universities: '',", "universities: 'https://sheet.invalid/universities.csv',").replace("programmes: '',", "programmes: 'https://sheet.invalid/programmes.csv',"), 'text/javascript; charset=utf-8');
+          return true;
+        }
+        if (sheet && url.hostname === 'sheet.invalid') { await fulfill(url.pathname.includes('universities') ? sheet.universities : sheet.programmes); return true; }
+        await send('Fetch.continueRequest', { requestId: p.requestId });
+        return true;
+      },
+    });
+    page.seen = seen;
+    await page.waitFor(`({ok:!!document.querySelector('#loading')?.hidden && !!document.querySelector('#results li[data-id="eur-ibeor"]'),why:'list not ready'})`, 20_000, 'the saved list');
+    return page;
+  };
+  const detailSel = (width) => (width >= 1200 ? '#pane' : '#results li[data-id="eur-ibeor"] .expand');
+  const openDetail = async (page, id, width = 1280) => {
+    await page.click(`document.querySelector('#results li[data-id="${id}"] button.open')`, `${id} details`);
+    const where = width >= 1200 ? '#pane' : `#results li[data-id="${id}"] .expand`;
+    await page.waitFor(`({ok:!!document.querySelector('${where} [data-reviewed-for="${id}"]'),why:'detail not open'})`, 5000, `${id} detail`);
+  };
+  // The detail's IB subjects value, the reviewed block and other facts.
+  const detailFacts = (where) => `(()=>{const root=document.querySelector('${where}');const dd=(label)=>{const dt=[...root.querySelectorAll('dt')].find(d=>d.textContent===label);return dt?dt.nextElementSibling:null};
+    const s=dd(${JSON.stringify(UI.en.ib_subjects)})||dd(${JSON.stringify(UI.sk.ib_subjects)});const r=root.querySelector('.d-reviewed');
+    return {subjects:s?[...s.childNodes].filter(n=>!(n.classList&&n.classList.contains('d-reviewed'))).map(n=>n.textContent).join(''):null,
+      other:(dd(${JSON.stringify(UI.en.other_requirements)})||{}).textContent??null,reviewed:!!r,inSubjects:!!(r&&s&&s.contains(r)),
+      heading:r?.querySelector('h4')?.textContent??null,sample:!!r?.querySelector('.rv-sample'),lines:r?[...r.querySelectorAll('.rv-line')].map(n=>n.textContent):[],
+      links:r?[...r.querySelectorAll('a')].map(a=>a.href):[],quote:r?.querySelector('q')?.textContent??null,missing:[...root.querySelectorAll('.note-strong')].map(n=>n.textContent),
+      text:root.textContent}})()`;
+  const openCompareView = async (page) => {
+    await page.click(`document.querySelector('#header-compare')`, 'Open compare');
+    await page.waitFor(`({ok:!document.querySelector('#compare').hidden && !!document.querySelector('#cmp-body tr[data-fact]'),why:'compare not open'})`, 5000, 'Compare');
+  };
+  const compareFacts = `(()=>{const rows={};for(const tr of document.querySelectorAll('#cmp-body tbody tr[data-fact]'))rows[tr.dataset.fact]={label:tr.querySelector('th').textContent,cells:[...tr.querySelectorAll('td')].map(td=>td.textContent)};return rows})()`;
+  const noErrors = (page) => {
+    const other = page.errors.filter((e) => !/ib-subject-rules\.csv|programmes\.csv|sheet\.invalid/.test(`${e.url} ${e.text}`));
+    assert(other.length === 0 && page.exceptions.length === 0, [...other.map((e) => e.text), ...page.exceptions].join(' | '));
+  };
+  const reviewedGone = (where) => `({ok:!document.querySelector('${where} .d-reviewed'),why:'a reviewed block is still shown'})`;
+  const reviewedShown = (where) => `({ok:!!document.querySelector('${where} .d-reviewed .rv-line'),why:'no reviewed block'})`;
+
+  // 1. The shipped header-only file: the public journey, no reviewed line.
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    const page = await openSubjects({ width, height });
+    try {
+      await check(`${width}`, 'F01 public', 'zero real rules: full recorded subject wording, Not checked yet, None required and other requirements in the detail; no reviewed line', async () => {
+        watchdog.refresh();
+        await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'the rules request');
+        const want = { 'eur-ibeor': catalogue.programmes.get('eur-ibeor').ib_subjects, 'arcada-it': UI.en.not_checked_yet, 'eur-ibp': UI.en.none_required, 'qub-environmental-management-bsc': UI.en.not_checked_yet };
+        for (const id of IDS) {
+          await openDetail(page, id, width);
+          const where = width >= 1200 ? '#pane' : `#results li[data-id="${id}"] .expand`;
+          const facts = await page.ev(detailFacts(where));
+          assert(facts.subjects === want[id], `${id}: IB subjects reads "${facts.subjects}"`);
+          assert(!facts.reviewed && !facts.text.includes(UI.en.rv_heading), `${id}: a reviewed line is shown with no rules`);
+          if (id === 'arcada-it') assert(facts.other?.includes('Maths: advanced course at IB grade 2 (A) or better'), `arcada-it other requirements: ${facts.other}`);
+          if (id === 'eur-ibeor') assert(facts.subjects.includes('Maths AA SL 6 lets you sit the maths entrance exam instead'), 'the exam alternative is missing');
+          if (width < 1200) await page.click(`document.querySelector('#results li[data-id="${id}"] button.open')`, `close ${id}`);
+        }
+        assert(page.seen.rules.length >= 1 && page.seen.rules.every((r) => new URL(r.url).search === '' && r.method === 'GET' && r.body === null), JSON.stringify(page.seen.rules));
+        await page.screenshot(`${shots}/public-${width}.png`, { viewportOnly: true });
+        noErrors(page);
+      });
+      await check(`${width}`, 'F01 compare', 'Compare: IB subjects and Other requirements rows, maths courses unchanged, unknowns kept under Show only differences, no reviewed row', async () => {
+        await page.ev(`document.querySelector('#pane-close')?.click()`);
+        if (width >= 600) await openCompareView(page); else {
+          await page.click(`document.querySelector('#cmp-tray-open')`, 'Open compare');
+          await page.waitFor(`({ok:!document.querySelector('#compare').hidden && !!document.querySelector('#cmp-body tr[data-fact]'),why:'compare not open'})`, 5000, 'Compare');
+        }
+        const facts = await page.ev(compareFacts);
+        assert(facts.subjects?.label === UI.en.ib_subjects && JSON.stringify(facts.subjects.cells) === JSON.stringify([catalogue.programmes.get('eur-ibeor').ib_subjects, UI.en.not_checked_yet, UI.en.none_required, UI.en.not_checked_yet]), JSON.stringify(facts.subjects));
+        assert(JSON.stringify(facts.maths?.cells) === JSON.stringify(['AA HL · AA SL', 'AA HL · AA SL · AI HL · AI SL', 'AA HL · AA SL · AI HL · AI SL', UI.en.not_checked_yet]), JSON.stringify(facts.maths));
+        assert(facts.other?.label === UI.en.other_requirements && facts.other.cells[1].includes('Maths: advanced course') && facts.other.cells[3] === UI.en.cmp_nothing_else_listed, JSON.stringify(facts.other));
+        assert(!facts.reviewed, 'a reviewed row with no rules');
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        await page.waitFor(`({ok:document.querySelector('#cmp-diff').checked && !!document.querySelector('#cmp-body tr[data-fact="subjects"]') && !!document.querySelector('#cmp-body tr[data-fact="link"]'),why:'subjects row hidden'})`, 5000, 'differences');
+        await page.screenshot(`${shots}/compare-${width}.png`, { viewportOnly: true });
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 2. A synthetic "?" subject cell and a missing official link.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ programmes: withProgramme('qub-environmental-management-bsc', { ib_subjects: '?', official_url: '' }) });
+    try {
+      await check('1280', 'F01 unknown', '"?" reads Not checked yet, never "?", and a missing link keeps its warning, in the detail and Compare', async () => {
+        await openDetail(page, 'qub-environmental-management-bsc');
+        const facts = await page.ev(detailFacts('#pane'));
+        assert(facts.subjects === UI.en.not_checked_yet && facts.missing.includes(UI.en.no_official_admissions_link_do_not_rely_on_this_entry) && !facts.reviewed, JSON.stringify(facts).slice(0, 300));
+        await openCompareView(page);
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        const cmp = await page.ev(compareFacts);
+        assert(cmp.subjects?.cells[3] === UI.en.not_checked_yet && cmp.link?.cells[3] === UI.en.no_official_admissions_link_do_not_rely_on_this_entry, JSON.stringify([cmp.subjects, cmp.link]));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 3. The unmodified page rejects a served SAMPLE rule.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ rules: fixtures.rulesCsv([rule()]) });
+    try {
+      await check('1280', 'F01 sample', 'the page as shipped never shows an invented (SAMPLE) rule', async () => {
+        await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'rules');
+        await openDetail(page, 'eur-ibeor');
+        await openCompareView(page);
+        const cmp = await page.ev(compareFacts);
+        assert(!(await page.ev(detailFacts('#pane'))).reviewed && !cmp.reviewed, 'a SAMPLE rule was shown by the unmodified page');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 4. Through the test adapter: the rule arrives after the catalogue, shows in
+  // the open pane and Compare, then a withdrawal removes both.
+  watchdog.refresh();
+  for (const [width, height] of [[1280, 900], [390, 844]]) {
+    let answer = 'hold';
+    const page = await openSubjects({ width, height, adapter: true, rules: () => answer });
+    try {
+      await check(`${width}`, 'F01 reviewed', 'a current reviewed rule, held until after the catalogue, appears in the open detail with its fixture warning, scope, route, source and dates', async () => {
+        watchdog.refresh();
+        await openDetail(page, 'eur-ibeor', width);
+        const where = detailSel(width);
+        assert(!(await page.ev(detailFacts(where))).reviewed, 'shown before the rules answered');
+        for (let i = 0; i < 200 && !page.seen.held.length; i++) await new Promise((resolve) => setTimeout(resolve, 25));
+        assert(page.seen.held.length === 1, `${page.seen.held.length} held requests`);
+        answer = fixtures.rulesCsv([rule()]);
+        page.seen.held.shift()(answer);
+        await page.waitFor(reviewedShown(where), 5000, 'the reviewed block');
+        const facts = await page.ev(detailFacts(where));
+        assert(facts.inSubjects && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects && facts.heading === UI.en.rv_heading && facts.sample, JSON.stringify(facts).slice(0, 400));
+        assert(facts.lines.includes('Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher')
+          && facts.links.includes(fixtures.SAMPLE_URL) && facts.quote === fixtures.SAMPLE_QUOTE, JSON.stringify(facts.lines));
+        await page.ev(`document.querySelector('${where} .d-reviewed').scrollIntoView({block:'center'})`);
+        // The pane scrolls on its own; the phone slot is in the page, so a phone shot is the whole page.
+        await page.screenshot(`${shots}/reviewed-${width}.png`, { viewportOnly: width >= 1200 });
+        await page.ev(`window.__smokeLanguage('sk')`);
+        await page.waitFor(`({ok:document.querySelector('${where} .d-reviewed h4')?.textContent===${JSON.stringify(UI.sk.rv_heading)},why:'no Slovak heading'})`, 5000, 'Slovak reviewed block');
+        await page.ev(`window.__smokeLanguage('en')`);
+        await page.waitFor(`({ok:document.querySelector('${where} .d-reviewed h4')?.textContent===${JSON.stringify(UI.en.rv_heading)},why:'no English heading'})`, 5000, 'English reviewed block');
+        noErrors(page);
+      });
+      if (width >= 1200) await check(`${width}`, 'F01 compare reviewed', 'Compare shows the reviewed row beside "No subject check yet"; a withdrawal on the next answer removes it and the pane block together', async () => {
+        await openCompareView(page);
+        let cmp = await page.ev(compareFacts);
+        assert(cmp.reviewed?.label === UI.en.rv_heading && cmp.reviewed.cells[0].includes('Physics at HL, grade 5 or higher') && cmp.reviewed.cells[1] === UI.en.rv_no_check, JSON.stringify(cmp.reviewed));
+        await page.click(`document.querySelector('#cmp-diff')`, 'Show only differences');
+        await page.waitFor(`({ok:!!document.querySelector('#cmp-body tr[data-fact="reviewed"]'),why:'reviewed row hidden by differences'})`, 5000, 'differences');
+        answer = fixtures.rulesCsv([rule(), rule({ status: 'withdrawn' })]);
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(`({ok:!document.querySelector('#cmp-body tr[data-fact="reviewed"]'),why:'reviewed row still shown'})`, 5000, 'withdrawal in Compare');
+        await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+        await page.waitFor(reviewedGone('#pane'), 5000, 'withdrawal in the pane');
+        assert((await page.ev(detailFacts('#pane'))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
+      if (width < 1200) await check(`${width}`, 'F01 offline', 'offline removes the reviewed block from the open slot; back online, a fresh answer shows it again', async () => {
+        await page.send('Network.enable');
+        await page.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+        await page.waitFor(reviewedGone(detailSel(width)), 5000, 'offline removal');
+        answer = fixtures.rulesCsv([rule()]);
+        await page.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+        await page.waitFor(reviewedShown(detailSel(width)), 5000, 'online again');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 5. Raw dependency drift: a rule bound to other catalogue text never shows;
+  // one derived from the text served does.
+  watchdog.refresh();
+  {
+    const drifted = withProgramme('eur-ibeor', { ib_maths: 'AA HL' });
+    const driftedCatalogue = fixtures.servedCatalogue(uniText, drifted);
+    for (const [name, rules, shown] of [['bound to the shipped text, served changed text', fixtures.rulesCsv([rule()]), false],
+      ['derived from the changed text actually served', fixtures.rulesCsv([rule({}, 'eur-ibeor', driftedCatalogue)]), true]]) {
+      const page = await openSubjects({ adapter: true, programmes: drifted, rules });
+      try {
+        await check('1280', 'F01 drift', `rule ${name}: ${shown ? 'shown' : 'not shown'}`, async () => {
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else {
+            await page.waitFor(`({ok:performance.getEntriesByType('resource').some(e=>e.name.includes('ib-subject-rules.csv')),why:'rules not asked'})`, 5000, 'rules');
+            await page.ev(`new Promise(r=>setTimeout(r,1000))`);
+            assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'a drifted rule was shown');
+          }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // 6. A missing, broken, empty or silent rules file never touches the catalogue.
+  watchdog.refresh();
+  for (const [name, rules, wait] of [['404', { status: 404 }, 0], ['malformed', `${RULE_COLUMNS.join(',')}\n"broken`, 0], ['empty', '', 0], ['no answer', 'hang', 3500]]) {
+    const page = await openSubjects({ adapter: true, rules });
+    try {
+      await check('1280', 'F01 rules source', `rules file ${name}: the catalogue loads from the CSVs, the public wording stays, no reviewed line`, async () => {
+        await openDetail(page, 'eur-ibeor');
+        if (wait) await page.ev(`new Promise(r=>setTimeout(r,${wait}))`);
+        const facts = await page.ev(detailFacts('#pane'));
+        const banner = await page.ev(`!!document.querySelector('#source-banner .bn-saved')`);
+        assert(!banner && !facts.reviewed && facts.subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, JSON.stringify({ banner, reviewed: facts.reviewed }));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
+  // 7. Saved-copy mode: the rules still come only from the live file.
+  watchdog.refresh();
+  {
+    const snap = JSON.parse(snapshotText);
+    const snapCatalogue = { universities: new Map(snap.universities.map((u) => [u.university_id, u])), programmes: new Map(snap.programmes.map((p) => [p.programme_id, p])) };
+    const embedded = JSON.stringify({ ...snap, subject_rules: { schema_version: 1, records: [rule({}, 'eur-ibeor', snapCatalogue)] } });
+    for (const [name, rules, snapshot, shown] of [['a live rule derived from the saved copy', fixtures.rulesCsv([rule({}, 'eur-ibeor', snapCatalogue)]), null, true],
+      ['an approval embedded in the saved copy while the rules file fails', { status: 404 }, embedded, false]]) {
+      const page = await openSubjects({ adapter: true, rules, snapshot, block: ['*/data/programmes.csv*'] });
+      try {
+        await check('1280', 'F01 snapshot', `saved copy, ${name}: ${shown ? 'shown' : 'never shown'}`, async () => {
+          assert(await page.ev(`!!document.querySelector('#source-banner .bn-saved')`), 'not on the saved copy');
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else { await page.ev(`new Promise(r=>setTimeout(r,1000))`); assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'the saved copy authorised a rule'); }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // 8. Sheet mode (stubbed): config.js names two Sheet addresses, answered here.
+  watchdog.refresh();
+  {
+    const drifted = withProgramme('eur-ibeor', { ib_maths: 'none' });
+    for (const [name, sheetProgrammes, shown] of [['matching the Sheet served', progText, true], ['after the Sheet changed "AA HL · AA SL" to "none"', drifted, false]]) {
+      const page = await openSubjects({ adapter: true, sheet: { universities: uniText, programmes: sheetProgrammes }, rules: fixtures.rulesCsv([rule()]) });
+      try {
+        await check('1280', 'F01 sheet', `Sheet stub, a rule ${name}: ${shown ? 'shown' : 'not shown'}`, async () => {
+          assert(await page.ev(`['universities','programmes'].every(n=>performance.getEntriesByType('resource').some(e=>e.name==='https://sheet.invalid/'+n+'.csv')) && !performance.getEntriesByType('resource').some(e=>/\\/data\\/programmes\\.csv/.test(e.name))`), 'the page did not read the stubbed Sheet');
+          await openDetail(page, 'eur-ibeor');
+          if (shown) await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+          else { await page.ev(`new Promise(r=>setTimeout(r,1000))`); assert(!(await page.ev(detailFacts('#pane'))).reviewed, 'a drifted Sheet rule was shown'); }
+          noErrors(page);
+        });
+      } finally { await page.close(); }
+    }
+  }
+
+  // 9. Expiry in an open tab, with no interaction: the page clock starts at
+  // 23:59:52 on the rule's recheck date.
+  watchdog.refresh();
+  {
+    const page = await openSubjects({ adapter: true, rules: fixtures.rulesCsv([rule({ recheck_by: iso(0) })]), clock: [23, 59, 52, 0] });
+    try {
+      await check('1280', 'F01 expiry', 'a rule whose recheck date ends at midnight disappears from the open pane on its own', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 4000, 'the reviewed block before midnight');
+        assert(await page.ev(`new Date(Date.now()).getHours() === 23`), 'midnight passed before the block was seen');
+        await page.waitFor(reviewedGone('#pane'), 15_000, 'expiry at midnight');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+}
+
 async function main() {
   const chromePath = findChrome();
   if (!chromePath) {
@@ -6728,7 +7064,7 @@ async function main() {
       runBatch2A, runBatch2B, runBatch2C, runBatch2Followup, runBatch3A, runBatch3B, runBatch3C, runAlignListCompare,
       runAlignChromeSetup, runPhoneMyListCompare, runCompareHeaderR2, runPrintFixes, runCssA11yFixes, runSetupCompareReview,
       runPhoneFixes, runPhoneMotion, runNonModalSheet, runColdSheet, runSheetPacing, runNonModalSetup, runBadgeFlush,
-      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop };
+      runCompareTouchScroll, runRowScroll, runFaqPanel, runSheetListLayout, runTheme, runPr7Polish, runSelectedFirst, runBestMatchDesktop, runSubjectEvidence };
     const unknown = only.filter((name) => !Object.hasOwn(sections, name));
     if (unknown.length) throw new Error(`--only: no section ${unknown.join(', ')} (try ${Object.keys(sections).join(', ')})`);
     for (const name of only) await sections[name](base, want);
@@ -6802,6 +7138,7 @@ async function main() {
       await runPr7Polish(base);
       await runSelectedFirst(base);
       await runBestMatchDesktop(base);
+      await runSubjectEvidence(base);
       await runPr2(base); }
     else for (const id of ['F1', 'F2']) report('SKIP', 'fallback', id, 'not run', 'the page never loaded');
   }

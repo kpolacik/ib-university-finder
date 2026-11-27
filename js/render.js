@@ -13,7 +13,11 @@ import { UNCLASSIFIED } from './subjects.js';
 import { yearlyCost, budgetFit, livingIsFloor, floorLabel, UNKNOWN_REASON } from './cost.js';
 // The detail's wording for the countdown, money and the yearly estimate lives
 // in compare.js, so the compare table can't say it differently.
-import { money, moneyRange, countdown, yearlyLine, visibleFacts } from './compare.js';
+import { money, moneyRange, countdown, yearlyLine, visibleFacts, subjectLines } from './compare.js';
+// F01: a reviewed subject rule is shown only while subject-authority.js says
+// it is current; the wording is shared with Compare (publicRuleView).
+import { reviewedRule } from './subject-authority.js';
+import { publicRuleView } from './ib-subjects.js';
 
 const longDate = dateFormatter({
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -780,14 +784,11 @@ function beforeYouApply(row) {
 
   if (!nothingAtAll) {
     // --- subjects ----------------------------------------------------------
-    // "none" is the university saying there are none; blank is nobody checked.
-    if (row.noSubjectsRequired) {
-      reqRow(list, t('ib_subjects'), [t('none_required')], true);
-    } else if (row.ibSubjects) {
-      reqRow(list, t('ib_subjects'), [dataValue('ib_subjects', row.ibSubjects)], true);
-    } else {
-      reqRow(list, t('ib_subjects'), [unknownTag(t('not_checked_yet'))], true);
-    }
+    // "none" is the university saying there are none; blank or "?" is nobody
+    // checked. The words come from compare.js, so Compare says the same.
+    const [subjects] = subjectLines(row);
+    reqRow(list, t('ib_subjects'), [subjects.tag !== undefined ? unknownTag(subjects.tag) : lineNode(subjects)], true);
+    reviewedPlace.set(section, list.lastChild);
 
     // --- English -----------------------------------------------------------
     // Always shown. Leaving the row out made 608 cards look as if there were no
@@ -841,7 +842,64 @@ function beforeYouApply(row) {
   }
 
   section.append(list);
+  // F01: the section is the anchor for a current reviewed subject rule, which
+  // goes beside the IB subjects row (or at the end, when that row is folded
+  // into the "nothing at all" sentence). Nothing is added without one.
+  section.setAttribute('data-reviewed-for', row.id);
+  fillReviewed(section, row);
   return section;
+}
+
+// Where each Before you apply section puts its reviewed block, and what it
+// last drew there.
+const reviewedPlace = new WeakMap();
+const drawnReviewed = new WeakMap();
+
+// Draws, replaces or removes the reviewed subject rule in one section.
+// app.js calls it again when the current rules change; an unchanged rule
+// leaves the nodes alone, so a steady refresh never moves the page or a
+// screen reader.
+export function fillReviewed(section, row) {
+  const rule = row ? reviewedRule(row.id) : null;
+  const key = rule ? `${getLanguage()}\u0000${JSON.stringify(rule)}` : '';
+  const drawn = drawnReviewed.get(section);
+  if ((drawn?.key ?? '') === key) return false;
+  drawn?.node.remove();
+  drawnReviewed.delete(section);
+  if (!rule) return true;
+  const node = el('div', 'd-reviewed');
+  node.append(...reviewedContent(rule, row));
+  (reviewedPlace.get(section) ?? section).append(node);
+  drawnReviewed.set(section, { key, node });
+  return true;
+}
+
+function reviewedContent(rule, row) {
+  const view = publicRuleView(rule);
+  const out = [el('h4', 'rv-h', t('rv_heading'))];
+  // Only a test fixture can carry this flag; production validation rejects
+  // every invented rule before it gets here.
+  if (view.sample) out.push(el('p', 'note note-strong rv-sample', t('rv_sample')));
+  for (const parts of view.lines) {
+    const line = el('p', 'rv-line');
+    line.append(lineNode({ parts }));
+    out.push(line);
+  }
+  if (view.sources.length) {
+    const list = el('ul', 'rv-sources');
+    for (const source of view.sources) {
+      const item = el('li');
+      item.append(externalLink('lnk', t('rv_source_link', { n: source.n }), source.url, t('for_2', { value1: row.programme, value2: row.university })));
+      // The official wording exactly as published, in its own language.
+      const quote = el('q', 'rv-quote', source.quote);
+      quote.lang = source.lang;
+      item.append(' ', quote);
+      list.append(item);
+    }
+    out.push(list);
+  }
+  out.push(el('p', 'rv-meta', view.meta));
+  return out;
 }
 
 // The Entrance exam row's answers; a missing state is "Not checked yet".
@@ -1015,6 +1073,17 @@ function placesValue(row) {
 // One compare.js line as a node: plain text, or the dashed unknown box with
 // any text after it.
 function lineNode(line) {
+  // Parts keep their own language: a Slovak page can quote English wording.
+  if (line.parts) {
+    const node = el('span');
+    for (const part of line.parts) {
+      if (!part.lang) { node.append(part.text); continue; }
+      const span = el('span', '', part.text);
+      span.lang = part.lang;
+      node.append(span);
+    }
+    return node;
+  }
   if (line.segments) {
     const node = el('span');
     line.segments.forEach((part, i) => {
