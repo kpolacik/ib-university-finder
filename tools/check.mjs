@@ -7952,7 +7952,7 @@ section('Slovak prose translation tooling (issue #18)');
 {
   const { translationInventory } = await import('./i18n-missing.mjs');
   const {
-    heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS, WHOLE_CELL_DATA_FIELDS,
+    heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS, WHOLE_CELL_DATA_FIELDS, SINGLE_BULLET_FIELDS,
     liveDisplayKeys, wholeCellLeaves,
   } = await import('./apply-sk-translations.mjs');
   const searchMod = await import('./sk-search-english.mjs');
@@ -8332,6 +8332,143 @@ require('node:module').syncBuiltinESMExports();
     put(paths[2], appendedSk + csv([[...heldLayer2A, 'AI-DRAFT']]));
     genRefuse('refuses a Layer 2A baseline held for internal references even when sk.csv has it',
       [[...heldLayer2A, 'keep']], /read by held cell.*L2A-035/);
+    // Layer 2B-1: single-bullet English requirements, stored under the column
+    // the text comes from. pe1 inherits e1's default (english_requirement_default);
+    // pe2 and pe7 have their own (english_requirement). e2's default is latent:
+    // every e2 programme has its own wording. e3's default has two bullets, the
+    // second containing ';'. tul-european-business is the held P4b G065 cell.
+    const vseEn = 'No Czech certificate required; the Scio OSP/VŠP test itself serves as proof of Czech';
+    const vseSk = 'Certifikát z češtiny sa nevyžaduje; samotný test Scio OSP/VŠP slúži ako doklad češtiny';
+    const testsEn = 'TOEFL iBT 80, PTE 59, Duolingo 110, ÚJOP B2+, EF SET 61 or CLA ≥ 6';
+    const testsSk = 'TOEFL iBT 80, PTE 59, Duolingo 110, ÚJOP B2+, EF SET 61 alebo CLA ≥ 6';
+    const inhEn = 'IELTS 6.0 overall; IB Diploma holders exempt';
+    const inhSk = 'IELTS 6.0 celkovo; držitelia IB Diploma sú oslobodení';
+    const eUni = (id, english_requirement_default) => ({
+      university_id: id, name: `English ${id}`, city: 'Cork', country: 'Ireland', ...sign, english_requirement_default,
+    });
+    const eUnis = [...wUnis, eUni('e1', inhEn), eUni('e2', 'Latent default text; Latent piece'),
+      eUni('e3', 'Multi item · Second item; with a semicolon'), eUni('e4', 'Twin wording')];
+    const eProgs = [...wProgs,
+      prog('pe1', { university_id: 'e1' }),
+      prog('pe2', { university_id: 'e2', english_requirement: testsEn }),
+      prog('pe3', { university_id: 'e3' }),
+      prog('pe4', { university_id: 'e2', english_requirement: 'Multi item' }),
+      prog('pe5', { university_id: 'e2', english_requirement: 'Latent piece' }),
+      prog('pe6', { university_id: 'e2', english_requirement: 'English B2; or IELTS 5.5' }),
+      prog('tul-european-business', { university_id: 'tul', english_requirement: 'English B2' }),
+      prog('pe7', { university_id: 'e2', english_requirement: vseEn }),
+      prog('pe8', { university_id: 'e4' }),
+      prog('pe9', { university_id: 'e2', english_requirement: '?' }),
+    ];
+    const eSk = [...baseSk, sk('english_requirement', 'No Czech certificate required', 'Certifikát z češtiny sa nevyžaduje'),
+      sk('english_requirement', 'Twin wording', 'Dvojité znenie')];
+    const eBatch = [
+      ['english_requirement_default', inhEn, inhSk],
+      ['english_requirement', testsEn, testsSk],
+      ['english_requirement', vseEn, vseSk],
+    ];
+    const eReview = eBatch.map((r) => [...r, 'keep']);
+    const eOriginal = reset(eProgs, eUnis, eSk);
+    const eDry = run(eBatch);
+    check('apply-sk L2B1: an inherited and two own English requirements dry-run clean and write nothing',
+      eDry.status === 0 && /To add: 3/.test(eDry.stdout) && /Refused: 0/.test(eDry.stdout) && sameBytes(eOriginal), eDry.log);
+    const eApplied = run(eBatch, { apply: true, reviewRows: eReview });
+    check('apply-sk L2B1: --apply --review appends them under their physical column as AI-DRAFT after the old bytes',
+      eApplied.status === 0 && get('i18n/sk.csv').startsWith(eOriginal[2])
+        && parseCsv(get('i18n/sk.csv')).slice(1).slice(-3).every((r, i) => r.join('|') === [...eBatch[i], 'AI-DRAFT'].join('|'))
+        && get('programmes.csv') === eOriginal[0] && get('universities.csv') === eOriginal[1] && cleanTemps(), eApplied.log);
+    const eAfter = bytes();
+    utimesSync(join(dir, 'i18n/sk.csv'), 1, 1);
+    const eRetry = run(eBatch, { apply: true, reviewRows: eReview });
+    check('apply-sk L2B1: an exact retry is all SKIP with sk.csv bytes and mtime unchanged',
+      eRetry.status === 0 && /Skipped: 3/.test(eRetry.stdout) && /To add: 0/.test(eRetry.stdout)
+        && sameBytes(eAfter) && stamp('i18n/sk.csv') === 1000 && cleanTemps(), eRetry.log);
+
+    const eRefuse = (name, rows, pattern) => {
+      reset(eProgs, eUnis, eSk);
+      for (const p of paths) utimesSync(join(dir, p), 1, 1);
+      const before = bytes();
+      const r = run(rows, { apply: true, reviewRows: rows.map((row) => [...row, 'keep']) });
+      check(`apply-sk L2B1: ${name}`, r.status === 2 && pattern.test(r.log) && sameBytes(before)
+        && paths.every((p) => stamp(p) === 1000) && cleanTemps(), r.log);
+    };
+    eRefuse('refuses a multi-bullet whole',
+      [['english_requirement_default', 'Multi item · Second item; with a semicolon', 'Položka · Druhá položka; s bodkočiarkou']], /not a live lookup key/);
+    eRefuse('refuses a latent university default',
+      [['english_requirement_default', 'Latent default text; Latent piece', 'Skrytý text; Skrytá časť']], /not a live lookup key/);
+    eRefuse('refuses a programme\'s own wording offered as english_requirement_default',
+      [['english_requirement_default', testsEn, testsSk]], /not a live lookup key for english_requirement_default/);
+    eRefuse('refuses inherited wording offered as english_requirement',
+      [['english_requirement', inhEn, inhSk]], /not a live lookup key for english_requirement:/);
+    eRefuse('refuses the same English when sk.csv has it under the other column',
+      [['english_requirement_default', 'Twin wording', 'Dvojité znenie']], /also a english_requirement key/);
+    eRefuse('refuses a held English requirement whole (P4b G065)',
+      [['english_requirement', 'English B2', 'Angličtina B2']], /held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
+    eRefuse('refuses a whole containing a held piece (P4b G065)',
+      [['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5']], /piece of this key is read by held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
+    eRefuse('refuses a whole equal to an item of a multi-bullet cell',
+      [['english_requirement', 'Multi item', 'Položka']], /english_requirement piece at .*pe3/);
+    eRefuse('refuses a whole equal to a piece of a latent university default',
+      [['english_requirement', 'Latent piece', 'Skrytá časť']], /english_requirement piece at .*e2/);
+    eRefuse('refuses a changed historic Slovak slot',
+      [['english_requirement', vseEn, 'Certifikát z češtiny nie je potrebný; samotný test Scio OSP/VŠP slúži ako doklad češtiny']],
+      /changes existing Slovak "Certifikát z češtiny sa nevyžaduje".*needs a separate decision/);
+    for (const [what, bad] of [
+      ['PTE', testsSk.replace('PTE', 'test PT')], ['Duolingo', testsSk.replace('Duolingo', 'duolingo')],
+      ['iBT', testsSk.replace('iBT', 'IBT')], ['ÚJOP', testsSk.replace('ÚJOP', 'UJOP')],
+      ['EF SET', testsSk.replace('EF SET', 'EF-SET')], ['CLA', testsSk.replace('CLA', 'KLA')],
+      ['≥', testsSk.replace('≥', 'aspoň')], ['+', testsSk.replace('B2+', 'B2')],
+    ]) eRefuse(`refuses a dropped or changed ${what}`, [['english_requirement', testsEn, bad]], /test names or the ≥ and \+ signs differ/);
+    eRefuse('refuses a separator change', [['english_requirement', vseEn, vseSk.replace(';', ',')]], /separator counts/);
+    eRefuse('refuses ?', [['english_requirement', '?', 'neznáme']], /marker value/);
+
+    // Layer 2B-1 search list (Option 2) on a fixture whose sk.csv starts with
+    // the real 1,198 rows from before Layer 2B-1.
+    const l2b1Sk = readFileSync(join(root, 'data/i18n/sk.csv')).subarray(0, searchMod.L2B1_BASE_SK_BYTES).toString('utf8');
+    reset(eProgs, eUnis);
+    put(paths[2], l2b1Sk);
+    const l2b1Applied = run(eBatch, { apply: true, reviewRows: eReview });
+    const l2b1Appended = get(paths[2]);
+    check('search-english L2B1: the writer appends after the real 1,198-row base',
+      l2b1Applied.status === 0 && l2b1Appended.startsWith(l2b1Sk) && /To add: 3/.test(l2b1Applied.stdout), l2b1Applied.log);
+    writeFileSync(jsCopy, jsBefore);
+    const l2b1Gen = gen(eReview, { apply: true });
+    equal('search-english L2B1: --apply lists the inherited and own requirements under their physical column, sorted',
+      [l2b1Gen.status, searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8')).entries],
+      [0, [['english_requirement', vseEn], ['english_requirement', testsEn], ['english_requirement_default', inhEn]]]);
+    const l2b1Buf = Buffer.from(l2b1Appended);
+    const tamperAt = l2b1Buf.indexOf('AI-DRAFT', searchMod.BASE_SK_BYTES);
+    const tampered = Buffer.from(l2b1Buf);
+    tampered.write('AI-DRAFX', tamperAt);
+    put(paths[2], tampered.toString('utf8'));
+    genRefuse('refuses English requirement entries when the 1,198-row prefix changed after row 1,082',
+      eReview, /unchanged 1198-row byte prefix from before Layer 2B-1/);
+    const withRows = (...rows) => put(paths[2], l2b1Appended + csv(rows.map((r) => [...r, 'AI-DRAFT'])));
+    withRows(['english_requirement_default', testsEn, testsSk]);
+    genRefuse('refuses an entry whose English sk.csv also has under the other column',
+      [[...eBatch[1], 'keep']], /also a english_requirement_default key/);
+    const twinOnlyInList = searchMod.searchEnglishProblems(
+      [['english_requirement', testsEn], ['english_requirement_default', testsEn]], {
+        dictionary: new Map([[`english_requirement\u0000${testsEn}`, { field: 'english_requirement', en: testsEn, sk: testsSk, verifiedBy: 'AI-DRAFT' }]]),
+        older: new Set(), hasL2B1Prefix: true, olderL2B1: new Set(), heldKeys: new Map(),
+        liveKeys: new Set([`english_requirement\u0000${testsEn}`]), leaves: new Map(),
+      });
+    check('search-english L2B1: two names of one English listed together are refused even with one sk.csv row',
+      twinOnlyInList.some((p) => p.startsWith('english_requirement "') && /also a english_requirement_default key/.test(p)), twinOnlyInList.join('\n'));
+    withRows(['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5']);
+    genRefuse('refuses an entry containing a held piece even when sk.csv has it',
+      [['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5', 'keep']], /piece is read by held cell .*P4b G065/);
+    const badVse = l2b1Appended.replace(vseSk, vseSk.replace('sa nevyžaduje', 'nie je potrebný'));
+    put(paths[2], badVse);
+    genRefuse('refuses a changed historic Slovak slot even when sk.csv has it',
+      [['english_requirement', vseEn, vseSk.replace('sa nevyžaduje', 'nie je potrebný'), 'keep']], /changes existing Slovak/);
+    const noPte = testsSk.replace('PTE', 'test PT');
+    put(paths[2], l2b1Appended.replace(testsSk, noPte));
+    genRefuse('refuses a dropped test name even when sk.csv has it',
+      [['english_requirement', testsEn, noPte, 'keep']], /test names or the ≥ and \+ signs differ/);
+    put(paths[2], l2b1Appended);
+    genRefuse('refuses an English requirement row from before Layer 2B-1',
+      [['english_requirement', 'No Czech certificate required', 'Certifikát z češtiny sa nevyžaduje', 'keep']], /older sk\.csv row/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -8476,7 +8613,7 @@ require('node:module').syncBuiltinESMExports();
     const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
     i18n.setDataTranslations(skRows);
     i18n.setSearchEnglishKeys();
-    const listedNow = new Set(i18n.SEARCH_ENGLISH_KEYS.map(([f, en]) => `${f}\u0000${en}`));
+    const listedNow = new Set(i18n.SEARCH_ENGLISH_KEYS.map(([f, en]) => `${i18n.searchRuntimeField(f)}\u0000${en}`));
     const legacy = (row) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
       (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => {
         const parts = i18n.dataParts(field, value, 'sk');
@@ -8489,8 +8626,10 @@ require('node:module').syncBuiltinESMExports();
       live.every((row) => i18n.translatedSearchText(row) === legacy(row)));
     equal('search: live rows whose index differs from the old one are exactly the rows with a listed whole cell',
       live.filter((row) => i18n.translatedSearchText(row) !== plain(row)).map((r) => r.id),
-      live.filter((row) => ['living_cost_source', 'baseline_requirement'].some((f) =>
-        listedNow.has(`${f}\u0000${i18n.normaliseEnglish(row[i18n.DATA_FIELDS[f]])}`))).map((r) => r.id));
+      live.filter((row) => [...new Set(i18n.SEARCH_ENGLISH_FIELDS.map(i18n.searchRuntimeField))].some((f) => {
+        const val = row[i18n.DATA_FIELDS[f]];
+        return (Array.isArray(val) ? val : [val]).some((v) => listedNow.has(`${f}\u0000${i18n.normaliseEnglish(v)}`));
+      })).map((r) => r.id));
     i18n.setDataTranslations([]);
   }
 
@@ -8546,10 +8685,157 @@ require('node:module').syncBuiltinESMExports();
       body(en.csv) === body(sk.csv) && body(sk.csv).includes(lab.livingCostSource) && !sk.csv.includes(skLab));
   }
 
+  // Layer 2B-1 search (Leon, 2026-11-27, Option 2): a listed English
+  // requirement keeps its English searchable beside its Slovak. The list uses
+  // the sk.csv column, and js/i18n.js maps english_requirement_default to the
+  // english_requirement the rows are searched under. Disposable rows,
+  // translations and list; the real filter and lookups.
+  {
+    const quiet = { setItem() {} };
+    const base = { ...live.find((r) => r.id === 'tud-cse'), baselineRequirement: '', livingCostSource: '', ibRecognition: '' };
+    const fx = (id, englishRequirement) => ({ ...base, id, englishRequirement });
+    const own = 'Quokka IELTS 6.5; IB Diploma holders exempt';
+    const inherited = 'Numbat certificate (B2) required';
+    const mixed = 'No wombat certificate required; the bilby test serves as proof';
+    const rows = [
+      fx('fx-own', [own]), // listed as english_requirement, semicolon cell
+      fx('fx-inh', [inherited]), // listed as english_requirement_default
+      fx('fx-mix', [mixed]), // listed, its first piece has an older Slovak row
+      fx('fx-multi', ['Potoroo item', 'Dunnart second item']), // a translated bullet item, never listed
+      fx('fx-none', ['Untranslated wallaby note']),
+    ];
+    const translations = [
+      { field: 'english_requirement', en: own, sk: 'Kvoka IELTS 6.5; držitelia IB Diploma sú oslobodení' },
+      { field: 'english_requirement_default', en: inherited, sk: 'Mravcožrútí certifikát (B2) povinný' },
+      { field: 'english_requirement', en: 'No wombat certificate required', sk: 'Vombatí certifikát sa nevyžaduje' },
+      { field: 'english_requirement', en: mixed, sk: 'Vombatí certifikát sa nevyžaduje; test bandikuta slúži ako doklad' },
+      { field: 'english_requirement', en: 'Potoroo item', sk: 'Položka klokanky' },
+    ];
+    const list = [['english_requirement', own], ['english_requirement', mixed], ['english_requirement_default', inherited]];
+    const queries = ['quokka', 'exempt,', '(ielts)', 'ib', 'b2', 'kvoka', 'numbat', 'certificate', 'mravcozruti',
+      'wombat', 'vombati', 'bilby', 'potoroo', 'klokanky', 'dunnart', 'wallaby'];
+    const search = () => Object.fromEntries(['en', 'sk'].map((lang) => {
+      i18n.setLanguage(lang, quiet);
+      return [lang, queries.map((q) => applyFilters(rows, { ...noFilters(), search: q }, new Set()).map((r) => r.id).join(' '))];
+    }));
+    const unlisted = ['', '', 'fx-own', 'fx-own', 'fx-inh', 'fx-own', '', '', 'fx-inh', '', 'fx-mix', '', '', 'fx-multi', 'fx-multi', 'fx-none'];
+    const listed = ['fx-own', 'fx-own', 'fx-own', 'fx-own', 'fx-inh', 'fx-own', 'fx-inh', 'fx-inh fx-mix', 'fx-inh',
+      'fx-mix', 'fx-mix', 'fx-mix', '', 'fx-multi', 'fx-multi', 'fx-none'];
+    // js/i18n.js at ec30f31 keyed the list by the listed column, unmapped.
+    const indexWith = (row, keys) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => {
+        const parts = i18n.dataParts(field, value, 'sk');
+        const en = i18n.normaliseEnglish(value);
+        return [...parts.map((p) => p.text), ...(parts.length === 1 && parts[0].en === en && keys.has(`${field}\u0000${en}`) ? [en] : [])];
+      })).join(' ');
+    try {
+      i18n.setDataTranslations(translations);
+      i18n.setSearchEnglishKeys([]);
+      const before = search();
+      i18n.setSearchEnglishKeys(list);
+      const after = search();
+      const counts = rows.slice(0, 3).map((row) => i18n.translatedSearchText(row).split(row.englishRequirement[0]).length - 1);
+      const unmapped = new Set(list.map(([f, en]) => `${f}\u0000${en}`));
+      const mapped = new Set(list.map(([f, en]) => `${i18n.searchRuntimeField(f)}\u0000${en}`));
+      const trap = [indexWith(rows[1], unmapped).includes(inherited), indexWith(rows[1], mapped) === i18n.translatedSearchText(rows[1])];
+      i18n.setSearchEnglishKeys([]);
+      const cleared = search();
+      equal('search L2B1: an empty list keeps the old Slovak-only index, in both interfaces', [before.en, before.sk], [unlisted, unlisted]);
+      equal('search L2B1: listed inherited and own requirements add their English in both interfaces; the older Slovak piece still matches; bullet items and unlisted cells unchanged',
+        [after.en, after.sk], [listed, listed]);
+      equal('search L2B1: each listed requirement adds its English exactly once', counts, [1, 1, 1]);
+      equal('search L2B1: unmapped, the english_requirement_default entry would miss the inherited row; mapped it matches the real index', trap, [false, true]);
+      equal('search L2B1: clearing the list refreshes cached rows', cleared.sk, unlisted);
+    } finally {
+      i18n.setSearchEnglishKeys();
+      i18n.setDataTranslations([]);
+      i18n.setLanguage('en', quiet);
+    }
+    const { createHash } = await import('node:crypto');
+    const layer2A = i18n.SEARCH_ENGLISH_KEYS.filter(([f]) => ['living_cost_source', 'baseline_requirement'].includes(f));
+    equal('search L2B1: the 116 Layer 2A entries stay byte-identical', [layer2A.length,
+      createHash('sha256').update(JSON.stringify(layer2A)).digest('hex')], [116, 'c1344cf894cbbb391b6622a3d7a62d3e59a34fb996351204585f202aa2873ed0']);
+    check('search L2B1: the list stays at version 2 until an English requirement entry is added',
+      i18n.SEARCH_ENGLISH_VERSION === 2 || i18n.SEARCH_ENGLISH_KEYS.length > layer2A.length);
+  }
+
+  // Layer 2B-1 display: a single-bullet translation changes words only, and
+  // only on programmes whose whole shown cell is a key the writer accepts.
+  {
+    const ac = await import('./apply-sk-translations.mjs');
+    const held = ac.heldDisplayKeys({ universitiesCsv: read('data/universities.csv'), programmesCsv: read('data/programmes.csv') });
+    const liveKeys = ac.liveDisplayKeys(held.programmes, held.heldCells, held.progRaw);
+    const leaves = ac.wholeCellLeaves(held.programmes, held);
+    const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
+    const skKeys = new Set(skRows.map((r) => `${r.field.trim()}\u0000${i18n.normaliseEnglish(r.en)}`));
+    // Every key the writer would accept today, ignoring wording, with a fake Slovak text.
+    const eligible = [...liveKeys].map((k) => k.split('\u0000')).filter(([f, en]) => ac.SINGLE_BULLET_FIELDS.includes(f)
+      && !skKeys.has(`${f}\u0000${en}`) && !held.heldKeys.has(`${f}\u0000${en}`) && !ac.heldPieceLabels(en, held.heldKeys).length
+      && !leaves.has(`${f}\u0000${en}`) && !skKeys.has(`${ac.twinField(f)}\u0000${en}`) && !liveKeys.has(`${ac.twinField(f)}\u0000${en}`));
+    const fake = eligible.map(([field, en]) => ({ field, en, sk: `SK ${en.replaceAll(';', '; SK')}` }));
+    const shown = (row) => i18n.dataParts('english_requirement', row.englishRequirement.join(' · '), 'sk').map((p) => p.text).join('');
+    let changed = [];
+    try {
+      i18n.setDataTranslations(skRows);
+      const plain = live.map(shown);
+      i18n.setDataTranslations([...skRows, ...fake]);
+      changed = live.filter((row, i) => shown(row) !== plain[i]);
+    } finally {
+      i18n.setDataTranslations([]);
+    }
+    const eligibleEn = new Set(eligible.map(([, en]) => en));
+    const heldIds = ['muni-portuguese-language-and-literature', 'muni-computational-linguistics', 'tul-european-business'];
+    equal('display L2B1: with every acceptable key translated, only programmes whose one shown bullet is such a key change',
+      changed.map((r) => r.id), live.filter((r) => r.englishRequirement.length === 1 && eligibleEn.has(i18n.normaliseEnglish(r.englishRequirement[0]))).map((r) => r.id));
+    check('display L2B1: no held (G063, G064, G065), multi-bullet or empty display changes',
+      changed.length > 0 && changed.every((r) => r.englishRequirement.length === 1 && !heldIds.includes(r.id)));
+    equal('display L2B1: the acceptable keys are the 142 structurally eligible ones (36 inherited, 106 own)',
+      [eligible.length, eligible.filter(([f]) => f === 'english_requirement_default').length], [142, 36]);
+
+    const karelia = live.find((r) => r.id === 'karelia-ict');
+    const own = karelia.englishRequirement[0];
+    const skText = 'doklad o angličtine je povinný, napr. IELTS Academic 6.0 alebo IB English A alebo B HL/SL známka 4 alebo viac; cesta cez SAT certifikát z angličtiny nevyžaduje; doklad na jar 2027 do 28 Jan 2027 15:00 fínskeho času';
+    const other = live.find((r) => r.id === 'lapland-uas-nursing');
+    const blank = live.find((r) => !r.englishRequirement.length && !r.englishUnknown);
+    const look = () => {
+      const detail = renderModMain.renderDetail(karelia, noFilters());
+      // In Slovak each part holds its English reveal after its own text.
+      const value = detail.querySelectorAll('.data-value').find((n) => n.textContent === own || n.textContent.startsWith(skText));
+      const parts = value ? value.children.filter((c) => typeof c !== 'string') : [];
+      return {
+        parts: parts.map((p) => [p.children[0] === skText ? 'sk' : p.textContent === own ? 'en' : '?',
+          p.getAttribute('data-english') === own, Boolean(p.lang), p.getAttribute('data-untranslated') !== null]),
+        list: Boolean(value?.closest('.d-list')) || detail.querySelectorAll('.d-list').some((n) => n.textContent.includes('doklad o angličtine')),
+        unknown: renderModMain.renderDetail(other, noFilters()).textContent.includes(i18n.t('not_published')),
+        blank: renderModMain.renderDetail(blank, noFilters()).textContent.includes(i18n.t('not_checked_yet')),
+        csv: shortlistMod.toCsv([karelia, other, blank]).split('\r\n').slice(1).join('\r\n'),
+      };
+    };
+    const [en, sk] = withStubDocument(() => {
+      try {
+        i18n.setDataTranslations([{ field: 'english_requirement', en: own, sk: skText }]);
+        const out = [i18n.inLanguage('en', look)];
+        i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+        out.push(look());
+        return out;
+      } finally {
+        i18n.setDataTranslations([]);
+        i18n.initLanguage('', { getItem: () => 'en' });
+      }
+    });
+    equal('display L2B1: a single-bullet translation is one Slovak part with its English kept for the reveal, no lang="en", no list, lowercase start kept',
+      [sk.parts, sk.list, skText[0]], [[['sk', true, false, false]], false, 'd']);
+    equal('display L2B1: the English interface shows the English cell unchanged', en.parts, [['en', false, false, false]]);
+    equal('display L2B1: "?" still says Not published and a blank still says Not checked yet, in both interfaces',
+      [en.unknown, en.blank, sk.unknown, sk.blank], [true, true, true, true]);
+    check('display L2B1: the CSV export values are the same English in both interfaces',
+      en.csv === sk.csv && sk.csv.includes(own.split(';')[0]) && !sk.csv.includes('doklad o angličtine'));
+  }
+
   // Permanent data guard: no prose sk.csv row is read by any held cell.
   {
     equal('writer pins all 23 non-selector holds', NON_SELECTOR_HOLDS.length, 23);
-    const { heldKeys, heldCells, programmes } = heldDisplayKeys({
+    const { heldKeys, heldCells, programmes, progRaw, uniRaw } = heldDisplayKeys({
       universitiesCsv: read('data/universities.csv'),
       programmesCsv: read('data/programmes.csv'),
     });
@@ -8577,14 +8863,34 @@ require('node:module').syncBuiltinESMExports();
       ['b2e15e71c940309e7e3a2f27806eccc3d5ac65ef360518fb878aed8e7fc245d7', 'uni|st-andrews|baseline_requirement (carry-for-18)'],
       ['b4c23e541d7bf8c79528dbc942071c267b5aea722fc41c5f538f92f1266f74fe', 'uni|southampton|baseline_requirement (carry-for-18)'],
     ]);
+    // Layer 2B-1: the only English requirement rows a held cell reads are the
+    // two English B2 rows that were there before (P4b G065), pinned the same way.
+    const heldEnglish = skLive.filter((row) => SINGLE_BULLET_FIELDS.includes(row.field)
+      && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('the only English requirement sk.csv rows read by held cells are the two pinned English B2 rows', heldEnglish.map((row) => [
+      createHash('sha256').update(JSON.stringify([row.field, row.en, row.sk, row.verified_by])).digest('hex'),
+      [...heldKeys.get(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`)].sort().join('; '),
+    ]).sort(), [
+      ['1b14169919cac21be7ce921e5afbdacfbf783dbba6d28536f85d8029a8b07174', 'prog|tul-european-business|english_requirement (P4b G065)'],
+      ['1e7c8c9cc63be5cafcd455372e2e17bef556832aa7136b98ac9a429bd742d645', 'prog|tul-european-business|english_requirement (P4b G065)'],
+    ]);
+    const liveKeys = liveDisplayKeys(programmes, heldCells, progRaw);
+    const englishRows = skLive.map((row, i) => ({ ...row, i, en: i18n.normaliseEnglish(row.en) }))
+      .filter((row) => SINGLE_BULLET_FIELDS.includes(row.field));
+    equal('every English requirement sk.csv row added after the 1,198-row base is a live key under its own column',
+      englishRows.filter((row) => row.i >= 1198 && !liveKeys.has(`${row.field}\u0000${row.en}`)).map((row) => `${row.field}: ${row.en}`), []);
+    equal('no English requirement text has rows under both columns with different Slovak',
+      englishRows.filter((row) => englishRows.some((o) => o.field !== row.field && o.en === row.en && o.sk.trim() !== row.sk.trim()))
+        .map((row) => `${row.field}: ${row.en}`), []);
     // The shipped search-English list passes the same rules its writer uses.
-    const guard = 'the original sk.csv bytes and every shipped search-English entry pass the Layer 2A guards';
+    const guard = 'the original sk.csv bytes and every shipped search-English entry pass the Layer 2A and 2B-1 guards';
     try {
       const skFile = 'data/i18n/sk.csv';
       const fail = (message) => { throw new Error(message); };
       const dictionary = searchMod.readSearchEnglishDictionary(skFile, readFileSync(join(root, skFile)), fail);
+      equal('shipped sk.csv keeps both the 1,082-row and the 1,198-row base byte prefixes', dictionary.hasL2B1Prefix, true);
       equal(guard, searchMod.searchEnglishProblems(i18n.SEARCH_ENGLISH_KEYS, {
-        ...dictionary, heldKeys, liveKeys: liveDisplayKeys(programmes, heldCells), leaves: wholeCellLeaves(programmes),
+        ...dictionary, heldKeys, liveKeys, leaves: wholeCellLeaves(programmes, { progRaw, uniRaw }),
       }), []);
     } catch (error) {
       check(guard, false, error.message);

@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Slovak prose #18, Layer 2B-1 Phase 1 tooling (2026-11-27, local).** `tools/apply-sk-translations.mjs` can now also append reviewed Slovak for an English requirement that a programme shows as one bullet: under `english_requirement` for the programme's own wording, under `english_requirement_default` for university wording it inherits. It refuses multi-bullet cells, university defaults no programme shows, a text that is also a part or bullet of another cell, a text containing wording a held cell reads (P4b G065 "English B2"), the same English under both columns, a changed or dropped language test name, `≥` or `+`, and any change to Slovak that a part of the text already has (VŠE's "Certifikát z češtiny sa nevyžaduje"). The two existing English B2 rows for the held TUL cell are pinned in `tools/check.mjs`. Search follows Leon's Option 2: `SEARCH_ENGLISH_KEYS` may now list both columns, and the page searches an inherited one under `english_requirement`. The list is unchanged (version 2, the 116 Layer 2A entries), so search, display and every data file are unchanged. The translations themselves (Phase 2) need an independent meaning review first.
+
 **Slovak prose #18, Layer 2A Phase 2 (2026-11-27, local).** Appended 116 independently reviewed `AI-DRAFT` Slovak whole-cell rows to `data/i18n/sk.csv` (4 `living_cost_source`, 112 `baseline_requirement`; total 1,198 rows, the earlier 1,082 rows byte-identical). The same 116 keys are now in `SEARCH_ENGLISH_KEYS` (version 2), so their English stays searchable beside the Slovak. `data/fallback.json` was rebuilt from the local CSVs. 924 programmes show the new Slovak. Ten keys stay English with `lang="en"`: L2A-017, 021, 022, 025, 027, 035, 060, 079, 084 and 087 (held before drafting, excluded for losing the school-leaving distinction, or held by review). Held cells, the eight UK baselines, Compare costs, the national-minimum floor and the English CSV export are unchanged. `i18n-missing` now reports 940 missing and 8 orphans. Independent wording review is not human signoff or source verification.
 
 **Slovak prose #18, Layer 2A Phase 1 tooling (2026-11-27, local).** `tools/apply-sk-translations.mjs` now also appends reviewed whole-cell `living_cost_source` and `baseline_requirement` rows, refusing parts of a cell, a whole value that is a part of another university's cell, and anything a held cell reads. The eight UK baseline translations already in `data/i18n/sk.csv` for held cells are pinned exactly in `tools/check.mjs`. Leon chose that newly reviewed Layer 2A translations keep their English searchable alongside the Slovak; the list of those cells (`SEARCH_ENGLISH_KEYS` in `js/i18n.js`, written by `tools/sk-search-english.mjs`) is empty, so search and every data file are unchanged. The translations themselves (Phase 2) are not written yet.
@@ -1782,6 +1784,12 @@ are repeated here. This replaces the Playfair Display / pastel-panel look of
     unverified; a reader that ignores aria-modal may still browse the background.
 
 ## Decisions already made, so they are not relitigated
+
+- **Layer 2B-1 search, Option 2** (Leon, 2026-11-27, "keep both sure.
+  continue going."): a newly reviewed Slovak English-requirement translation
+  is searched in Slovak and in its original English, like Layer 2A. Only
+  newly accepted Layer 2B-1 keys get this. Older translations, VŠE's existing
+  Slovak words, the 116 Layer 2A entries and other fields stay as they are.
 
 - **Dark mode** (Leon: order 2026-11-08, palette and settings 2026-11-10): after
   PR #6, before the Supabase switch-over. Palette D, grey row badges, gear and

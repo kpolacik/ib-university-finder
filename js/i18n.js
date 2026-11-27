@@ -1678,14 +1678,21 @@ export const SEARCH_ENGLISH_KEYS = [
   ["living_cost_source","national estimate (Finnish Immigration Service)"],
 ];
 // END SEARCH_ENGLISH
-export const SEARCH_ENGLISH_FIELDS = ['living_cost_source', 'baseline_requirement'];
+// Layer 2B-1 (Leon, 2026-11-27, Option 2) adds single-bullet English
+// requirements. The list keeps the sk.csv column name, so inherited university
+// wording is listed as english_requirement_default.
+export const SEARCH_ENGLISH_FIELDS = ['living_cost_source', 'baseline_requirement', 'english_requirement', 'english_requirement_default'];
+// Rows are searched under DATA_FIELDS names, and dataParts reads an
+// english_requirement_default row for an english_requirement cell. Without this
+// mapping an inherited requirement would silently lose its English.
+export const searchRuntimeField = (field) => (field === 'english_requirement_default' ? 'english_requirement' : field);
 let searchEnglish = new Set();
 
 // Tests pass a disposable list; the page always uses SEARCH_ENGLISH_KEYS.
 export function setSearchEnglishKeys(keys = SEARCH_ENGLISH_KEYS) {
   searchCache = new WeakMap();
   searchEnglish = new Set(keys.filter(([field]) => SEARCH_ENGLISH_FIELDS.includes(field))
-    .map(([field, en]) => `${field}\u0000${normaliseEnglish(en)}`));
+    .map(([field, en]) => `${searchRuntimeField(field)}\u0000${normaliseEnglish(en)}`));
 }
 setSearchEnglishKeys();
 
