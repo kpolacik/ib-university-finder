@@ -5,7 +5,8 @@
 //
 //   node tools/reword-prose.mjs batch.csv [more.csv ...]                       dry run, writes nothing
 //   node tools/reword-prose.mjs --apply --review review.csv batch.csv [...]    writes data/programmes.csv
-//   --data DIR   folder holding programmes.csv (default: data/)
+//   --translated   reword translated prose and move existing Slovak keys
+//   --data DIR     folder holding the CSVs (default: data/)
 //
 // Exit codes: 0 clean, 2 at least one line refused (nothing written), 1 bad
 // arguments or unreadable files. After a real --apply run
@@ -14,7 +15,8 @@
 // The batch file starts with exactly these seven columns, in this order
 // (later columns are ignored):
 //   entity_type,id,column,expected_old,value,reason,drops
-// entity_type is "prog" (a programme_id). `drops` lists, separated by spaces,
+// entity_type is "prog" (a programme_id) or, with --translated, also "uni"
+// (a university_id). `drops` lists, separated by spaces,
 // the condition tokens the new value leaves out on purpose, written as the dry
 // run prints them (for example date:2026-10-28).
 //
@@ -27,9 +29,9 @@
 //
 // Why each guard exists:
 //
-// - Columns. Only deadline_notes, other_requirements and ib_subjects. Their
-//   English is not a Slovak lookup key today; rewording a translated column
-//   would orphan its Slovak row (js/i18n.js dataParts) and needs its own step.
+// - Columns. The original mode writes only deadline_notes, other_requirements
+//   and ib_subjects. The translated mode has a separate allowlist and checks
+//   Slovak lookup before it moves any existing keys.
 //   Ids, verified_by and last_verified are never written: a reword is not a
 //   re-check, so it must not make a row look freshly verified.
 // - expected_old. Jakub edits the data often. A line applies only when the cell
@@ -52,6 +54,8 @@ import { fileURLToPath } from 'node:url';
 import { parseCsv } from '../js/csv.js';
 import { BULLET } from '../js/data.js';
 import { frozenParts, compareTokens, formatProblem, isMarker } from './lib/reword.mjs';
+import { TRANSLATED, translatedRefusal, stageTranslated } from './lib/reword-translated.mjs';
+import { checkPending, replaceSheets } from './lib/reword-recovery.mjs';
 
 const HEADER = 'entity_type,id,column,expected_old,value,reason,drops'.split(',');
 const REVIEW_HEADER = 'entity_type,id,column,value,verdict,approved_drops'.split(',');
@@ -65,11 +69,12 @@ const esc = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 const toCsv = (grid) => grid.map((r) => r.map(esc).join(',')).join('\n') + '\n';
 
 const fail = (message) => { console.error(message); process.exit(1); };
-const usage = () => fail('Usage: node tools/reword-prose.mjs [--apply --review review.csv] [--data DIR] batch.csv [more.csv ...]');
+const usage = () => fail('Usage: node tools/reword-prose.mjs [--translated] [--apply --review review.csv] [--data DIR] batch.csv [more.csv ...]');
 
 // ---------------------------------------------------------------- arguments
 const root = fileURLToPath(new URL('../', import.meta.url));
 let apply = false;
+let translated = false;
 let dataDir = join(root, 'data');
 let reviewFile = '';
 const batchFiles = [];
@@ -77,6 +82,7 @@ const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--apply') apply = true;
+  else if (a === '--translated') translated = true;
   else if (a === '--data' || a === '--review') {
     const v = argv[++i];
     if (v == null || v.startsWith('--')) usage();
@@ -85,31 +91,42 @@ for (let i = 0; i < argv.length; i++) {
   else batchFiles.push(a);
 }
 if (!batchFiles.length) usage();
+try { checkPending(dataDir); } catch (e) { fail(e.message); }
 if (apply && !reviewFile) fail('--apply needs --review FILE: every reword is written only after an independent reviewer has approved its exact text.');
 
 // ---------------------------------------------------------------- the data
-const path = join(dataDir, 'programmes.csv');
-let text;
-try { text = readFileSync(path, 'utf8'); } catch (e) { fail(`Cannot read ${path}: ${e.message}`); }
-const grid = parseCsv(text);
-const head = grid[0] || [];
-for (const c of ['programme_id', 'university_id', 'programme', 'verified_by', 'last_verified', ...COLUMNS]) {
-  if (!head.includes(c)) fail(`${path}: column ${c} is missing`);
+function sheet(file, columns, id) {
+  const path = join(dataDir, file);
+  let bytes;
+  try { bytes = readFileSync(path); } catch (e) { fail(`Cannot read ${path}: ${e.message}`); }
+  const text = bytes.toString('utf8');
+  const grid = parseCsv(text);
+  const head = grid[0] || [];
+  for (const c of columns) if (!head.includes(c)) fail(`${path}: column ${c} is missing`);
+  if (new Set(head.map((h) => translated ? h.trim() : h)).size !== head.length) fail(`${path}: duplicate column in the header`);
+  const badRow = grid.findIndex((r) => r.length !== head.length);
+  if (badRow !== -1) fail(`${path}: row ${badRow + 1} has ${grid[badRow].length} cells, the header has ${head.length}`);
+  if (!Buffer.from(toCsv(grid)).equals(bytes)) fail(`${path}: not in the expected CSV formatting (quoting, line ends or blank lines); refusing to rewrite it`);
+  const col = Object.fromEntries(head.map((h, i) => [translated ? h.trim() : h, i]));
+  const byId = new Map();
+  if (id) for (const row of grid.slice(1)) {
+    const key = translated ? row[col[id]].trim() : row[col[id]];
+    if (translated && !key) fail(`${path}: blank ${id}`);
+    if (byId.has(key)) fail(`${path}: duplicate ${id} ${key}`);
+    byId.set(key, row);
+  }
+  return { path, text, grid, col, byId };
 }
-if (new Set(head).size !== head.length) fail(`${path}: duplicate column in the header`);
-const badRow = grid.findIndex((r) => r.length !== head.length);
-if (badRow !== -1) fail(`${path}: row ${badRow + 1} has ${grid[badRow].length} cells, the header has ${head.length}`);
-if (toCsv(grid) !== text) fail(`${path}: not in the expected CSV formatting (quoting, line ends or blank lines); refusing to rewrite it`);
-const col = Object.fromEntries(head.map((h, i) => [h, i]));
-const byId = new Map();
-for (const r of grid.slice(1)) {
-  if (byId.has(r[col.programme_id])) fail(`${path}: duplicate programme_id ${r[col.programme_id]}`);
-  byId.set(r[col.programme_id], r);
-}
+const prog = sheet('programmes.csv', ['programme_id', 'university_id', 'programme', 'verified_by', 'last_verified',
+  ...(translated ? ['application_deadline', 'official_url', ...TRANSLATED.prog] : COLUMNS)], 'programme_id');
+const uni = translated && sheet('universities.csv', ['university_id', 'name', 'country', 'verified_by', 'last_verified', ...TRANSLATED.uni], 'university_id');
+const sk = translated && sheet('i18n/sk.csv', ['field', 'en', 'sk', 'verified_by']);
+const { path, text, grid, col } = prog;
+const allowed = translated ? TRANSLATED : { prog: COLUMNS };
 // Same key as js/data.js addProgrammeIdentity.
 const sameName = (r) => JSON.stringify([r[col.university_id].trim(), r[col.programme].trim().toLowerCase().normalize('NFC')]);
 const groups = new Map();
-for (const r of grid.slice(1)) {
+if (!translated) for (const r of grid.slice(1)) {
   const key = sameName(r);
   if (!groups.has(key)) groups.set(key, []);
   groups.get(key).push(r);
@@ -142,6 +159,7 @@ function records(file) {
   return out;
 }
 const tokenList = (s) => (s || '').split(/\s+/).filter(Boolean);
+const cellKey = (entity, id, column) => JSON.stringify([entity, id, column]);
 const reviewKey = (entity, id, column, value) => JSON.stringify([entity, id, column, value]);
 
 const lines = [];
@@ -164,7 +182,7 @@ if (reviewFile) {
     const key = reviewKey(v.entity_type, v.id, v.column, v.value);
     const previous = reviews.get(key);
     if (previous && (previous.verdict !== v.verdict || previous.approved_drops !== v.approved_drops)) {
-      fail(`${reviewFile}:${r.line}: conflicting review rows for ${v.id} ${v.column} and this exact value`);
+      fail(`${reviewFile}:${r.line}: conflicting review rows for ${v.entity_type} ${v.id} ${v.column} and this exact value`);
     }
     reviews.set(key, v);
   }
@@ -174,12 +192,12 @@ if (reviewFile) {
 // one cell are both refused, and siblings can be compared with the final text.
 const wanted = new Map();
 for (const p of lines) {
-  const key = `${p.id}\0${p.column}`;
+  const key = cellKey(p.entity_type, p.id, p.column);
   if (!wanted.has(key)) wanted.set(key, new Set());
-  wanted.get(key).add(p.value);
+  wanted.get(key).add(translated ? JSON.stringify([p.expected_old, p.value, tokenList(p.drops).sort()]) : p.value);
 }
 const finalValue = (row, column) => {
-  const want = wanted.get(`${row[col.programme_id]}\0${column}`);
+  const want = wanted.get(cellKey('prog', row[col.programme_id], column));
   return want?.size === 1 ? [...want][0] : row[col[column]];
 };
 // Compare the same displayed facts as addProgrammeIdentity in js/data.js.
@@ -189,34 +207,42 @@ const identityFact = (column, value) => column === 'other_requirements'
 const distinguishes = (a, b) => a !== '' && a !== '?' && b !== '' && b !== '?' && a !== b;
 
 const changes = [];
+const translatedLines = [];
+const pendingSkips = [];
 const seen = new Set();
 let refusals = 0, skips = 0;
 for (const p of lines) {
   const where = `${p.file}:${p.line} ${p.entity_type || '(no entity)'} ${p.id || '(no id)'} ${p.column || '(no column)'}`;
   const refuse = (reason) => { refusals++; console.log(`REFUSE ${where}: ${reason}`); };
-  const key = `${p.id}\0${p.column}`;
+  const key = cellKey(p.entity_type, p.id, p.column);
   if (p.short) { refuse(`the line has fewer than ${HEADER.length} cells`); continue; }
-  if (p.entity_type !== 'prog') { refuse(`entity_type must be prog, not ${JSON.stringify(p.entity_type)}`); continue; }
-  if (!COLUMNS.includes(p.column)) { refuse(`column ${JSON.stringify(p.column)} may not be reworded here (only ${COLUMNS.join(', ')})`); continue; }
-  const row = byId.get(p.id);
-  if (!row) { refuse('unknown programme_id'); continue; }
+  if (!Object.hasOwn(allowed, p.entity_type)) { refuse(`entity_type must be ${translated ? 'prog or uni' : 'prog'}, not ${JSON.stringify(p.entity_type)}`); continue; }
+  const columns = allowed[p.entity_type];
+  if (!columns.includes(p.column)) { refuse(`column ${JSON.stringify(p.column)} may not be reworded here (only ${columns.join(', ')})`); continue; }
+  const target = p.entity_type === 'prog' ? prog : uni;
+  const row = target.byId.get(p.id);
+  if (!row) { refuse(`unknown ${p.entity_type === 'prog' ? 'programme_id' : 'university_id'}`); continue; }
   if (wanted.get(key).size > 1) { refuse(`conflicting lines for this cell: ${[...wanted.get(key)].map((v) => JSON.stringify(v)).join(' vs ')}`); continue; }
-  const current = row[col[p.column]];
-  if (current === p.value) { skips++; console.log(`SKIP ${where}: already holds the new value`); continue; }
-  if (row[col.verified_by] !== 'AI-DRAFT') { refuse(`row is signed (verified_by ${JSON.stringify(row[col.verified_by])}), not AI-DRAFT`); continue; }
-  if (current !== p.expected_old) { refuse(`stale baseline: expected_old ${JSON.stringify(p.expected_old)}, the cell now holds ${JSON.stringify(current)}`); continue; }
-  if (isMarker(current)) { refuse(`the old value ${JSON.stringify(current)} is blank or a marker`); continue; }
+  const current = row[target.col[p.column]];
+  const already = current === p.value;
+  if (!translated && already) { skips++; console.log(`SKIP ${where}: already holds the new value`); continue; }
+  if (row[target.col.verified_by] !== 'AI-DRAFT') { refuse(`row is signed (verified_by ${JSON.stringify(row[target.col.verified_by])}), not AI-DRAFT`); continue; }
+  if (!already && current !== p.expected_old) { refuse(`stale baseline: expected_old ${JSON.stringify(p.expected_old)}, the cell now holds ${JSON.stringify(current)}`); continue; }
+  const old = p.expected_old;
+  if (isMarker(old)) { refuse(`the old value ${JSON.stringify(old)} is blank or a marker`); continue; }
   const format = formatProblem(p.value);
   if (format) { refuse(format); continue; }
   if (!p.reason.trim()) { refuse('reason is empty'); continue; }
 
-  const frozenOld = frozenParts(p.column, current), frozenNew = frozenParts(p.column, p.value);
+  const translatedProblem = translated && translatedRefusal(p.column, old, p.value);
+  if (translatedProblem) { refuse(translatedProblem); continue; }
+  const frozenOld = frozenParts(p.column, old), frozenNew = frozenParts(p.column, p.value);
   if (JSON.stringify(frozenOld) !== JSON.stringify(frozenNew)) {
     const lost = frozenOld.filter((s) => !frozenNew.includes(s)), extra = frozenNew.filter((s) => !frozenOld.includes(s));
     refuse(`frozen text changed (code reads it back): ${[...lost.map((s) => `lost ${JSON.stringify(s)}`), ...extra.map((s) => `new ${JSON.stringify(s)}`)].join('; ') || 'count or order of protected text changed'}`);
     continue;
   }
-  const { kept, missing, added } = compareTokens(current, p.value);
+  const { kept, missing, added } = compareTokens(old, p.value);
   const drops = tokenList(p.drops);
   const undeclared = missing.filter((t) => !drops.includes(t));
   if (undeclared.length) { refuse(`condition tokens missing from the new value: ${undeclared.join(' ')} (keep them, or list them in drops for the reviewer)`); continue; }
@@ -234,7 +260,7 @@ for (const p of lines) {
   }
 
   if (apply) {
-    const review = reviews.get(reviewKey('prog', p.id, p.column, p.value));
+    const review = reviews.get(reviewKey(p.entity_type, p.id, p.column, p.value));
     if (!review) { refuse('no review row for this exact new value'); continue; }
     if (review.verdict !== 'keep') { refuse(`the reviewer's verdict is ${JSON.stringify(review.verdict)}, not "keep"`); continue; }
     const unapproved = drops.filter((t) => !tokenList(review.approved_drops).includes(t));
@@ -242,11 +268,25 @@ for (const p of lines) {
   }
   if (seen.has(key)) { skips++; console.log(`SKIP ${where}: repeats an earlier line`); continue; }
   seen.add(key);
+  if (translated) translatedLines.push({ ...p, row, already });
+  if (already) { pendingSkips.push(where); continue; }
   changes.push({ row, column: p.column, next: p.value });
-  console.log(`CHANGE prog ${p.id} ${p.column} (${p.reason})\n  old: ${JSON.stringify(current)}\n  new: ${JSON.stringify(p.value)}\n  kept tokens: ${kept.join(' ') || '(none)'}${drops.length ? `\n  drops: ${drops.join(' ')}` : ''}`);
+  console.log(`CHANGE ${p.entity_type} ${p.id} ${p.column} (${p.reason})\n  old: ${JSON.stringify(current)}\n  new: ${JSON.stringify(p.value)}\n  kept tokens: ${kept.join(' ') || '(none)'}${drops.length ? `\n  drops: ${drops.join(' ')}` : ''}`);
 }
 
 // ---------------------------------------------------------------- summary
+let outputs;
+if (translated && !refusals) {
+  try {
+    const staged = stageTranslated({ prog, uni, sk, lines: translatedLines, toCsv });
+    outputs = staged.outputs;
+    for (const { field, old, next } of staged.moves) console.log(`REKEY Slovak ${field}: ${JSON.stringify(old)} -> ${JSON.stringify(next)}`);
+    for (const where of pendingSkips) { skips++; console.log(`SKIP ${where}: already holds the new value`); }
+  } catch (e) {
+    refusals++;
+    console.log(`REFUSE translated batch: ${e.message}`);
+  }
+}
 console.log(`\nLines read: ${lines.length} (from ${batchFiles.length} file${batchFiles.length === 1 ? '' : 's'})`);
 console.log(`Changes: ${changes.length}`);
 console.log(`Refusals: ${refusals}`);
@@ -256,6 +296,13 @@ if (refusals) {
   process.exit(2);
 }
 if (!apply) { console.log('Dry run: nothing written. Add --apply --review FILE to write.'); process.exit(0); }
+
+if (translated) {
+  try { replaceSheets(dataDir, outputs); } catch (e) { fail(e.message); }
+  if (outputs.length) console.log(`Wrote ${changes.length} English changes across ${outputs.map(({ path }) => path).join(', ')}; last_verified and verified_by untouched. Run node tools/make-snapshot.mjs and node tools/check.mjs next.`);
+  else console.log('All cells already hold their new values; nothing written.');
+  process.exit(0);
+}
 
 for (const { row, column, next } of changes) row[col[column]] = next;
 const out = toCsv(grid);

@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, Phase 4a writer (2026-11-27, draft stack).** `tools/reword-prose.mjs --translated` can reword approved programme and university prose while keeping existing Slovak text, coverage and application conditions. This layer changes the writer, checks and instructions only; no data changes. The maintenance guide covers how to restore the CSVs if a write stops partway through.
+
 **Source prose #17, Phase 3 remaining research notes (2026-11-27, draft stack).** Independent reviewers approved 149 wording edits at 45 universities, including four edits approved after a fresh review of revised wording. The selector now lists 54 held cells. The Kempten deadline note conflicts with the date in its deadline field, and the 29 Slovak and 24 UK holds still need evidence or a decision.
 
 **Source prose #17, Phase 3 Irish wording repairs (2026-11-26, draft stack).** A fresh independent review cleared both Irish holds. The TU Dublin Economics and Finance note keeps the unresolved 3- or 4-year duration and the exact CAO cutoff sentence. Trinity–Columbia still tells applicants to ask before relying on a fee for either part. The selector now lists 203 cells, including 29 Slovak evidence holds and 24 earlier UK holds.
