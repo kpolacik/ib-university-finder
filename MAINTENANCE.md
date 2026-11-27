@@ -610,7 +610,8 @@ The same script also takes `living_cost_source` and `baseline_requirement`,
 but only as **whole cells**: the English must be a university's entire value,
 never one part between `;` or ` · `. It refuses a whole value that also
 appears as a part of another university's cell, because the page would then
-translate that part too.
+translate that part too. Four baselines that refer to internal evidence
+(STU, JČU, TUL and Avans) stay on hold until their English wording is repaired.
 
 Search for these two fields (Leon, 2026-11-27): a newly reviewed Slovak
 translation is searched in Slovak **and** in its English, so a student who
@@ -620,8 +621,9 @@ from the list `SEARCH_ENGLISH_KEYS` in `js/i18n.js`, which only a script
 writes. After the `--apply` above, run
 `node tools/sk-search-english.mjs --review review.csv` (preview), then the same
 with `--apply`, then `node tools/check.mjs`. It adds only rows the review marked
-`keep` that are now in `data/i18n/sk.csv` with exactly that Slovak, and never
-rows that were there before this work began (the first 1,082).
+`keep` that are now in new `AI-DRAFT` rows in `data/i18n/sk.csv` with exactly
+that Slovak. It checks that all 1,082 original rows are still intact, in order
+and with their original signatures. Fix conflicting reviews before trying again.
 
 CSV exports use headings in the selected language and keep **all data cells
 in English**, including requirement wording. Numbers inside data text keep

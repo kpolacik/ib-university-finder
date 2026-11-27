@@ -7953,8 +7953,9 @@ section('Slovak prose translation tooling (issue #18)');
   const { translationInventory } = await import('./i18n-missing.mjs');
   const {
     heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS, WHOLE_CELL_DATA_FIELDS,
-    liveDisplayKeys, wholeCellLeaves, searchEnglishProblems,
+    liveDisplayKeys, wholeCellLeaves,
   } = await import('./apply-sk-translations.mjs');
+  const searchMod = await import('./sk-search-english.mjs');
   const renderMod = await import('../js/render.js');
   const renderModMain = renderMod;
   const costMod = await import('../js/cost.js');
@@ -8180,13 +8181,15 @@ require('node:module').syncBuiltinESMExports();
     // Layer 2A: living_cost_source and baseline_requirement are whole-cell only.
     // u2's piece "Leaf baseline" is u3's whole cell; bath is a pinned held
     // baseline (carry-for-18) shared whole by unheld u4 and as a piece by u5.
-    const wUnis = [...unis,
+    const heldLayer2A = ['baseline_requirement', 'Internal reference; see IB recognition evidence.', 'Interná referencia; pozri podklady.'];
+    const wUnis = [...unis.map((uni) => uni.university_id === 'tul' ? { ...uni, baseline_requirement: heldLayer2A[1] } : uni),
       { university_id: 'w1', name: 'Whole One', city: 'Cork', country: 'Ireland', ...sign,
         baseline_requirement: 'secondary school leaving certificate; IB Diploma accepted',
         living_cost_source: 'national estimate (Test Immigration Service)' },
       { university_id: 'w2', name: 'Whole Two', city: 'Cork', country: 'Ireland', ...sign,
         baseline_requirement: 'Leaf baseline; Second item', living_cost_source: 'university estimate; city data' },
-      { university_id: 'w3', name: 'Whole Three', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Leaf baseline' },
+      { university_id: 'w3', name: 'Whole Three', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Leaf baseline', living_cost_source: 'national estimate (Migration Agency)' },
       { university_id: 'bath', name: 'Bath', city: 'Bath', country: 'United Kingdom', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
       { university_id: 'w4', name: 'Whole Four', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
       { university_id: 'w5', name: 'Whole Five', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Shared UK piece' },
@@ -8230,6 +8233,8 @@ require('node:module').syncBuiltinESMExports();
       [['baseline_requirement', 'Held UK baseline; Shared UK piece', 'Držaná; Zdieľaná']], /held cell.*uni\|bath\|baseline_requirement \(carry-for-18\)/);
     wRefuse('refuses an unheld whole cell that is a piece of a held UK baseline',
       [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť']], /held cell.*uni\|bath\|baseline_requirement/);
+    wRefuse('refuses a Layer 2A baseline held for internal references',
+      [heldLayer2A], /held cell.*uni\|tul\|baseline_requirement \(L2A-035\)/, { apply: true, reviewRows: [[...heldLayer2A, 'keep']] });
     const w6 = 'Minimum 24 points with HL Maths; see https://example.org/ib';
     wRefuse('refuses a whole-cell number change', [['baseline_requirement', w6, 'Minimum 26 bodov s HL Maths; pozri https://example.org/ib']], /hard tokens differ/);
     wRefuse('refuses a whole-cell URL change', [['baseline_requirement', w6, 'Minimum 24 bodov s HL Maths; pozri https://example.org/sk']], /hard tokens differ/);
@@ -8238,15 +8243,21 @@ require('node:module').syncBuiltinESMExports();
 
     // Search-English list writer (tools/sk-search-english.mjs) on a copy of the
     // real js/i18n.js block, so the real file is never written by a check.
-    const searchMod = await import('./sk-search-english.mjs');
     reset(wProgs, wUnis);
+    const historicalSk = readFileSync(join(root, 'data/i18n/sk.csv')).subarray(0, searchMod.BASE_SK_BYTES).toString('utf8');
+    put(paths[2], historicalSk);
     run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    const appendedSk = get(paths[2]);
     const jsCopy = join(dir, 'i18n-copy.js');
-    const realBlock = searchMod.readSearchEnglishBlock(read('js/i18n.js'));
-    writeFileSync(jsCopy, read('js/i18n.js'));
-    const gen = (reviewRows, { apply = false, firstNewRow = '0' } = {}) => {
-      put('search-review.csv', csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
-      const args = [join(root, 'tools/sk-search-english.mjs'), '--data', dir, '--js', jsCopy, '--first-new-row', firstNewRow, '--review', join(dir, 'search-review.csv')];
+    const source = read('js/i18n.js');
+    const realBlock = searchMod.readSearchEnglishBlock(source);
+    writeFileSync(jsCopy, searchMod.writeSearchEnglishBlock(source, realBlock.version, []));
+    const gen = (reviewRows, { apply = false, reviewText = null, fault = false, extra = [] } = {}) => {
+      put('search-review.csv', reviewText ?? csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
+      const args = [
+        ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        join(root, 'tools/sk-search-english.mjs'), '--data', dir, '--js', jsCopy, '--review', join(dir, 'search-review.csv'), ...extra,
+      ];
       if (apply) args.push('--apply');
       const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
       return { status: r.status, stdout: r.stdout, log: r.stdout + r.stderr };
@@ -8271,21 +8282,56 @@ require('node:module').syncBuiltinESMExports();
     const genRetry = gen(wholeReview, { apply: true });
     check('search-english: an exact retry adds nothing and leaves the file as it was',
       genRetry.status === 0 && /To add: 0/.test(genRetry.stdout) && readFileSync(jsCopy, 'utf8') === afterGen, genRetry.log);
-    const genRefuse = (name, rows, pattern, opts) => {
+    const genRefuse = (name, rows, pattern, opts, code = 2) => {
       writeFileSync(jsCopy, jsBefore);
+      const before = bytes();
+      utimesSync(jsCopy, 1, 1);
       const r = gen(rows, { apply: true, ...opts });
-      check(`search-english: ${name}`, r.status === 2 && pattern.test(r.log) && readFileSync(jsCopy, 'utf8') === jsBefore, r.log);
+      check(`search-english: ${name}`, r.status === code && pattern.test(r.log) && sameBytes(before)
+        && readFileSync(jsCopy, 'utf8') === jsBefore && stamp('i18n-copy.js') === 1000
+        && !readdirSync(dir).some((n) => n.startsWith('.search-english-')), r.log);
     };
-    genRefuse('refuses a keep row whose Slovak is not the exact sk.csv text',
-      [[wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /no row with exactly this Slovak/);
+    genRefuse('refuses a batch with an exact keep and a different Slovak text',
+      [wholeReview[1], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /no row with exactly this Slovak/);
+    const oldRow = 'living_cost_source,national estimate (Migration Agency),celoštátny odhad (Migration Agency),AI-DRAFT';
+    const oldReview = [[...oldRow.split(',').slice(0, 3), 'keep']];
     genRefuse('refuses a translation that was in sk.csv before Layer 2A',
-      wholeReview, /older sk\.csv row/, { firstNewRow: '1082' });
+      oldReview, /older sk\.csv row/);
+    genRefuse('does not accept a fixture flag on production dictionary bytes', oldReview, /Usage:/, { extra: ['--first-new-row', '0'] }, 1);
+    for (const [name, dictionary, pattern] of [
+      ['reordered historical key after the prefix', appendedSk.replace(oldRow + '\n', '') + oldRow + '\n', /unchanged .* byte prefix/],
+      ['duplicate historical key after the prefix', appendedSk + oldRow + '\n', /duplicate normalised key/],
+      ['historical signature edit', appendedSk.replace(oldRow, oldRow.replace('AI-DRAFT', 'REVIEWED')), /unchanged .* byte prefix/],
+    ]) {
+      put(paths[2], dictionary);
+      genRefuse(name, oldReview, pattern, {}, 1);
+    }
+    put(paths[2], appendedSk);
+    genRefuse('refuses conflicting verdicts even when one English key has different spaces',
+      [wholeReview[0], [wholeBatch[0][0], ' ' + wholeBatch[0][1], wholeBatch[0][2], 'reject']], /conflicting review verdicts/, {}, 1);
+    genRefuse('refuses conflicting keep texts for the same key',
+      [wholeReview[0], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /conflicting keep review rows/, {}, 1);
+    genRefuse('refuses malformed quotes on a keep record', wholeReview, /malformed CSV/,
+      { reviewText: 'field,en,sk,verdict\n' + csv([wholeReview[0]]).trimEnd() + '"\n' }, 1);
+    genRefuse('requires four literal review headings', wholeReview, /header must be exactly/,
+      { reviewText: '"field,en,sk,verdict"\n' + csv(wholeReview) }, 1);
+    const paddedSk = ' ' + wholeBatch[0][2] + ' ';
+    put(paths[2], appendedSk.replace(wholeBatch[0][2], paddedSk));
+    genRefuse('compares review Slovak with the exact CSV cell before the app trims it', wholeReview, /no row with exactly this Slovak/);
+    const exactPadded = gen([[wholeBatch[0][0], wholeBatch[0][1], paddedSk, 'keep']], { apply: true });
+    equal('search-english: accepts the corrected exact review and adds only that pair',
+      [exactPadded.status, searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8')).entries],
+      [0, [wholeBatch[0].slice(0, 2)]]);
+    put(paths[2], appendedSk);
+    genRefuse('cleans up and preserves the original file if the atomic rename fails', wholeReview, /Atomic write failed/, { fault: true }, 1);
     // A held or piece key can only reach sk.csv by hand; the list refuses it too.
     put(paths[2], get(paths[2]) + 'baseline_requirement,Shared UK piece,Zdieľaná časť,AI-DRAFT\nbaseline_requirement,Leaf baseline,Listová požiadavka,AI-DRAFT\n');
     genRefuse('refuses held and piece keys even when sk.csv has them',
       [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť', 'keep'], ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'keep']],
       /read by held cell uni\|bath[\s\S]*piece of a cell at w2/);
-    writeFileSync(jsCopy, jsBefore);
+    put(paths[2], appendedSk + csv([[...heldLayer2A, 'AI-DRAFT']]));
+    genRefuse('refuses a Layer 2A baseline held for internal references even when sk.csv has it',
+      [[...heldLayer2A, 'keep']], /read by held cell.*L2A-035/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -8532,13 +8578,19 @@ require('node:module').syncBuiltinESMExports();
       ['b4c23e541d7bf8c79528dbc942071c267b5aea722fc41c5f538f92f1266f74fe', 'uni|southampton|baseline_requirement (carry-for-18)'],
     ]);
     // The shipped search-English list passes the same rules its writer uses.
-    equal('every shipped search-English entry is a keep-able Layer 2A row (whole, live, unheld, not a piece, translated after 2379d5d)',
-      searchEnglishProblems(i18n.SEARCH_ENGLISH_KEYS, {
-        skRows: skLive, heldKeys, liveKeys: liveDisplayKeys(programmes, heldCells), leaves: wholeCellLeaves(programmes),
+    const guard = 'the original sk.csv bytes and every shipped search-English entry pass the Layer 2A guards';
+    try {
+      const skFile = 'data/i18n/sk.csv';
+      const fail = (message) => { throw new Error(message); };
+      const dictionary = searchMod.readSearchEnglishDictionary(skFile, readFileSync(join(root, skFile)), fail);
+      equal(guard, searchMod.searchEnglishProblems(i18n.SEARCH_ENGLISH_KEYS, {
+        ...dictionary, heldKeys, liveKeys: liveDisplayKeys(programmes, heldCells), leaves: wholeCellLeaves(programmes),
       }), []);
-    const { readSearchEnglishBlock } = await import('./sk-search-english.mjs');
+    } catch (error) {
+      check(guard, false, error.message);
+    }
     equal('js/i18n.js SEARCH_ENGLISH block is in the written format and matches the module',
-      readSearchEnglishBlock(read('js/i18n.js')), { version: i18n.SEARCH_ENGLISH_VERSION, entries: i18n.SEARCH_ENGLISH_KEYS });
+      searchMod.readSearchEnglishBlock(read('js/i18n.js')), { version: i18n.SEARCH_ENGLISH_VERSION, entries: i18n.SEARCH_ENGLISH_KEYS });
   }
 }
 
