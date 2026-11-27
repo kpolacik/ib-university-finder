@@ -78,20 +78,27 @@ export function normalizeProfile(rows) {
   const errors = [];
   const families = new Set();
   (Array.isArray(rows) ? rows : []).forEach((row, index) => {
-    const course = typeof row?.course === 'string' ? row.course.trim() : '';
-    const level = typeof row?.level === 'string' ? row.level.trim() : '';
-    const rawGrade = row?.grade;
-    const gradeText = rawGrade === null || rawGrade === undefined ? '' : String(rawGrade).trim();
-    if (!course && !level && !gradeText) return;
-    if (!course || !level) { errors.push({ index, code: 'incomplete' }); return; }
+    // Only plain fields are read; nothing is converted with String() or
+    // Number(), so an odd value is an error, never a guess or a crash.
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) { errors.push({ index, code: 'invalid' }); return; }
+    const text = (value) => (value === undefined || value === null ? '' : typeof value === 'string' ? value.trim() : undefined);
+    const course = text(row.course);
+    const level = text(row.level);
+    if (course === undefined || level === undefined) { errors.push({ index, code: 'invalid' }); return; }
+    // A grade is blank (absent, null or ''), a whole number 1-7, or one of
+    // the strings "1" to "7" a select gives.
+    const raw = row.grade;
+    const blank = raw === undefined || raw === null || raw === '';
+    let grade = null;
+    let gradeOk = blank;
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 7) { grade = raw; gradeOk = true; }
+    if (typeof raw === 'string' && /^[1-7]$/.test(raw)) { grade = raw.charCodeAt(0) - 48; gradeOk = true; }
+    if (!course && !level && blank) return;
+    if (!course || !level) { errors.push({ index, code: gradeOk ? 'incomplete' : 'grade' }); return; }
     const known = COURSES.get(course);
     if (!known) { errors.push({ index, code: 'unsupported' }); return; }
     if (!known.levels.includes(level)) { errors.push({ index, code: 'level' }); return; }
-    let grade = null;
-    if (gradeText) {
-      if (!/^[1-7]$/.test(gradeText)) { errors.push({ index, code: 'grade' }); return; }
-      grade = Number(gradeText);
-    }
+    if (!gradeOk) { errors.push({ index, code: 'grade' }); return; }
     const family = familyOf(course);
     if (families.has(family)) { errors.push({ index, code: 'duplicate' }); return; }
     families.add(family);
@@ -164,6 +171,16 @@ function clauseResult(clause, entries) {
 
 // The clauses a route must meet: its own plus every university-wide clause
 // that governs it (all routes unless the clause names some).
+// Whether a route may apply to this student: no scope of its own, or an IB
+// Diploma scope with no condition → known; a condition the page cannot know →
+// unknown; a cited scope for another qualification → inapplicable (the route
+// is for someone else and counts neither for nor against).
+export function routeApplicability(route) {
+  if (!route.scope) return 'known';
+  if (route.scope.qualification !== 'ib-diploma') return 'inapplicable';
+  return route.scope.conditions.length ? 'unknown' : 'known';
+}
+
 function governing(rule, route) {
   return [...rule.general.filter((clause) => !clause.routes || clause.routes.includes(route.id)), ...route.clauses];
 }
@@ -181,19 +198,25 @@ export function evaluateSubjects(rule, entries = []) {
   }
   const routes = rule.routes.map((route) => {
     const clauses = governing(rule, route).map((clause) => clauseResult(clause, entries));
-    const applicable = scopeKnown && route.conditions.length === 0;
+    const scope = routeApplicability(route);
+    const applicable = scopeKnown && scope === 'known';
     const hasSubject = clauses.some((r) => r.clause.type === 'subject');
     let outcome = 'open';
-    if (clauses.some((r) => r.state === 'excluded')) outcome = 'excluded';
+    if (scope === 'inapplicable') outcome = 'not-for-you';
+    else if (clauses.some((r) => r.state === 'excluded')) outcome = 'excluded';
     else if (applicable && hasSubject && clauses.every((r) => r.state === 'met')) outcome = 'met';
     return { id: route.id, outcome, applicable, clauses, predicted: clauses.some((r) => r.predicted) };
   });
+  // Only routes that may be an IB Diploma route decide anything. With none,
+  // there is no verdict at all (never a conflict "because every route failed").
+  const candidates = routes.filter((route) => route.outcome !== 'not-for-you');
+  if (!candidates.length) return { status: STATUS.NEEDS, routes, next: { kind: 'official' }, predicted: false };
   const complete = rule.kind === 'complete-restrictions';
-  const met = routes.filter((route) => route.outcome === 'met');
+  const met = candidates.filter((route) => route.outcome === 'met');
   if (complete && met.length) {
     return { status: STATUS.MEETS, routes, next: null, predicted: met.every((route) => route.predicted) };
   }
-  if (complete && scopeKnown && routes.every((route) => route.outcome === 'excluded')) {
+  if (complete && scopeKnown && candidates.every((route) => route.outcome === 'excluded')) {
     return { status: STATUS.CONFLICT, routes, next: null, predicted: false };
   }
   return { status: STATUS.NEEDS, routes, next: nextStep(rule, routes, scopeKnown), predicted: false };
@@ -262,14 +285,20 @@ export function publicRuleView(rule) {
   if (rule.kind === 'explicit-no-restrictions') {
     lines.push([{ text: t('rv_none') }]);
   } else {
-    if (rule.kind === 'partial-restrictions') lines.push([{ text: `${t('rv_partial')} ` }, pickText(rule.partialNote)]);
+    const partial = rule.kind === 'partial-restrictions';
+    if (partial) lines.push([{ text: `${t('rv_partial')} ` }, pickText(rule.partialNote)]);
     const many = rule.routes.length > 1;
-    if (many) lines.push([{ text: t('rv_any_route') }]);
+    // A partial check lists what was recorded, never "any one is enough".
+    if (partial) lines.push([{ text: t(many ? 'rv_partial_routes' : 'rv_partial_route') }]);
+    else if (many) lines.push([{ text: t('rv_any_route') }]);
     rule.routes.forEach((route, i) => {
       const parts = joinParts(route.clauses.map(clauseParts), 'rv_and');
       const lead = many ? [{ text: `${t('rv_route', { n: i + 1 })} ` }] : [];
       lines.push([...lead, ...parts]);
-      for (const condition of route.conditions) lines.push([{ text: `${t('rv_scope_condition')} ` }, pickText(condition.text)]);
+      if (route.scope) {
+        lines.push([{ text: `${t('rv_route_scope')} ` }, pickText(route.scope.label)]);
+        for (const condition of route.scope.conditions) lines.push([{ text: `${t('rv_scope_condition')} ` }, pickText(condition.text)]);
+      }
     });
     for (const clause of rule.general) {
       const which = clause.routes
@@ -283,7 +312,10 @@ export function publicRuleView(rule) {
   cite(rule.scope.sources);
   rule.scope.conditions.forEach((c) => cite(c.sources));
   cite(rule.absenceSources);
-  for (const route of rule.routes) { route.conditions.forEach((c) => cite(c.sources)); route.clauses.forEach((c) => cite(c.sources)); }
+  for (const route of rule.routes) {
+    if (route.scope) { cite(route.scope.sources); route.scope.conditions.forEach((c) => cite(c.sources)); }
+    route.clauses.forEach((c) => cite(c.sources));
+  }
   rule.general.forEach((c) => cite(c.sources));
   const meta = t('rv_meta', {
     intake: rule.intake, checked: formatIso(rule.checkedOn), reviewer: rule.reviewer,

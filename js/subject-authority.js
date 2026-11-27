@@ -10,7 +10,12 @@
 //
 // Timing (plan R4): with any rule in force, the file is asked again 45 s
 // after the last good answer, and the rules stop counting 60 s after it if no
-// newer good answer came. A good answer that changes nothing redraws nothing.
+// newer good answer came. Those 60 s are measured on a clock that only moves
+// forward (performance.now), never the wall clock: setting the computer's
+// clock back must not make an old answer current again. Once an answer is
+// too old it is dropped, and only a new good answer brings rules back.
+// Calendar dates (recheck_by) use the wall clock, but never a day earlier
+// than one already seen for the current answer. A good answer that changes nothing redraws nothing.
 // A header-only file is not polled; it is asked again when the tab comes back
 // into view, after a reload, or when the browser comes back online.
 //
@@ -35,6 +40,7 @@ let s = null;
 export function startSubjectAuthority({
   raw = new Map(), onChange = () => {}, url = RULES_PATH, timeoutMs = RULES_TIMEOUT_MS,
   now = () => Date.now(),
+  elapsed = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
   fetchImpl = (...args) => globalThis.fetch(...args),
   timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) },
   online = () => globalThis.navigator?.onLine !== false,
@@ -42,8 +48,10 @@ export function startSubjectAuthority({
 } = {}) {
   stopSubjectAuthority();
   s = {
-    raw, onChange, url, timeoutMs, now, fetchImpl, timers, online,
-    generation: 0, records: null, lastSuccess: null, inflight: null,
+    raw, onChange, url, timeoutMs, now, elapsed, fetchImpl, timers, online,
+    // answer: counts good answers; answeredAt: when the current one arrived,
+    // on the elapsed clock; wallFloor: the latest wall time seen since then.
+    generation: 0, records: null, answer: 0, answeredAt: null, wallFloor: -Infinity, inflight: null,
     refreshTimer: null, ageTimer: null, edgeTimer: null, shown: fingerprint(new Map()), cache: null, listeners: [],
   };
   if (target) {
@@ -91,10 +99,12 @@ export function refreshAuthority() {
     const read = text === null ? { ok: false, records: [] } : readRuleRecords(text);
     if (read.ok) {
       state.records = read.records;
-      state.lastSuccess = state.now();
+      state.answer++;
+      state.answeredAt = state.elapsed();
+      state.wallFloor = state.now();
     } else {
       state.records = null;
-      state.lastSuccess = null;
+      state.answeredAt = null;
     }
     state.cache = null;
     schedule();
@@ -112,10 +122,30 @@ function invalidate() {
   s.generation++;
   s.inflight = null;
   s.records = null;
-  s.lastSuccess = null;
+  s.answeredAt = null;
   s.cache = null;
   clearTimers();
   settle();
+}
+
+// The current answer is too old: drop it, so no later clock reading can
+// bring it back. Mounted views are told on the next microtask.
+function retire() {
+  s.records = null;
+  s.answeredAt = null;
+  s.cache = null;
+  for (const name of ['refreshTimer', 'ageTimer']) {
+    if (s[name] !== null) s.timers.clear(s[name]);
+    s[name] = null;
+  }
+  const state = s;
+  queueMicrotask(() => { if (s === state) settle(); });
+}
+
+// Wall time for calendar checks, never earlier than already seen.
+function wallTime() {
+  s.wallFloor = Math.max(s.wallFloor, s.now());
+  return s.wallFloor;
 }
 
 async function fetchText(state) {
@@ -133,16 +163,18 @@ async function fetchText(state) {
 }
 
 function usable() {
-  if (!s || !s.records || s.lastSuccess === null || !s.online()) return new Map();
-  const at = s.now();
-  if (s.records.length && at - s.lastSuccess > MAX_AGE_MS) return new Map();
-  const today = new Date(at);
+  if (!s || !s.records || s.answeredAt === null || !s.online()) return new Map();
+  const age = s.elapsed() - s.answeredAt;
+  // At 60 s the answer is no longer current (and a clock that ran backwards
+  // proves nothing).
+  if (s.records.length && (age >= MAX_AGE_MS || age < 0)) { retire(); return new Map(); }
+  const today = new Date(wallTime());
   const day = localDay(today);
   // Cached per answer and day: the result only changes with either.
-  if (s.cache && s.cache.day === day && s.cache.success === s.lastSuccess) return s.cache.rules;
+  if (s.cache && s.cache.day === day && s.cache.answer === s.answer) return s.cache.rules;
   const results = s.records.map((record) => acceptRule(record, { raw: s.raw, today }));
   const { rules } = combineRules(results);
-  s.cache = { day, success: s.lastSuccess, rules };
+  s.cache = { day, answer: s.answer, rules };
   return rules;
 }
 
@@ -167,16 +199,16 @@ function clearTimers() {
   }
 }
 
-// With rules in force: ask again at 45 s, stop counting them just after 60 s.
+// With rules in force: ask again at 45 s, stop counting them at 60 s.
 function schedule() {
   for (const name of ['refreshTimer', 'ageTimer']) {
     if (s[name] !== null) s.timers.clear(s[name]);
     s[name] = null;
   }
-  if (!s.records?.length || s.lastSuccess === null) return;
-  const elapsed = s.now() - s.lastSuccess;
-  s.refreshTimer = s.timers.set(() => { s && (s.refreshTimer = null); refreshAuthority(); }, Math.max(0, REFRESH_AFTER_MS - elapsed));
-  s.ageTimer = s.timers.set(() => { s && (s.ageTimer = null); settle(); }, Math.max(0, MAX_AGE_MS + 1 - elapsed));
+  if (!s.records?.length || s.answeredAt === null) return;
+  const age = s.elapsed() - s.answeredAt;
+  s.refreshTimer = s.timers.set(() => { s && (s.refreshTimer = null); refreshAuthority(); }, Math.max(0, REFRESH_AFTER_MS - age));
+  s.ageTimer = s.timers.set(() => { s && (s.ageTimer = null); settle(); }, Math.max(0, MAX_AGE_MS - age));
 }
 
 // The earliest recheck-by date in force ends at the next local midnight.
@@ -187,6 +219,6 @@ function scheduleEdge(rules) {
   const earliest = [...rules.values()].map((rule) => rule.recheckBy).sort()[0];
   const [y, m, d] = earliest.split('-').map(Number);
   const end = new Date(y, m - 1, d + 1).getTime();
-  const wait = Math.min(Math.max(0, end - s.now()), MAX_TIMER_MS);
+  const wait = Math.min(Math.max(0, end - wallTime()), MAX_TIMER_MS);
   s.edgeTimer = s.timers.set(() => { s && (s.edgeTimer = null); settle(); }, wait);
 }

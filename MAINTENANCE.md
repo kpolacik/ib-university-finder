@@ -510,11 +510,12 @@ refuses.
 The site quietly shows only the recorded wording, with no reviewed line,
 when any of these is true. The browser decides this again every time.
 
-- The file is missing, empty, broken (a stray quote, a row with the wrong
-  number of cells, a renamed header) or slow (more than 3 seconds). One broken
-  row makes the **whole file** count for nothing.
-- The browser is offline, or the last good answer from the file is more than
-  60 seconds old. An open page asks again every 45 seconds while a rule is in
+- The file is missing, empty, broken (a stray quote, anything between a
+  closing quote and the next comma, a row with the wrong number of cells, a
+  header cell that is not exactly as below) or slow (more than 3 seconds).
+  One broken row makes the **whole file** count for nothing.
+- The browser is offline, or 60 seconds have passed since the last good
+  answer from the file (changing the computer's clock does not bring it back). An open page asks again every 45 seconds while a rule is in
   force. The saved copy (`fallback.json`) never approves a rule.
 - `status` is not `approved`, or the programme also has a `withdrawn` row, a
   second approved row, or any row the site rejects.
@@ -541,7 +542,7 @@ written twice (`""`). Edit it in a plain text editor, never Excel.
 | `programme_id` | The programme's id from `programmes.csv` |
 | `intake` | `2027/28` |
 | `status` | `draft`, `approved` or `withdrawn` |
-| `scope` | Who the rule is for: `{"qualification":"ib-diploma","label":{"en":"…","sk":"…"},"sources":["s1"]}`. Add `"conditions":[{"en":"…","sk":"…","sources":["s1"]}]` when it depends on something the site cannot know about the student (where they took the diploma, for example) |
+| `scope` | Who the rule is for: `{"qualification":"ib-diploma","label":{"en":"…","sk":"…"},"sources":["s1"]}`. Add `"conditions":[{"en":"…","sk":"…","sources":["s1"]}]` when it depends on something the site cannot know about the student (where they took the diploma, for example). See "Qualifications" below |
 | `evidence_kind` | `complete-restrictions` (every subject rule and route was checked), `partial-restrictions` (only part was; explain in `partial_note`) or `explicit-no-restrictions` (the official page says, for everyone it applies to, that no IB subjects are required) |
 | `routes` | The routes, see below |
 | `sources` | `{"s1":{"url":"https://…","quote":"the exact short sentence from the page"}}`. Add `"lang":"sk"` (or another two-letter code) when the quote is not English |
@@ -552,10 +553,14 @@ written twice (`""`). Edit it in a plain text editor, never Excel.
 | `reviewed_on` | The day the reviewer checked it, on or after `checked_on`, not in the future |
 
 **Routes.** `{"routes":[…],"general":[…]}`. Each route is a list of
-clauses that must **all** be met; any **one** route is enough. A route can
-have its own `conditions`, like `scope`. `general` holds university-wide
-clauses that apply to every route (or only to the routes named in their own
-`"routes":["a"]`). A clause is one of:
+clauses that must **all** be met; any **one** route is enough (for a
+`partial-restrictions` record the page only lists the routes recorded so far,
+never "any one is enough"). A route can have its own `"scope"`, written exactly
+like the `scope` column, when the page says that route is only for some
+applicants: `{"id":"b","clauses":[…],"scope":{…}}`. Without one, the route
+has the record's scope. `general` holds university-wide clauses that apply to
+every route (or only to the routes named in their own `"routes":["a"]`). A
+clause is one of:
 
 - `{"type":"subject","courses":["maths-aa","maths-ai"],"levels":["HL"],"min_grade":5,"sources":["s1"]}`:
   one of these courses at one of these levels, with an optional minimum grade.
@@ -570,6 +575,17 @@ clauses that apply to every route (or only to the routes named in their own
   list, for example). The site never knows the result of these, so a route
   that needs one stays "needs checking". Being allowed to sit an exam is not
   passing it.
+
+**Qualifications.** `qualification` is one of `ib-diploma`,
+`a-levels`, `european-baccalaureate` or `national-school-leaving` (a country's
+own school-leaving certificate). A cited scope naming one of the last three
+says the record or route is for someone else: it is shown for information, it
+never counts for or against an IB Diploma student, and such a record does not
+compete with the IB record for the same programme. Any other word, a typo, or
+a scope without a source makes the row invalid; it is never taken as proof
+that the row is for someone else. A record needs at least one route that could
+be an IB Diploma route. Conditions on an `ib-diploma` scope keep the result at
+"needs checking": the site cannot know them.
 
 For `explicit-no-restrictions`, `routes` is only
 `{"absence_sources":["s1"]}`, and the quote must say that no subjects are

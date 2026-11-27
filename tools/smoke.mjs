@@ -7030,6 +7030,40 @@ async function runSubjectEvidence(base) {
     }
   }
 
+  // 10. Partial routes and a route scope, in English and Slovak, then a
+  // replacement file with broken quoting (Sol r1 F1, F4, F5).
+  watchdog.refresh();
+  {
+    const note = { en: 'Programme pages not yet checked (SAMPLE).', sk: 'Stránky programu ešte neoverené (SAMPLE).' };
+    const routeScope = { qualification: 'a-levels', label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'] };
+    const partial = rule({ evidence_kind: 'partial-restrictions', routes: { partial_note: note, routes: [
+      { id: 'a', clauses: [fixtures.PHYSICS_HL5] }, { id: 'b', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['chemistry'] }], scope: routeScope }] } });
+    let answer = fixtures.rulesCsv([partial]);
+    const page = await openSubjects({ adapter: true, rules: () => answer });
+    try {
+      await check('1280', 'F01 partial', 'a partial rule lists its routes without saying any is enough, and shows a route\'s own scope, in English and Slovak', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        const en = (await page.ev(detailFacts('#pane'))).lines;
+        assert(en.includes(UI.en.rv_partial_routes) && !en.includes(UI.en.rv_any_route) && en.includes(`${UI.en.rv_route_scope} Applicants with A levels (SAMPLE fixture)`), JSON.stringify(en));
+        await page.ev(`window.__smokeLanguage('sk')`);
+        await page.waitFor(`({ok:document.querySelector('#pane .d-reviewed h4')?.textContent===${JSON.stringify(UI.sk.rv_heading)},why:'no Slovak heading'})`, 5000, 'Slovak');
+        const sk = (await page.ev(detailFacts('#pane'))).lines;
+        assert(sk.includes(UI.sk.rv_partial_routes) && !sk.includes(UI.sk.rv_any_route) && sk.includes(`${UI.sk.rv_route_scope} Uchádzači s A-levels (SAMPLE fixture)`), JSON.stringify(sk));
+        await page.ev(`window.__smokeLanguage('en')`);
+        noErrors(page);
+      });
+      await check('1280', 'F01 malformed quoting', 'a refreshed file with text after a closing quote removes the reviewed block and keeps the recorded wording', async () => {
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        answer = `${fixtures.rulesCsv([partial])}"x"y\n`;
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(reviewedGone('#pane'), 5000, 'removal after a malformed file');
+        assert((await page.ev(detailFacts('#pane'))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
   // 9. Expiry in an open tab, with no interaction: the page clock starts at
   // 23:59:52 on the rule's recheck date.
   watchdog.refresh();

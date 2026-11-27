@@ -1497,7 +1497,15 @@
       "theatre",
       "too-many",
       "unsupported",
-      "visual-arts"
+      "visual-arts",
+      "ib-diploma",
+      "inapplicable",
+      "invalid",
+      "known",
+      "not-for-you",
+      "number",
+      "object",
+      "unknown"
     ],
     "js/subject-authority.js": [
       "./subject-rules.js",
@@ -1514,7 +1522,6 @@
       "visibilitychange"
     ],
     "js/subject-rules.js": [
-      "./csv.js",
       "./data.js",
       "./ib-subjects.js",
       "AI-DRAFT",
@@ -1614,7 +1621,12 @@
       "url",
       "verified_by",
       "waiver",
-      "withdrawn"
+      "withdrawn",
+      "\\n",
+      "\\r",
+      "a-levels",
+      "european-baccalaureate",
+      "national-school-leaving"
     ]
   },
   "hardExceptions": [

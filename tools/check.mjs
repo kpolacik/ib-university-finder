@@ -11599,6 +11599,34 @@ section('F01 public subject evidence and reviewed subject rules');
   }
   check('F01 reader: a header with a byte-order mark and CRLF still reads as the empty table',
     readRuleRecords(`﻿${header}\r\n`).ok && readRuleRecords(`﻿${header}\r\n`).records.length === 0);
+  {
+    // F1: the rules file has its own strict reader; nothing is repaired.
+    const blankRow = RULE_COLUMNS.map(() => '').join(',');
+    const headerCells = [...RULE_COLUMNS];
+    const joinedTwo = [`"${headerCells[0]},${headerCells[1]}"`, ...headerCells.slice(2)].join(',');
+    for (const [name, text, reason] of [
+      ['text after a closing quote', `${header}\n"1"x${blankRow.slice(1)}\n`, 'malformed'],
+      ['a space after a closing quote', `${header}\n"1" ${blankRow.slice(1)}\n`, 'malformed'],
+      ['a quote inside an unquoted cell', `${header}\n1x"y${blankRow.slice(1)}\n`, 'malformed'],
+      ['a quote closed then reopened', `${header}\n"1""x${blankRow.slice(1)}\n`, 'malformed'],
+      ['a lone carriage return', `${header}\r${blankRow}\n`, 'malformed'],
+      ['an unclosed quote at the very end', `${header}\n"`, 'malformed'],
+      ['two header cells joined into one quoted cell', `${joinedTwo}\n`, 'header'],
+      ['an extra empty header cell', `${header},\n`, 'header'],
+      ['a header cell with a stray space', `${header.replace('reviewer', 'reviewer ')}\n`, 'header'],
+      ['a header missing its last cell', `${headerCells.slice(0, -1).join(',')}\n`, 'header'],
+      ['a row with one cell too many', `${header}\n${blankRow},\n`, 'malformed'],
+      ['a row with one cell too few', `${header}\n${blankRow.slice(1)}\n`, 'malformed'],
+      ['a quoted empty line', `${header}\n""\n`, 'malformed'],
+    ]) {
+      const got = readRuleRecords(text);
+      check(`F01 reader F1: ${name} fails the whole file (${reason})`, !got.ok && got.reason === reason && got.records.length === 0, JSON.stringify(got));
+    }
+    const good = readRuleRecords(fixtures.rulesCsv([fixtures.sampleRuleRecord(fixtures.servedCatalogue(read('data/universities.csv'), read('data/programmes.csv')), 'eur-ibeor')]).replaceAll('\n', '\r\n'));
+    check('F01 reader F1: properly quoted JSON cells with doubled quotes, commas and CRLF still read', good.ok && good.records.length === 1 && JSON.parse(good.records[0].routes).routes[0].id === 'a');
+    check('F01 reader F1: the catalogue keeps its forgiving reader (a stray quote after a closing one is still read)',
+      JSON.stringify(parseCsv('a\n"x"y\n')) === JSON.stringify([['a'], ['xy']]));
+  }
 
   // --- raw catalogue rows, as loaded ----------------------------------------
   const servedUni = read('data/universities.csv');
@@ -11622,6 +11650,17 @@ section('F01 public subject evidence and reviewed subject rules');
       res.raw.get('p1').unsafe === true && res.raw.get('p2').unsafe === true && res.raw.get('p2').programme.programme === 'Two'
         && res.programmes.map((p) => p.id).join() === 'p1,p2', JSON.stringify([...res.raw].map(([id, e]) => [id, e.unsafe])));
     const q = res.programmes.find((p) => p.id === 'p1');
+    // F3: a repeated id is caught in either order, even when the copy that
+    // is dropped is the first one (its university is unknown).
+    const shownFirst = await load(uni, [head, 'p3,u,,Shown,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p3,zz,,Dropped,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    const shownSecond = await load(uni, [head, 'p3,zz,,Dropped,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT',
+      'p3,u,,Shown,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    check('F01 F3: a repeated programme id is unsafe in both orders, while the winning row still shows',
+      [shownFirst, shownSecond].every((r) => r.raw.get('p3')?.unsafe === true && r.raw.get('p3').programme.programme === 'Shown'
+        && r.programmes.map((p) => p.programme).join() === 'Shown'), JSON.stringify([shownFirst, shownSecond].map((r) => r.raw.get('p3')?.unsafe)));
+    const single = await load(uni, [head, 'p4,u,,Only,BSc,Engineering,English,,,,,,,2027-05-01,,https://example.org,2026-08-14,TT'].join('\n') + '\n');
+    check('F01 F3: an id used once stays safe', single.raw.get('p4').unsafe === false);
     check('F01 "?" in ib_subjects is unknown: no literal "?", and the detail says "Not checked yet"',
       q.ibSubjects === '' && !q.noSubjectsRequired && kvOf(detailOf(q))['IB subjects']?.textContent === 'Not checked yet');
     const snapRes = await load(uni, '', undefined, { snapshot: { ...snapFixture, subject_rules: { schema_version: 1, records: [fixtures.sampleRuleRecord(served, 'eur-ibeor')] } } });
@@ -11748,27 +11787,62 @@ section('F01 public subject evidence and reviewed subject rules');
   check('F01 a record whose intake cannot be read blocks the programme', one([rec(), rec({ intake: 'soon' })]).size === 0);
   check('F01 a record whose programme cannot be read makes the whole table untrusted',
     one([rec(), rec({}, 'eur-ibp'), rec({ programme_id: '' })]).size === 0 && one([rec(), rec({}, 'eur-ibp')]).size === 2);
+  {
+    // F5: scope for another known qualification is proof the record is not
+    // for IB students; anything less is not.
+    const scopeFor = (qualification, extra = {}) => ({ qualification, label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'], ...extra });
+    const aLevels = rec({ scope: scopeFor('a-levels') });
+    const typo = rec({ scope: scopeFor('alevels') });
+    const uncited = rec({ scope: scopeFor('a-levels', { sources: [] }) });
+    const disjointResult = acceptRule(aLevels, ctx);
+    check('F01 F5: a cited scope for another known qualification is definitely not for IB students',
+      disjointResult.disjoint && disjointResult.reasons.includes('scope-inapplicable') && !disjointResult.ok);
+    check('F01 F5: an unknown or misspelt qualification, or an uncited one, is invalid, never proof of disjointness',
+      !acceptRule(typo, ctx).disjoint && acceptRule(typo, ctx).reasons.includes('scope') && !acceptRule(uncited, ctx).disjoint && acceptRule(uncited, ctx).reasons.includes('scope'));
+    check('F01 F5: a disjoint record does not block the IB record for the same programme', one([rec(), aLevels]).size === 1 && one([aLevels, rec()]).size === 1);
+    check('F01 F5: a disjoint record with its own other problems still cannot block it', one([rec(), rec({ scope: scopeFor('a-levels'), reviewer: '' })]).size === 1);
+    check('F01 F5: a misspelt or uncited qualification might overlap, so it blocks', one([rec(), typo]).size === 0 && one([rec(), uncited]).size === 0);
+    check('F01 F5: a withdrawal still wins, beside a disjoint record too', one([rec(), aLevels, rec({ status: 'withdrawn' })]).size === 0);
+    check('F01 F5: a disjoint record is never usable itself, SAMPLE or not', one([aLevels]).size === 0 && !adapter.acceptRule(aLevels, ctx).ok);
+    const routed = (routes) => rec({ routes: { routes } });
+    const ibRoute = { id: 'a', clauses: [fixtures.PHYSICS_HL5] };
+    const otherRoute = { id: 'b', clauses: [fixtures.PHYSICS_HL5], scope: scopeFor('a-levels') };
+    check('F01 F5: a route may carry its own cited scope', ok(routed([ibRoute, otherRoute])).ok && ok(routed([ibRoute, otherRoute])).rule.routes[1].scope.qualification === 'a-levels');
+    check('F01 F5: a route scope with an unknown qualification or no source is invalid',
+      acceptRule(routed([ibRoute, { ...otherRoute, scope: scopeFor('alevels') }]), ctx).reasons.includes('routes')
+        && acceptRule(routed([ibRoute, { ...otherRoute, scope: scopeFor('a-levels', { sources: [] }) }]), ctx).reasons.includes('routes'));
+    check('F01 F5: a rule with no route that could be an IB Diploma route is invalid', acceptRule(routed([otherRoute]), ctx).reasons.includes('routes'));
+    check('F01 F5: route conditions now live in the route scope; a bare "conditions" key is refused',
+      acceptRule(routed([{ ...ibRoute, conditions: [{ en: 'x', sources: ['s1'] }] }]), ctx).reasons.includes('routes'));
+  }
 
   // --- the authority: what is current, with a fake clock --------------------
   const T0 = new Date(2026, 10, 27, 12, 0, 0).getTime();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve)); };
   function harness({ start = T0, body, timeoutMs } = {}) {
-    let now = start, seq = 0;
+    // now: the wall clock, which can be set; mono: elapsed time, which only
+    // moves forward. Timers run on elapsed time.
+    let now = start, mono = 1_000_000, seq = 0;
     const queue = new Map();
     const calls = [];
     const h = { changes: 0, online: true, body, calls, pendingFetches: [],
       now: () => now,
-      timers: { set: (fn, ms) => { queue.set(++seq, { at: now + ms, fn }); return seq; }, clear: (id) => { queue.delete(id); } },
+      elapsed: () => mono,
+      timers: { set: (fn, ms) => { queue.set(++seq, { at: mono + ms, fn }); return seq; }, clear: (id) => { queue.delete(id); } },
       async advance(ms) {
-        const end = now + ms;
+        const end = mono + ms;
         for (;;) {
           const next = [...queue].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
           if (!next) break;
-          queue.delete(next[0]); now = next[1].at; next[1].fn(); await flush();
+          queue.delete(next[0]); now += next[1].at - mono; mono = next[1].at; next[1].fn(); await flush();
         }
-        now = end; await flush();
+        now += end - mono; mono = end; await flush();
       },
+      // Someone sets the computer's clock: elapsed time does not move.
       jump(ms) { now += ms; },
+      // Time passes while the tab's timers sleep (a throttled background tab).
+      sleep(ms) { now += ms; mono += ms; },
+      monoBack(ms) { mono -= ms; },
       timerCount: () => queue.size,
       fetchImpl: (url, init) => {
         calls.push({ url, init });
@@ -11785,7 +11859,7 @@ section('F01 public subject evidence and reviewed subject rules');
       },
       target: null,
     };
-    h.start = (mod = authority, extra = {}) => mod.startSubjectAuthority({ raw, onChange: () => { h.changes++; }, now: h.now, timers: h.timers,
+    h.start = (mod = authority, extra = {}) => mod.startSubjectAuthority({ raw, onChange: () => { h.changes++; }, now: h.now, elapsed: h.elapsed, timers: h.timers,
       fetchImpl: h.fetchImpl, online: () => h.online, target: h.target, ...(timeoutMs ? { timeoutMs } : {}), ...extra });
     return h;
   }
@@ -11837,8 +11911,56 @@ section('F01 public subject evidence and reviewed subject rules');
   {
     const h = harness({ body: approved });
     await h.start();
-    h.jump(61_000);
+    h.sleep(61_000);
     check('F01 authority: a throttled tab whose timers slept never shows an aged-out rule (checked at use)', !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    // F2: 60 s of elapsed time, whatever the wall clock says.
+    const h = harness({ body: approved });
+    await h.start();
+    h.sleep(59_999);
+    const before = has();
+    h.sleep(1);
+    check('F01 authority F2: current at 59.999 s, no longer current at exactly 60 s', before && !has());
+    await flush();
+    check('F01 authority F2: dropping an aged answer is announced', h.changes === 2);
+    h.jump(-120_000);
+    check('F01 authority F2: setting the wall clock back does not revive an aged answer', !has());
+    h.monoBack(30_000);
+    check('F01 authority F2: nor does an elapsed clock that ran backwards', !has());
+    await authority.refreshAuthority();
+    check('F01 authority F2: only a new good answer brings the rule back', has() && h.changes === 3);
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ body: approved });
+    await h.start();
+    h.jump(-3_600_000);
+    h.sleep(30_000);
+    const early = has();
+    h.jump(-86_400_000);
+    h.sleep(29_999);
+    const late = has();
+    h.sleep(1);
+    check('F01 authority F2: winding the wall clock back neither extends nor shortens the 60 s', early && late && !has());
+    authority.stopSubjectAuthority();
+  }
+  {
+    const h = harness({ start: new Date(2026, 10, 27, 12, 0, 0).getTime(), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+    await h.start();
+    const first = has();
+    h.jump(86_400_000);
+    const expired = !has();
+    h.jump(-86_400_000);
+    const stillExpired = !has();
+    await authority.refreshAuthority();
+    check('F01 authority F2: a recheck date passed on the calendar stays passed when the clock goes back; a new good answer reads the clock afresh',
+      first && expired && stillExpired && has());
+    // On 24 November the review (25 November) would be in the future and the
+    // rule refused; the day already seen (27th) is used instead.
+    h.jump(-3 * 86_400_000);
+    check('F01 authority F2: a calendar day earlier than one already seen is never used', has());
     authority.stopSubjectAuthority();
   }
   for (const [name, body] of [['a missing file (404)', { status: 404 }], ['a malformed file', `${header}\n"broken`], ['an empty file', ''],
@@ -11953,6 +12075,49 @@ section('F01 public subject evidence and reviewed subject rules');
       patched && h.changes === 2 && byClass(detail, 'd-reviewed').length === 0 && kvOf(detail)['IB subjects'].textContent === ibeor.ibSubjects && section.children.length === childrenBefore);
     check('F01 Compare drops the reviewed row once no compared programme has a current rule',
       !adapted.compareTable([ibeor, ibp], noFilters()).some((f) => f.key === 'reviewed'));
+    // F1: a malformed replacement removes the reviewed block; the recorded
+    // wording stays.
+    h.body = approved;
+    await authority.refreshAuthority();
+    withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    const restored = byClass(detail, 'd-reviewed').length === 1;
+    h.body = `${approved}"x"y\n`;
+    await authority.refreshAuthority();
+    withStubDocument(() => adaptedRender.fillReviewed(section, ibeor));
+    check('F01 F1: a malformed refresh removes the open reviewed block and keeps the recorded subject wording',
+      restored && !has() && byClass(detail, 'd-reviewed').length === 0 && kvOf(detail)['IB subjects'].textContent === ibeor.ibSubjects);
+    // F4: a partial check never says one route is enough, in either language.
+    const partialRule = (routes) => rec({ evidence_kind: 'partial-restrictions', routes: { routes, partial_note: { en: 'Programme pages not yet checked (SAMPLE).', sk: 'Stránky programu ešte neoverené (SAMPLE).' } } });
+    const twoRoutes = [{ id: 'a', clauses: [fixtures.PHYSICS_HL5] }, { id: 'b', clauses: [{ ...fixtures.PHYSICS_HL5, courses: ['chemistry'] }] }];
+    const linesOf = (record, lang) => {
+      adaptedI18n.setLanguage(lang);
+      const block = byClass(withStubDocument(() => adaptedRender.renderDetail(ibeor, noFilters())), 'd-reviewed')[0];
+      const cmp = adapted.compareTable([ibeor, ibp], noFilters()).find((f) => f.key === 'reviewed')?.cells[0].lines.map((l) => l.parts ? l.parts.map((p) => p.text).join('') : l.text) ?? [];
+      adaptedI18n.setLanguage('en');
+      return { detail: block ? byClass(block, 'rv-line').map((n) => n.textContent) : [], cmp };
+    };
+    const served = async (record) => { h.body = fixtures.rulesCsv([record]); await authority.refreshAuthority(); };
+    await served(partialRule(twoRoutes));
+    const pEn = linesOf(null, 'en'), pSk = linesOf(null, 'sk');
+    await served(partialRule([twoRoutes[0]]));
+    const p1En = linesOf(null, 'en'), p1Sk = linesOf(null, 'sk');
+    const sufficient = /Any one of these routes|is enough|Stačí jedna|stačí\b(?!:)/;
+    check('F01 F4: partial routes, EN and SK, detail and Compare, list what was recorded without implying any is enough',
+      [pEn, pSk, p1En, p1Sk].every((v) => v.detail.length && !v.detail.some((l) => /Any one of these routes|Stačí jedna z týchto ciest/.test(l)) && JSON.stringify(v.detail) === JSON.stringify(v.cmp.filter((l) => v.detail.includes(l))))
+        && pEn.detail.includes(UI.en.rv_partial_routes) && pSk.detail.includes(UI.sk.rv_partial_routes)
+        && p1En.detail.includes(UI.en.rv_partial_route) && p1Sk.detail.includes(UI.sk.rv_partial_route)
+        && /none is known to be enough/.test(UI.en.rv_partial_routes) && /not known to be enough/.test(UI.en.rv_partial_route) && /nevieme, či sama stačí/.test(UI.sk.rv_partial_routes) && !sufficient.test(UI.en.rv_partial_route),
+      JSON.stringify([pEn.detail, pSk.detail]));
+    await served(rec({ routes: { routes: twoRoutes } }));
+    check('F01 F4: a complete check still says any one route is enough', linesOf(null, 'en').detail.includes('Any one of these routes:') && linesOf(null, 'sk').detail.includes('Stačí jedna z týchto ciest:'));
+    // F5: a route's own scope is shown to the reader.
+    await served(rec({ routes: { routes: [twoRoutes[0], { id: 'b', clauses: [twoRoutes[1].clauses[0]], scope: { qualification: 'a-levels', label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'] } }] } }));
+    const scoped = linesOf(null, 'en'), scopedSk = linesOf(null, 'sk');
+    check('F01 F5: a route scope is shown under its route, EN and SK, in the detail and Compare',
+      scoped.detail.includes('This route is only for: Applicants with A levels (SAMPLE fixture)') && scoped.cmp.includes('This route is only for: Applicants with A levels (SAMPLE fixture)')
+        && scopedSk.detail.includes('Táto cesta platí len pre: Uchádzači s A-levels (SAMPLE fixture)'), JSON.stringify(scoped.detail));
+    h.body = fixtures.rulesCsv([rec({ status: 'withdrawn' })]);
+    await authority.refreshAuthority();
     authority.stopSubjectAuthority();
     const absence = harness({ body: fixtures.rulesCsv([rec({ evidence_kind: 'explicit-no-restrictions', routes: { absence_sources: ['s1'] } }, 'eur-ibp')]) });
     await absence.start();
@@ -12000,7 +12165,7 @@ section('F01 public subject evidence and reviewed subject rules');
     const S = (courses, levels, min = null, { exL = [], exC = [], routes } = {}) => ({ type: 'subject', courses, levels, minGrade: min, excludeLevels: exL, excludeCourses: exC, sources: ['s1'], ...(routes ? { routes } : {}) });
     const X = (type) => ({ type, text: { en: `${type} (SAMPLE)`, sk: '' }, sources: ['s1'] });
     const R = (kind, routes, { general = [], conditions = [] } = {}) => ({ kind, scope: { conditions }, general,
-      routes: routes.map((clauses, i) => (Array.isArray(clauses) ? { id: `r${i + 1}`, clauses, conditions: [] } : { id: `r${i + 1}`, ...clauses })) });
+      routes: routes.map((clauses, i) => (Array.isArray(clauses) ? { id: `r${i + 1}`, clauses, scope: null } : { id: `r${i + 1}`, scope: null, ...clauses })) });
     const E = (course, level, grade = null) => ({ course, level, grade });
     const C = 'complete-restrictions';
     const status = (rule, entries) => evaluateSubjects(rule, entries).status;
@@ -12084,6 +12249,39 @@ section('F01 public subject evidence and reviewed subject rules');
         codes([{ course: 'maths-aa', level: 'HL' }, { course: 'maths-ai', level: 'SL' }]), codes([{ course: 'physics', level: 'HL' }, { course: 'physics', level: 'SL' }]),
         codes([]), codes(IB_COURSES.slice(0, 7).map((c) => ({ course: c.id, level: 'SL' })))],
       ['incomplete', 'unsupported', 'level', 'grade', 'grade', 'grade', 'duplicate', 'duplicate', 'empty', 'too-many']);
+    // F6: only the intended representations; nothing coerced, nothing thrown.
+    const throwing = { toString() { throw new Error('coerced'); }, valueOf() { throw new Error('coerced'); } };
+    let threw = null;
+    let gradeCodes = [];
+    try {
+      gradeCodes = [[5], {}, true, 5.5, '5 ', ' 5', '05', '5.0', NaN, Infinity, 0, 8, -1, 5n, Symbol('5'), throwing, new String('5'), new Number(5)]
+        .map((grade) => codes([{ course: 'physics', level: 'HL', grade }]));
+    } catch (err) { threw = err.message; }
+    check('F01 profile F6: arrays, objects, booleans, padded or decimal strings, non-integers and odd primitives are grade errors, never coerced or thrown',
+      threw === null && gradeCodes.length === 18 && gradeCodes.every((c) => c === 'grade'), threw ?? JSON.stringify(gradeCodes));
+    check('F01 profile F6: blank (absent, null, empty), integers 1-7 and the strings "1"-"7" are accepted',
+      [undefined, null, '', 1, 7, '1', '7'].every((grade) => norm([{ course: 'physics', level: 'HL', grade }]).ok)
+        && norm([{ course: 'physics', level: 'HL', grade: '7' }]).entries[0].grade === 7 && norm([{ course: 'physics', level: 'HL', grade: null }]).entries[0].grade === null);
+    let rowThrew = null, rowCodes = [];
+    try {
+      rowCodes = [null, 'physics', ['physics', 'HL'], 5, { course: 5, level: 'HL' }, { course: 'physics', level: ['HL'] }, { course: throwing, level: 'HL' }].map((row) => codes([row]));
+    } catch (err) { rowThrew = err.message; }
+    check('F01 profile F6: a row that is not a plain object, or with non-text course or level, is invalid without throwing',
+      rowThrew === null && rowCodes.every((c) => c === 'invalid'), rowThrew ?? JSON.stringify(rowCodes));
+    check('F01 profile F6: a grade-only row with an invalid grade is an error, not ignored', codes([{ grade: [5] }]) === 'grade' && codes([{ grade: 5 }]) === 'incomplete');
+    // F5 in the checker: routes for another qualification count neither way.
+    const forOther = { qualification: 'a-levels', label: { en: 'A levels' }, conditions: [], sources: ['s1'] };
+    const unknownIb = { qualification: 'ib-diploma', label: { en: 'IB' }, conditions: [{ text: { en: 'x' }, sources: ['s1'] }], sources: ['s1'] };
+    const mixed = R(C, [[S(['physics'], ['HL'], null, { exL: ['SL'] })], { clauses: [S(['physics'], ['SL'])], scope: forOther }]);
+    check('F01 checker F5: a route for another qualification is never met for an IB student, and the IB route alone decides',
+      status(mixed, [E('physics', 'SL')]) === STATUS.CONFLICT && evaluateSubjects(mixed, [E('physics', 'SL')]).routes[1].outcome === 'not-for-you'
+        && status(mixed, [E('physics', 'HL')]) === STATUS.MEETS);
+    const onlyOther = R(C, [{ clauses: [S(['physics'], ['HL'], null, { exL: ['SL'] })], scope: forOther }]);
+    check('F01 checker F5: with no possible IB route there is no verdict (never a vacuous conflict or meets)',
+      status(onlyOther, [E('physics', 'SL')]) === STATUS.NEEDS && status(onlyOther, [E('physics', 'HL')]) === STATUS.NEEDS);
+    const routeUnknown = R(C, [{ clauses: [S(['physics'], ['HL'])], scope: unknownIb }]);
+    check('F01 checker F5: an IB route whose applicability depends on an unknown fact is Needs checking, never Meets',
+      status(routeUnknown, [E('physics', 'HL')]) === STATUS.NEEDS && evaluateSubjects(routeUnknown, [E('physics', 'HL')]).next?.kind === 'scope');
   }
 
   {

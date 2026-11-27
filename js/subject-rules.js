@@ -12,7 +12,6 @@
 // The flow is readRuleRecords (the file) → acceptRule (one record, the only
 // acceptance boundary) → combineRules (withdrawals, duplicates, doubt).
 
-import { csvToObjects } from './csv.js';
 import { safeUrl } from './data.js';
 import { IB_COURSES, LEVELS, MATHS_FAMILY, TARGET_INTAKE, familyOf } from './ib-subjects.js';
 
@@ -25,6 +24,11 @@ export const RULE_COLUMNS = [
 export const RULE_STATUSES = ['draft', 'approved', 'withdrawn'];
 export const EVIDENCE_KINDS = ['complete-restrictions', 'partial-restrictions', 'explicit-no-restrictions'];
 export const IB_DIPLOMA = 'ib-diploma';
+// Qualifications a scope may name. Only a qualification on this list can be
+// proof that a rule or route is for someone else: an unknown or misspelt one
+// makes the record invalid, never "definitely not for IB students". Each is a
+// separate school-leaving qualification from the IB Diploma.
+export const QUALIFICATIONS = [IB_DIPLOMA, 'a-levels', 'european-baccalaureate', 'national-school-leaving'];
 
 // The catalogue columns a rule may depend on. A key outside these is a typo
 // or a column that no longer exists, and blocks the rule.
@@ -67,24 +71,75 @@ const INITIALS = /^\p{Lu}{2,4}$/u;
 const MAX_TEXT = 400;
 const MAX_QUOTE = 500;
 
-// The whole file. Header-only is a valid, empty table. Anything the CSV
-// reader had to skip or repair, or any other header, makes the whole file
-// untrusted: a skipped row could be a withdrawal.
+// The whole file. Header-only is a valid, empty table. This file has its own
+// strict reader, unlike the catalogue's forgiving one (js/csv.js): any
+// quoting the CSV rules do not allow, a row with the wrong number of cells, or
+// any header cell that is not exactly the expected one makes the whole file
+// untrusted, because a misread row could be a withdrawal.
 export function readRuleRecords(text) {
   if (typeof text !== 'string' || text.trim() === '') return { ok: false, reason: 'empty', records: [] };
-  const parsed = csvToObjects(text, RULES_PATH);
-  if (parsed.issues.length) return { ok: false, reason: 'malformed', records: [] };
-  if (parsed.header.join(',') !== RULE_COLUMNS.join(',')) return { ok: false, reason: 'header', records: [] };
-  return { ok: true, reason: null, records: parsed.rows.map(({ __row, ...row }) => row) };
+  const grid = strictCsv(text);
+  if (!grid) return { ok: false, reason: 'malformed', records: [] };
+  const [header, ...rows] = grid;
+  if (header.length !== RULE_COLUMNS.length || header.some((cell, i) => cell !== RULE_COLUMNS[i])) return { ok: false, reason: 'header', records: [] };
+  if (rows.some((cells) => cells.length !== RULE_COLUMNS.length)) return { ok: false, reason: 'malformed', records: [] };
+  return { ok: true, reason: null, records: rows.map((cells) => Object.fromEntries(RULE_COLUMNS.map((c, i) => [c, cells[i].trim()]))) };
+}
+
+// RFC 4180 with no repairs. A quote may only open a field and only close one:
+// the character after a closing quote must be a comma or the end of the line.
+// Lines end in LF or CRLF; a lone CR, a quote inside an unquoted field or an
+// unclosed quote fails the file. Empty lines are skipped (one ends the file).
+// Returns rows of cells, or null.
+function strictCsv(input) {
+  const text = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+  const rows = [];
+  let row = [];
+  let i = 0;
+  const endLine = () => { if (!(row.length === 1 && row[0] === '' && !row.quoted)) rows.push(row); row = []; };
+  while (i <= text.length) {
+    let field = '';
+    let quoted = false;
+    if (text[i] === '"') {
+      quoted = true;
+      i++;
+      for (;;) {
+        if (i >= text.length) return null;
+        if (text[i] === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          i++;
+          break;
+        }
+        field += text[i++];
+      }
+    } else {
+      while (i < text.length && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r') {
+        if (text[i] === '"') return null;
+        field += text[i++];
+      }
+    }
+    row.push(field);
+    if (quoted) row.quoted = true;
+    if (i >= text.length) { endLine(); break; }
+    if (text[i] === ',') { i++; continue; }
+    if (text[i] === '\r') { if (text[i + 1] !== '\n') return null; i++; }
+    if (text[i] === '\n') { i++; endLine(); if (i >= text.length) break; continue; }
+    return null;
+  }
+  return rows;
 }
 
 // acceptRule(record, { raw, today }) → { ok, key, withdrawal, rule, reasons }
 // raw: data.js's map of programme id → the exact catalogue rows the page
 // loaded. today: a Date; recheck_by counts through that local day.
+// disjoint: the record is, by its own cited scope, for a different known
+// qualification. Such a record can never apply to an IB Diploma student, so
+// it does not compete with an IB record for the same programme.
 export function acceptRule(record, context) {
   const inspected = inspectRule(record, context);
   const ok = inspected.reasons.length === 0;
-  return { ok, key: inspected.key, withdrawal: ok && inspected.withdrawal, rule: ok ? inspected.rule : null, reasons: inspected.reasons };
+  return { ok, key: inspected.key, withdrawal: ok && inspected.withdrawal, disjoint: inspected.disjoint === true,
+    rule: ok ? inspected.rule : null, reasons: inspected.reasons };
 }
 
 // Everything acceptRule decides, with the rule built whenever its structure is
@@ -112,8 +167,14 @@ export function inspectRule(record, { raw = new Map(), today = new Date() } = {}
 
   const sources = readSources(json(cell('sources')), reasons);
   const cited = (ids) => Array.isArray(ids) && ids.length > 0 && ids.every((id) => typeof id === 'string' && Object.hasOwn(sources, id));
-  const scope = readScope(json(cell('scope')), reasons, cited);
+  const scope = readScope(json(cell('scope')), reasons, cited, 'scope');
   const body = readRoutes(json(cell('routes')), kind, reasons, cited);
+  // Proven disjoint only by a valid, cited scope naming a known other
+  // qualification. Anything less stays a possible competitor.
+  const disjoint = Boolean(scope && scope.valid && scope.qualification !== IB_DIPLOMA);
+  if (disjoint) reasons.add('scope-inapplicable');
+  // A rule with no route that could be an IB Diploma route gives no verdict.
+  if (!disjoint && kind !== 'explicit-no-restrictions' && body.routes.length && body.routes.every((r) => r.scope?.qualification && r.scope.qualification !== IB_DIPLOMA)) reasons.add('routes');
 
   const dates = readDates(cell('checked_on'), cell('reviewed_on'), cell('recheck_by'), today, reasons);
   bind(programmeId, json(cell('programme_dependencies')), json(cell('university_dependencies')), raw, reasons);
@@ -125,7 +186,7 @@ export function inspectRule(record, { raw = new Map(), today = new Date() } = {}
       checkedOn: dates.checked, reviewedOn: dates.reviewed, recheckBy: dates.recheck,
       author, reviewer, sample: false,
     };
-  return { key, withdrawal: false, rule, reasons: REASONS.filter((r) => reasons.has(r)) };
+  return { key, withdrawal: false, disjoint, rule, reasons: REASONS.filter((r) => reasons.has(r)) };
 }
 
 // Initials of a real person. "SAMPLE" marks an invented rule and "AI-DRAFT"
@@ -182,18 +243,23 @@ function readConditions(value, reasons, cited) {
   });
 }
 
-function readScope(value, reasons, cited) {
+// A scope, for the whole record or for one route: which qualification it is
+// for (from QUALIFICATIONS), a label a student reads, its sources, and any
+// condition the page cannot know about the student. `problem` is the reason
+// a broken one adds ('scope' for the record, 'routes' for a route).
+function readScope(value, reasons, cited, problem) {
   if (!isObject(value) || !onlyKeys(value, ['qualification', 'label', 'conditions', 'sources'])
-      || typeof value.qualification !== 'string' || !value.qualification.trim()) {
-    reasons.add('scope');
+      || typeof value.qualification !== 'string' || !QUALIFICATIONS.includes(value.qualification)) {
+    reasons.add(problem);
     return null;
   }
-  if (value.qualification !== IB_DIPLOMA) reasons.add('scope-inapplicable');
+  const local = new Set();
   const label = readText(value.label);
-  if (!label || !cited(value.sources)) reasons.add('scope');
-  const conditions = readConditions(value.conditions, new Set(), cited);
-  if (value.conditions !== undefined && (!Array.isArray(value.conditions) || conditions.some((c) => !c.text.en))) reasons.add('scope');
-  return { qualification: value.qualification, label: label || { en: '', sk: '' }, conditions, sources: Array.isArray(value.sources) ? value.sources : [] };
+  if (!label || !cited(value.sources)) local.add(problem);
+  const conditions = readConditions(value.conditions, local, cited);
+  if (local.size) reasons.add(problem);
+  return { qualification: value.qualification, label: label || { en: '', sk: '' }, conditions,
+    sources: Array.isArray(value.sources) ? value.sources : [], valid: local.size === 0 };
 }
 
 const COURSE_IDS = new Set(IB_COURSES.map((c) => c.id));
@@ -229,7 +295,7 @@ function readClause(value, reasons, cited, general) {
   return fail();
 }
 
-// routes: { routes: [{ id, clauses, conditions? }], general?: [clause], partial_note? }
+// routes: { routes: [{ id, clauses, scope? }], general?: [clause], partial_note? }
 // or, for an explicit absence: { absence_sources: [...] } and nothing else.
 function readRoutes(value, kind, reasons, cited) {
   const empty = { routes: [], general: [], absenceSources: [], partialNote: null };
@@ -244,16 +310,17 @@ function readRoutes(value, kind, reasons, cited) {
   }
   const ids = new Set();
   const routes = value.routes.map((route) => {
-    if (!isObject(route) || !onlyKeys(route, ['id', 'clauses', 'conditions']) || typeof route.id !== 'string' || !ID.test(route.id) || ids.has(route.id)
+    if (!isObject(route) || !onlyKeys(route, ['id', 'clauses', 'scope']) || typeof route.id !== 'string' || !ID.test(route.id) || ids.has(route.id)
         || !Array.isArray(route.clauses) || !route.clauses.length) {
       reasons.add('routes');
-      return { id: '', clauses: [], conditions: [] };
+      return { id: '', clauses: [], scope: null };
     }
     ids.add(route.id);
     return {
       id: route.id,
       clauses: route.clauses.map((c) => readClause(c, reasons, cited, false)).filter(Boolean),
-      conditions: readConditions(route.conditions, reasons, cited),
+      // No scope: the record's own scope. A route scope uses the same form.
+      scope: route.scope === undefined ? null : readScope(route.scope, reasons, cited, 'routes'),
     };
   });
   const general = value.general === undefined ? [] : Array.isArray(value.general)
@@ -325,6 +392,8 @@ function bind(programmeId, programmeDeps, universityDeps, raw, reasons) {
 // combineRules(results) → { rules: Map(programme_id → rule), blocked }
 // One usable rule per programme for the target intake, or none:
 // - any withdrawal for it wins over every approval, old or new;
+// - a record proven (by cited scope) to be for another qualification is
+//   ignored: it cannot apply to an IB Diploma student;
 // - any record for it that failed (or whose intake is unreadable) might be
 //   a competing rule, so none is used;
 // - two approvals are ambiguous, so none is used;
@@ -335,6 +404,9 @@ export function combineRules(results) {
     if (!result.key) return { rules: new Map(), blocked: 'unreadable' };
     const { programme, intake } = result.key;
     if (intake !== TARGET_INTAKE && INTAKE.test(intake)) continue;
+    // For another known qualification by its own cited scope: never an IB
+    // rule and never in competition with one. A withdrawal is never skipped.
+    if (result.disjoint && !result.withdrawal) continue;
     if (!groups.has(programme)) groups.set(programme, []);
     groups.get(programme).push(result);
   }

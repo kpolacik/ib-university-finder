@@ -185,8 +185,15 @@ function build(universityRows, programmeRows, today) {
   // first row is shown as before.
   const rawUniversities = new Map();
   const duplicateUniversities = new Set();
-  const duplicateProgrammes = new Set();
   const raw = new Map();
+  // Every programme id as written, counted before any row is skipped, so a
+  // repeat is caught in either order: even when the first copy is the one
+  // dropped (an unknown university_id) and the second is shown.
+  const programmeIdCount = new Map();
+  for (const row of programmeRows) {
+    const id = text(row.programme_id);
+    if (id) programmeIdCount.set(id, (programmeIdCount.get(id) ?? 0) + 1);
+  }
 
   for (const row of universityRows) {
     const id = text(row.university_id);
@@ -242,7 +249,6 @@ function build(universityRows, programmeRows, today) {
     }
     if (seen.has(id)) {
       issues.push(t('programme_id_is_used_twice_second_row_skipped', { value1: where, value2: id }));
-      duplicateProgrammes.add(id);
       continue;
     }
     const uni = universities.get(text(row.university_id));
@@ -413,7 +419,7 @@ function build(universityRows, programmeRows, today) {
   addProgrammeIdentity(programmes);
   applyToday(programmes, today);
   for (const [id, entry] of raw) {
-    entry.unsafe = duplicateProgrammes.has(id) || duplicateUniversities.has(text(entry.programme.university_id));
+    entry.unsafe = programmeIdCount.get(id) > 1 || duplicateUniversities.has(text(entry.programme.university_id));
   }
 
   if (programmes.length === 0 && programmeRows.length > 0) {
