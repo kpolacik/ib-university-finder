@@ -12378,7 +12378,7 @@ section('F01 My subjects in My list: the private profile and its one IndexedDB r
   const tick = () => new Promise((r) => setImmediate(r));
   function fakeBrowser() {
     const dbs = new Map();
-    const b = { dbs, opens: 0, puts: 0, deletes: 0, hold: false, blocked: false, abortPut: false, abortDelete: false, held: [], posted: [], channels: new Set() };
+    const b = { dbs, opens: 0, puts: 0, deletes: 0, hold: false, blocked: false, abortPut: false, abortDelete: false, failRequest: null, held: [], posted: [], channels: new Set() };
     const request = () => ({ onsuccess: null, onerror: null, onblocked: null, onupgradeneeded: null, result: undefined, transaction: null });
     function connection(name) {
       const db = dbs.get(name);
@@ -12393,20 +12393,38 @@ section('F01 My subjects in My list: the private profile and its one IndexedDB r
           const queue = [];
           let aborted = false;
           const tx = { oncomplete: null, onabort: null, onerror: null, error: null, abort() { if (aborted) throw new Error('InvalidStateError'); aborted = true; tx.error = { name: 'AbortError' }; } };
-          const req = (fn) => { const r = { onsuccess: null, result: undefined }; queue.push(() => { r.result = fn(); r.onsuccess?.(); }); return r; };
+          const req = (kind, fn) => {
+            let result;
+            const r = { onsuccess: null, error: null, get result() {
+              if (this.error) throw new Error('InvalidStateError');
+              return result;
+            } };
+            queue.push(() => {
+              if (b.failRequest === kind) {
+                b.failRequest = null;
+                r.error = { name: 'ConstraintError' };
+                let cancelled = false;
+                tx.onerror?.({ target: r, preventDefault() { cancelled = true; } });
+                if (!cancelled && !aborted) tx.abort();
+              } else { result = fn(); r.onsuccess?.(); }
+            });
+            return r;
+          };
           const store = {
             name: storeName,
-            getKey: (k) => req(() => (work.has(k) ? k : undefined)),
-            get: (k) => req(() => work.get(k)),
-            put: (v, k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.puts++; const r = req(() => { work.set(k, structuredClone(v)); return k; }); if (b.abortPut) { b.abortPut = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
-            delete: (k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.deletes++; const r = req(() => { work.delete(k); }); if (b.abortDelete) { b.abortDelete = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+            getKey: (k) => req('getKey', () => (work.has(k) ? k : undefined)),
+            get: (k) => req('get', () => work.get(k)),
+            put: (v, k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.puts++; const r = req('put', () => { work.set(k, structuredClone(v)); return k; }); if (b.abortPut) { b.abortPut = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+            delete: (k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.deletes++; const r = req('delete', () => { work.delete(k); }); if (b.abortDelete) { b.abortDelete = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
           };
           tx.objectStore = () => store;
           setImmediate(() => {
             work = new Map(db.stores.get(storeName));
             while (queue.length && !aborted) queue.shift()();
             if (!aborted) db.stores.set(storeName, work);
-            setImmediate(() => (aborted ? tx.onabort?.() : tx.oncomplete?.()));
+            setImmediate(() => {
+              try { aborted ? tx.onabort?.() : tx.oncomplete?.(); } catch { b.callbackThrew = true; }
+            });
           });
           return tx;
         },
@@ -12451,6 +12469,95 @@ section('F01 My subjects in My list: the private profile and its one IndexedDB r
   const settle = async (...stores) => { for (let i = 0; i < 12; i++) await tick(); await Promise.all(stores.map((s) => s.idle())); for (let i = 0; i < 6; i++) await tick(); };
   const P = [entry('physics', 'HL', 6)];
   const C = [entry('chemistry', 'HL', 7)];
+
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const prior = b.record();
+    b.failRequest = 'put';
+    const failed = await t.save(t.openDraft(), C, true);
+    check('F01 F1: an async put request error keeps the prior record and the new page-only entries', failed.result === 'write-failed'
+      && t.snapshot().writeFailed && t.snapshot().active.entries[0].course === 'chemistry' && b.record() === prior);
+    b.failRequest = 'delete';
+    check('F01 F1: an async delete request error leaves the record and reports failure', (await t.forget()).result === 'delete-failed' && b.record() === prior);
+    check('F01 F1: a subsequent operation runs after the errors', (await t.retryDelete()).result === 'forgotten' && !b.record());
+    b.failRequest = 'delete';
+    check('F01 F1: key absence alone cannot turn a failed delete request into success', (await t.forget()).result === 'delete-failed');
+    for (const kind of ['getKey', 'get']) {
+      const readBrowser = fakeBrowser(); const reader = tab(readBrowser);
+      readBrowser.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, rec()]])]]) });
+      readBrowser.failRequest = kind;
+      reader.activate();
+      await settle();
+      check(`F01 F1: an async ${kind} request error settles the read as unavailable`, reader.snapshot().observed === 'error' && !readBrowser.callbackThrew);
+      if (reader.snapshot().observed === 'error') {
+        await reader.reread();
+        check(`F01 F1: reread progresses after a ${kind} request error`, reader.snapshot().active?.mode === 'remembered');
+      }
+    }
+  }
+  {
+    for (const remember of [false, true]) for (const beforeRead of [false, true]) {
+      const b = fakeBrowser(); const t = tab(b);
+      const prior = rec();
+      b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, prior]])]]) });
+      b.hold = true;
+      t.activate(); await tick();
+      const d = t.openDraft();
+      const early = beforeRead ? await t.save(d, C, remember) : null;
+      b.release(); await settle(t);
+      const result = early?.result === 'page' ? early : await t.save(d, C, remember);
+      check(`F01 F2: pending blank draft keeps the unseen record (Remember ${remember}, early Save ${beforeRead})`,
+        d.entries.length === 0 && result.result === (remember ? 'stale' : 'page')
+        && (!beforeRead || !remember || (early?.result === 'refused' && early.base === 'pending'))
+        && b.record() === prior && b.puts === 0 && b.deletes === 0);
+    }
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), C, false);
+    const d = t.openDraft();
+    const prior = rec();
+    b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, prior]])]]) });
+    await t.reread();
+    const fresh = t.openDraft();
+    check('F01 F2: an independent page draft cannot replace a record observed in a reread, before or after opening',
+      (await t.save(d, C, true)).result === 'stale' && (await t.save(fresh, C, true)).result === 'stale' && b.record() === prior);
+    const writer = tab(b); writer.activate(); await settle(writer);
+    b.abortPut = true;
+    await writer.save(writer.openDraft(), C, true);
+    const replacement = rec({ revision: newRevision() });
+    b.dbs.get(DB_NAME).stores.get(STORE).set(KEY, replacement);
+    await writer.reread();
+    const stale = await writer.save(writer.openDraft(), C, true);
+    const preserved = b.record() === replacement;
+    b.dbs.get(DB_NAME).stores.get(STORE).delete(KEY);
+    await writer.reread();
+    check('F01 F2: a fresh fallback edit refuses an unseen replacement but can opt in after confirmed absence',
+      stale.result === 'stale' && preserved && (await writer.save(writer.openDraft(), C, true)).result === 'remembered');
+    const unavailable = createProfileStore({ idb: () => null, Channel: () => null });
+    unavailable.activate();
+    await settle(unavailable);
+    check('F01 F2: page-only Save is available after the initial read fails', (await unavailable.save(unavailable.openDraft(), C, false)).result === 'page'
+      && unavailable.snapshot().active?.mode === 'page' && unavailable.snapshot().warning === 'read-failed');
+  }
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const d = t.openDraft(), opens = b.opens, prior = b.record();
+    b.hold = true;
+    const pending = t.forget();
+    await tick();
+    const inFlight = t.snapshot().busy && t.snapshot().active?.mode === 'remembered' && b.record() === prior;
+    const blocked = await t.save(d, C, false);
+    b.release();
+    const gone = await pending;
+    t.closeDraft(d);
+    await settle(t);
+    check('F01 F3: pending Forget keeps the visible profile, blocks Save and settles with one storage open',
+      inFlight && blocked.result === 'busy' && gone.result === 'forgotten' && !t.snapshot().active && b.opens === opens + 1);
+  }
 
   {
     const b = fakeBrowser(); const t = tab(b);
@@ -12581,6 +12688,67 @@ section('F01 My subjects in My list: the private profile and its one IndexedDB r
     const r = await t.save(t.openDraft(), C, false);
     check('F01 store E4: switching to page-only keeps the entries in memory and deletes the remembered copy',
       r.result === 'page-removed' && b.record() === undefined && t.snapshot().active.mode === 'page');
+  }
+  {
+    const { createSubjectsUI } = await import('../js/my-subjects-ui.js');
+    withStubDocument(() => {
+      const oldWindow = globalThis.window, oldLanguage = i18n.getLanguage(), oldFocus = stubDocument.activeElement;
+      const setLang = (lang) => i18n.setLanguage(lang, { setItem() {} });
+      let keydown, busy = false, dialog = null;
+      globalThis.document = Object.assign(Object.create(stubDocument), {
+        querySelector: () => dialog,
+        querySelectorAll: () => [],
+        addEventListener: (type, fn) => { if (type === 'keydown') keydown = fn; },
+        documentElement: { clientHeight: 800 },
+        elementFromPoint: () => null,
+      });
+      globalThis.window = { scrollX: 0, scrollY: 0, scrollTo() {} };
+      try {
+        setLang('en');
+        const strip = new ChromeNode('div'), notices = new ChromeNode('div');
+        const ui = createSubjectsUI({ strip, notices,
+          store: {
+            snapshot: () => ({ busy, active: null, observed: 'absent' }),
+            openDraft: () => ({ entries: [], remember: false }), closeDraft() {},
+          },
+          hooks: { view: () => ({ mode: 'mine', listIds: [] }), snapshot: () => ({}), restore() {}, focusProgramme: () => false, layoutChanged() {} },
+        });
+        const node = (selector) => strip.querySelector(selector);
+        const click = (selector) => node(selector).listeners.click[0]();
+        const escape = () => {
+          let consumed = false;
+          keydown({ key: 'Escape', preventDefault() { consumed = true; }, stopImmediatePropagation() {} });
+          return consumed;
+        };
+        click('.ms-edit');
+        click('.ms-add-row');
+        Object.assign(node('#ms-c-1'), { value: 'maths-aa' });
+        Object.assign(node('#ms-l-1'), { value: 'HL' });
+        Object.assign(node('#ms-c-2'), { value: 'maths-ai' });
+        Object.assign(node('#ms-l-2'), { value: 'SL' });
+        click('.ms-save');
+        const validError = (lang) => node('#ms-e-2').textContent === UI[lang].ms_e_duplicate_maths
+          && node('#ms-c-1').value === 'maths-aa' && node('#ms-c-2').value === 'maths-ai' && stubDocument.activeElement === node('#ms-c-2');
+        const first = validError('en');
+        setLang('sk'); ui.refresh();
+        const second = validError('sk');
+        setLang('en'); ui.refresh();
+        check('F01 F4: duplicate maths stays specific with values and focus through EN, SK and EN', first && second && validError('en'));
+        node('.ms-edit').focus();
+        dialog = new ChromeNode('dialog');
+        const modalFirst = !escape() && ui.isEditing();
+        dialog = null;
+        busy = true; ui.refresh();
+        const blocked = node('.ms-edit').disabled && node('.ms-save').disabled && node('.ms-cancel').disabled && node('.ms-add-row').disabled;
+        check('F01 F3: pending editor actions and Escape cannot close the draft', blocked && escape() && ui.isEditing());
+        busy = false; ui.refresh();
+        check('F01 F5: Escape from the strip trigger closes the editor after dialogs have priority', modalFirst && escape() && !ui.isEditing());
+      } finally {
+        setLang(oldLanguage);
+        stubDocument.activeElement = oldFocus;
+        if (oldWindow === undefined) delete globalThis.window; else globalThis.window = oldWindow;
+      }
+    });
   }
 
   const msSrc = read('js/my-subjects.js'), uiSrc = read('js/my-subjects-ui.js'), cfgSrc = read('js/config.js');

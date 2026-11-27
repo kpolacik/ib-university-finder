@@ -1688,6 +1688,7 @@
       "transaction",
       "unavailable",
       "undefined",
+      "unseen",
       "visibilitychange",
       "visible",
       "write-failed"
@@ -1703,6 +1704,7 @@
       "[data-ms-detail]",
       "[data-ms-row]",
       "add",
+      "aria-busy",
       "aria-controls",
       "aria-describedby",
       "aria-expanded",
@@ -1731,6 +1733,7 @@
       "data-ms-detail",
       "data-ms-row",
       "delete-failed",
+      "dialog[open]",
       "div",
       "duplicate",
       "duplicate-maths",

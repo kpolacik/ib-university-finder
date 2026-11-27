@@ -7155,7 +7155,7 @@ async function runMySubjects(base) {
   // open (blocked or slow), abort a put or delete, or stop this tab from
   // hearing other tabs and focus/visibility/pageshow. None of this is in the
   // site; the page under test is unmodified apart from the config answer.
-  const INSTRUMENT = `(()=>{const DB=${JSON.stringify(DB)};const w=window;w.__ms={opens:0,puts:0,deletes:0,late:0,posted:[],channels:0,blobs:[]};
+  const INSTRUMENT = `(()=>{const DB=${JSON.stringify(DB)};const w=window;w.__ms={opens:0,puts:0,deletes:0,late:0,reads:0,requestErrors:[],posted:[],channels:0,blobs:[]};
     w.__msSuppress=false;const o=IDBFactory.prototype.open;w.__msOpenReal=(n,v)=>o.call(indexedDB,n,v);
     IDBFactory.prototype.open=function(n,v){if(n!==DB)return o.call(this,n,v);w.__ms.opens++;const mode=w.__msOpenMode;w.__msOpenMode=null;
       if(!mode)return o.call(this,n,v);
@@ -7163,7 +7163,10 @@ async function runMySubjects(base) {
       if(mode==='blocked')setTimeout(()=>fake.onblocked&&fake.onblocked(new Event('blocked')),0);
       w.__msRelease=()=>{const real=o.call(indexedDB,n,v);fake._real=real;real.onupgradeneeded=e=>{w.__ms.late++;fake.onupgradeneeded&&fake.onupgradeneeded(e)};real.onsuccess=e=>{w.__ms.late++;fake.onsuccess&&fake.onsuccess(e)};real.onerror=e=>fake.onerror&&fake.onerror(e)};
       return fake};
-    const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...a){if(this.name!=='profile')return put.apply(this,a);w.__ms.puts++;const r=put.apply(this,a);if(w.__msAbortPut){w.__msAbortPut=false;this.transaction.abort()}return r};
+    const transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...a){const tx=transaction.apply(this,a);if(this.name===DB&&tx.mode==='readonly')tx.addEventListener('complete',()=>w.__ms.reads++);return tx};
+    const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...a){if(this.name!=='profile')return put.apply(this,a);w.__ms.puts++;const r=put.apply(this,a);
+      r.addEventListener('error',e=>w.__ms.requestErrors.push([e.isTrusted,r.error.name]));
+      if(w.__msAbortPut){w.__msAbortPut=false;this.transaction.abort()}return r};
     const del=IDBObjectStore.prototype.delete;IDBObjectStore.prototype.delete=function(...a){if(this.name!=='profile')return del.apply(this,a);w.__ms.deletes++;const r=del.apply(this,a);if(w.__msAbortDelete){w.__msAbortDelete=false;this.transaction.abort()}return r};
     const BC=w.BroadcastChannel;if(BC)w.BroadcastChannel=class extends BC{constructor(n){super(n);w.__ms.channels++}postMessage(m){w.__ms.posted.push(m);return super.postMessage(m)}set onmessage(fn){super.onmessage=fn?(e)=>{if(!w.__msSuppress)fn(e)}:null}get onmessage(){return super.onmessage}};
     for(const t of ['focus','pageshow'])w.addEventListener(t,e=>{if(w.__msSuppress)e.stopImmediatePropagation()},true);
@@ -7259,8 +7262,17 @@ async function runMySubjects(base) {
   const stored = `new Promise(res=>{const r=(window.__msOpenReal||((n,v)=>indexedDB.open(n,v)))(${JSON.stringify(DB)},1);r.onupgradeneeded=()=>{r.transaction.abort()};r.onerror=()=>res(null);
     r.onsuccess=()=>{const db=r.result;if(!db.objectStoreNames.contains('profile')){db.close();res('no-store');return}const tx=db.transaction('profile');const k=tx.objectStore('profile').getKey('current');const g=tx.objectStore('profile').get('current');
     tx.oncomplete=()=>{db.close();res(k.result===undefined?null:g.result===undefined?'undefined-value':g.result)}}})`;
-  const seedRecord = (value, { store = 'profile' } = {}) => `new Promise((res,rej)=>{const r=window.__msOpenReal(${JSON.stringify(DB)},1);r.onupgradeneeded=()=>r.result.createObjectStore(${JSON.stringify(store)});
-    r.onsuccess=()=>{const db=r.result;if(${JSON.stringify(store)}!=='profile'){db.close();res(true);return}const tx=db.transaction('profile','readwrite');tx.objectStore('profile').put(${value},'current');tx.oncomplete=()=>{db.close();res(true)};tx.onabort=()=>rej(Error('seed'))};r.onerror=()=>rej(Error('seed open'))})`;
+  const seedRecord = (value, { store = 'profile', key = 'current', unique = [] } = {}) => `new Promise((res,rej)=>{const r=window.__msOpenReal(${JSON.stringify(DB)},1);
+    r.onupgradeneeded=()=>{const os=r.result.createObjectStore(${JSON.stringify(store)});for(const index of ${JSON.stringify(unique)})os.createIndex(index,index,{unique:true})};
+    r.onsuccess=()=>{const db=r.result;if(${JSON.stringify(store)}!=='profile'){db.close();res(true);return}const tx=db.transaction('profile','readwrite');tx.objectStore('profile').put(${value},${JSON.stringify(key)});tx.oncomplete=()=>{db.close();res(true)};tx.onabort=()=>rej(Error('seed'))};r.onerror=()=>rej(Error('seed open'))})`;
+  const seedPhysics = `{version:1,revision:crypto.randomUUID(),entries:[{course:'physics',level:'HL',grade:6}]}`;
+  const holdOpen = (page) => page.ev(`window.__msRelease=null;window.__msOpenMode='delay'`);
+  const isHeld = (page) => page.waitFor(`({ok:!!window.__msRelease,why:'IndexedDB open has not started'})`, 2000, 'held open');
+  const releaseRead = async (page) => {
+    const reads = (await ms(page)).reads;
+    await page.ev('window.__msRelease()');
+    await page.waitFor(`({ok:window.__ms.reads>${reads},why:'readonly transaction has not completed'})`, 4000, 'read to settle');
+  };
   const databases = `indexedDB.databases().then(l=>l.map(d=>d.name))`;
   const order = `[...document.querySelectorAll('#results li.item')].map(li=>li.dataset.id+':'+(li.querySelector('.grp-h')?.textContent??''))`;
   const counts = `document.querySelector('#result-count').textContent+'|'+document.querySelector('#shortlist-count-text').textContent`;
@@ -7286,7 +7298,9 @@ async function runMySubjects(base) {
   {
     const page = await openMS({ enabled: false });
     try {
-      await check('1280', 'MS off', 'as shipped (switch off): no strip, notice, row line or detail block, no IndexedDB or BroadcastChannel, public requirements intact', async () => {
+      await check('1280', 'MS off', 'as shipped (switch off): no private UI or storage activity, pre-existing profile and public requirements intact', async () => {
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
         await page.click(`document.querySelector('#header-list')`, 'My list');
         await page.waitFor(`({ok:document.querySelector('#shortlist-bar').classList.contains('is-list'),why:'not in My list'})`, 5000, 'My list');
         await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
@@ -7295,8 +7309,8 @@ async function runMySubjects(base) {
         assert(!facts.strip, 'a private node exists while the switch is off');
         assert(facts.subjects.includes(catalogue.programmes.get('eur-ibeor').ib_subjects), 'public subject wording missing');
         const counters = await ms(page);
-        assert(counters.opens === 0 && counters.channels === 0 && counters.posted.length === 0, JSON.stringify(counters));
-        assert((await page.ev(databases)).length === 0, 'a database exists');
+        assert(counters.opens === 0 && counters.puts === 1 && counters.deletes === 0 && counters.channels === 0 && counters.posted.length === 0, JSON.stringify(counters));
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'the pre-existing record changed');
         noErrors(page);
       });
     } finally { await page.close(); }
@@ -7771,6 +7785,207 @@ async function runMySubjects(base) {
     const s = await b.ev(strip);
     assert(s.editor && s.formError === EN.ms_stale && s.remember === true, `${label}: ${JSON.stringify(s)}`);
   };
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F1 request error', 'a native unique-index ConstraintError aborts Save, preserves disk data, and the next mutation succeeds', async () => {
+        await page.ev(seedRecord('{version:1}', { key: 'other', unique: ['version', 'revision'] }));
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true });
+        const first = await page.ev(strip);
+        assert(JSON.stringify((await ms(page)).requestErrors) === '[[true,"ConstraintError"]]', 'no genuine async ConstraintError');
+        assert(first.names === 'Chemistry HL' && first.warn.includes(EN.ms_write_failed_old) && first.status.includes(EN.ms_write_failed)
+          && (await page.ev(stored)) === null, JSON.stringify(first));
+        const collision = '0f8fad5b-d9cb-469f-a165-70867728950e';
+        await page.ev(seedRecord(`{version:2,revision:'${collision}'}`, { key: 'other' }));
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        const kept = await page.ev(stored);
+        assert(kept?.entries[0]?.course === 'physics', 'queue stalled after a request error');
+        await page.ev(`window.__msUUID=crypto.randomUUID;crypto.randomUUID=()=>'${collision}'`);
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true });
+        await page.ev('crypto.randomUUID=window.__msUUID');
+        const next = await page.ev(strip);
+        assert((await ms(page)).requestErrors.length === 2 && next.status.includes(EN.ms_write_failed_old)
+          && JSON.stringify(await page.ev(stored)) === JSON.stringify(kept), JSON.stringify(next));
+        await enter(page, [['biology', 'HL', 5]], { remember: true });
+        assert((await page.ev(stored))?.entries[0]?.course === 'biology' && (await page.ev(strip)).status === EN.ms_saved_browser, 'subsequent Save did not commit');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const remember of [false, true]) for (const beforeRead of [false, true]) {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 initial draft', `pre-seeded record survives a blank draft: Remember ${remember}, Save before read ${beforeRead}`, async () => {
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
+        await page.ev('window.__msSuppress=true');
+        await holdOpen(page);
+        await page.click(`document.querySelector('#header-list')`, 'My list');
+        await isHeld(page);
+        const loading = (await page.ev(strip)).names;
+        const { puts, deletes } = await ms(page);
+        await openEditor(page);
+        assert(await page.ev(`document.querySelector('#ms-c-1').value==='' && !document.querySelector('#ms-remember').checked`), 'draft loaded unseen entries');
+        await page.ev(choose(0, 'chemistry', 'HL', 7));
+        if (remember) await page.click(`document.querySelector('#ms-remember')`, 'Remember');
+        if (beforeRead) {
+          await saveEditor(page, !remember);
+          if (remember) assert((await page.ev(strip)).formError === EN.ms_refused_pending, 'early Remember did not wait');
+        }
+        await releaseRead(page);
+        if (remember || !beforeRead) {
+          await saveEditor(page, false);
+          await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden || document.querySelector('.ms-form-err').textContent===${JSON.stringify(EN.ms_stale)},why:'Save has not answered'})`, 4000, 'Save outcome');
+        }
+        const after = await page.ev(strip);
+        if (remember) await staleCheck(page, 'unseen initial copy');
+        else assert(after.status === EN.ms_saved_page && after.names === 'Chemistry HL', JSON.stringify(after));
+        assert(loading !== EN.ms_not_added && loading !== 'Physics HL', 'pending read claimed no saved subjects');
+        const counts = await ms(page);
+        assert(counts.puts === puts && counts.deletes === deletes && JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'Save touched the unseen copy');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 reread', 'a post-open focus reread leaves an independent page draft alone and cannot authorize its later replacement of the remembered record', async () => {
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]]);
+        await openEditor(page);
+        await page.ev(seedRecord(seedPhysics));
+        const prior = await page.ev(stored);
+        const reads = (await ms(page)).reads;
+        await page.ev(`window.dispatchEvent(new Event('focus'))`);
+        await page.waitFor(`({ok:window.__ms.reads>${reads},why:'no reread'})`, 4000, 'reread');
+        await page.ev(choose(0, 'biology', 'HL', 5));
+        await saveEditor(page);
+        assert((await page.ev(strip)).names === 'Biology HL', 'reread changed the draft');
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true, save: false });
+        await saveEditor(page, false);
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden || !!document.querySelector('.ms-form-err')?.textContent,why:'no outcome'})`, 4000, 'Save outcome');
+        await staleCheck(page, 'unseen reread copy');
+        assert(JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), 'independent draft touched the remembered copy');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      await check('1280', 'MS F2 unavailable', 'after a failed initial read, page-only Save remains usable and leaves the storage warning visible', async () => {
+        await page.ev(seedRecord('null', { store: 'other' }));
+        await toList(page);
+        await enter(page, [['chemistry', 'HL', 7]]);
+        const s = await page.ev(strip);
+        assert(s.status === EN.ms_saved_page && s.names === 'Chemistry HL' && s.warn.includes(EN.ms_w_read_failed)
+          && (await ms(page)).deletes === 0, JSON.stringify(s));
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const page = await openMS();
+    try {
+      const disabled = `['.ms-edit','.ms-cancel','.ms-save','.ms-forget','.ms-add-row'].every(q=>document.querySelector('#ml-subjects '+q)?.disabled)`;
+      await check('1280', 'MS F3 busy Save', 'Save guards editor actions while pending and preserves fallback feedback across navigation', async () => {
+        await toList(page);
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        await enter(page, [['chemistry', 'HL', 7]], { remember: true, save: false });
+        await page.ev('window.__msSuppress=true;window.__msAbortPut=true');
+        await holdOpen(page);
+        await saveEditor(page, false);
+        await isHeld(page);
+        const saveDisabled = await page.ev(disabled);
+        await page.ev(`document.querySelector('.ms-edit').click();document.querySelector('.ms-cancel')?.click();document.querySelector('.ms-add-row')?.click()`);
+        await page.key('Escape', 'Escape', 27);
+        const saveStayed = await page.ev(`!document.querySelector('#ms-editor').hidden && document.querySelectorAll('#ms-editor .ms-erow').length===1`);
+        await page.click(`document.querySelector('#f-shortlist-only')`, 'Back');
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('.ms-status').textContent.includes(${JSON.stringify(EN.ms_write_failed)}),why:'lost Save outcome'})`, 4000, 'settled Save in Browse');
+        await toList(page);
+        const s = await page.ev(strip);
+        assert(saveDisabled && saveStayed && s.names === 'Chemistry HL' && s.status.includes(EN.ms_write_failed_old), JSON.stringify({ saveDisabled, saveStayed, s }));
+        noErrors(page);
+      });
+      await check('1280', 'MS F3 busy Forget', 'Forget and retry keep deletion unconfirmed and block Add until settlement; Forget needs no extra read', async () => {
+        if (!(await page.ev(strip)).shown) await toList(page);
+        const prior = await page.ev(stored);
+        const names = (await page.ev(strip)).names;
+        await openEditor(page);
+        const opens = (await ms(page)).opens;
+        await holdOpen(page);
+        await page.click(`document.querySelector('#ms-editor .ms-forget')`, 'Forget subjects');
+        await isHeld(page);
+        let s = await page.ev(strip);
+        assert(s.editor && s.names === names && s.status !== EN.ms_forgotten && await page.ev(disabled)
+          && JSON.stringify(await page.ev(stored)) === JSON.stringify(prior), JSON.stringify(s));
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('#ms-editor').hidden && document.querySelector('.ms-status').textContent===${JSON.stringify(EN.ms_forgotten)},why:'pending Forget'})`, 4000, 'settled Forget');
+        assert((await ms(page)).opens === opens + 1 && (await page.ev(stored)) === null, 'Forget queued an extra read or left data');
+        await enter(page, [['physics', 'HL', 6]], { remember: true });
+        await page.ev('window.__msAbortDelete=true');
+        await enter(page, [['biology', 'SL']], { remember: false });
+        await holdOpen(page);
+        await page.click(`document.querySelector('.ms-retry')`, 'Try again');
+        await isHeld(page);
+        await page.ev(`document.querySelector('.ms-edit').click()`);
+        s = await page.ev(strip);
+        assert(!s.editor && s.status !== EN.ms_forgotten && await page.ev(`document.querySelector('.ms-edit').disabled && document.querySelector('.ms-retry').disabled`)
+          && (await page.ev(stored))?.entries[0].course === 'physics', JSON.stringify(s));
+        await page.ev('window.__msRelease()');
+        await page.waitFor(`({ok:document.querySelector('.ms-status').textContent===${JSON.stringify(EN.ms_saved_page_removed)},why:'pending retry'})`, 4000, 'settled retry');
+        assert((await page.ev(stored)) === null && (await page.ev(strip)).names === 'Biology SL'
+          && !await page.ev(`document.querySelector('.ms-edit').disabled`), 'retry did not settle or lost the page-only entries');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  for (const width of [1280, 393]) {
+    const page = await openMS({ width });
+    try {
+      await check(String(width), 'MS F4 duplicate maths', 'the error stays specific across EN/SK with the same values and focus', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        const detail = `!!document.querySelector('${width === 1280 ? '#pane' : '#results'} [data-reviewed-for="eur-ibeor"]')`;
+        await page.waitFor(`({ok:${detail},why:'detail not open'})`, 4000, 'pane or slot');
+        await enter(page, [['maths-aa', 'HL', 6], ['maths-ai', 'SL', 5]], { save: false });
+        await saveEditor(page, false);
+        const values = `[...document.querySelectorAll('#ms-editor select')].map(s=>s.value).join(',')`;
+        const inspect = () => page.ev(`[document.querySelector('#ms-e-2').textContent,document.activeElement.id,${values}]`);
+        const first = await inspect();
+        await lang(page, 'sk');
+        const second = await inspect();
+        await lang(page, 'en');
+        const third = await inspect();
+        const expectedValues = 'maths-aa,HL,6,maths-ai,SL,5';
+        assert(JSON.stringify([first, second, third]) === JSON.stringify([EN, SK, EN].map((T) => [T.ms_e_duplicate_maths, 'ms-c-2', expectedValues])),
+          JSON.stringify([first, second, third]));
+      });
+      await check(String(width), 'MS F5 strip Escape', 'Escape on the strip leaves the programme open and yields to a native open modal', async () => {
+        if (!(await page.ev(strip)).shown) await toList(page);
+        const detail = `!!document.querySelector('${width === 1280 ? '#pane' : '#results'} [data-reviewed-for="eur-ibeor"]')`;
+        if (!await page.ev(detail)) await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'eur-ibeor');
+        if (!await page.ev(`!document.querySelector('#ms-editor').hidden`)) await openEditor(page);
+        await page.ev(`(()=>{document.querySelector('.ms-edit').focus();const d=document.createElement('dialog');d.id='ms-test-dialog';d.append(document.createElement('button'));document.body.append(d);d.showModal()})()`);
+        await page.key('Escape', 'Escape', 27);
+        await page.waitFor(`({ok:!document.querySelector('#ms-test-dialog').open,why:'modal did not close'})`, 4000, 'native Escape');
+        assert((await page.ev(strip)).editor && await page.ev(detail), 'Escape also closed the editor or programme');
+        await page.ev(`document.querySelector('.ms-edit').focus()`);
+        await page.key('Escape', 'Escape', 27);
+        assert(!(await page.ev(strip)).editor && await page.ev(detail), 'Escape missed the editor or closed the programme');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
   watchdog.refresh();
   for (const how of ['forget', 'page-only', 'clear indexeddb', 'clear local_storage,indexeddb']) {
     const tabs = await twoTabs();

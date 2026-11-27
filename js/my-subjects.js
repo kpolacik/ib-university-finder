@@ -142,6 +142,10 @@ function closeQuietly(db) {
   try { db?.close(); } catch { /* already closed */ }
 }
 
+function abortQuietly(tx) {
+  try { tx.abort(); } catch { /* already finished */ }
+}
+
 // One read of the stored record: { kind: 'absent' | 'remembered' | 'invalid'
 // | 'error', revision?, entries? }. getKey tells "no record" from a record
 // whose value is undefined (E1).
@@ -151,23 +155,27 @@ export async function readStored(env) {
   if (!opened.db) return { kind: 'error', reason: opened.error };
   const { db } = opened;
   return new Promise((resolve) => {
+    let tx;
+    let observation = { kind: 'error', reason: 'read' };
     try {
       if (!db.objectStoreNames.contains(STORE)) { closeQuietly(db); resolve({ kind: 'error', reason: 'schema' }); return; }
-      const tx = db.transaction(STORE, 'readonly');
+      tx = db.transaction(STORE, 'readonly');
+      tx.oncomplete = () => { closeQuietly(db); resolve(observation); };
+      tx.onabort = () => { closeQuietly(db); resolve({ kind: 'error', reason: 'abort' }); };
+      tx.onerror = () => abortQuietly(tx);
       const store = tx.objectStore(STORE);
       const keyRequest = store.getKey(KEY);
       const getRequest = store.get(KEY);
-      tx.oncomplete = () => {
-        closeQuietly(db);
-        if (keyRequest.result === undefined) { resolve({ kind: 'absent' }); return; }
-        const record = validRecord(getRequest.result);
-        resolve(record ? { kind: 'remembered', ...record } : { kind: 'invalid' });
+      getRequest.onsuccess = () => {
+        try {
+          if (keyRequest.result === undefined) { observation = { kind: 'absent' }; return; }
+          const record = validRecord(getRequest.result);
+          observation = record ? { kind: 'remembered', ...record } : { kind: 'invalid' };
+        } catch { abortQuietly(tx); }
       };
-      tx.onabort = () => { closeQuietly(db); resolve({ kind: 'error', reason: 'abort' }); };
-      tx.onerror = (event) => { try { event?.preventDefault?.(); } catch { /* fine */ } };
     } catch {
-      closeQuietly(db);
-      resolve({ kind: 'error', reason: 'read' });
+      if (tx) abortQuietly(tx);
+      else { closeQuietly(db); resolve(observation); }
     }
   });
 }
@@ -201,7 +209,7 @@ export async function writeStored(env, base, entries) {
       closeQuietly(db);
       resolve({ result: outcome === 'stale' ? 'stale' : 'failed', reason: outcome ?? tx.error?.name ?? 'abort' });
     };
-    tx.onerror = (event) => { try { event?.preventDefault?.(); } catch { /* fine */ } };
+    tx.onerror = () => abortQuietly(tx);
     try {
       const store = tx.objectStore(STORE);
       const keyRequest = store.getKey(KEY);
@@ -215,17 +223,13 @@ export async function writeStored(env, base, entries) {
             ? key === undefined
             : key !== undefined && validRecord(getRequest.result)?.revision === base.revision;
           if (!fits) { outcome = 'stale'; tx.abort(); return; }
-          store.put({ version: RECORD_VERSION, revision, entries: copyEntries(entries) }, KEY);
-          outcome = 'put';
+          const put = store.put({ version: RECORD_VERSION, revision, entries: copyEntries(entries) }, KEY);
+          put.onsuccess = () => { outcome = 'put'; };
         } catch {
-          outcome = outcome === 'stale' ? outcome : 'failed';
-          try { tx.abort(); } catch { /* already finished */ }
+          abortQuietly(tx);
         }
       };
-    } catch {
-      outcome = 'failed';
-      try { tx.abort(); } catch { /* already finished */ }
-    }
+    } catch { abortQuietly(tx); }
   });
 }
 
@@ -250,20 +254,22 @@ export async function deleteStored(env) {
     }
     tx.oncomplete = () => { closeQuietly(db); resolve(deleted ? { result: 'ok' } : { result: 'failed', reason: 'no-delete' }); };
     tx.onabort = () => { closeQuietly(db); resolve({ result: 'failed', reason: tx.error?.name ?? 'abort' }); };
-    tx.onerror = (event) => { try { event?.preventDefault?.(); } catch { /* fine */ } };
+    tx.onerror = () => abortQuietly(tx);
     try {
       if (!env.isCurrent()) { tx.abort(); return; }
       const store = tx.objectStore(STORE);
-      store.delete(KEY);
+      let removed = false;
+      const deletion = store.delete(KEY);
+      deletion.onsuccess = () => { removed = true; };
       // Confirm in the same transaction that nothing is left under the key.
       const check = store.getKey(KEY);
       check.onsuccess = () => {
-        if (check.result === undefined) deleted = true;
-        else { try { tx.abort(); } catch { /* finished */ } }
+        try {
+          if (removed && check.result === undefined) deleted = true;
+          else abortQuietly(tx);
+        } catch { abortQuietly(tx); }
       };
-    } catch {
-      try { tx.abort(); } catch { /* already finished */ }
-    }
+    } catch { abortQuietly(tx); }
   });
 }
 
@@ -356,8 +362,8 @@ export function createProfileStore({
   function reread() {
     if (!s.activated) return Promise.resolve();
     if (s.rereading) { s.rereadAgain = true; return s.rereading; }
-    s.rereading = serial((env) => readStored(env)).then((observation) => {
-      apply(observation);
+    s.rereading = serial(async (env) => {
+      apply(await readStored(env));
     }).finally(() => {
       s.rereading = null;
       if (s.rereadAgain) { s.rereadAgain = false; reread(); }
@@ -368,11 +374,11 @@ export function createProfileStore({
   function apply(observation) {
     const before = JSON.stringify(snapshot());
     s.observed = observation;
-    for (const draft of s.drafts) if (draft.base === null) draft.base = baseOf(observation);
+    for (const draft of s.drafts) if (draft.base === null) draft.base = baseOfUnseen(observation);
     if (s.deleteFailed) {
       if (observation.kind === 'absent') { s.deleteFailed = false; if (s.warning === 'delete-failed') s.warning = null; }
-    } else if (s.writeFailed || s.active?.mode === 'page') {
-      // Keep this tab's own entries.
+    } else if (s.writeFailed) {
+      // Keep the fallback and its write warning.
     } else if (s.active?.mode === 'remembered') {
       if (observation.kind === 'remembered' && observation.revision !== s.active.revision) {
         s.active = { mode: 'remembered', revision: observation.revision, entries: observation.entries };
@@ -385,7 +391,7 @@ export function createProfileStore({
         s.warning = 'invalid';
       }
     } else if (observation.kind === 'remembered') {
-      s.active = { mode: 'remembered', revision: observation.revision, entries: observation.entries };
+      if (!s.active) s.active = { mode: 'remembered', revision: observation.revision, entries: observation.entries };
       if (s.warning === 'invalid' || s.warning === 'read-failed') s.warning = null;
     } else if (observation.kind === 'invalid') {
       s.warning = 'invalid';
@@ -397,36 +403,34 @@ export function createProfileStore({
     if (JSON.stringify(snapshot()) !== before) changed();
   }
 
-  const baseOf = (observation) => {
-    if (!observation) return null;
-    return observation.kind === 'remembered' ? { kind: 'remembered', revision: observation.revision } : { kind: observation.kind };
-  };
+  const baseOfUnseen = (observation) => observation && { kind: observation.kind === 'remembered' ? 'unseen' : observation.kind };
 
-  // A draft remembers what it started from (E1): the remembered revision on
-  // screen, or the last read. It never changes afterwards, so a Save can tell
-  // if the stored copy moved under it. null: no read has finished yet; the
-  // first one fills it in.
+  // Only an edit of the remembered entries (or retry of that write) may
+  // replace their revision. A pending blank draft can learn absence or a
+  // read error, but never acquires the revision of a record it didn't open.
   function openDraft() {
-    const base = s.active?.mode === 'remembered' ? { kind: 'remembered', revision: s.active.revision } : baseOf(s.observed);
+    const remembered = s.active?.mode === 'remembered';
+    const revision = remembered ? s.active.revision : s.active?.writeRevision;
+    const sawRevision = revision && (remembered || s.observed?.revision === revision);
     const draft = {
-      base,
+      base: sawRevision ? { kind: 'remembered', revision } : baseOfUnseen(s.observed),
       entries: s.active ? copyEntries(s.active.entries) : [],
-      remember: s.active?.mode === 'remembered' || s.writeFailed,
+      remember: remembered || s.writeFailed,
+      removeRemembered: remembered || s.writeFailed || s.deleteFailed,
     };
     s.drafts.add(draft);
     return draft;
   }
   function closeDraft(draft) {
-    s.drafts.delete(draft);
     // Leaving the editor after a refusal reads the record again, so the next
     // edit starts from what is really stored.
-    if (draft?.refused) reread();
+    if (s.drafts.delete(draft) && draft.refused) reread();
   }
 
   async function mutate(fn) {
     s.busy = true;
     changed();
-    try { return await fn(); } finally { s.busy = false; changed(); }
+    try { return await serial(fn); } finally { s.busy = false; changed(); }
   }
 
   // Save a validated draft. Returns { result } with result one of:
@@ -439,16 +443,20 @@ export function createProfileStore({
   //   'write-failed'  kept on this page; the browser did not store it
   async function save(draft, entries, remember) {
     if (s.busy) return { result: 'busy' };
+    if (!s.drafts.has(draft)) return { result: 'stale' };
     const clean = copyEntries(entries);
     if (!remember) {
-      const needsDelete = s.active?.mode === 'remembered' || s.writeFailed || s.deleteFailed;
-      s.active = { mode: 'page', entries: clean };
-      s.writeFailed = false;
-      if (s.warning !== 'delete-failed') s.warning = null;
-      if (!needsDelete) { s.drafts.delete(draft); changed(); return { result: 'page' }; }
       s.drafts.delete(draft);
-      return mutate(async () => {
-        const done = await serial((env) => deleteStored(env));
+      if (!draft.removeRemembered) {
+        s.active = { mode: 'page', entries: clean };
+        if (s.warning === 'changed-elsewhere' || s.warning === 'removed-elsewhere') s.warning = null;
+        changed();
+        return { result: 'page' };
+      }
+      return mutate(async (env) => {
+        const done = await deleteStored(env);
+        s.active = { mode: 'page', entries: clean };
+        s.writeFailed = false;
         if (done.result === 'ok') {
           s.deleteFailed = false; s.warning = null; s.observed = { kind: 'absent' };
           announce();
@@ -460,8 +468,9 @@ export function createProfileStore({
     }
     const base = draft.base;
     if (!base || base.kind === 'invalid' || base.kind === 'error') { draft.refused = true; return { result: 'refused', base: base?.kind ?? 'pending' }; }
-    return mutate(async () => {
-      const done = await serial((env) => writeStored(env, base, clean));
+    if (base.kind === 'unseen') { draft.refused = true; return { result: 'stale' }; }
+    return mutate(async (env) => {
+      const done = await writeStored(env, base, clean);
       if (done.result === 'ok') {
         s.active = { mode: 'remembered', revision: done.revision, entries: clean };
         s.observed = { kind: 'remembered', revision: done.revision, entries: clean };
@@ -472,27 +481,28 @@ export function createProfileStore({
       }
       if (done.result === 'stale') { draft.refused = true; return { result: 'stale' }; }
       // The browser did not store it: keep the entries here (E-write).
-      s.active = { mode: 'page', entries: clean };
+      s.active = { mode: 'page', entries: clean, writeRevision: base.revision };
       s.writeFailed = true; s.warning = 'write-failed';
       s.drafts.delete(draft);
       return { result: 'write-failed' };
     });
   }
 
-  // Forget: the profile goes from this page at once; the stored copy is
-  // deleted unconditionally and called gone only once that is confirmed.
+  // Forget deletes unconditionally. Apply the visible result when it settles.
   async function forget() {
     if (s.busy) return { result: 'busy' };
-    s.active = null;
-    s.writeFailed = false;
-    s.warning = null;
-    for (const draft of s.drafts) draft.refused = true;
-    return removeStored();
+    s.drafts.clear();
+    return removeStored(true);
   }
   const retryDelete = () => (s.busy ? Promise.resolve({ result: 'busy' }) : removeStored());
-  function removeStored() {
-    return mutate(async () => {
-      const done = await serial((env) => deleteStored(env));
+  function removeStored(forgetPage = false) {
+    return mutate(async (env) => {
+      const done = await deleteStored(env);
+      if (forgetPage) {
+        s.active = null;
+        s.writeFailed = false;
+        s.warning = null;
+      }
       if (done.result === 'ok') {
         s.deleteFailed = false; if (s.warning === 'delete-failed' || s.warning === 'invalid' || s.warning === 'read-failed') s.warning = null;
         s.observed = { kind: 'absent' };

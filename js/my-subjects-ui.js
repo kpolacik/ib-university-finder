@@ -50,6 +50,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   let language = getLanguage();
   let editor = null;          // the open editor: { draft, rows, saved, ... }
   let wasList = false;
+  let lastStatus = '';
 
   // ------------------------------------------------------------- the strip
   const line = el('p', 'ms-line');
@@ -73,13 +74,16 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   strip.append(line, summary, warn, status, region);
   edit.addEventListener('click', () => (editor ? cancel() : openEditor()));
 
-  // Escape belongs to the editor before anything else (a selected
-  // programme's Escape would otherwise close its detail): capture phase.
+  // Let an open dialog handle Escape first. Inside the editor or on its
+  // trigger, capture before Escape reaches the selected programme.
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !editor || !region.contains(document.activeElement)) return;
+    if (event.key !== 'Escape' || event.defaultPrevented || !editor || document.querySelector('dialog[open]')) return;
+    const focus = document.activeElement;
+    const busy = store.snapshot().busy;
+    if (focus !== edit && !region.contains(focus) && !(busy && focus === document.body)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!store.snapshot().busy) cancel();
+    cancel();
   }, true);
 
   // ---------------------------------------------------------- what we know
@@ -125,14 +129,15 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
       more.hidden = extra <= 0;
       if (extra > 0) { set(more, ` ${t('ms_more', { count: extra })}`); more.setAttribute('aria-label', t('ms_more_label', { count: extra })); }
     } else {
-      set(names, t('ms_not_added'));
+      set(names, t(snap.observed === null ? 'ms_loading' : 'ms_not_added'));
       more.hidden = true;
     }
     set(edit, t(entries.length ? 'ms_edit' : 'ms_add'));
     const editLabel = t(entries.length ? 'ms_edit_label' : 'ms_add_label');
     if (edit.getAttribute('aria-label') !== editLabel) edit.setAttribute('aria-label', editLabel);
     edit.setAttribute('aria-expanded', String(!!editor));
-    set(summary, summaryText(v, entries));
+    edit.disabled = snap.busy;
+    set(summary, snap.busy ? t('ms_updating') : summaryText(v, entries));
     drawWarning(snap);
     drawNotices(v, entries);
     if (editor) syncEditor(snap);
@@ -182,12 +187,12 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     if (snap.warning === 'delete-failed') {
       const retry = button('btn btn-s ms-retry', t('ms_retry'));
       retry.disabled = snap.busy;
-      retry.addEventListener('click', async () => { say(''); const r = await store.retryDelete(); afterForget(r); });
+      retry.addEventListener('click', async () => { say(''); sayForget(await store.retryDelete()); });
       warn.append(retry);
     } else if (snap.warning === 'invalid' || snap.warning === 'read-failed') {
       const forget = button('btn btn-s ms-forget-stored', t('ms_forget'));
       forget.disabled = snap.busy;
-      forget.addEventListener('click', async () => { say(''); const r = await store.forget(); afterForget(r); });
+      forget.addEventListener('click', forgetFromEditor);
       warn.append(forget);
     }
   }
@@ -372,7 +377,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   function sync() {
     const now = inList();
     if (now && !wasList) store.activate();
-    if (!now && wasList) say('');
+    if (!now && wasList && !store.snapshot().busy) say('');
     wasList = now;
     refresh();
   }
@@ -380,7 +385,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   // ------------------------------------------------------------ the editor
 
   function openEditor() {
-    if (editor) return;
+    if (editor || store.snapshot().busy) return;
     const draft = store.openDraft();
     const saved = { trigger: edit, x: window.scrollX, y: window.scrollY, ...hooks.snapshot() };
     editor = { draft, saved, rows: [], seq: 0 };
@@ -532,14 +537,16 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
 
   function syncEditor(snap) {
     const e = editor;
-    for (const node of [e.save, e.cancel, e.forget]) node.disabled = snap.busy;
+    region.setAttribute('aria-busy', String(snap.busy));
+    for (const node of [e.save, e.cancel, e.forget, e.add, e.rememberBox]) node.disabled = snap.busy;
+    for (const row of e.rows) for (const node of [row.course, row.level, row.grade, row.remove]) node.disabled = snap.busy;
     // Forget is offered whenever there is something to forget.
     e.forget.hidden = !(snap.active || snap.deleteFailed || snap.writeFailed || snap.warning === 'invalid' || snap.warning === 'read-failed' || snap.observed === 'remembered');
   }
 
   const ROW_ERRORS = {
     incomplete: 'ms_e_incomplete', grade: 'ms_e_grade', unsupported: 'ms_e_unsupported', level: 'ms_e_level',
-    duplicate: 'ms_e_duplicate', invalid: 'ms_e_invalid',
+    duplicate: 'ms_e_duplicate', 'duplicate-maths': 'ms_e_duplicate_maths', invalid: 'ms_e_invalid',
   };
   function errorText(code) { return t(ROW_ERRORS[code] ?? 'ms_e_invalid'); }
   function formText(code) {
@@ -561,7 +568,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
       const row = e.rows[error.index];
       if (!row || error.code === 'empty' || error.code === 'too-many') continue;
       row.code = error.code === 'duplicate' && familyOf(row.course.value) === MATHS_FAMILY ? 'duplicate-maths' : error.code;
-      set(row.error, row.code === 'duplicate-maths' ? t('ms_e_duplicate_maths') : errorText(row.code));
+      set(row.error, errorText(row.code));
       const bad = ['grade'].includes(error.code) ? row.grade : error.code === 'level' || (error.code === 'incomplete' && row.course.value) ? row.level : row.course;
       bad.setAttribute('aria-invalid', 'true');
       first ??= bad;
@@ -580,12 +587,15 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     showErrors({ errors: [] });
     e.formCode = null; set(e.formError, '');
     const remember = e.rememberBox.checked;
+    say('');
     const outcome = await store.save(e.draft, check.entries, remember);
-    if (editor !== e) return;
     if (outcome.result === 'stale' || outcome.result === 'refused') {
-      e.formCode = outcome.result === 'stale' ? 'stale' : outcome.base;
-      set(e.formError, formText(e.formCode));
-      e.save.focus();
+      const code = outcome.result === 'stale' ? 'stale' : outcome.base;
+      if (editor === e) {
+        e.formCode = code;
+        set(e.formError, formText(code));
+        e.save.focus();
+      } else say(formText(code));
       return;
     }
     if (outcome.result === 'busy') return;
@@ -598,26 +608,27 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     // The status line first, so the page has its final height before the
     // scroll is put back.
     say(words);
-    closeEditor(true);
+    if (editor === e) closeEditor(true);
     refresh();
   }
 
   async function forgetFromEditor() {
     if (store.snapshot().busy) return;
-    const outcome = store.forget();
-    closeEditor(true);
+    const e = editor;
+    say('');
+    const outcome = await store.forget();
+    sayForget(outcome);
+    if (e && editor === e) closeEditor(true);
     refresh();
-    afterForget(await outcome);
   }
 
-  function afterForget(outcome) {
-    if (outcome.result === 'forgotten') say(t('ms_forgotten'));
+  function sayForget(outcome) {
+    if (outcome.result === 'forgotten') say(t(profile() ? 'ms_saved_page_removed' : 'ms_forgotten'));
     else if (outcome.result === 'delete-failed') say(t('ms_delete_failed'));
-    refresh();
   }
 
   function cancel() {
-    if (!editor) return;
+    if (!editor || store.snapshot().busy) return;
     closeEditor(true);
     refresh();
   }
@@ -644,8 +655,10 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   // Written at once, so the bar never changes height under a restored
   // scroll. The same words twice get an invisible mark, so they are read again.
   function say(text) {
+    const words = text && lastStatus === text ? `${text}\u200b` : text;
+    if (text) lastStatus = words;
     status.hidden = !text;
-    status.textContent = text && status.textContent === text ? `${text}\u200b` : text;
+    status.textContent = words;
   }
 
   return { sync, refresh, decor, isEditing: () => !!editor };
