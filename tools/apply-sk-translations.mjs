@@ -1,6 +1,7 @@
 // Appends independently reviewed Slovak translations for prose columns to
-// data/i18n/sk.csv (issue #18: requirement and deadline prose), and whole
-// cells of living_cost_source and baseline_requirement (Layer 2A).
+// data/i18n/sk.csv (issue #18: requirement and deadline prose), whole
+// cells of living_cost_source and baseline_requirement (Layer 2A), and
+// single-bullet english_requirement cells (Layer 2B-1).
 //
 // Why this exists: tools/add-sk-rows.mjs only handles the four PR2 fee/recognition
 // columns, checks raw whole strings only, and has no review, hard-token,
@@ -41,7 +42,15 @@ export const PROSE_FIELDS = ['ib_subjects', 'other_requirements', 'deadline_note
 // Kept apart from PROSE_FIELDS: sk.csv already holds eight baseline rows for
 // held UK cells, which the prose guard in tools/check.mjs would reject.
 export const WHOLE_CELL_DATA_FIELDS = ['living_cost_source', 'baseline_requirement'];
-export const SUPPORTED_FIELDS = [...PROSE_FIELDS, ...WHOLE_CELL_DATA_FIELDS];
+// Issue #18 Layer 2B-1: a programme's English requirement when it shows one
+// bullet. A row is stored under the physical column the text comes from:
+// english_requirement for a programme's own wording, english_requirement_default
+// for university wording the programme inherits (js/i18n.js dataParts reads
+// both). Only the whole shown cell is a key. Multi-bullet cells and university
+// defaults no programme shows are never keys. Not in WHOLE_CELL_PROPS: that map
+// assumes university-level text, and this one is programme-level with inheritance.
+export const SINGLE_BULLET_FIELDS = ['english_requirement', 'english_requirement_default'];
+export const SUPPORTED_FIELDS = [...PROSE_FIELDS, ...WHOLE_CELL_DATA_FIELDS, ...SINGLE_BULLET_FIELDS];
 const WHOLE_CELL_PROPS = { living_cost_source: 'livingCostSource', baseline_requirement: 'baselineRequirement' };
 
 // Pinned non-selector holds (23 cells) that sit beside the live
@@ -114,10 +123,27 @@ const HARD = [
   /\b(?:HL|SL|AA|AI|IB|DP|CAO|UCAS|HPAT|UCAT|LNAT|TOL|SAT|ACT|IELTS|TOEFL|DSH|TestDaF|GCSE|CEFR|OMPT|TSP|SJT)\b/g,
   /\b[ABC][12]\b/g, /[€£%]/g, /https?:\/\/\S+/g,
 ];
+// Layer 2B-1 only (SINGLE_BULLET_FIELDS): language test names and the >= and +
+// signs of scores such as "B2+" or "IELTS >= 6.0" must survive verbatim. Kept
+// apart from HARD, which must match tools/check.mjs for every older row (four
+// older sk.csv rows would fail this bag). Unicode lookarounds instead of \b so
+// ÚJOP, VŠP, MŠMT and the two-word EF SET match as whole tokens.
+const TEST_NAMES = [
+  'PTE', 'Duolingo', 'Cambridge', 'CAE', 'CPE', 'FCE', 'TOEIC', 'iBT', 'ITP', 'PBT', 'UKVI', 'LanguageCert',
+  'Linguaskill', 'ELLT', 'OET', 'telc', 'TELC', 'Unicert', 'UNIcert', 'EF SET', 'YKI', 'ESOL', 'SCIO', 'Scio',
+  'OSP', 'VŠP', 'ÚJOP', 'MŠMT', 'IMAT', 'ACRES', 'MOI', 'SERR', 'CLA',
+];
+const SINGLE_BULLET_HARD = [
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:${TEST_NAMES.join('|')})(?![\\p{L}\\p{N}])`, 'gu'),
+  /[≥+]/g,
+];
 const bag = (text, re) => (text.match(re) || []).sort().join('|');
-export function translationTextProblem(en, sk) {
+export function translationTextProblem(en, sk, field = '') {
   if (HARD.some((re) => bag(en, re) !== bag(sk, re))) {
     return `hard tokens differ between English and Slovak for ${JSON.stringify(en)}`;
+  }
+  if (SINGLE_BULLET_FIELDS.includes(field) && SINGLE_BULLET_HARD.some((re) => bag(en, re) !== bag(sk, re))) {
+    return `test names or the ≥ and + signs differ between English and Slovak for ${JSON.stringify(en)}`;
   }
   if ([' · ', ';'].some((sep) => en.split(sep).length !== sk.split(sep).length)) {
     return `separator counts (' · ' or ';') differ for ${JSON.stringify(en)}`;
@@ -126,6 +152,9 @@ export function translationTextProblem(en, sk) {
 }
 const esc = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 const pairKey = (field, en) => `${field}\u0000${en}`;
+// The other physical name of an English requirement key, or null.
+export const twinField = (field) => SINGLE_BULLET_FIELDS.includes(field)
+  ? SINGLE_BULLET_FIELDS.find((f) => f !== field) : null;
 const reviewKey = (field, en, sk) => JSON.stringify([field, en, sk]);
 
 function textKeys(text) {
@@ -210,6 +239,10 @@ export function heldDisplayKeys({
 }) {
   const { rows: progRaw, issues: progIssues } = csvToObjects(programmesCsv, 'programmes.csv');
   if (progIssues.length) throw new Error(`Invalid programmes.csv: ${progIssues.join('; ')}`);
+  // Raw university rows: a default no programme inherits is in no built row,
+  // but a whole key equal to one of its pieces would translate it later.
+  const { rows: uniRaw, issues: uniIssues } = csvToObjects(universitiesCsv, 'universities.csv');
+  if (uniIssues.length) throw new Error(`Invalid universities.csv: ${uniIssues.join('; ')}`);
   const built = readSheets(universitiesCsv, programmesCsv, today);
   // The UI can display a partial sheet. A missing programme can hide a held
   // use of wording shared with a programme that did load.
@@ -243,12 +276,44 @@ export function heldDisplayKeys({
       }
     }
   }
-  return { heldCells, heldKeys, programmes: built.programmes };
+  return { heldCells, heldKeys, programmes: built.programmes, progRaw, uniRaw };
 }
 
-export function liveDisplayKeys(programmes, heldCells) {
+// Every held cell that reads one of en's own ' · ' or ';' pieces, under either
+// English requirement name. Refusal 3 checks the whole key only; a new whole
+// containing held #17 wording (P4b G065 "English B2") must not translate it.
+export function heldPieceLabels(en, heldKeys) {
+  const labels = new Set();
+  for (const piece of textKeys(en).slice(1)) {
+    for (const f of SINGLE_BULLET_FIELDS) for (const label of heldKeys.get(pairKey(f, piece)) || []) labels.add(label);
+  }
+  return [...labels].sort();
+}
+
+// A semicolon slot of a new whole whose English already has a Slovak row keeps
+// that Slovak exactly: students can search those words today, and changing a
+// historic translation needs its own decision. existing(key) returns the
+// sk.csv row for a pair key, or undefined. Empty slots (a trailing ';') skip.
+export function historicSlotProblem(en, sk, existing) {
+  if (!en.includes(';')) return '';
+  const skSlots = sk.split(';');
+  for (const [i, slot] of en.split(';').entries()) {
+    const piece = normaliseEnglish(slot);
+    if (!piece) continue;
+    for (const f of SINGLE_BULLET_FIELDS) {
+      const row = existing(pairKey(f, piece));
+      if (row && (skSlots[i] ?? '').trim() !== row.sk.trim()) {
+        return `changes existing Slovak ${JSON.stringify(row.sk)} for the piece ${JSON.stringify(piece)} (${f}); needs a separate decision`;
+      }
+    }
+  }
+  return '';
+}
+
+export function liveDisplayKeys(programmes, heldCells, progRaw = null) {
   const live = new Set();
   const usable = (en) => en && en !== '?' && en !== 'none';
+  const rawById = progRaw && new Map(progRaw.map((r) => [String(r.programme_id ?? '').trim(), r]));
   const add = (field, text) => {
     for (const en of textKeys(text)) {
       if (usable(en)) live.add(pairKey(field, en));
@@ -272,24 +337,60 @@ export function liveDisplayKeys(programmes, heldCells) {
         live.add(pairKey(field, en));
       }
     }
+    // Layer 2B-1: one shown bullet, under the column its text comes from. With
+    // no raw rows the physical column is unknown, so no key is live.
+    const raw = rawById?.get(row.id);
+    if (raw && row.englishRequirement.length === 1
+      && !heldCells.has(`prog|${row.id}|english_requirement`)
+      && !heldCells.has(`uni|${row.universityId}|english_requirement_default`)) {
+      const own = String(raw.english_requirement ?? '').trim();
+      const en = normaliseEnglish(row.englishRequirement[0]);
+      // dataParts can expose a bullet separator after normalising whitespace.
+      if (own !== '?' && usable(en) && !en.includes(' · ')) {
+        live.add(pairKey(own ? 'english_requirement' : 'english_requirement_default', en));
+      }
+    }
   }
   return live;
 }
 
-// Map<`${field}\0${piece}`, Set<universityId>> of every ' · ' or ';' piece of
-// a whole-cell field, held or not. dataParts() falls back to piece lookups, so
-// a whole key admitted for one university could otherwise translate part of
-// another university's cell that happens to contain it as an item.
-export function wholeCellLeaves(programmes) {
+// Map<`${field}\0${piece}`, Set<id>> of every ' · ' or ';' piece of a
+// whole-cell field, held or not (university ids), and of every English
+// requirement text (programme or university ids). dataParts() falls back to
+// piece lookups, so a whole key admitted for one cell could otherwise translate
+// part of another cell that happens to contain it as an item.
+//
+// English requirement leaves sit under both physical names, because dataParts
+// reads both. They cover pieces of every shown cell, every raw programme value
+// and every university default (one no programme inherits included, from
+// uniRaw), plus each whole bullet item of a multi-bullet text: search and the
+// detail view look bullet items up whole, and an item can itself contain ';'.
+export function wholeCellLeaves(programmes, { progRaw = [], uniRaw = [] } = {}) {
   const leaves = new Map();
+  const leaf = (field, piece, id) => {
+    const k = pairKey(field, piece);
+    if (!leaves.has(k)) leaves.set(k, new Set());
+    leaves.get(k).add(id);
+  };
+  const englishLeaves = (text, id) => {
+    const pieces = textKeys(text).slice(1);
+    const items = String(text ?? '').split(' · ');
+    if (items.length > 1) for (const item of items) { const norm = normaliseEnglish(item); if (norm) pieces.push(norm); }
+    for (const piece of pieces) for (const f of SINGLE_BULLET_FIELDS) leaf(f, piece, id);
+  };
   for (const row of programmes) {
     for (const [field, prop] of Object.entries(WHOLE_CELL_PROPS)) {
-      for (const piece of textKeys(row[prop]).slice(1)) {
-        const k = pairKey(field, piece);
-        if (!leaves.has(k)) leaves.set(k, new Set());
-        leaves.get(k).add(row.universityId);
-      }
+      for (const piece of textKeys(row[prop]).slice(1)) leaf(field, piece, row.universityId);
     }
+    englishLeaves(row.englishRequirement.join(' · '), row.id);
+  }
+  for (const raw of progRaw) {
+    const own = String(raw.english_requirement ?? '').trim();
+    if (own && own !== '?') englishLeaves(own, String(raw.programme_id ?? '').trim());
+  }
+  for (const raw of uniRaw) {
+    const text = String(raw.english_requirement_default ?? '').trim();
+    if (text && text !== '?') englishLeaves(text, String(raw.university_id ?? '').trim());
   }
   return leaves;
 }
@@ -406,14 +507,14 @@ function main(argv) {
   try { skBytes = readFileSync(skPath); } catch (e) { fail(`Cannot read ${skPath}: ${e.message}`); }
   const existingSk = readTranslationDictionary(skPath, skBytes.toString('utf8'), fail);
 
-  let heldCells, heldKeys, programmes;
+  let heldCells, heldKeys, programmes, progRaw, uniRaw;
   try {
-    ({ heldCells, heldKeys, programmes } = heldDisplayKeys({ universitiesCsv: uniText, programmesCsv: progText }));
+    ({ heldCells, heldKeys, programmes, progRaw, uniRaw } = heldDisplayKeys({ universitiesCsv: uniText, programmesCsv: progText }));
   } catch (e) {
     fail(e.message);
   }
-  const liveKeys = liveDisplayKeys(programmes, heldCells);
-  const leaves = wholeCellLeaves(programmes);
+  const liveKeys = liveDisplayKeys(programmes, heldCells, progRaw);
+  const leaves = wholeCellLeaves(programmes, { progRaw, uniRaw });
 
   // Parse batch CSV (exact header: field,en,sk).
   const [batchHead, ...batchRows] = records(batchFile, readUtf8(batchFile), fail);
@@ -466,6 +567,14 @@ function main(argv) {
       refuse(`key is read by held cell ${[...heldBy].sort().join(', ')}`);
       continue;
     }
+    const single = SINGLE_BULLET_FIELDS.includes(field);
+
+    // Refusal 3b: an English requirement whole whose own piece a held cell reads.
+    const heldPieces = single ? heldPieceLabels(en, heldKeys) : [];
+    if (heldPieces.length) {
+      refuse(`a piece of this key is read by held cell ${heldPieces.join(', ')}`);
+      continue;
+    }
 
     // Refusal 2: live lookup key for that field on non-held programmes.
     if (!liveKeys.has(pKey)) {
@@ -475,7 +584,7 @@ function main(argv) {
 
     // Refusal 2b: a whole-cell key that is also a piece of another cell of the
     // same field would translate part of that cell too (see wholeCellLeaves).
-    const leafOf = WHOLE_CELL_DATA_FIELDS.includes(field) && leaves.get(pKey);
+    const leafOf = (WHOLE_CELL_DATA_FIELDS.includes(field) || single) && leaves.get(pKey);
     if (leafOf) {
       refuse(`key is also a ${field} piece at ${[...leafOf].sort().join(', ')}: ${JSON.stringify(en)}`);
       continue;
@@ -494,10 +603,27 @@ function main(argv) {
       continue;
     }
 
-    // Refusal 5: hard-token bags and separator counts (' · ' and ';').
-    const textProblem = translationTextProblem(en, sk);
+    // Refusal 4b: the same English under the other English requirement name.
+    // dataParts reads english_requirement first and search maps both names to
+    // one key, so a second row would silently win or collide.
+    const twin = single && pairKey(twinField(field), en);
+    if (twin && (existingSk.has(twin) || batchSeen.has(twin) || liveKeys.has(twin))) {
+      refuse(`the same English is also a ${twinField(field)} key (in sk.csv, this batch or a live cell): ${JSON.stringify(en)}`);
+      continue;
+    }
+
+    // Refusal 5: hard-token bags and separator counts (' · ' and ';'), plus
+    // test names and the ≥ and + signs for English requirement keys.
+    const textProblem = translationTextProblem(en, sk, field);
     if (textProblem) {
       refuse(textProblem);
+      continue;
+    }
+
+    // Refusal 5b: a semicolon slot with an existing Slovak row keeps that Slovak.
+    const slotProblem = single ? historicSlotProblem(en, sk, (k) => existingSk.get(k)) : '';
+    if (slotProblem) {
+      refuse(slotProblem);
       continue;
     }
     if (existing) {

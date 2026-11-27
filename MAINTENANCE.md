@@ -625,6 +625,31 @@ with `--apply`, then `node tools/check.mjs`. It adds only rows the review marked
 that Slovak. It checks that all 1,082 original rows are still intact, in order
 and with their original signatures. Fix conflicting reviews before trying again.
 
+The script also takes `english_requirement` and `english_requirement_default`,
+but only for a programme that shows **one** requirement (no ` · `), and only
+the whole shown text. Use `english_requirement` when the programme has its own
+wording in `programmes.csv`, and `english_requirement_default` when the text is
+the university's default the programme inherits; the script refuses the other
+one. It also refuses:
+
+- multi-bullet requirements, and a university default no programme shows;
+- a text that is also a part or a bullet of another requirement, because the
+  page would then translate that part too;
+- a text containing wording a held cell reads (such as TUL's "English B2");
+- the same English under both columns;
+- a dropped or changed test name (PTE, Duolingo, Cambridge, iBT, EF SET, ÚJOP
+  and others) or a dropped `≥` or `+`;
+- a change to Slovak that a part of the text already has. VŠE's "No Czech
+  certificate required" must stay "Certifikát z češtiny sa nevyžaduje"; a
+  different word there needs Leon's decision first.
+
+Search for English requirements (Leon, 2026-11-27, Option 2) works the same
+way as above: `node tools/sk-search-english.mjs` lists the new rows under the
+same column they have in `data/i18n/sk.csv`, and the page searches an
+`english_requirement_default` entry as `english_requirement`. Older
+translations and other fields keep the old search. For these two columns it
+also checks that all 1,198 rows from before Layer 2B-1 are still intact.
+
 CSV exports use headings in the selected language and keep **all data cells
 in English**, including requirement wording. Numbers inside data text keep
 decimal dots, such as IELTS 6.5. Quotes from official pages stay in English.

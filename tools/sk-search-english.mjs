@@ -16,9 +16,16 @@
 //
 // review.csv is the same file tools/apply-sk-translations.mjs used: exact
 // header field,en,sk,verdict. A row is added only when its verdict is keep,
-// its field is living_cost_source or baseline_requirement, and data/i18n/sk.csv
-// already has exactly that Slovak text for it in a new AI-DRAFT row. The
-// original 1,082 rows must still match the base bytes. Run it after the --apply of
+// its field is living_cost_source or baseline_requirement (Layer 2A) or
+// english_requirement or english_requirement_default (Layer 2B-1, Leon's
+// Option 2 on 2026-11-27), and data/i18n/sk.csv already has exactly that
+// Slovak text for it in a new AI-DRAFT row. The original 1,082 rows must still
+// match the base bytes; an English requirement row must also come after the
+// 1,198 rows that were there before Layer 2B-1, which must match too. The list
+// keeps the physical sk.csv name (english_requirement_default for inherited
+// university wording); js/i18n.js maps it to english_requirement at runtime,
+// so the two names of one English text may never both be listed or stored.
+// Run it after the --apply of
 // apply-sk-translations.mjs, then node tools/check.mjs. The list only grows:
 // existing entries stay, and every entry is checked again before writing.
 //
@@ -30,7 +37,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normaliseEnglish, SEARCH_ENGLISH_FIELDS } from '../js/i18n.js';
 import {
-  heldDisplayKeys, liveDisplayKeys, readTranslationDictionary, readTranslationReviews, translationTextProblem, wholeCellLeaves,
+  heldDisplayKeys, heldPieceLabels, historicSlotProblem, liveDisplayKeys, readTranslationDictionary, readTranslationReviews,
+  SINGLE_BULLET_FIELDS, translationTextProblem, twinField, wholeCellLeaves,
 } from './apply-sk-translations.mjs';
 
 const BLOCK = /(\/\/ BEGIN SEARCH_ENGLISH[^\n]*\n)export const SEARCH_ENGLISH_VERSION = (\d+);\nexport const SEARCH_ENGLISH_KEYS = \[\n([\s\S]*?)\];\n(\/\/ END SEARCH_ENGLISH\n)/;
@@ -38,19 +46,35 @@ const pairKey = (field, en) => `${field}\u0000${en}`;
 const BASE_SK_ROWS = 1082;
 export const BASE_SK_BYTES = 413339;
 const BASE_SK_SHA256 = '77aa522e2a97253e3673591bd830ea0effb8de1e0f8cdd87e3485d4ebb4ca893';
+// Layer 2B-1 base: sk.csv at ec30f31 (1,198 rows, the 116 Layer 2A rows
+// included). English requirement entries need it, so a historic row can never
+// become a new search member; Layer 2A entries keep needing only the 1,082 rows.
+const L2B1_BASE_SK_ROWS = 1198;
+export const L2B1_BASE_SK_BYTES = 458303;
+export const L2B1_BASE_SK_SHA256 = '49c5a04acc024afa6f78167da7937f69dd8592e5efda20ac2c5feacad22ecf52';
 
 export function readSearchEnglishDictionary(file, bytes, fail) {
   const dictionary = readTranslationDictionary(file, bytes.toString('utf8'), fail);
   // Use the exact base file at 2379d5d so edits, reordering, and duplicated
   // keys cannot turn historical translations into new search members.
-  const prefix = createHash('sha256').update(bytes.subarray(0, BASE_SK_BYTES)).digest('hex');
-  if (prefix !== BASE_SK_SHA256) fail(`${file}: the original ${BASE_SK_ROWS} rows must match the unchanged 2379d5d byte prefix`);
-  return { dictionary, older: new Set([...dictionary.keys()].slice(0, BASE_SK_ROWS)) };
+  const sha = (n) => createHash('sha256').update(bytes.subarray(0, n)).digest('hex');
+  if (sha(BASE_SK_BYTES) !== BASE_SK_SHA256) fail(`${file}: the original ${BASE_SK_ROWS} rows must match the unchanged 2379d5d byte prefix`);
+  const keys = [...dictionary.keys()];
+  return {
+    dictionary,
+    older: new Set(keys.slice(0, BASE_SK_ROWS)),
+    hasL2B1Prefix: bytes.length >= L2B1_BASE_SK_BYTES && sha(L2B1_BASE_SK_BYTES) === L2B1_BASE_SK_SHA256,
+    olderL2B1: new Set(keys.slice(0, L2B1_BASE_SK_ROWS)),
+  };
 }
 
-export function searchEnglishProblems(entries, { dictionary, older, heldKeys, liveKeys, leaves }) {
+// listed: pair keys already in the list or being added beside these entries.
+export function searchEnglishProblems(entries, {
+  dictionary, older, hasL2B1Prefix = false, olderL2B1 = new Set(), heldKeys, liveKeys, leaves, listed = new Set(),
+}) {
   const problems = [];
   const seen = new Set();
+  const entryKeys = new Set(entries.filter((e) => Array.isArray(e) && e.length === 2).map(([f, en]) => pairKey(f, en)));
   let prev = null;
   for (const entry of entries) {
     if (!Array.isArray(entry) || entry.length !== 2 || entry.some((v) => typeof v !== 'string')) {
@@ -65,16 +89,29 @@ export function searchEnglishProblems(entries, { dictionary, older, heldKeys, li
     if (seen.has(k)) problems.push(`${label}: listed twice`);
     if (prev !== null && !(prev < k)) problems.push(`${label}: not in sorted order`);
     seen.add(k); prev = k;
+    const single = SINGLE_BULLET_FIELDS.includes(field);
     const row = dictionary.get(k);
+    if (single && !hasL2B1Prefix) problems.push(`${label}: sk.csv must keep the unchanged ${L2B1_BASE_SK_ROWS}-row byte prefix from before Layer 2B-1`);
     if (!row) problems.push(`${label}: no sk.csv translation`);
     else if (older.has(k)) problems.push(`${label}: an older sk.csv row (before Layer 2A), which keeps its previous search`);
+    else if (single && olderL2B1.has(k)) problems.push(`${label}: an older sk.csv row (before Layer 2B-1), which keeps its previous search`);
     else if (row.field !== field || row.en !== en || row.verifiedBy !== 'AI-DRAFT' || !row.sk.trim()) {
       problems.push(`${label}: sk.csv must have the exact field and English, non-empty Slovak, and AI-DRAFT signature`);
     } else if (normaliseEnglish(row.sk) === en) {
       problems.push(`${label}: Slovak equals the English, nothing to add`);
     } else {
-      const textProblem = translationTextProblem(en, row.sk);
+      const textProblem = translationTextProblem(en, row.sk, field);
       if (textProblem) problems.push(`${label}: ${textProblem}`);
+      const slotProblem = single ? historicSlotProblem(en, row.sk, (key) => (olderL2B1.has(key) ? dictionary.get(key) : undefined)) : '';
+      if (slotProblem) problems.push(`${label}: ${slotProblem}`);
+    }
+    if (single) {
+      const twin = pairKey(twinField(field), en);
+      if (dictionary.has(twin) || liveKeys.has(twin) || entryKeys.has(twin) || listed.has(twin)) {
+        problems.push(`${label}: the same English is also a ${twinField(field)} key (in sk.csv, a live cell or the list)`);
+      }
+      const heldPieces = heldPieceLabels(en, heldKeys);
+      if (heldPieces.length) problems.push(`${label}: a piece is read by held cell ${heldPieces.join(', ')}`);
     }
     if (heldKeys.has(k)) problems.push(`${label}: read by held cell ${[...heldKeys.get(k)].sort().join(', ')}`);
     if (!liveKeys.has(k)) problems.push(`${label}: not a live whole cell`);
@@ -141,7 +178,10 @@ function main(argv) {
     });
   } catch (e) { fail(e.message); }
   const ctx = {
-    ...sk, heldKeys: held.heldKeys, liveKeys: liveDisplayKeys(held.programmes, held.heldCells), leaves: wholeCellLeaves(held.programmes),
+    ...sk,
+    heldKeys: held.heldKeys,
+    liveKeys: liveDisplayKeys(held.programmes, held.heldCells, held.progRaw),
+    leaves: wholeCellLeaves(held.programmes, { progRaw: held.progRaw, uniRaw: held.uniRaw }),
   };
   const existingProblems = searchEnglishProblems(current.entries, ctx);
   if (existingProblems.length) {
@@ -159,7 +199,7 @@ function main(argv) {
     if (sk.dictionary.get(k)?.sk !== slovak) { refusals++; console.log(`REFUSE ${where}: sk.csv has no row with exactly this Slovak for ${field} ${JSON.stringify(en)}`); continue; }
     if (normaliseEnglish(slovak) === en) { ignored++; console.log(`IGNORE ${where}: Slovak equals the English, nothing to add`); continue; }
     if (have.has(k)) { console.log(`SKIP ${where}: already listed`); continue; }
-    const problems = searchEnglishProblems([[field, en]], ctx);
+    const problems = searchEnglishProblems([[field, en]], { ...ctx, listed: have });
     if (problems.length) { refusals++; console.log(`REFUSE ${where}: ${problems.join('; ')}`); continue; }
     have.add(k);
     additions.push([field, en]);
