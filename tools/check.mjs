@@ -8347,7 +8347,8 @@ require('node:module').syncBuiltinESMExports();
       university_id: id, name: `English ${id}`, city: 'Cork', country: 'Ireland', ...sign, english_requirement_default,
     });
     const eUnis = [...wUnis, eUni('e1', inhEn), eUni('e2', 'Latent default text; Latent piece'),
-      eUni('e3', 'Multi item · Second item; with a semicolon'), eUni('e4', 'Twin wording')];
+      eUni('e3', 'Multi item · Second item; with a semicolon'), eUni('e4', 'Twin wording'),
+      eUni('e5', 'Live twin')];
     const eProgs = [...wProgs,
       prog('pe1', { university_id: 'e1' }),
       prog('pe2', { university_id: 'e2', english_requirement: testsEn }),
@@ -8359,6 +8360,10 @@ require('node:module').syncBuiltinESMExports();
       prog('pe7', { university_id: 'e2', english_requirement: vseEn }),
       prog('pe8', { university_id: 'e4' }),
       prog('pe9', { university_id: 'e2', english_requirement: '?' }),
+      prog('pe10', { university_id: 'e2', english_requirement: 'Second item; with a semicolon' }),
+      prog('pe11', { university_id: 'e5' }),
+      prog('pe12', { university_id: 'e5', english_requirement: 'Live twin' }),
+      prog('pe13', { university_id: 'e2', english_requirement: 'Spacing trap\t·\tOther option' }),
     ];
     const eSk = [...baseSk, sk('english_requirement', 'No Czech certificate required', 'Certifikát z češtiny sa nevyžaduje'),
       sk('english_requirement', 'Twin wording', 'Dvojité znenie')];
@@ -8394,6 +8399,8 @@ require('node:module').syncBuiltinESMExports();
     };
     eRefuse('refuses a multi-bullet whole',
       [['english_requirement_default', 'Multi item · Second item; with a semicolon', 'Položka · Druhá položka; s bodkočiarkou']], /not a live lookup key/);
+    eRefuse('refuses a bullet separator exposed by English normalisation',
+      [['english_requirement', 'Spacing trap · Other option', 'Prvá možnosť · Druhá možnosť']], /not a live lookup key/);
     eRefuse('refuses a latent university default',
       [['english_requirement_default', 'Latent default text; Latent piece', 'Skrytý text; Skrytá časť']], /not a live lookup key/);
     eRefuse('refuses a programme\'s own wording offered as english_requirement_default',
@@ -8402,12 +8409,16 @@ require('node:module').syncBuiltinESMExports();
       [['english_requirement', inhEn, inhSk]], /not a live lookup key for english_requirement:/);
     eRefuse('refuses the same English when sk.csv has it under the other column',
       [['english_requirement_default', 'Twin wording', 'Dvojité znenie']], /also a english_requirement key/);
+    eRefuse('refuses explicit wording equal to a live inherited key, with neither in sk.csv',
+      [['english_requirement', 'Live twin', 'Rovnaké znenie']], /also a english_requirement_default key/);
     eRefuse('refuses a held English requirement whole (P4b G065)',
       [['english_requirement', 'English B2', 'Angličtina B2']], /held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
     eRefuse('refuses a whole containing a held piece (P4b G065)',
       [['english_requirement', 'English B2; or IELTS 5.5', 'Angličtina B2; alebo IELTS 5.5']], /piece of this key is read by held cell prog\|tul-european-business\|english_requirement \(P4b G065\)/);
     eRefuse('refuses a whole equal to an item of a multi-bullet cell',
       [['english_requirement', 'Multi item', 'Položka']], /english_requirement piece at .*pe3/);
+    eRefuse('refuses a whole equal to an entire semicolon-bearing bullet item',
+      [['english_requirement', 'Second item; with a semicolon', 'Druhá položka; s bodkočiarkou']], /english_requirement piece at .*pe3/);
     eRefuse('refuses a whole equal to a piece of a latent university default',
       [['english_requirement', 'Latent piece', 'Skrytá časť']], /english_requirement piece at .*e2/);
     eRefuse('refuses a changed historic Slovak slot',
@@ -8756,7 +8767,7 @@ require('node:module').syncBuiltinESMExports();
     equal('search L2B1: the 116 Layer 2A entries stay byte-identical', [layer2A.length,
       createHash('sha256').update(JSON.stringify(layer2A)).digest('hex')], [116, 'c1344cf894cbbb391b6622a3d7a62d3e59a34fb996351204585f202aa2873ed0']);
     check('search L2B1: the list stays at version 2 until an English requirement entry is added',
-      i18n.SEARCH_ENGLISH_VERSION === 2 || i18n.SEARCH_ENGLISH_KEYS.length > layer2A.length);
+      i18n.SEARCH_ENGLISH_KEYS.length === layer2A.length ? i18n.SEARCH_ENGLISH_VERSION === 2 : i18n.SEARCH_ENGLISH_VERSION >= 3);
   }
 
   // Layer 2B-1 display: a single-bullet translation changes words only, and
@@ -8766,7 +8777,10 @@ require('node:module').syncBuiltinESMExports();
     const held = ac.heldDisplayKeys({ universitiesCsv: read('data/universities.csv'), programmesCsv: read('data/programmes.csv') });
     const liveKeys = ac.liveDisplayKeys(held.programmes, held.heldCells, held.progRaw);
     const leaves = ac.wholeCellLeaves(held.programmes, held);
-    const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
+    // Replay from the Phase 1 dictionary so valid Phase 2 appends cannot
+    // remove a key from this baseline eligibility test.
+    const skRows = csvToObjects(readFileSync(join(root, 'data/i18n/sk.csv'))
+      .subarray(0, searchMod.L2B1_BASE_SK_BYTES).toString('utf8')).rows;
     const skKeys = new Set(skRows.map((r) => `${r.field.trim()}\u0000${i18n.normaliseEnglish(r.en)}`));
     // Every key the writer would accept today, ignoring wording, with a fake Slovak text.
     const eligible = [...liveKeys].map((k) => k.split('\u0000')).filter(([f, en]) => ac.SINGLE_BULLET_FIELDS.includes(f)

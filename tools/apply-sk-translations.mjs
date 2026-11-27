@@ -345,7 +345,10 @@ export function liveDisplayKeys(programmes, heldCells, progRaw = null) {
       && !heldCells.has(`uni|${row.universityId}|english_requirement_default`)) {
       const own = String(raw.english_requirement ?? '').trim();
       const en = normaliseEnglish(row.englishRequirement[0]);
-      if (own !== '?' && usable(en)) live.add(pairKey(own ? 'english_requirement' : 'english_requirement_default', en));
+      // dataParts can expose a bullet separator after normalising whitespace.
+      if (own !== '?' && usable(en) && !en.includes(' · ')) {
+        live.add(pairKey(own ? 'english_requirement' : 'english_requirement_default', en));
+      }
     }
   }
   return live;
