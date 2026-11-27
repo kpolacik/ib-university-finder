@@ -606,6 +606,23 @@ wording that is not held for source review, checks that numbers, test names and
 separators stay unchanged, skips exact rows already in `data/i18n/sk.csv`, and
 writes nothing if any line is refused.
 
+The same script also takes `living_cost_source` and `baseline_requirement`,
+but only as **whole cells**: the English must be a university's entire value,
+never one part between `;` or ` · `. It refuses a whole value that also
+appears as a part of another university's cell, because the page would then
+translate that part too.
+
+Search for these two fields (Leon, 2026-11-27): a newly reviewed Slovak
+translation is searched in Slovak **and** in its English, so a student who
+types "diploma" still finds the programme. Older translations, other fields
+and untranslated text keep the old search. The page knows which cells get this
+from the list `SEARCH_ENGLISH_KEYS` in `js/i18n.js`, which only a script
+writes. After the `--apply` above, run
+`node tools/sk-search-english.mjs --review review.csv` (preview), then the same
+with `--apply`, then `node tools/check.mjs`. It adds only rows the review marked
+`keep` that are now in `data/i18n/sk.csv` with exactly that Slovak, and never
+rows that were there before this work began (the first 1,082).
+
 CSV exports use headings in the selected language and keep **all data cells
 in English**, including requirement wording. Numbers inside data text keep
 decimal dots, such as IELTS 6.5. Quotes from official pages stay in English.

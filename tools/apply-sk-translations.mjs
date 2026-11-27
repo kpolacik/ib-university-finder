@@ -1,5 +1,6 @@
 // Appends independently reviewed Slovak translations for prose columns to
-// data/i18n/sk.csv (issue #18: requirement and deadline prose).
+// data/i18n/sk.csv (issue #18: requirement and deadline prose), and whole
+// cells of living_cost_source and baseline_requirement (Layer 2A).
 //
 // Why this exists: tools/add-sk-rows.mjs only handles the four PR2 fee/recognition
 // columns, checks raw whole strings only, and has no review, hard-token,
@@ -33,6 +34,15 @@ import { DATA_FIELDS, normaliseEnglish } from '../js/i18n.js';
 import { appliedCells, selectResearchCells } from './select-prose.mjs';
 
 export const PROSE_FIELDS = ['ib_subjects', 'other_requirements', 'deadline_notes'];
+// Issue #18 Layer 2A: university text copied onto each programme. Only the
+// whole cell is a key. A piece key would make dataParts() translate a
+// semicolon cell item by item, and the detail view capitalises every piece
+// of baseline_requirement (js/render.js dataValue), mid-sentence included.
+// Kept apart from PROSE_FIELDS: sk.csv already holds eight baseline rows for
+// held UK cells, which the prose guard in tools/check.mjs would reject.
+export const WHOLE_CELL_DATA_FIELDS = ['living_cost_source', 'baseline_requirement'];
+export const SUPPORTED_FIELDS = [...PROSE_FIELDS, ...WHOLE_CELL_DATA_FIELDS];
+const WHOLE_CELL_PROPS = { living_cost_source: 'livingCostSource', baseline_requirement: 'baselineRequirement' };
 
 // Pinned non-selector holds (23 cells) that sit beside the live
 // selectResearchCells() output. A key read by any held cell's display is
@@ -222,11 +232,12 @@ export function heldDisplayKeys({
   return { heldCells, heldKeys, programmes: built.programmes };
 }
 
-function liveDisplayKeys(programmes, heldCells) {
+export function liveDisplayKeys(programmes, heldCells) {
   const live = new Set();
+  const usable = (en) => en && en !== '?' && en !== 'none';
   const add = (field, text) => {
     for (const en of textKeys(text)) {
-      if (en && en !== '?' && en !== 'none') live.add(pairKey(field, en));
+      if (usable(en)) live.add(pairKey(field, en));
     }
   };
   for (const row of programmes) {
@@ -241,8 +252,69 @@ function liveDisplayKeys(programmes, heldCells) {
     if (!heldCells.has(`prog|${row.id}|deadline_notes`) && row.deadlineNotes) {
       add('deadline_notes', row.deadlineNotes);
     }
+    for (const [field, prop] of Object.entries(WHOLE_CELL_PROPS)) {
+      const en = normaliseEnglish(row[prop]);
+      if (usable(en) && !heldCells.has(`uni|${row.universityId}|${field}`) && !heldCells.has(`prog|${row.id}|${field}`)) {
+        live.add(pairKey(field, en));
+      }
+    }
   }
   return live;
+}
+
+// Map<`${field}\0${piece}`, Set<universityId>> of every ' · ' or ';' piece of
+// a whole-cell field, held or not. dataParts() falls back to piece lookups, so
+// a whole key admitted for one university could otherwise translate part of
+// another university's cell that happens to contain it as an item.
+export function wholeCellLeaves(programmes) {
+  const leaves = new Map();
+  for (const row of programmes) {
+    for (const [field, prop] of Object.entries(WHOLE_CELL_PROPS)) {
+      for (const piece of textKeys(row[prop]).slice(1)) {
+        const k = pairKey(field, piece);
+        if (!leaves.has(k)) leaves.set(k, new Set());
+        leaves.get(k).add(row.universityId);
+      }
+    }
+  }
+  return leaves;
+}
+
+// Problems with a list of search-English entries ([field, en] pairs, see
+// SEARCH_ENGLISH_KEYS in js/i18n.js). Used by tools/sk-search-english.mjs
+// before it writes and by tools/check.mjs on the shipped list. skRows are
+// csvToObjects rows of sk.csv, in file order.
+// The first SK_ROWS_BEFORE_LAYER2A rows were in sk.csv before Leon's choice
+// (2379d5d). Their English never joins the index: Leon kept older
+// translations on the old search, so an entry must name a row appended later.
+export const SK_ROWS_BEFORE_LAYER2A = 1082;
+export function searchEnglishProblems(entries, { skRows, heldKeys, liveKeys, leaves, firstNewRow = SK_ROWS_BEFORE_LAYER2A }) {
+  const problems = [];
+  const sk = new Map(skRows.map((r) => [pairKey(String(r.field).trim(), normaliseEnglish(r.en)), r.sk]));
+  const position = new Map(skRows.map((r, i) => [pairKey(String(r.field).trim(), normaliseEnglish(r.en)), i]));
+  const seen = new Set();
+  let prev = null;
+  for (const entry of entries) {
+    const [field, en] = Array.isArray(entry) ? entry : [];
+    const label = `${field} ${JSON.stringify(en)}`;
+    if (!Array.isArray(entry) || entry.length !== 2 || typeof field !== 'string' || typeof en !== 'string') {
+      problems.push(`not a [field, en] pair: ${JSON.stringify(entry)}`);
+      continue;
+    }
+    const k = pairKey(field, en);
+    if (!WHOLE_CELL_DATA_FIELDS.includes(field)) problems.push(`${label}: field is not ${WHOLE_CELL_DATA_FIELDS.join(' or ')}`);
+    if (!en || en !== normaliseEnglish(en) || en === '?' || en === 'none') problems.push(`${label}: English must be a normalised value`);
+    if (seen.has(k)) problems.push(`${label}: listed twice`);
+    if (prev !== null && !(prev < k)) problems.push(`${label}: not in sorted order`);
+    seen.add(k); prev = k;
+    if (!sk.has(k)) problems.push(`${label}: no sk.csv translation`);
+    else if (normaliseEnglish(sk.get(k)) === en) problems.push(`${label}: Slovak equals the English, nothing to add`);
+    else if (position.get(k) < firstNewRow) problems.push(`${label}: an older sk.csv row (before Layer 2A), which stays Slovak-only in search`);
+    if (heldKeys.has(k)) problems.push(`${label}: read by held cell ${[...heldKeys.get(k)].sort().join(', ')}`);
+    if (!liveKeys.has(k)) problems.push(`${label}: not a live whole cell`);
+    if (leaves.has(k)) problems.push(`${label}: also a piece of a cell at ${[...leaves.get(k)].sort().join(', ')}`);
+  }
+  return problems;
 }
 
 // Strict line-aware CSV reader (same guard as tools/reword-prose.mjs:138-160),
@@ -324,6 +396,7 @@ function main(argv) {
     fail(e.message);
   }
   const liveKeys = liveDisplayKeys(programmes, heldCells);
+  const leaves = wholeCellLeaves(programmes);
 
   // Parse batch CSV (exact header: field,en,sk).
   const [batchHead, ...batchRows] = records(batchFile, readUtf8(batchFile), fail);
@@ -382,8 +455,8 @@ function main(argv) {
       continue;
     }
     // Refusal 1: supported field, non-empty sk, normalised en, not ? or none.
-    if (!PROSE_FIELDS.includes(field)) {
-      refuse(`unsupported field ${JSON.stringify(field)} (only ${PROSE_FIELDS.join(', ')})`);
+    if (!SUPPORTED_FIELDS.includes(field)) {
+      refuse(`unsupported field ${JSON.stringify(field)} (only ${SUPPORTED_FIELDS.join(', ')})`);
       continue;
     }
     if (!sk.trim()) {
@@ -412,6 +485,14 @@ function main(argv) {
     // Refusal 2: live lookup key for that field on non-held programmes.
     if (!liveKeys.has(pKey)) {
       refuse(`not a live lookup key for ${field}: ${JSON.stringify(en)}`);
+      continue;
+    }
+
+    // Refusal 2b: a whole-cell key that is also a piece of another cell of the
+    // same field would translate part of that cell too (see wholeCellLeaves).
+    const leafOf = WHOLE_CELL_DATA_FIELDS.includes(field) && leaves.get(pKey);
+    if (leafOf) {
+      refuse(`key is also a ${field} piece at ${[...leafOf].sort().join(', ')}: ${JSON.stringify(en)}`);
       continue;
     }
 

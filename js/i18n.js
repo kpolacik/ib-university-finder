@@ -1549,6 +1549,30 @@ export const DATA_FIELDS = {
 let translations = new Map();
 let searchCache = new WeakMap();
 
+// Issue #18 Layer 2A search (Leon, 2026-11-27, "incremental"): when a reviewed
+// whole-cell Slovak translation replaces one of these cells, its English stays
+// searchable too, so a student typing "diploma" still finds the programme.
+// Only exact (field, normalised English) pairs listed below get this, and only
+// tools/sk-search-english.mjs writes the list, from keep-reviewed rows already
+// in data/i18n/sk.csv. Older translations, held cells, untranslated text and
+// every other field keep the plain Slovak-only index. The version goes up with
+// every change so a reviewer can see the list moved.
+// BEGIN SEARCH_ENGLISH (written by tools/sk-search-english.mjs; do not hand-edit)
+export const SEARCH_ENGLISH_VERSION = 1;
+export const SEARCH_ENGLISH_KEYS = [
+];
+// END SEARCH_ENGLISH
+export const SEARCH_ENGLISH_FIELDS = ['living_cost_source', 'baseline_requirement'];
+let searchEnglish = new Set();
+
+// Tests pass a disposable list; the page always uses SEARCH_ENGLISH_KEYS.
+export function setSearchEnglishKeys(keys = SEARCH_ENGLISH_KEYS) {
+  searchCache = new WeakMap();
+  searchEnglish = new Set(keys.filter(([field]) => SEARCH_ENGLISH_FIELDS.includes(field))
+    .map(([field, en]) => `${field}\u0000${normaliseEnglish(en)}`));
+}
+setSearchEnglishKeys();
+
 export function setDataTranslations(rows = []) {
   searchCache = new WeakMap();
   translations = new Map(rows.filter((row) => row.sk?.trim()).map((row) => [
@@ -1576,7 +1600,15 @@ export function translatedSearchText(row) {
   if (searchCache.has(row)) return searchCache.get(row);
   const text = Object.entries(DATA_FIELDS).flatMap(([field, prop]) => {
     const values = Array.isArray(row[prop]) ? row[prop] : [row[prop]];
-    return values.flatMap((value) => dataParts(field, value, 'sk').map((part) => part.text));
+    return values.flatMap((value) => {
+      const parts = dataParts(field, value, 'sk');
+      const texts = parts.map((part) => part.text);
+      // Only a whole-cell match with a different Slovak text carries part.en
+      // equal to the whole cell; a piece-by-piece fallback never qualifies.
+      const en = normaliseEnglish(value);
+      if (parts.length === 1 && parts[0].en === en && searchEnglish.has(`${field}\u0000${en}`)) texts.push(en);
+      return texts;
+    });
   }).join(' ');
   searchCache.set(row, text);
   return text;
