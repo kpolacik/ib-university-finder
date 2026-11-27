@@ -7,7 +7,7 @@ import * as savedState from '../js/saved-state.js';
 // It needs no libraries — just Node. Every check prints ok or FAIL, and the
 // script exits non-zero if anything failed.
 
-import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -2264,6 +2264,227 @@ section('Prose reword script (tools/reword-prose.mjs, #17)');
   } finally { rmSync(dir, { recursive: true }); }
   check('reword-prose.mjs never writes last_verified or verified_by',
     !/col\.(last_verified|verified_by)\]\s*=(?!=)/.test(read('tools/reword-prose.mjs')));
+}
+
+section('Translated prose reword and recovery (issue #17)');
+{
+  const { readSheets, BULLET } = await import('../js/data.js');
+  const { translationInventory } = await import('./i18n-missing.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'ib-reword-translated-'));
+  try {
+    mkdirSync(join(dir, 'i18n'));
+    const paths = ['programmes.csv', 'universities.csv', 'i18n/sk.csv'];
+    const heads = paths.map((path) => parseCsv(read(`data/${path}`))[0]);
+    const cell = (v) => /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    const csv = (grid) => grid.map((r) => r.map(cell).join(',')).join('\n') + '\n';
+    const sheet = (i, rows) => csv([heads[i], ...rows.map((r) => heads[i].map((h) => r[h] ?? ''))]);
+    const put = (path, text) => writeFileSync(join(dir, path), text);
+    const get = (path) => readFileSync(join(dir, path), 'utf8');
+    const bytes = () => paths.map(get);
+    const sameBytes = (expected) => bytes().every((text, i) => text === expected[i]);
+    const marker = '.reword-pending';
+    const clean = () => ![...readdirSync(dir), ...readdirSync(join(dir, 'i18n'))].some((p) => p.startsWith('.reword-'));
+    const sign = { verified_by: 'AI-DRAFT', last_verified: '2026-10-03' };
+    const uni = { university_id: 'a', name: 'Test University', city: 'Dublin', country: 'Ireland', ...sign };
+    const prog = (id, extra = {}) => ({ programme_id: id, university_id: 'a', programme: `Programme ${id}`,
+      subject_area: 'Law', language: 'English', official_url: `https://example.org/${id}`, ...sign, ...extra });
+    const sk = (field, en, text, verified_by = 'AI-DRAFT') => ({ field, en, sk: text, verified_by });
+    const [old, next] = ['The page lists an interview', 'An interview is listed'];
+    const [defOld, defNew] = ['The page says entry is open', 'Entry is open'];
+    const [feeOld, feeNew] = ['Fee is not refundable', 'The fee cannot be refunded'];
+    const [baseOld, baseNew] = ['The page says applicants need a school diploma', 'Applicants need a school diploma'];
+    const shared = sk('admission', old, 'Pohovor, "ústny"');
+    const otherSk = sk('app_fee_note', 'Orphan fixture', 'Pôvodný riadok');
+    const two = [prog('a', { admission: old }), prog('b', { admission: old.replace('page ', 'page  ') })];
+    const progs = [...two, prog('c'), prog('d', { admission: '?', english_requirement: '?', ib_recognition: '?', app_fee: '20' })];
+    const unis = [{ ...uni, admission_default: defOld, app_fee_default: '25', app_fee_note_default: feeOld, baseline_requirement: baseOld }];
+    const translations = [shared, otherSk, sk('admission_default', defOld, 'Voľný vstup'), sk('app_fee_note_default', feeOld, 'Bez vrátenia')];
+    const reset = (p = progs, u = unis, s = translations) => {
+      [p, u, s].forEach((rows, i) => put(paths[i], sheet(i, rows)));
+      return bytes();
+    };
+    const reco = (id, previous = old, value = next, column = 'admission') => ['prog', id, column, previous, value];
+    const def = ['uni', 'a', 'admission_default', defOld, defNew];
+    const moves = [reco('a'), reco('b', two[1].admission), def, ['uni', 'a', 'app_fee_note_default', feeOld, feeNew]];
+    const batch = [...moves, ['uni', 'a', 'baseline_requirement', baseOld, baseNew]];
+    const run = (lines, { mode = true, apply = true, review = true, fault } = {}) => {
+      put('batch.csv', csv([['entity_type','id','column','expected_old','value','reason','drops'],
+        ...lines.map(([e, id, field, from, to, drops = '']) => [e, id, field, from, to, 'plain wording', drops])]));
+      put('review.csv', csv([['entity_type','id','column','value','verdict','approved_drops'],
+        ...lines.map(([e, id, field,, value, drops = '']) => [review === 'wrong' ? 'misc' : e, id, field, value, 'keep', drops])]));
+      const args = [...(fault ? ['--require', join(dir, `fault-${fault}.cjs`)] : []), join(root, 'tools/reword-prose.mjs'),
+        '--data', dir, ...(mode ? ['--translated'] : []), ...(apply ? ['--apply', ...(review ? ['--review', join(dir, 'review.csv')] : [])] : []),
+        join(dir, 'batch.csv')];
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, log: r.stdout + r.stderr };
+    };
+    const refusal = (name, lines, reason, opts, status = 2) => {
+      const before = bytes();
+      const r = run(lines, opts);
+      check(`translated: ${name}`, r.status === status && reason.test(r.log) && sameBytes(before) && clean(), r.log);
+    };
+
+    const original = reset();
+    const expected = [sheet(0, progs.map((p, i) => i < 2 ? { ...p, admission: next } : p)),
+      sheet(1, [{ ...unis[0], admission_default: defNew, app_fee_note_default: feeNew, baseline_requirement: baseNew }]),
+      sheet(2, translations.map((r, i) => i === 1 ? r : { ...r, en: [next, '', defNew, feeNew][i] }))];
+    const dry = run(batch, { apply: false });
+    check('translated: dry run lists planned rekeys and leaves all three files alone',
+      dry.status === 0 && (dry.log.match(/^REKEY /gm) || []).length === 3 && sameBytes(original) && clean(), dry.log);
+    const applied = run(batch);
+    check('translated: apply writes the two sheets and rekeys only the exact English CSV cells',
+      applied.status === 0 && sameBytes(expected) && clean(), applied.log);
+    const scope = ([p, u, s]) => {
+      const rows = (text) => csvToObjects(text).rows;
+      i18n.setDataTranslations(rows(s));
+      const parsed = readSheets(u, p, new Date('2026-11-27T12:00Z')).programmes;
+      const card = (r) => i18n.dataParts('admission', r.admission.join(BULLET), 'sk');
+      return { parsed, card: parsed.map(card), search: parsed.map(i18n.translatedSearchText),
+        inventory: translationInventory(rows(u), rows(p), rows(s)) };
+    };
+    const before = scope(original), after = scope(bytes());
+    i18n.setDataTranslations([]);
+    equal('translated: explicit and inherited cards keep Slovak bytes with updated English reveal', after.card, [
+      [{ text: shared.sk, en: next }], [{ text: shared.sk, en: next }], [{ text: translations[2].sk, en: defNew }], [],
+    ]);
+    check('translated: only the approved missing English changes bilingual search',
+      before.search.every((s, i) => after.search[i] === s.replace(baseOld, baseNew)) && before.search[2] !== after.search[2]);
+    check('translated: inherited and ? admission, recognition and overridden fee keep their parser rules',
+      after.parsed[2].appFeeNote === feeNew && after.parsed[3].appFee === 20 && after.parsed[3].appFeeNote === ''
+        && after.parsed[3].admissionUnknown && after.parsed[3].englishUnknown && after.parsed[3].recognitionUnknown);
+    equal('translated: inventory keeps its orphan and substitutes only the missing baseline key',
+      [after.inventory.orphans, after.inventory.missing], [before.inventory.orphans,
+        before.inventory.missing.map((r) => r.field === 'baseline_requirement' ? { ...r, en: baseNew } : r)]);
+    const stamp = (path) => statSync(join(dir, path)).mtimeMs;
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const retry = run(batch);
+    check('translated: exact kept retry is all SKIP without rewriting any file',
+      retry.status === 0 && /Changes: 0\nRefusals: 0\nSkips: 5/.test(retry.log) && sameBytes(expected)
+        && paths.every((p) => stamp(p) === 1000) && clean(), retry.log);
+
+    reset();
+    refusal('legacy mode refuses a translated column', [reco('a')], /may not be reworded/, { mode: false });
+    refusal('rejects wrong entity and column', [['other', 'a', 'admission', old, next], reco('a', old, next, 'application_system')], /entity_type must be prog or uni[\s\S]*may not be reworded/);
+    refusal('rejects unknown ID and stale baseline', [reco('missing'), reco('a', defOld)], /unknown programme_id[\s\S]*stale baseline/);
+    refusal('rejects markers even mixed with valid changes', [...batch, reco('d', '?')], /blank or a marker/);
+    refusal('rejects conflicting lines', [reco('a'), reco('a', old, `${next}.`)], /conflicting lines/);
+    reset([...progs, prog('signed', { admission: old, verified_by: 'LS' })]);
+    refusal('rejects changes to signed rows', [reco('signed')], /signed/);
+    reset();
+    refusal('requires an exact review', batch, /no review row for this exact new value/, { review: 'wrong' });
+    refusal('apply requires a review file', batch, /--apply needs --review/, { review: false }, 1);
+    refusal('rejects normalization-only wording', [reco('b', two[1].admission, old)], /normalization-only/);
+    refusal('rejects incomplete shared OLD', [reco('a')], /shared OLD not completely moved/);
+    refusal('rejects contradictory shared destinations', [reco('a'), reco('b', two[1].admission, `${next}.`)], /contradictory destinations/);
+    reset([prog('a', { admission: old }), prog('b', { admission: defOld })], [uni], [shared, sk('admission', defOld, 'Vstup')]);
+    refusal('rejects two sources for one destination', [reco('a'), reco('b', defOld, next)], /two Slovak sources target/);
+    reset(progs, unis, [...translations, sk('admission', next.replace('interview ', 'interview  '), 'Pohovor')]);
+    refusal('rejects normalized NEW collision', moves, /normalized NEW collides/);
+    reset(progs, unis, [...translations, { ...shared, en: two[1].admission }]);
+    refusal('rejects duplicate normalized Slovak keys', moves, /duplicate normalized Slovak key/);
+    for (const invalid of [{ ...shared, sk: ' ' }, { ...shared, verified_by: 'LS' }]) {
+      reset(progs, unis, [invalid, ...translations.slice(1)]);
+      refusal('rejects an empty or signed Slovak source', moves, /nonempty AI-DRAFT/);
+    }
+    reset();
+    put(paths[2], get(paths[2]).replaceAll('\n', '\r\n'));
+    refusal('rejects noncanonical Slovak CSV', batch, /expected CSV formatting/, {}, 1);
+    reset(progs, [...unis, { ...uni, university_id: ' a ' }]);
+    refusal('rejects duplicate normalized university IDs', batch, /duplicate university_id/, {}, 1);
+
+    reset([prog('a', { admission: `${old}; Portfolio` })], [uni], [shared]);
+    refusal('rejects an OLD with item-only coverage', [reco('a', `${old}; Portfolio`, `${next}; Portfolio`)], /item-only or default-only/);
+    reset([prog('a', { admission: defOld }), prog('b')], unis, translations.slice(1));
+    refusal('rejects an explicit OLD with only default coverage', [reco('a', defOld, defNew)], /item-only or default-only/);
+    refusal('rejects a default rekey that strands an untouched explicit override', [def], /raw lookup changed: prog a admission/);
+    reset([prog('a', { admission: defNew }), prog('b')], unis, [...translations.slice(1), sk('admission', defNew, 'Iný vstup')]);
+    refusal('rejects a NEW explicit key shadowing the moved default on an inheritor', [def], /card lookup changed: prog b admission/);
+    for (const item of [old, next]) {
+      const joiner = item === old ? '; ' : BULLET;
+      reset([...two, prog('c', { admission: `Portfolio${joiner}${item}` })], [uni], [shared]);
+      refusal('rejects loss or gain of Slovak in an untouched list', moves.slice(0, 2), /raw lookup changed: prog c admission/);
+    }
+    const listOld = `${old}${BULLET}Portfolio`, listNew = `${next}${BULLET}Portfolio`;
+    reset([prog('a', { admission: listOld })], [uni], [sk('admission', listOld, `Pohovor${BULLET}Portfólio`), shared]);
+    refusal('rejects lost item search even when joined card Slovak is unchanged', [reco('a', listOld, listNew)], /item search changed: prog a admission/);
+    refusal('rejects a changed rekey separator', [reco('a', listOld, `${next}; Portfolio`)], /separator counts changed/);
+    reset([prog('a', { admission: 'Score 1.0 or more' })], [uni], [sk('admission', 'Score 1.0 or more', 'Skóre 1.0')]);
+    refusal('hard tokens reject a different raw number spelling in rekeys', [reco('a', 'Score 1.0 or more', 'Score 1 or more')], /hard tokens changed/);
+    const pinned = JSON.parse(read('tools/i18n-allowlist.json')).hardExceptions.find((r) => r.field === 'admission_default');
+    reset([prog('a')], [{ ...uni, admission_default: pinned.en }], [pinned]);
+    refusal('holds the exact pinned Slovak exception', [['uni', 'a', pinned.field, pinned.en, `${pinned.en} See details.`]], /pinned Slovak hard-token exception/);
+    reset([prog('a', { verified_by: 'LS' })]);
+    refusal('rejects an effective university reword on a signed inheritor', [def], /effective English on signed prog a/);
+    reset(['a','b'].map((id) => prog(id, { programme: 'Twins', admission: old })), [uni], []);
+    refusal('protects same-name identity even when there is no Slovak row', [reco('a')], /identity or points label changed/);
+    for (const [a, b, hint] of [
+      [`Entrance exam required${BULLET}Portfolio`, `Portfolio${BULLET}Entrance exam required`, /Entrance exam prefix/],
+      [`Places offered in order of CAO points${BULLET}Portfolio`, `Places ranked by CAO points${BULLET}Portfolio`, /CAO sentinel/],
+      ['Numerus Fixus applies', 'Admission is limited', /numerus fixus/],
+    ]) {
+      reset([prog('a', { admission: a })], [uni], []);
+      refusal('protects a machine-read admission item', [reco('a', a, b)], hint);
+    }
+    const [mathOld, mathNew] = ['Maths at Higher Level is waived', 'Maths at Higher Level is required'];
+    reset([prog('a', { ib_maths: 'none', admission: mathOld }), prog('b', { ib_maths: 'none', admission: mathNew })], [uni], []);
+    refusal('compares lint finding identities even when counts match', [reco('a', mathOld, mathNew), reco('b', mathNew, mathOld)], /lint finding identities changed/);
+    reset([prog('a', { admission: next }), two[1]], unis, translations);
+    refusal('rejects a partial retry with OLD Slovak still present', moves, /OLD Slovak key still exists/);
+    reset([prog('a', { admission: next }), two[1]], unis, [{ ...shared, en: next }, ...translations.slice(1)]);
+    refusal('rejects a partial shared group even when the key already moved', [reco('a')], /shared OLD still present/);
+    reset();
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const one = run([batch.at(-1)]);
+    check('translated: an uncovered reword changes only its English sheet',
+      one.status === 0 && stamp(paths[1]) !== 1000 && [paths[0], paths[2]].every((p) => stamp(p) === 1000) && clean(), one.log);
+    reset();
+    for (const path of paths) utimesSync(join(dir, path), 1, 1);
+    const twoFiles = run(moves.slice(0, 2));
+    check('translated: a programme rekey changes exactly its sheet and the Slovak file',
+      twoFiles.status === 0 && stamp(paths[1]) === 1000 && [paths[0], paths[2]].every((p) => stamp(p) !== 1000) && clean(), twoFiles.log);
+    equal('translated: rekey alone keeps every bilingual search string byte-identical', scope(bytes()).search, before.search);
+    i18n.setDataTranslations([]);
+
+    // Fault the CLI's real second rename, after the programme replacement is
+    // visible. In the second run fault the rollback rename as well.
+    for (const fault of ['rollback', 'blocked']) put(`fault-${fault}.cjs`, `
+const fs = require('node:fs');
+const rename = fs.renameSync;
+let n = 0;
+fs.renameSync = (from, to) => {
+  n++;
+  if (n === 2 || (n === 3 && ${fault === 'blocked'})) return rename(from + '.missing', to);
+  return rename(from, to);
+};
+require('node:module').syncBuiltinESMExports();
+`);
+    reset();
+    const rolledBack = run(batch, { fault: 'rollback' });
+    check('translated: a real second rename failure restores all preimages and clears the marker',
+      rolledBack.status === 1 && /ENOENT[\s\S]*Rolled back/.test(rolledBack.log) && sameBytes(original) && clean(), rolledBack.log);
+    const incomplete = run(batch, { fault: 'blocked' });
+    const pending = JSON.parse(get(marker));
+    check('translated: failed recovery retains complete preimages and a mixed tree',
+      incomplete.status === 1 && /Rollback failed/.test(incomplete.log) && incomplete.log.includes(join(dir, marker))
+        && sameBytes([expected[0], ...original.slice(1)]) && pending.length === 3
+        && pending.every(({ target, original: saved }, i) => target === join(dir, paths[i]) && readFileSync(saved, 'utf8') === original[i]), incomplete.log);
+    for (const mode of [true, false]) {
+      const blocked = run(batch, { mode, apply: false });
+      check('translated: pending marker blocks either mode before SKIP or writes',
+        blocked.status === 1 && /Recovery required/.test(blocked.log) && !/SKIP/.test(blocked.log)
+          && sameBytes([expected[0], ...original.slice(1)]), blocked.log);
+    }
+    for (const { target, original: saved } of pending) writeFileSync(target, readFileSync(saved));
+    check('translated: the documented recovery restores all three byte preimages', sameBytes(original));
+    rmSync(join(dir, marker));
+    for (const { dir: staging } of pending) rmSync(staging, { recursive: true });
+    const recovered = run(batch), recoveredRetry = run(batch);
+    check('translated: manual restore permits full apply then an all-SKIP retry',
+      recovered.status === 0 && recoveredRetry.status === 0 && /Skips: 5/.test(recoveredRetry.log) && sameBytes(expected) && clean(),
+      recovered.log + recoveredRetry.log);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 }
 
 // ---------------------------------------------------------------- the real data

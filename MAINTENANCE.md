@@ -96,7 +96,7 @@ Only if it is not already on the `universities` tab.
 | `tuition_noneu` | Optional — the site does not display it. Skip it unless someone asks for non-EU fees |
 | `english_requirement` | Leave blank unless it differs from the university default |
 | `application_deadline` | `YYYY-MM-DD` |
-| `deadline_notes` | Anything that makes the date make sense |
+| `deadline_notes` | Anything that makes the date make sense. Spell out month names. Leave out source quotes, page names and retrieval dates; keep the exact sentences the site reads back (see below). |
 | `official_url` | Direct link to the admissions page. Must start with `https://` |
 | `last_verified`, `verified_by` | Today's date and your initials |
 
@@ -320,6 +320,31 @@ sentence. Preserve the displayed differences between same-name programmes.
 The script keeps `last_verified` and `verified_by` intact and writes only
 wording an independent reviewer approved verbatim. Record a changed fact as
 research, with its source.
+
+For admission, English requirements, IB recognition, application fee notes
+and the university's baseline requirement, use `--translated` with the same
+batch and review files. Include every place that uses a shared English
+lookup key. The script moves the existing Slovak entry to the new English
+key and keeps the Slovak text as written. It refuses a move that changes
+which Slovak text appears, and it leaves untranslated text untranslated.
+`application_system` is outside this mode. Before applying a batch, close
+anything that serves or writes the staging data.
+
+**If a translated write stops partway through:** the script replaces one
+file at a time and tries to restore the originals if a replacement fails,
+but an interruption or power loss can leave a mix of old and new files. If
+`data/.reword-pending` exists (or `.reword-pending` in your `--data` folder),
+both modes refuse to run. Do not build the snapshot, commit, or publish.
+
+1. Open the marker in a plain text editor. Each `target` is a CSV and each
+   `original` is the saved copy to restore. Compare them to see which files
+   changed. If the marker is unreadable, check the paths printed by the
+   script. If you cannot identify or read all saved copies, stop and get help.
+2. Copy each saved `original` over its recorded `target`, even if that
+   target looks unchanged. Keep the saved copies. Use `cmp` on each pair
+   (`cmp "target path" "original path"`); no output means they match.
+3. Once all targets match, remove the marker, then discard the staging
+   folders listed under `dir`. Run the same dry run and apply again.
 
 **The card says what kind of points figure it is.** You do not fill this in;
 the site works it out:
