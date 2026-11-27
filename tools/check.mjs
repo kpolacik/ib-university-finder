@@ -11652,6 +11652,8 @@ section('F01 public subject evidence and reviewed subject rules');
     ['an unsafe source link', { sources: { s1: { url: 'javascript:alert(1)', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
     ['a link with a user name', { sources: { s1: { url: 'https://www.eur.nl@evil.example/', quote: fixtures.SAMPLE_QUOTE } } }, 'unsafe-link'],
     ['a source with no quote', { sources: { s1: { url: fixtures.SAMPLE_URL, quote: ' ' } } }, 'sources'],
+    ['a source language given as a list', { sources: { s1: { url: fixtures.SAMPLE_URL, quote: fixtures.SAMPLE_QUOTE, lang: ['en'] } } }, 'sources'],
+    ['a route id given as a list', { routes: { routes: [{ id: ['a'], clauses: [fixtures.PHYSICS_HL5] }] } }, 'routes'],
     ['an impossible date', { checked_on: '2026-02-31' }, 'dates'],
     ['dates out of order', { checked_on: '2026-11-26', reviewed_on: '2026-11-25' }, 'dates'],
     ['a review in the future', { reviewed_on: '2026-11-28', recheck_by: '2027-01-31' }, 'dates'],

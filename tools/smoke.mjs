@@ -6939,6 +6939,15 @@ async function runSubjectEvidence(base) {
         await page.waitFor(reviewedShown(detailSel(width)), 5000, 'online again');
         noErrors(page);
       });
+      if (width < 1200) await check(`${width}`, 'F01 malformed refresh', 'a malformed route removes the reviewed block but keeps the recorded subject wording', async () => {
+        const where = detailSel(width);
+        await page.waitFor(reviewedShown(where), 5000, 'valid rule before refresh');
+        answer = fixtures.rulesCsv([rule({ routes: { routes: [{ id: { toString: 'a' }, clauses: [fixtures.PHYSICS_HL5] }] } })]);
+        await page.ev(`document.dispatchEvent(new Event('visibilitychange'))`);
+        await page.waitFor(reviewedGone(where), 5000, 'malformed rule removed from the open detail');
+        assert((await page.ev(detailFacts(where))).subjects === catalogue.programmes.get('eur-ibeor').ib_subjects, 'the recorded wording changed');
+        noErrors(page);
+      });
     } finally { await page.close(); }
   }
 

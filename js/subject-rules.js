@@ -164,7 +164,7 @@ function readSources(value, reasons) {
     if (!url) reasons.add('unsafe-link');
     const quote = typeof source.quote === 'string' ? source.quote.trim() : '';
     if (!quote || quote.length > MAX_QUOTE) reasons.add('sources');
-    if (source.lang !== undefined && !/^[a-z]{2}$/.test(source.lang)) reasons.add('sources');
+    if (source.lang !== undefined && (typeof source.lang !== 'string' || !/^[a-z]{2}$/.test(source.lang))) reasons.add('sources');
     out[id] = { url, quote, lang: source.lang || 'en' };
   }
   return out;
@@ -244,7 +244,7 @@ function readRoutes(value, kind, reasons, cited) {
   }
   const ids = new Set();
   const routes = value.routes.map((route) => {
-    if (!isObject(route) || !onlyKeys(route, ['id', 'clauses', 'conditions']) || !ID.test(route.id ?? '') || ids.has(route.id)
+    if (!isObject(route) || !onlyKeys(route, ['id', 'clauses', 'conditions']) || typeof route.id !== 'string' || !ID.test(route.id) || ids.has(route.id)
         || !Array.isArray(route.clauses) || !route.clauses.length) {
       reasons.add('routes');
       return { id: '', clauses: [], conditions: [] };
