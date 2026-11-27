@@ -7951,8 +7951,14 @@ i18n.initLanguage('', { getItem: () => 'en' });
 section('Slovak prose translation tooling (issue #18)');
 {
   const { translationInventory } = await import('./i18n-missing.mjs');
-  const { heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS } = await import('./apply-sk-translations.mjs');
+  const {
+    heldDisplayKeys, NON_SELECTOR_HOLDS, PROSE_FIELDS, WHOLE_CELL_DATA_FIELDS,
+    liveDisplayKeys, wholeCellLeaves,
+  } = await import('./apply-sk-translations.mjs');
+  const searchMod = await import('./sk-search-english.mjs');
   const renderMod = await import('../js/render.js');
+  const renderModMain = renderMod;
+  const costMod = await import('../js/cost.js');
 
   const dir = mkdtempSync(join(tmpdir(), 'ib-apply-sk-'));
   try {
@@ -8171,6 +8177,161 @@ require('node:module').syncBuiltinESMExports();
     refuse('refuses cross-field ib_subjects key equal to a piece of a held other_requirements cell', [['ib_subjects', 'Cross-field piece', 'Krížová položka']], /held cell.*prog\|p3\|other_requirements/);
     refuse('refuses cross-field ib_subjects key read via compact lookup of a held other_requirements cell', [['ib_subjects', 'Cross-field held subject', 'Krížový predmet']], /held cell.*prog\|p3\|other_requirements/);
     refuse('refuses pinned NON_SELECTOR_HOLDS key even when shared with an unheld row', [['deadline_notes', 'Pinned K8 note', 'Poznámka K8']], /held cell.*prog\|tul-anglophone-studies\|deadline_notes/);
+
+    // Layer 2A: living_cost_source and baseline_requirement are whole-cell only.
+    // u2's piece "Leaf baseline" is u3's whole cell; bath is a pinned held
+    // baseline (carry-for-18) shared whole by unheld u4 and as a piece by u5.
+    const heldLayer2A = ['baseline_requirement', 'Internal reference; see IB recognition evidence.', 'Interná referencia; pozri podklady.'];
+    const wUnis = [...unis.map((uni) => uni.university_id === 'tul' ? { ...uni, baseline_requirement: heldLayer2A[1] } : uni),
+      { university_id: 'w1', name: 'Whole One', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'secondary school leaving certificate; IB Diploma accepted',
+        living_cost_source: 'national estimate (Test Immigration Service)' },
+      { university_id: 'w2', name: 'Whole Two', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Leaf baseline; Second item', living_cost_source: 'university estimate; city data' },
+      { university_id: 'w3', name: 'Whole Three', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Leaf baseline', living_cost_source: 'national estimate (Migration Agency)' },
+      { university_id: 'bath', name: 'Bath', city: 'Bath', country: 'United Kingdom', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
+      { university_id: 'w4', name: 'Whole Four', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Held UK baseline; Shared UK piece' },
+      { university_id: 'w5', name: 'Whole Five', city: 'Cork', country: 'Ireland', ...sign, baseline_requirement: 'Shared UK piece' },
+      { university_id: 'w6', name: 'Whole Six', city: 'Cork', country: 'Ireland', ...sign,
+        baseline_requirement: 'Minimum 24 points with HL Maths; see https://example.org/ib' },
+    ];
+    const wProgs = [...progs, ...['w1', 'w2', 'w3', 'bath', 'w4', 'w5', 'w6'].map((u) => prog(`pw-${u}`, { university_id: u }))];
+    const wholeBatch = [
+      ['baseline_requirement', 'secondary school leaving certificate; IB Diploma accepted', 'maturitné vysvedčenie; IB Diploma sa uznáva'],
+      ['living_cost_source', 'national estimate (Test Immigration Service)', 'národný odhad (Test Immigration Service)'],
+    ];
+    const wholeReview = wholeBatch.map((r) => [...r, 'keep']);
+    const wOriginal = reset(wProgs, wUnis);
+    const wDry = run(wholeBatch);
+    check('apply-sk: whole living_cost_source and baseline_requirement cells dry-run clean and write nothing',
+      wDry.status === 0 && /To add: 2/.test(wDry.stdout) && /Refused: 0/.test(wDry.stdout) && sameBytes(wOriginal), wDry.log);
+    const wApplied = run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    const wAdded = parseCsv(get('i18n/sk.csv')).slice(1).slice(-2);
+    check('apply-sk: --apply --review appends the two whole-cell rows as AI-DRAFT after the old bytes',
+      wApplied.status === 0 && get('i18n/sk.csv').startsWith(wOriginal[2])
+        && wAdded.every((r, i) => r.join('|') === [...wholeBatch[i], 'AI-DRAFT'].join('|')) && cleanTemps(), wApplied.log);
+    const wAfter = bytes();
+    const wRetry = run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    check('apply-sk: exact whole-cell retry is all SKIP and writes nothing',
+      wRetry.status === 0 && /Skipped: 2/.test(wRetry.stdout) && /To add: 0/.test(wRetry.stdout) && sameBytes(wAfter), wRetry.log);
+
+    const wRefuse = (name, rows, pattern, opts = {}) => {
+      reset(wProgs, wUnis);
+      const before = bytes();
+      const r = run(rows, opts);
+      check(`apply-sk: ${name}`, r.status === 2 && pattern.test(r.log) && sameBytes(before) && cleanTemps(), r.log);
+    };
+    wRefuse('refuses a semicolon piece of baseline_requirement (whole cells only)',
+      [['baseline_requirement', 'IB Diploma accepted', 'IB Diploma sa uznáva']], /not a live lookup key for baseline_requirement/);
+    wRefuse('refuses a semicolon piece of living_cost_source (whole cells only)',
+      [['living_cost_source', 'city data', 'údaje mesta']], /not a live lookup key for living_cost_source/);
+    wRefuse('refuses a whole key that is a piece of another unheld cell, before writing anything',
+      [wholeBatch[0], ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka']], /piece at w2/,
+      { apply: true, reviewRows: [...wholeReview, ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'keep']] });
+    wRefuse('refuses a held UK baseline whole cell even when an unheld university shares it',
+      [['baseline_requirement', 'Held UK baseline; Shared UK piece', 'Držaná; Zdieľaná']], /held cell.*uni\|bath\|baseline_requirement \(carry-for-18\)/);
+    wRefuse('refuses an unheld whole cell that is a piece of a held UK baseline',
+      [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť']], /held cell.*uni\|bath\|baseline_requirement/);
+    wRefuse('refuses a Layer 2A baseline held for internal references',
+      [heldLayer2A], /held cell.*uni\|tul\|baseline_requirement \(L2A-035\)/, { apply: true, reviewRows: [[...heldLayer2A, 'keep']] });
+    const w6 = 'Minimum 24 points with HL Maths; see https://example.org/ib';
+    wRefuse('refuses a whole-cell number change', [['baseline_requirement', w6, 'Minimum 26 bodov s HL Maths; pozri https://example.org/ib']], /hard tokens differ/);
+    wRefuse('refuses a whole-cell URL change', [['baseline_requirement', w6, 'Minimum 24 bodov s HL Maths; pozri https://example.org/sk']], /hard tokens differ/);
+    wRefuse('refuses a dropped HL in a whole cell', [['baseline_requirement', w6, 'Minimum 24 bodov s matematikou; pozri https://example.org/ib']], /hard tokens differ/);
+    wRefuse('refuses a whole-cell separator change', [['baseline_requirement', w6, 'Minimum 24 bodov s HL Maths, pozri https://example.org/ib']], /separator counts/);
+
+    // Search-English list writer (tools/sk-search-english.mjs) on a copy of the
+    // real js/i18n.js block, so the real file is never written by a check.
+    reset(wProgs, wUnis);
+    const historicalSk = readFileSync(join(root, 'data/i18n/sk.csv')).subarray(0, searchMod.BASE_SK_BYTES).toString('utf8');
+    put(paths[2], historicalSk);
+    run(wholeBatch, { apply: true, reviewRows: wholeReview });
+    const appendedSk = get(paths[2]);
+    const jsCopy = join(dir, 'i18n-copy.js');
+    const source = read('js/i18n.js');
+    const realBlock = searchMod.readSearchEnglishBlock(source);
+    writeFileSync(jsCopy, searchMod.writeSearchEnglishBlock(source, realBlock.version, []));
+    const gen = (reviewRows, { apply = false, reviewText = null, fault = false, extra = [] } = {}) => {
+      put('search-review.csv', reviewText ?? csv([['field', 'en', 'sk', 'verdict'], ...reviewRows]));
+      const args = [
+        ...(fault ? ['--require', join(dir, 'fault-rename.cjs')] : []),
+        join(root, 'tools/sk-search-english.mjs'), '--data', dir, '--js', jsCopy, '--review', join(dir, 'search-review.csv'), ...extra,
+      ];
+      if (apply) args.push('--apply');
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: tmpdir() });
+      return { status: r.status, stdout: r.stdout, log: r.stdout + r.stderr };
+    };
+    const jsBefore = readFileSync(jsCopy, 'utf8');
+    const genDry = gen(wholeReview);
+    check('search-english: dry run lists both accepted whole cells and writes nothing',
+      genDry.status === 0 && /To add: 2/.test(genDry.stdout) && readFileSync(jsCopy, 'utf8') === jsBefore, genDry.log);
+    const genOdd = gen([
+      ...wholeReview,
+      [...goodBatch[0], 'keep'], // prose field: not a search-English field
+      ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'reject'],
+    ], { apply: true });
+    const written = searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8'));
+    equal('search-english: --apply writes only keep whole cells, sorted, and bumps the version once',
+      [genOdd.status, written.version, written.entries, /Ignored: 2/.test(genOdd.stdout)],
+      [0, realBlock.version + 1, [['baseline_requirement', wholeBatch[0][1]], ['living_cost_source', wholeBatch[1][1]]], true]);
+    check('search-english: --apply changes nothing outside the block',
+      readFileSync(jsCopy, 'utf8').replace(/\/\/ BEGIN SEARCH_ENGLISH[\s\S]*\/\/ END SEARCH_ENGLISH\n/, '')
+        === jsBefore.replace(/\/\/ BEGIN SEARCH_ENGLISH[\s\S]*\/\/ END SEARCH_ENGLISH\n/, ''));
+    const afterGen = readFileSync(jsCopy, 'utf8');
+    const genRetry = gen(wholeReview, { apply: true });
+    check('search-english: an exact retry adds nothing and leaves the file as it was',
+      genRetry.status === 0 && /To add: 0/.test(genRetry.stdout) && readFileSync(jsCopy, 'utf8') === afterGen, genRetry.log);
+    const genRefuse = (name, rows, pattern, opts, code = 2) => {
+      writeFileSync(jsCopy, jsBefore);
+      const before = bytes();
+      utimesSync(jsCopy, 1, 1);
+      const r = gen(rows, { apply: true, ...opts });
+      check(`search-english: ${name}`, r.status === code && pattern.test(r.log) && sameBytes(before)
+        && readFileSync(jsCopy, 'utf8') === jsBefore && stamp('i18n-copy.js') === 1000
+        && !readdirSync(dir).some((n) => n.startsWith('.search-english-')), r.log);
+    };
+    genRefuse('refuses a batch with an exact keep and a different Slovak text',
+      [wholeReview[1], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /no row with exactly this Slovak/);
+    const oldRow = 'living_cost_source,national estimate (Migration Agency),celoštátny odhad (Migration Agency),AI-DRAFT';
+    const oldReview = [[...oldRow.split(',').slice(0, 3), 'keep']];
+    genRefuse('refuses a translation that was in sk.csv before Layer 2A',
+      oldReview, /older sk\.csv row/);
+    genRefuse('does not accept a fixture flag on production dictionary bytes', oldReview, /Usage:/, { extra: ['--first-new-row', '0'] }, 1);
+    for (const [name, dictionary, pattern] of [
+      ['reordered historical key after the prefix', appendedSk.replace(oldRow + '\n', '') + oldRow + '\n', /unchanged .* byte prefix/],
+      ['duplicate historical key after the prefix', appendedSk + oldRow + '\n', /duplicate normalised key/],
+      ['historical signature edit', appendedSk.replace(oldRow, oldRow.replace('AI-DRAFT', 'REVIEWED')), /unchanged .* byte prefix/],
+    ]) {
+      put(paths[2], dictionary);
+      genRefuse(name, oldReview, pattern, {}, 1);
+    }
+    put(paths[2], appendedSk);
+    genRefuse('refuses conflicting verdicts even when one English key has different spaces',
+      [wholeReview[0], [wholeBatch[0][0], ' ' + wholeBatch[0][1], wholeBatch[0][2], 'reject']], /conflicting review verdicts/, {}, 1);
+    genRefuse('refuses conflicting keep texts for the same key',
+      [wholeReview[0], [wholeBatch[0][0], wholeBatch[0][1], 'iný text; iný', 'keep']], /conflicting keep review rows/, {}, 1);
+    genRefuse('refuses malformed quotes on a keep record', wholeReview, /malformed CSV/,
+      { reviewText: 'field,en,sk,verdict\n' + csv([wholeReview[0]]).trimEnd() + '"\n' }, 1);
+    genRefuse('requires four literal review headings', wholeReview, /header must be exactly/,
+      { reviewText: '"field,en,sk,verdict"\n' + csv(wholeReview) }, 1);
+    const paddedSk = ' ' + wholeBatch[0][2] + ' ';
+    put(paths[2], appendedSk.replace(wholeBatch[0][2], paddedSk));
+    genRefuse('compares review Slovak with the exact CSV cell before the app trims it', wholeReview, /no row with exactly this Slovak/);
+    const exactPadded = gen([[wholeBatch[0][0], wholeBatch[0][1], paddedSk, 'keep']], { apply: true });
+    equal('search-english: accepts the corrected exact review and adds only that pair',
+      [exactPadded.status, searchMod.readSearchEnglishBlock(readFileSync(jsCopy, 'utf8')).entries],
+      [0, [wholeBatch[0].slice(0, 2)]]);
+    put(paths[2], appendedSk);
+    genRefuse('cleans up and preserves the original file if the atomic rename fails', wholeReview, /Atomic write failed/, { fault: true }, 1);
+    // A held or piece key can only reach sk.csv by hand; the list refuses it too.
+    put(paths[2], get(paths[2]) + 'baseline_requirement,Shared UK piece,Zdieľaná časť,AI-DRAFT\nbaseline_requirement,Leaf baseline,Listová požiadavka,AI-DRAFT\n');
+    genRefuse('refuses held and piece keys even when sk.csv has them',
+      [['baseline_requirement', 'Shared UK piece', 'Zdieľaná časť', 'keep'], ['baseline_requirement', 'Leaf baseline', 'Listová požiadavka', 'keep']],
+      /read by held cell uni\|bath[\s\S]*piece of a cell at w2/);
+    put(paths[2], appendedSk + csv([[...heldLayer2A, 'AI-DRAFT']]));
+    genRefuse('refuses a Layer 2A baseline held for internal references even when sk.csv has it',
+      [[...heldLayer2A, 'keep']], /read by held cell.*L2A-035/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -8242,10 +8403,153 @@ require('node:module').syncBuiltinESMExports();
       }));
   }
 
+  // Layer 2A search (Leon, 2026-11-27, "incremental"): a listed whole cell
+  // keeps its English searchable beside its Slovak; nothing else changes.
+  // Disposable rows, translations and list; the real filter and lookups.
+  {
+    const quiet = { setItem() {} };
+    const base = { ...live.find((r) => r.id === 'tud-cse'), baselineRequirement: '', livingCostSource: '', ibRecognition: '' };
+    const fx = (id, over) => ({ ...base, id, ...over });
+    const quokka = 'Quokka diploma; wombat equivalent';
+    const rows = [
+      fx('fx-a', { baselineRequirement: quokka }), // listed, translated whole
+      fx('fx-b', { baselineRequirement: 'Numbat leaving certificate' }), // translated, not listed (older row)
+      fx('fx-c', { baselineRequirement: 'Bilby secondary school' }), // listed, no translation (held or not yet accepted)
+      fx('fx-d', { baselineRequirement: 'Dunnart IB' }), // listed, Slovak equals English
+      fx('fx-e', { ibRecognition: quokka }), // same English in another field
+      fx('fx-f', { baselineRequirement: 'Potoroo note; Wallaby clause' }), // listed key only as a translated piece
+      fx('fx-g', { baselineRequirement: 'Potoroo note' }), // listed, translated whole
+      fx('fx-l', { livingCostSource: 'Pademelon estimate (Test Immigration Service)' }),
+    ];
+    const translations = [
+      { field: 'baseline_requirement', en: quokka, sk: 'Kvokova maturita; ekvivalent' },
+      { field: 'baseline_requirement', en: 'Numbat leaving certificate', sk: 'Mravcožrútie vysvedčenie' },
+      { field: 'baseline_requirement', en: 'Dunnart IB', sk: 'Dunnart  IB' },
+      { field: 'ib_recognition', en: quokka, sk: 'Uznanie kvoky' },
+      { field: 'baseline_requirement', en: 'Potoroo note', sk: 'Poznámka klokanky' },
+      { field: 'living_cost_source', en: 'Pademelon estimate (Test Immigration Service)', sk: 'odhad klokana (Test Immigration Service)' },
+    ];
+    const list = [
+      ['baseline_requirement', quokka], ['baseline_requirement', 'Bilby secondary school'], ['baseline_requirement', 'Dunnart IB'],
+      ['baseline_requirement', 'Potoroo note'], ['ib_recognition', quokka], // ignored: not a whole-cell field
+      ['living_cost_source', 'Pademelon estimate (Test Immigration Service)'],
+    ];
+    const queries = ['quokka', 'wombat,', '(Quokka)', 'okka', 'quokka dip', 'kvokova', 'quokka kvokova', 'numbat', 'mravcozrutie',
+      'bilby', 'dunnart ib', 'potoroo', 'wallaby', 'klokanky', 'pademelon', 'kvoky'];
+    const search = () => Object.fromEntries(['en', 'sk'].map((lang) => {
+      i18n.setLanguage(lang, quiet);
+      return [lang, queries.map((q) => applyFilters(rows, { ...noFilters(), search: q }, new Set()).map((r) => r.id).join(' '))];
+    }));
+    // klokanky is Slovak for a translated piece, so fx-f matches it: pieces stay translated.
+    const listed = ['fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', 'fx-a', '', 'fx-b', 'fx-c', 'fx-d', 'fx-g', 'fx-f', 'fx-f fx-g', 'fx-l', 'fx-e'];
+    const unlisted = ['', '', '', '', '', 'fx-a', '', '', 'fx-b', 'fx-c', 'fx-d', '', 'fx-f', 'fx-f fx-g', '', 'fx-e'];
+    try {
+      i18n.setDataTranslations(translations);
+      i18n.setSearchEnglishKeys([]);
+      const before = search(); // fills the cache with the plain index
+      i18n.setSearchEnglishKeys(list);
+      const after = search();
+      i18n.setDataTranslations([]);
+      const noSk = search();
+      i18n.setDataTranslations(translations);
+      const reloaded = search();
+      i18n.setSearchEnglishKeys([]);
+      const cleared = search();
+      equal('search: an empty list keeps the old Slovak-only index, in both interfaces', [before.en, before.sk], [unlisted, unlisted]);
+      equal('search: listed whole cells add their English, cache refreshed, in both interfaces; pieces, other fields, older and same-string rows unchanged',
+        [after.en, after.sk], [listed, listed]);
+      equal('search: with no translations loaded every cell is searched in English as before',
+        noSk.sk, ['fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', 'fx-a fx-e', '', '', 'fx-b', '', 'fx-c', 'fx-d', 'fx-f fx-g', 'fx-f', '', 'fx-l', '']);
+      equal('search: reloading the dictionary and clearing the list both refresh cached rows', [reloaded.sk, cleared.sk], [listed, unlisted]);
+      i18n.setSearchEnglishKeys(list);
+      equal('search: a listed cell adds its English once, and a same-string translation adds nothing',
+        [i18n.translatedSearchText(rows[0]).split(quokka).length - 1, i18n.translatedSearchText(rows[3]).split('Dunnart').length - 1,
+          i18n.translatedSearchText(rows[2]).split('Bilby').length - 1], [1, 1, 1]);
+    } finally {
+      i18n.setSearchEnglishKeys();
+      i18n.setDataTranslations([]);
+      i18n.setLanguage('en', quiet);
+    }
+
+    // The shipped page: its index is the old one plus, for each listed whole
+    // cell that has a differing translation, that cell's English once.
+    const skRows = csvToObjects(read('data/i18n/sk.csv')).rows;
+    i18n.setDataTranslations(skRows);
+    i18n.setSearchEnglishKeys();
+    const listedNow = new Set(i18n.SEARCH_ENGLISH_KEYS.map(([f, en]) => `${f}\u0000${en}`));
+    const legacy = (row) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => {
+        const parts = i18n.dataParts(field, value, 'sk');
+        const en = i18n.normaliseEnglish(value);
+        return [...parts.map((p) => p.text), ...(parts.length === 1 && parts[0].en === en && listedNow.has(`${field}\u0000${en}`) ? [en] : [])];
+      })).join(' ');
+    const plain = (row) => Object.entries(i18n.DATA_FIELDS).flatMap(([field, prop]) =>
+      (Array.isArray(row[prop]) ? row[prop] : [row[prop]]).flatMap((value) => i18n.dataParts(field, value, 'sk').map((p) => p.text))).join(' ');
+    check('search: every live row indexes the old text plus only listed English',
+      live.every((row) => i18n.translatedSearchText(row) === legacy(row)));
+    equal('search: live rows whose index differs from the old one are exactly the rows with a listed whole cell',
+      live.filter((row) => i18n.translatedSearchText(row) !== plain(row)).map((r) => r.id),
+      live.filter((row) => ['living_cost_source', 'baseline_requirement'].some((f) =>
+        listedNow.has(`${f}\u0000${i18n.normaliseEnglish(row[i18n.DATA_FIELDS[f]])}`))).map((r) => r.id));
+    i18n.setDataTranslations([]);
+  }
+
+  // Layer 2A display: a whole-cell translation changes words only. LAB's real
+  // floor source and a lowercase semicolon baseline, with disposable Slovak.
+  {
+    const lab = live.find((r) => r.universityId === 'lab' && r.livingCostMin !== null && r.tuitionEu !== null);
+    const row = { ...lab, baselineRequirement: 'secondary school leaving certificate; IB Diploma accepted' };
+    const other = live.find((r) => r.universityId !== 'lab' && r.livingCostMin !== null && r.tuitionEu !== null);
+    const skLab = 'národný odhad (Fínsky imigračný úrad)';
+    const dict = [
+      { field: 'living_cost_source', en: lab.livingCostSource, sk: skLab },
+      { field: 'baseline_requirement', en: row.baselineRequirement, sk: 'maturitné vysvedčenie; IB Diploma sa uznáva' },
+    ];
+    const facts = () => {
+      const state = noFilters();
+      const detail = renderModMain.renderDetail(row, state);
+      const compare = new ChromeNode('div');
+      const table = compareMod.compareTable([row, other], state);
+      renderModMain.renderCompare(compare, [row, other], table);
+      const general = detail.querySelectorAll('.data-value').find((n) => n.textContent.startsWith('Maturitné') || n.textContent.startsWith('Secondary'));
+      return {
+        general: general && general.querySelectorAll('[data-english]').length + '|' + general.children[0].children[0],
+        detail: detail.textContent, compare: compare.textContent,
+        cost: JSON.stringify(costMod.yearlyCost(row)), floor: costMod.livingIsFloor(row.livingCostSource),
+        table: JSON.stringify(table), differs: table.map(compareMod.differs).join(), csv: shortlistMod.toCsv([row, other]),
+      };
+    };
+    const [en, sk, skPlain] = withStubDocument(() => {
+      try {
+        i18n.setDataTranslations(dict);
+        const out = [i18n.inLanguage('en', facts)];
+        i18n.initLanguage('?ui=sk', { getItem: () => 'sk', setItem() {} });
+        out.push(facts());
+        i18n.setDataTranslations([]);
+        out.push(facts());
+        return out;
+      } finally {
+        i18n.setDataTranslations([]);
+        i18n.initLanguage('', { getItem: () => 'en' });
+      }
+    });
+    equal('Layer 2A: a whole baseline translation is one part, capitalised once, with its English kept for the reveal',
+      [i18n.dataParts('baseline_requirement', row.baselineRequirement).length, sk.general], [1, '1|Maturitné vysvedčenie; IB Diploma sa uznáva']);
+    check('Layer 2A: LAB\'s Slovak source shows in detail (note and yearly line) and Compare, with the national-minimum label',
+      (sk.detail.split(skLab).length - 1) >= 2 && sk.compare.includes(skLab) && !sk.compare.includes(lab.livingCostSource)
+        && sk.detail.includes(i18n.inLanguage('sk', () => costMod.floorLabel())) && !en.detail.includes(skLab));
+    equal('Layer 2A: cost, floor, Compare lines and differences and the CSV export ignore the translation',
+      [sk.cost, sk.floor, sk.table, sk.differs, sk.csv], [skPlain.cost, true, skPlain.table, skPlain.differs, skPlain.csv]);
+    // Only the CSV headings follow the interface; every value stays English.
+    const body = (text) => text.split('\r\n').slice(1).join('\r\n');
+    check('Layer 2A: CSV export values are the same English in both interfaces, with LAB\'s English source',
+      body(en.csv) === body(sk.csv) && body(sk.csv).includes(lab.livingCostSource) && !sk.csv.includes(skLab));
+  }
+
   // Permanent data guard: no prose sk.csv row is read by any held cell.
   {
     equal('writer pins all 23 non-selector holds', NON_SELECTOR_HOLDS.length, 23);
-    const { heldKeys } = heldDisplayKeys({
+    const { heldKeys, heldCells, programmes } = heldDisplayKeys({
       universitiesCsv: read('data/universities.csv'),
       programmesCsv: read('data/programmes.csv'),
     });
@@ -8253,6 +8557,40 @@ require('node:module').syncBuiltinESMExports();
     const heldProseConflicts = skLive.filter((row) =>
       PROSE_FIELDS.includes(row.field) && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
     equal('no prose sk.csv row is read by a held cell', heldProseConflicts, []);
+    // Layer 2A: the only whole-cell rows a held cell reads are the eight UK
+    // baselines that were in sk.csv before (field, English, Slovak and
+    // signature pinned by SHA-256 of the JSON tuple). A new row for a held
+    // cell, or an edit to one of these, fails here.
+    const { createHash } = await import('node:crypto');
+    const heldWhole = skLive.filter((row) => WHOLE_CELL_DATA_FIELDS.includes(row.field)
+      && heldKeys.has(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`));
+    equal('the only whole-cell sk.csv rows read by held cells are the eight pinned UK baselines', heldWhole.map((row) => [
+      createHash('sha256').update(JSON.stringify([row.field, row.en, row.sk, row.verified_by])).digest('hex'),
+      [...heldKeys.get(`${row.field}\u0000${i18n.normaliseEnglish(row.en)}`)].sort().join('; '),
+    ]).sort(), [
+      ['0b626d53f9a2ff291fb21eef7d7bdfbd67c3d6bae4001994dfa37c1dc14ff9cb', 'uni|birmingham|baseline_requirement (P4b G056)'],
+      ['109c66e2713c5cfb9d5948168a0eb93b1e2cf907b808c2964c5583daf790e312', 'uni|leeds|baseline_requirement (P4b G059)'],
+      ['154d7726d5aa4ce41a34726e5e0bc2103e058f49be9735dba5f1e6c4c41dc7b9', 'uni|sheffield|baseline_requirement (carry-for-18)'],
+      ['46dfda85aacb774a63581408ec637e933fc4b154ee201ff1c009d431005cc9c6', 'uni|exeter|baseline_requirement (carry-for-18)'],
+      ['69fdeab32d59b8eddec773831f674df3f681428466bac5c4b4e9f7fa0f279838', 'uni|bath|baseline_requirement (carry-for-18)'],
+      ['6b82ded8873f668636b092c067d10e1861fd7faba5533c73f8295c1b42a50093', 'uni|glasgow|baseline_requirement (carry-for-18)'],
+      ['b2e15e71c940309e7e3a2f27806eccc3d5ac65ef360518fb878aed8e7fc245d7', 'uni|st-andrews|baseline_requirement (carry-for-18)'],
+      ['b4c23e541d7bf8c79528dbc942071c267b5aea722fc41c5f538f92f1266f74fe', 'uni|southampton|baseline_requirement (carry-for-18)'],
+    ]);
+    // The shipped search-English list passes the same rules its writer uses.
+    const guard = 'the original sk.csv bytes and every shipped search-English entry pass the Layer 2A guards';
+    try {
+      const skFile = 'data/i18n/sk.csv';
+      const fail = (message) => { throw new Error(message); };
+      const dictionary = searchMod.readSearchEnglishDictionary(skFile, readFileSync(join(root, skFile)), fail);
+      equal(guard, searchMod.searchEnglishProblems(i18n.SEARCH_ENGLISH_KEYS, {
+        ...dictionary, heldKeys, liveKeys: liveDisplayKeys(programmes, heldCells), leaves: wholeCellLeaves(programmes),
+      }), []);
+    } catch (error) {
+      check(guard, false, error.message);
+    }
+    equal('js/i18n.js SEARCH_ENGLISH block is in the written format and matches the module',
+      searchMod.readSearchEnglishBlock(read('js/i18n.js')), { version: i18n.SEARCH_ENGLISH_VERSION, entries: i18n.SEARCH_ENGLISH_KEYS });
   }
 }
 

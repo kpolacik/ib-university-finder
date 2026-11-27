@@ -1,5 +1,6 @@
 // Appends independently reviewed Slovak translations for prose columns to
-// data/i18n/sk.csv (issue #18: requirement and deadline prose).
+// data/i18n/sk.csv (issue #18: requirement and deadline prose), and whole
+// cells of living_cost_source and baseline_requirement (Layer 2A).
 //
 // Why this exists: tools/add-sk-rows.mjs only handles the four PR2 fee/recognition
 // columns, checks raw whole strings only, and has no review, hard-token,
@@ -33,6 +34,15 @@ import { DATA_FIELDS, normaliseEnglish } from '../js/i18n.js';
 import { appliedCells, selectResearchCells } from './select-prose.mjs';
 
 export const PROSE_FIELDS = ['ib_subjects', 'other_requirements', 'deadline_notes'];
+// Issue #18 Layer 2A: university text copied onto each programme. Only the
+// whole cell is a key. A piece key would make dataParts() translate a
+// semicolon cell item by item, and the detail view capitalises every piece
+// of baseline_requirement (js/render.js dataValue), mid-sentence included.
+// Kept apart from PROSE_FIELDS: sk.csv already holds eight baseline rows for
+// held UK cells, which the prose guard in tools/check.mjs would reject.
+export const WHOLE_CELL_DATA_FIELDS = ['living_cost_source', 'baseline_requirement'];
+export const SUPPORTED_FIELDS = [...PROSE_FIELDS, ...WHOLE_CELL_DATA_FIELDS];
+const WHOLE_CELL_PROPS = { living_cost_source: 'livingCostSource', baseline_requirement: 'baselineRequirement' };
 
 // Pinned non-selector holds (23 cells) that sit beside the live
 // selectResearchCells() output. A key read by any held cell's display is
@@ -86,6 +96,11 @@ export const NON_SELECTOR_HOLDS = [
   { entity: 'uni', id: 'st-andrews', column: 'baseline_requirement', label: 'carry-for-18' },
 ];
 
+// Layer 2A exclusions reference internal evidence and need source wording work in #17.
+const LAYER2A_HOLDS = [
+  ['stu', 'L2A-017'], ['jcu', 'L2A-027'], ['tul', 'L2A-035'], ['avans', 'L2A-079'],
+].map(([id, label]) => ({ entity: 'uni', id, column: 'baseline_requirement', label }));
+
 const BATCH_HEADER = ['field', 'en', 'sk'];
 const REVIEW_HEADER = ['field', 'en', 'sk', 'verdict'];
 const DEFAULT_CAPABLE = ['admission', 'english_requirement', 'ib_recognition', 'app_fee_note'];
@@ -100,6 +115,15 @@ const HARD = [
   /\b[ABC][12]\b/g, /[€£%]/g, /https?:\/\/\S+/g,
 ];
 const bag = (text, re) => (text.match(re) || []).sort().join('|');
+export function translationTextProblem(en, sk) {
+  if (HARD.some((re) => bag(en, re) !== bag(sk, re))) {
+    return `hard tokens differ between English and Slovak for ${JSON.stringify(en)}`;
+  }
+  if ([' · ', ';'].some((sep) => en.split(sep).length !== sk.split(sep).length)) {
+    return `separator counts (' · ' or ';') differ for ${JSON.stringify(en)}`;
+  }
+  return '';
+}
 const esc = (v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 const pairKey = (field, en) => `${field}\u0000${en}`;
 const reviewKey = (field, en, sk) => JSON.stringify([field, en, sk]);
@@ -181,7 +205,7 @@ export function heldDisplayKeys({
   universitiesCsv,
   programmesCsv,
   batchTexts = loadSelectorBatches(),
-  extraHolds = NON_SELECTOR_HOLDS,
+  extraHolds = [...NON_SELECTOR_HOLDS, ...LAYER2A_HOLDS],
   today = new Date(),
 }) {
   const { rows: progRaw, issues: progIssues } = csvToObjects(programmesCsv, 'programmes.csv');
@@ -222,11 +246,12 @@ export function heldDisplayKeys({
   return { heldCells, heldKeys, programmes: built.programmes };
 }
 
-function liveDisplayKeys(programmes, heldCells) {
+export function liveDisplayKeys(programmes, heldCells) {
   const live = new Set();
+  const usable = (en) => en && en !== '?' && en !== 'none';
   const add = (field, text) => {
     for (const en of textKeys(text)) {
-      if (en && en !== '?' && en !== 'none') live.add(pairKey(field, en));
+      if (usable(en)) live.add(pairKey(field, en));
     }
   };
   for (const row of programmes) {
@@ -241,8 +266,32 @@ function liveDisplayKeys(programmes, heldCells) {
     if (!heldCells.has(`prog|${row.id}|deadline_notes`) && row.deadlineNotes) {
       add('deadline_notes', row.deadlineNotes);
     }
+    for (const [field, prop] of Object.entries(WHOLE_CELL_PROPS)) {
+      const en = normaliseEnglish(row[prop]);
+      if (usable(en) && !heldCells.has(`uni|${row.universityId}|${field}`) && !heldCells.has(`prog|${row.id}|${field}`)) {
+        live.add(pairKey(field, en));
+      }
+    }
   }
   return live;
+}
+
+// Map<`${field}\0${piece}`, Set<universityId>> of every ' · ' or ';' piece of
+// a whole-cell field, held or not. dataParts() falls back to piece lookups, so
+// a whole key admitted for one university could otherwise translate part of
+// another university's cell that happens to contain it as an item.
+export function wholeCellLeaves(programmes) {
+  const leaves = new Map();
+  for (const row of programmes) {
+    for (const [field, prop] of Object.entries(WHOLE_CELL_PROPS)) {
+      for (const piece of textKeys(row[prop]).slice(1)) {
+        const k = pairKey(field, piece);
+        if (!leaves.has(k)) leaves.set(k, new Set());
+        leaves.get(k).add(row.universityId);
+      }
+    }
+  }
+  return leaves;
 }
 
 // Strict line-aware CSV reader (same guard as tools/reword-prose.mjs:138-160),
@@ -270,6 +319,57 @@ function records(file, raw, fail) {
     if (ch === '\n') line++;
   }
   return out;
+}
+
+export function readTranslationDictionary(file, text, fail) {
+  const [head, ...rows] = records(file, text, fail);
+  if (!head || head.cells.length !== 4 || head.cells.join(',') !== 'field,en,sk,verified_by') {
+    fail(`${file}: unexpected header (expected field,en,sk,verified_by)`);
+  }
+  const dictionary = new Map();
+  for (const { line, cells } of rows) {
+    if (cells.length !== 4) fail(`${file}:${line}: expected 4 columns, got ${cells.length}`);
+    const [field, en, sk, verifiedBy] = cells;
+    // Match the live loader's lookup key, while preserving exact reviewed text.
+    const k = pairKey(field.trim(), normaliseEnglish(en));
+    if (dictionary.has(k)) fail(`${file}:${line}: duplicate normalised key ${field} ${JSON.stringify(en)}`);
+    dictionary.set(k, { field, en, sk, verifiedBy });
+  }
+  return dictionary;
+}
+
+export function readTranslationReviews(file, text, fail) {
+  const [head, ...rows] = records(file, text, fail);
+  if (!head || head.cells.length !== REVIEW_HEADER.length || REVIEW_HEADER.some((h, i) => head.cells[i] !== h)) {
+    fail(`${file}: the header must be exactly ${REVIEW_HEADER.join(',')}`);
+  }
+  const reviews = new Map();
+  const reviewsByNorm = new Map();
+  const keptByPair = new Map();
+  for (const { line, cells } of rows) {
+    if (cells.length !== REVIEW_HEADER.length) {
+      fail(`${file}:${line}: expected ${REVIEW_HEADER.length} columns, got ${cells.length}`);
+    }
+    const [field, en, sk, verdict] = cells;
+    const rKey = reviewKey(field, en, sk);
+    const normKey = reviewKey(field, normaliseEnglish(en), sk);
+    const prev = reviewsByNorm.get(normKey);
+    if (prev && prev.verdict !== verdict) {
+      fail(`${file}:${line}: conflicting review verdicts (${JSON.stringify(prev.verdict)} vs ${JSON.stringify(verdict)}) for ${field} ${JSON.stringify(en)}`);
+    }
+    const review = { field, en, sk, verdict, line };
+    reviews.set(rKey, review);
+    reviewsByNorm.set(normKey, review);
+    if (verdict === 'keep') {
+      const pKey = pairKey(field, normaliseEnglish(en));
+      const prevKept = keptByPair.get(pKey);
+      if (prevKept !== undefined && prevKept !== sk) {
+        fail(`${file}:${line}: conflicting keep review rows for ${field} ${JSON.stringify(en)}`);
+      }
+      keptByPair.set(pKey, sk);
+    }
+  }
+  return reviews;
 }
 
 function main(argv) {
@@ -304,18 +404,7 @@ function main(argv) {
   const skPath = join(dataDir, 'i18n/sk.csv');
   let skBytes;
   try { skBytes = readFileSync(skPath); } catch (e) { fail(`Cannot read ${skPath}: ${e.message}`); }
-  const [skHeader, ...skRows] = records(skPath, skBytes.toString('utf8'), fail);
-  if (!skHeader || skHeader.cells.length !== 4 || skHeader.cells.join(',') !== 'field,en,sk,verified_by') {
-    fail(`${skPath}: unexpected header (expected field,en,sk,verified_by)`);
-  }
-  const existingSk = new Map();
-  for (const { line, cells: r } of skRows) {
-    if (r.length !== 4) fail(`${skPath}:${line}: expected 4 columns, got ${r.length}`);
-    // The live loader's csvToObjects trims the field name before lookup.
-    const k = pairKey(r[0].trim(), normaliseEnglish(r[1]));
-    if (existingSk.has(k)) fail(`${skPath}:${line}: duplicate normalised key ${r[0]} ${JSON.stringify(r[1])}`);
-    existingSk.set(k, r[2]);
-  }
+  const existingSk = readTranslationDictionary(skPath, skBytes.toString('utf8'), fail);
 
   let heldCells, heldKeys, programmes;
   try {
@@ -324,6 +413,7 @@ function main(argv) {
     fail(e.message);
   }
   const liveKeys = liveDisplayKeys(programmes, heldCells);
+  const leaves = wholeCellLeaves(programmes);
 
   // Parse batch CSV (exact header: field,en,sk).
   const [batchHead, ...batchRows] = records(batchFile, readUtf8(batchFile), fail);
@@ -331,39 +421,7 @@ function main(argv) {
     fail(`${batchFile}: the header must be exactly ${BATCH_HEADER.join(',')}`);
   }
 
-  // Parse review CSV when supplied (exact header: field,en,sk,verdict).
-  // Reject ambiguous or conflicting verdicts instead of relying on last-match order.
-  const reviews = new Map();
-  const reviewsByNorm = new Map();
-  const keptByPair = new Map();
-  if (reviewFile) {
-    const [revHead, ...revRows] = records(reviewFile, readUtf8(reviewFile), fail);
-    if (!revHead || revHead.cells.length !== REVIEW_HEADER.length || REVIEW_HEADER.some((h, i) => revHead.cells[i] !== h)) {
-      fail(`${reviewFile}: the header must be exactly ${REVIEW_HEADER.join(',')}`);
-    }
-    for (const r of revRows) {
-      if (r.cells.length !== REVIEW_HEADER.length) {
-        fail(`${reviewFile}:${r.line}: expected ${REVIEW_HEADER.length} columns, got ${r.cells.length}`);
-      }
-      const [field, en, sk, verdict] = r.cells;
-      const rKey = reviewKey(field, en, sk);
-      const normKey = reviewKey(field, normaliseEnglish(en), sk);
-      const prev = reviews.get(rKey) || reviewsByNorm.get(normKey);
-      if (prev && prev.verdict !== verdict) {
-        fail(`${reviewFile}:${r.line}: conflicting review verdicts (${JSON.stringify(prev.verdict)} vs ${JSON.stringify(verdict)}) for ${field} ${JSON.stringify(en)}`);
-      }
-      reviews.set(rKey, { field, en, sk, verdict });
-      reviewsByNorm.set(normKey, { field, en, sk, verdict });
-      if (verdict === 'keep') {
-        const pKey = pairKey(field, normaliseEnglish(en));
-        const prevKept = keptByPair.get(pKey);
-        if (prevKept !== undefined && prevKept !== sk) {
-          fail(`${reviewFile}:${r.line}: conflicting keep review rows for ${field} ${JSON.stringify(en)}`);
-        }
-        keptByPair.set(pKey, sk);
-      }
-    }
-  }
+  const reviews = reviewFile ? readTranslationReviews(reviewFile, readUtf8(reviewFile), fail) : new Map();
 
   const batchSeen = new Set();
   const add = [];
@@ -382,8 +440,8 @@ function main(argv) {
       continue;
     }
     // Refusal 1: supported field, non-empty sk, normalised en, not ? or none.
-    if (!PROSE_FIELDS.includes(field)) {
-      refuse(`unsupported field ${JSON.stringify(field)} (only ${PROSE_FIELDS.join(', ')})`);
+    if (!SUPPORTED_FIELDS.includes(field)) {
+      refuse(`unsupported field ${JSON.stringify(field)} (only ${SUPPORTED_FIELDS.join(', ')})`);
       continue;
     }
     if (!sk.trim()) {
@@ -415,6 +473,14 @@ function main(argv) {
       continue;
     }
 
+    // Refusal 2b: a whole-cell key that is also a piece of another cell of the
+    // same field would translate part of that cell too (see wholeCellLeaves).
+    const leafOf = WHOLE_CELL_DATA_FIELDS.includes(field) && leaves.get(pKey);
+    if (leafOf) {
+      refuse(`key is also a ${field} piece at ${[...leafOf].sort().join(', ')}: ${JSON.stringify(en)}`);
+      continue;
+    }
+
     // Refusal 4: duplicate in batch, or existing sk.csv row with different sk.
     if (batchSeen.has(pKey)) {
       refuse(`duplicate (${field}, en) within batch: ${JSON.stringify(en)}`);
@@ -422,33 +488,21 @@ function main(argv) {
     }
     batchSeen.add(pKey);
 
-    if (existingSk.has(pKey)) {
-      const currentSk = existingSk.get(pKey);
-      if (currentSk !== sk) {
-        refuse(`sk.csv already has a different translation for ${JSON.stringify(en)}`);
-        continue;
-      }
-      // Refusal 5 also guards against skipping a malformed row if sk.csv were edited.
-      if (HARD.some((re) => bag(en, re) !== bag(sk, re))) {
-        refuse(`hard tokens differ between English and Slovak for ${JSON.stringify(en)}`);
-        continue;
-      }
-      if ([' · ', ';'].some((sep) => en.split(sep).length !== sk.split(sep).length)) {
-        refuse(`separator counts (' · ' or ';') differ for ${JSON.stringify(en)}`);
-        continue;
-      }
-      skips++;
-      console.log(`SKIP ${where}: already in sk.csv with identical Slovak (${JSON.stringify(en)})`);
+    const existing = existingSk.get(pKey);
+    if (existing && existing.sk !== sk) {
+      refuse(`sk.csv already has a different translation for ${JSON.stringify(en)}`);
       continue;
     }
 
     // Refusal 5: hard-token bags and separator counts (' · ' and ';').
-    if (HARD.some((re) => bag(en, re) !== bag(sk, re))) {
-      refuse(`hard tokens differ between English and Slovak for ${JSON.stringify(en)}`);
+    const textProblem = translationTextProblem(en, sk);
+    if (textProblem) {
+      refuse(textProblem);
       continue;
     }
-    if ([' · ', ';'].some((sep) => en.split(sep).length !== sk.split(sep).length)) {
-      refuse(`separator counts (' · ' or ';') differ for ${JSON.stringify(en)}`);
+    if (existing) {
+      skips++;
+      console.log(`SKIP ${where}: already in sk.csv with identical Slovak (${JSON.stringify(en)})`);
       continue;
     }
 
