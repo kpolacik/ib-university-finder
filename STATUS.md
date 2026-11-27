@@ -8,6 +8,8 @@ pick it up without re-deriving decisions. Update it when the state changes.
 
 ## State
 
+**Source prose #17, REST-2 widened selector and wording (2026-11-27, draft stack).** The research-log selector now catches five additional source-narration phrases, with 41 reviewed kept-as-is exclusions stored by exact value. Independent reviewers approved 11 wording edits across nine universities (six initial, five after one repair round, including one Comenius cell moved out of the kept list). Two wording cells (UniBa Earth System and STU FIIT) and four source-conflict/inference cells (CBS ×2, Leeds Law, Schmalkalden) remain at their base text and selected, alongside the 54 carried holds (60 total). Universities, Slovak translations, signatures, dates and IDs are unchanged, and the offline copy matches the updated CSV.
+
 **Source prose #17, Phase 4b translated fields (2026-11-27, draft stack).** Independent reviewers approved 194 English wording edits in 39 groups. The existing Slovak translations follow 28 new English keys; the Slovak wording and coverage stay the same. The Leeds baseline and its translation still use the old wording because the repair review could not see both full texts. Photos, signatures, dates, IDs and the 54 notes held for research are unchanged. The offline copy uses the same new wording.
 
 **Source prose #17, Phase 4a writer (2026-11-27, draft stack).** `tools/reword-prose.mjs --translated` can reword approved programme and university prose while keeping existing Slovak text, coverage and application conditions. This layer changes the writer, checks and instructions only; no data changes. The maintenance guide covers how to restore the CSVs if a write stops partway through.
