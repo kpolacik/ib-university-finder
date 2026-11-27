@@ -150682,6 +150682,702 @@
       "en": "The UCAS equal consideration deadline is 6pm (GMT) on Wednesday 13 January 2027 for all MA and BSc undergraduate applications. The Medicine deadline is 15 October 2026. Fees are the 2027-entry figures. The RUK fee (England, Wales, Northern Ireland, Republic of Ireland, Channel Islands, Isle of Man) is £10,050 per year, yet to be confirmed by the UK Government. The EU and overseas fee is £34,910 per year (Faculty of Arts). The Home (Scotland) fee is yet to be confirmed by the Scottish Government. In 2025-2026 it was £1,820, paid by SAAS for eligible Scottish students. EU students pay the international fee: £34,910 a year, shown here in euros at the ECB rate of 29 October 2026. Irish citizens and students with UK settled status may pay the Home fee (£10,050).",
       "sk": "Termín UCAS na rovnocenné posúdenie prihlášok (equal consideration) je o 6pm (GMT) v stredu 13. januára 2027 pre všetky bakalárske prihlášky na MA a BSc. Termín pre medicínu je 15. októbra 2026. Sumy školného sú údaje pre nástup v roku 2027. Školné RUK (Anglicko, Wales, Severné Írsko, Írska republika, Normanské ostrovy, Ostrov Man) je £10,050 ročne a ešte ho nepotvrdila britská vláda. Školné pre EÚ a zahraničných študentov je £34,910 ročne (Faculty of Arts). Domáce školné (Škótsko) ešte nepotvrdila škótska vláda. V roku 2025-2026 bolo £1,820 a za oprávnených škótskych študentov ho platila SAAS. Študenti z EÚ platia medzinárodné školné: £34,910 ročne, tu prepočítané na eurá podľa kurzu ECB z 29. októbra 2026. Írski občania a študenti so štatútom usadlíka v UK (settled status) môžu platiť domáce školné (Home fee, £10,050).",
       "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "living_cost_source",
+      "en": "estimate from University College Cork, same city",
+      "sk": "odhad University College Cork, to isté mesto",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "living_cost_source",
+      "en": "estimate from Masaryk University, same city",
+      "sk": "odhad Masaryk University, to isté mesto",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "living_cost_source",
+      "en": "national estimate (Finnish Immigration Service)",
+      "sk": "celoštátny odhad (Finnish Immigration Service)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "living_cost_source",
+      "en": "national estimate (BAföG maximum rate)",
+      "sk": "celoštátny odhad (maximálna sadzba BAföG)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with a Slovak maturita (or a recognised foreign equivalent). No IB-specific rule found in the central rules.",
+      "sk": "Ukončené stredoškolské vzdelanie so slovenskou maturitou (alebo uznaným zahraničným ekvivalentom). V centrálnych pravidlách sa nenašlo žiadne pravidlo špecifické pre IB.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma awarded with 24+ points for honours-degree (Level 8) courses (CAO 2027 EU/EFTA criteria); courses listing '3 H5' also need 3 HL subjects at 5+ and 3 SL at 4+",
+      "sk": "IB diplom udelený s 24+ bodmi pre študijné programy na úrovni honours degree (Level 8) (kritériá CAO 2027 pre EÚ/EZVO); programy, pri ktorých je uvedené '3 H5', vyžadujú aj 3 predmety na HL so známkou 5+ a 3 na SL so známkou 4+",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Complete secondary education (Slovak maturita or equivalent); a foreign secondary diploma must be recognised as equal to maturita before application or enrolment",
+      "sk": "Ukončené stredoškolské vzdelanie (slovenská maturita alebo ekvivalent); zahraničný stredoškolský diplom musí byť pred podaním prihlášky alebo pred zápisom uznaný ako rovnocenný maturite",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma awarded with 24+ points for Level 8 (2 H5 matriculation) and Level 6/7 courses (CAO 2027 EU/EFTA/UK guidelines); Slovak Vysvedčenie o maturitnej skúške (6 distinct recognised subjects: 4 in maturita including 2 at Grade 3 and 2 at Grade 4, plus 2 from final year of school for 2 H5 Level 8) is also accepted via CAO",
+      "sk": "IB diplom udelený s 24+ bodmi pre študijné programy Level 8 (vstupná požiadavka 2 H5, tzv. matriculation) a Level 6/7 (usmernenia CAO 2027 pre EÚ/EZVO/UK); cez CAO sa akceptuje aj slovenské Vysvedčenie o maturitnej skúške (6 rôznych uznaných predmetov: 4 z maturity vrátane 2 so známkou 3 a 2 so známkou 4, plus 2 z posledného ročníka školy pre 2 H5 Level 8)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Full secondary education or full secondary vocational education (2026/27 admission documents); exact IB recognition and grade conversion unknown.",
+      "sk": "Úplné stredné vzdelanie alebo úplné stredné odborné vzdelanie (prijímacie dokumenty 2026/27); presné uznávanie IB a prepočet známok nie sú známe.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Slovak maturita (school-leaving certificate). TUKE's pages read do not say how an IB Diploma is treated.",
+      "sk": "Slovenská maturita (doklad o ukončení strednej školy). Prečítané stránky TUKE neuvádzajú, ako sa posudzuje IB diplom.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "International Baccalaureate Diploma or secondary school diploma equivalent to Dutch havo/vwo standards granting access to higher education.",
+      "sk": "Diplom International Baccalaureate alebo stredoškolský diplom rovnocenný holandským štandardom havo/vwo, ktorý oprávňuje na vysokoškolské štúdium.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "a school-leaving certificate (maturita); foreign secondary education is proved under the recognition rules; IB Diploma treatment not found on UJEP pages",
+      "sk": "doklad o ukončení strednej školy (maturita); zahraničné stredoškolské vzdelanie sa preukazuje podľa pravidiel uznávania; posudzovanie IB diplomu sa na stránkach UJEP nenašlo",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (28 points year 1 entry; 32 year 2 entry; Law 32) or Slovak maturita (grade 2.0 overall)",
+      "sk": "IB diplom (28 bodov pri nástupe do 1. ročníka; 32 pri nástupe do 2. ročníka; právo 32) alebo slovenská maturita (celkový priemer 2.0)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma granting direct university admission in Germany (KMK rules); otherwise admission may be conditional on SAT/ACT",
+      "sk": "IB diplom, ktorý oprávňuje na priamy vstup na univerzitu v Nemecku (pravidlá KMK); inak môže byť prijatie podmienené SAT/ACT",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Complete secondary education (maturita or equivalent). Faculty subject and language rules apply per programme.",
+      "sk": "Ukončené stredoškolské vzdelanie (maturita alebo ekvivalent). Pre každý program platia pravidlá fakulty týkajúce sa predmetov a jazyka.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "For Bc. programmes you must have passed the Czech maturita or an accepted equivalent. The UPCE admissions information reviewed does not say how it treats IB Diploma holders.",
+      "sk": "Na Bc. programy musíš mať úspešne zloženú českú maturitu alebo akceptovaný ekvivalent. Preštudované informácie UPCE o prijímacom konaní neuvádzajú, ako posudzuje držiteľov IB diplomu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary general or vocational education (maturita or equivalent); IB-specific recognition unconfirmed",
+      "sk": "Ukončené stredné všeobecné alebo odborné vzdelanie (maturita alebo ekvivalent); uznávanie špecifické pre IB nie je potvrdené",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Slovak maturita, or a foreign secondary certificate recognised (nostrified) in Slovakia",
+      "sk": "Slovenská maturita alebo zahraničné stredoškolské vysvedčenie uznané (nostrifikované) na Slovensku",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education qualifying for university study; recognition requirements depend on where the qualification was obtained.",
+      "sk": "Ukončené stredoškolské vzdelanie, ktoré oprávňuje na vysokoškolské štúdium; požiadavky na uznanie závisia od toho, kde bola kvalifikácia získaná.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma comparable to Dutch HAVO (or Dutch VWO for 3-year programmes), such as the International Baccalaureate (IB) Diploma.",
+      "sk": "Stredoškolský diplom porovnateľný s holandským HAVO (alebo s holandským VWO pri 3-ročných programoch), napríklad diplom International Baccalaureate (IB).",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma equivalent to Dutch HAVO (4-year programmes) or Dutch VWO (3-year fast-track programmes); full International Baccalaureate (IB) Diploma (minimum 24 points, 3 HL courses > 12 points, 3 SL courses, successful TOK) gives access to both 4-year and 3-year programmes",
+      "sk": "Stredoškolský diplom rovnocenný holandskému HAVO (4-ročné programy) alebo holandskému VWO (3-ročné zrýchlené programy); úplný diplom International Baccalaureate (IB) (minimálne 24 bodov, 3 kurzy HL > 12 bodov, 3 kurzy SL, úspešne absolvovaný TOK) dáva prístup k 4-ročným aj 3-ročným programom",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with maturita or accepted equivalent; see IB recognition.",
+      "sk": "Ukončené stredoškolské vzdelanie s maturitou alebo akceptovaným ekvivalentom; pozri Uznanie IB.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with school-leaving qualification; foreign qualifications assessed under faculty rules",
+      "sk": "Ukončené stredoškolské vzdelanie s dokladom o ukončení strednej školy; zahraničné kvalifikácie sa posudzujú podľa pravidiel fakulty",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education; recognition rules depend on the qualification and faculty",
+      "sk": "Ukončené stredoškolské vzdelanie; pravidlá uznávania závisia od kvalifikácie a fakulty",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Recognised higher education entrance qualification; international qualifications assessed for access to higher education in Germany. IB-specific conditions not published in the pages read.",
+      "sk": "Uznaná kvalifikácia na vstup do vysokoškolského štúdia; medzinárodné kvalifikácie sa posudzujú z hľadiska prístupu k vysokoškolskému štúdiu v Nemecku. Podmienky špecifické pre IB nie sú na prečítaných stránkach zverejnené.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma (or European upper secondary school certificate qualifying for higher education)",
+      "sk": "IB diplom (alebo európske stredoškolské vysvedčenie, ktoré oprávňuje na vysokoškolské štúdium)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with a school-leaving qualification accepted by the university",
+      "sk": "Ukončené stredoškolské vzdelanie s dokladom o ukončení strednej školy, ktorý univerzita akceptuje",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Finnish matriculation exam, or IB Diploma / German Reifeprüfung / European Baccalaureate, or a foreign qualification giving university-entrance eligibility in its country (Studyinfo)",
+      "sk": "Fínska maturitná skúška, alebo IB diplom / nemecká Reifeprüfung / European Baccalaureate, alebo zahraničná kvalifikácia, ktorá v krajine vydania oprávňuje na vstup na univerzitu (Studyinfo)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary education diploma equivalent to Dutch HAVO, VWO, or MBO-4; International Baccalaureate Diploma or Career-related Programme Certificate accepted",
+      "sk": "Stredoškolský diplom rovnocenný holandskému HAVO, VWO alebo MBO-4; akceptuje sa diplom International Baccalaureate alebo Career-related Programme Certificate",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma equivalent to Dutch HAVO, VWO, or MBO Level 4; International Baccalaureate Diploma accepted (recognised as VWO equivalent)",
+      "sk": "Stredoškolský diplom rovnocenný holandskému HAVO, VWO alebo MBO Level 4; diplom International Baccalaureate sa akceptuje (uznáva sa ako ekvivalent VWO)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school leaving qualification equivalent to Czech maturita; an IB Diploma is automatically recognised with a certified copy.",
+      "sk": "Doklad o ukončení strednej školy rovnocenný českej maturite; IB diplom sa uznáva automaticky na základe overenej kópie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an equivalent of the Dutch havo or vwo diploma (an International Baccalaureate Diploma is recognized as equivalent to Dutch VWO, qualifying for 4-year and 3-year tracks)",
+      "sk": "ekvivalent holandského diplomu havo alebo vwo (diplom International Baccalaureate sa uznáva ako rovnocenný holandskému VWO a oprávňuje na 4-ročné aj 3-ročné študijné smery)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with a school-leaving examination or accepted equivalent; foreign qualifications require the appropriate recognition or assessment.",
+      "sk": "Ukončené stredoškolské vzdelanie so skúškou na ukončenie strednej školy alebo akceptovaným ekvivalentom; zahraničné kvalifikácie vyžadujú príslušné uznanie alebo posúdenie.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (three HL and three SL courses) with 93/198 national UAS points, or other upper-secondary diploma giving HE eligibility plus GPA threshold; or SAT (EBRW 550, Math 550) / ACT (English & Reading 25, Math 25)",
+      "sk": "IB diplom (tri kurzy HL a tri SL) s 93/198 bodmi v celoštátnom bodovaní UAS, alebo iný stredoškolský diplom oprávňujúci na vysokoškolské štúdium a k tomu prahová hodnota GPA; alebo SAT (EBRW 550, Math 550) / ACT (English & Reading 25, Math 25)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary education with maturita; programme conditions apply",
+      "sk": "Ukončené stredoškolské vzdelanie s maturitou; platia podmienky programu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education eligibility: completed upper secondary education giving access to higher education in the awarding country (e.g. International Baccalaureate Diploma, European Baccalaureate, Finnish Matriculation Examination, or foreign school-leaving certificate)",
+      "sk": "Všeobecné oprávnenie na vysokoškolské štúdium: ukončené stredoškolské vzdelanie, ktoré v krajine vydania oprávňuje na vysokoškolské štúdium (napr. diplom International Baccalaureate, European Baccalaureate, fínska maturitná skúška alebo zahraničné vysvedčenie o ukončení strednej školy)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Certificate of secondary education equivalent to Dutch HAVO/VWO; International Baccalaureate Diploma (IBDP) and Career-related Programme (IBCP) accepted",
+      "sk": "Stredoškolské vysvedčenie rovnocenné holandskému HAVO/VWO; akceptujú sa diplom International Baccalaureate (IBDP) aj Career-related Programme (IBCP)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "International Baccalaureate Diploma accepted; course-specific requirements apply",
+      "sk": "Diplom International Baccalaureate sa akceptuje; platia požiadavky konkrétneho programu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Upper secondary leaving certificate, or the International or European Baccalaureate (IB/EB Diploma), or the Danish Admission course for Engineering; plus subject levels per programme",
+      "sk": "Vysvedčenie o ukončení strednej školy, alebo International či European Baccalaureate (IB/EB Diploma), alebo Danish Admission course for Engineering; k tomu úrovne predmetov podľa programu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma granting direct higher education entrance qualification (HZB) in Germany under KMK / anabin regulations (evaluated via uni-assist VPD or Bavarian Zeugnisanerkennungsstelle)",
+      "sk": "IB diplom, ktorý v Nemecku priamo zakladá oprávnenie na vysokoškolské štúdium (HZB) podľa predpisov KMK / anabin (posudzuje sa cez uni-assist VPD alebo bavorskú Zeugnisanerkennungsstelle)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education eligibility: completed upper secondary education (e.g. International Baccalaureate Diploma, European Baccalaureate, Finnish Matriculation Examination, or recognized foreign school-leaving certificate giving access to higher education in the awarding country)",
+      "sk": "Všeobecné oprávnenie na vysokoškolské štúdium: ukončené stredoškolské vzdelanie (napr. diplom International Baccalaureate, European Baccalaureate, fínska maturitná skúška alebo uznané zahraničné vysvedčenie o ukončení strednej školy, ktoré v krajine vydania oprávňuje na vysokoškolské štúdium)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma accepted; offers specify an overall score and may specify higher-level subject grades.",
+      "sk": "IB diplom sa akceptuje; ponuky na prijatie určujú celkové skóre a môžu určovať aj známky z predmetov na vyššej úrovni.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma accepted; programme-specific requirements apply",
+      "sk": "IB diplom sa akceptuje; platia požiadavky konkrétneho programu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Upper secondary qualification giving general access to higher education in its country (IB Diploma from an IB World School counts)",
+      "sk": "Stredoškolská kvalifikácia, ktorá vo svojej krajine dáva všeobecný prístup k vysokoškolskému štúdiu (IB diplom z IB World School sa počíta)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Austrian Matura (school-leaving certificate) or an equivalent qualification; foreign certificates are checked for equivalence once the application is complete",
+      "sk": "Rakúska Matura (doklad o ukončení strednej školy) alebo rovnocenná kvalifikácia; zahraničné vysvedčenia sa preverujú z hľadiska rovnocennosti po skompletizovaní prihlášky",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Full IB Diploma with at least three Higher Level subjects; programme-specific conditions apply.",
+      "sk": "Úplný IB diplom s aspoň tromi predmetmi na úrovni Higher Level; platia podmienky konkrétneho programu.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (treated as equal to an Austrian Matura) or another school-leaving certificate accepted for bachelor study",
+      "sk": "IB diplom (posudzuje sa ako rovnocenný rakúskej Matura) alebo iné vysvedčenie o ukončení strednej školy akceptované na bakalárske štúdium",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma accepted subject to course requirements",
+      "sk": "IB diplom sa akceptuje pri splnení požiadaviek programu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma accepted; programme-specific offers apply.",
+      "sk": "IB diplom sa akceptuje; platia ponuky na prijatie špecifické pre program.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma: at least 24 points in six subjects of choice, 12 of them at Higher Level, and a pass in TOK, CAS and EE (UniME Entry Criteria, A.A. 2026/2027). Other foreign qualifications: 12 years of schooling, assessed case by case by UniME.",
+      "sk": "IB diplom: aspoň 24 bodov zo šiestich predmetov podľa vlastného výberu, z toho 12 na úrovni Higher Level, a úspešne absolvované TOK, CAS a EE (UniME Entry Criteria, A.A. 2026/2027). Iné zahraničné kvalifikácie: 12 rokov školskej dochádzky, UniME ich posudzuje individuálne.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB qualifications accepted; programme-specific offers apply.",
+      "sk": "Kvalifikácie IB sa akceptujú; platia ponuky na prijatie špecifické pre program.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma equivalent to Dutch HAVO, VWO, or MBO 4; International Baccalaureate Diploma (IBDP) accepted",
+      "sk": "Stredoškolský diplom rovnocenný holandskému HAVO, VWO alebo MBO 4; akceptuje sa diplom International Baccalaureate (IBDP)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma equivalent to Dutch HAVO, VWO, or MBO 4; International Baccalaureate Diploma accepted",
+      "sk": "Stredoškolský diplom rovnocenný holandskému HAVO, VWO alebo MBO 4; akceptuje sa diplom International Baccalaureate",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "a school-leaving qualification that gives eligibility for Finnish higher education; an IB Diploma is listed as eligible for Bachelor's study",
+      "sk": "doklad o ukončení strednej školy, ktorý oprávňuje na vysokoškolské štúdium vo Fínsku; IB diplom je uvedený ako vyhovujúci na bakalárske štúdium",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Eligibility routes include an IB Diploma or IB high-school graduation, and a foreign qualification that gives eligibility for higher education in its country",
+      "sk": "Medzi cesty k oprávneniu patria IB diplom alebo ukončenie strednej školy IB, ako aj zahraničná kvalifikácia, ktorá vo svojej krajine oprávňuje na vysokoškolské štúdium",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "High school diploma comparable to a Dutch VWO (an IB Diploma counts as VWO, per Nuffic)",
+      "sk": "Stredoškolský diplom porovnateľný s holandským VWO (IB diplom sa podľa Nuffic počíta ako VWO)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (listed as eligible for UAS bachelor studies), or a school-leaving qualification that makes you eligible for higher education at home",
+      "sk": "IB diplom (uvedený ako vyhovujúci na bakalárske štúdium na UAS) alebo doklad o ukončení strednej školy, ktorý ťa oprávňuje na vysokoškolské štúdium v tvojej domovskej krajine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (listed as eligible under the Finnish Universities of Applied Sciences Act, per TAMK); Slovak maturita accepted with minimum English and maths grades (Slovakia entry)",
+      "sk": "IB diplom (podľa TAMK uvedený ako vyhovujúci podľa fínskeho Universities of Applied Sciences Act); slovenská maturita sa akceptuje s minimálnymi známkami z angličtiny a matematiky (záznam pre Slovensko)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma with at least 24 points (direct entry, with a Maths condition); IB Certificates lead to a one-semester Foundation Programme plus an entrance examination (conditional admission)",
+      "sk": "IB diplom s aspoň 24 bodmi (priame prijatie, s podmienkou z matematiky); IB certifikáty vedú k jednosemestrálnemu Foundation Programme a prijímacej skúške (podmienečné prijatie)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma, Finnish matriculation exam, or a foreign school-leaving qualification that gives university access in your country",
+      "sk": "IB diplom, fínska maturitná skúška alebo zahraničný doklad o ukončení strednej školy, ktorý ti v tvojej krajine dáva prístup na univerzitu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary school diploma (Slovak maturita and IB Diploma are both listed as accepted) plus minimum secondary GPA 2.5 of 4.0",
+      "sk": "Diplom o ukončení strednej školy (slovenská maturita aj IB diplom sú uvedené ako akceptované) a k tomu minimálny stredoškolský priemer GPA 2.5 zo 4.0",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education eligibility: completed upper secondary education (e.g. International Baccalaureate (IB) Diploma, European Baccalaureate (EB), Finnish Matriculation Examination, or recognized foreign school-leaving qualification giving eligibility for higher education in the awarding country)",
+      "sk": "Všeobecné oprávnenie na vysokoškolské štúdium: ukončené stredoškolské vzdelanie (napr. diplom International Baccalaureate (IB), European Baccalaureate (EB), fínska maturitná skúška alebo uznaná zahraničná kvalifikácia o ukončení strednej školy, ktorá v krajine vydania oprávňuje na vysokoškolské štúdium)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur / Zeugnis der allgemeinen Hochschulreife) or equivalent international secondary school leaving certificate (e.g. IB Diploma fulfilling KMK criteria), verified via DAAD / Anabin database",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur / Zeugnis der allgemeinen Hochschulreife) alebo rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), overené cez databázu DAAD / Anabin",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Finnish upper secondary certificate, Matriculation Examination or IB Diploma (general eligibility). Some programmes also need 120 ECTS of prior university study, which school leavers do not have.",
+      "sk": "Fínske stredoškolské vysvedčenie, maturitná skúška (Matriculation Examination) alebo IB diplom (všeobecné oprávnenie). Niektoré programy vyžadujú aj 120 ECTS z predchádzajúceho univerzitného štúdia, ktoré absolventi strednej školy nemajú.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur / Zeugnis der allgemeinen Hochschulreife), subject-specific higher education entrance qualification, or recognized equivalent foreign secondary school leaving certificate (e.g. IB Diploma meeting KMK criteria), verified via preliminary review documentation (VPD) by uni-assist e.V. uploaded to Primuss",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur / Zeugnis der allgemeinen Hochschulreife), odborovo zameraná kvalifikácia na vstup do vysokoškolského štúdia alebo uznané rovnocenné zahraničné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), overené cez dokumentáciu predbežného posúdenia (VPD) od uni-assist e.V. nahranú do Primuss",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General or subject-related higher education entrance qualification (Abitur / Zeugnis der allgemeinen Hochschulreife) or recognized equivalent international secondary school leaving certificate (e.g. IB Diploma fulfilling KMK criteria), verified via uni-assist VPD (Vorprüfungsdokumentation) for foreign credentials",
+      "sk": "Všeobecná alebo odborovo zameraná kvalifikácia na vstup do vysokoškolského štúdia (Abitur / Zeugnis der allgemeinen Hochschulreife) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), pri zahraničných dokladoch overené cez uni-assist VPD (Vorprüfungsdokumentation)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General or subject-specific higher education entrance qualification (Abitur, Fachhochschulreife) or recognized equivalent international secondary school-leaving certificate (e.g. IB Diploma), evaluated by Studienkolleg Konstanz or uni-assist VPD",
+      "sk": "Všeobecná alebo odborovo zameraná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom), ktoré posudzuje Studienkolleg Konstanz alebo sa posudzuje cez uni-assist VPD",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Upper secondary completion; an IB Diploma is listed as an eligible qualification",
+      "sk": "Ukončené stredoškolské vzdelanie; IB diplom je uvedený ako vyhovujúca kvalifikácia",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Finnish matriculation exam, or IB Diploma / certificate with 6 subjects, or another foreign upper-secondary qualification giving eligibility; certified copy, translated into Finnish, Swedish or English if needed",
+      "sk": "Fínska maturitná skúška, alebo IB diplom / certifikát so 6 predmetmi, alebo iná zahraničná stredoškolská kvalifikácia, ktorá oprávňuje na štúdium; overená kópia, v prípade potreby preložená do fínčiny, švédčiny alebo angličtiny",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General eligibility for universities of applied sciences: a Finnish or foreign upper secondary certificate, an IB Diploma (certificate-based selection), or an SAT score (Direct Application only); a completed degree also counts",
+      "sk": "Všeobecné oprávnenie na štúdium na vysokých školách aplikovaných vied: fínske alebo zahraničné stredoškolské vysvedčenie, IB diplom (výber podľa vysvedčení) alebo výsledok SAT (iba Direct Application); počíta sa aj ukončené vysokoškolské štúdium",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur, Fachhochschulreife) or recognised foreign equivalent (e.g. IB Diploma); foreign certificates evaluated by Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznaný zahraničný ekvivalent (napr. IB diplom); zahraničné vysvedčenia posudzuje Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "a school-leaving qualification that gives eligibility for higher education in your country, such as the IB Diploma (Karelia uses the general Finnish UAS bachelor's criteria)",
+      "sk": "doklad o ukončení strednej školy, ktorý ťa v tvojej krajine oprávňuje na vysokoškolské štúdium, napríklad IB diplom (Karelia používa všeobecné fínske kritériá UAS pre bakalárske štúdium)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "A secondary-school diploma after at least 12 years of schooling, with a CIMEA comparability certificate or Declaration of Value for a foreign diploma. The IB Diploma is not named on the pages read",
+      "sk": "Stredoškolský diplom po aspoň 12 rokoch školskej dochádzky, pri zahraničnom diplome s potvrdením o porovnateľnosti od CIMEA alebo s Declaration of Value. IB diplom nie je na prečítaných stránkach uvedený",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur, Fachhochschulreife) or recognized foreign equivalent (e.g. IB Diploma fulfilling KMK criteria), verified via uni-assist for Trier campus or direct evaluation by Umwelt-Campus Birkenfeld",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznaný zahraničný ekvivalent (napr. IB diplom spĺňajúci kritériá KMK), overený cez uni-assist pre kampus Trier alebo priamo posúdený na Umwelt-Campus Birkenfeld",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur) or recognized foreign equivalent school-leaving certificate (e.g. IB Diploma), evaluated by DHBW Central International Office (Bescheinigung über die Hochschulzugangsberechtigung), plus a signed 3-year study and training contract with an authorized workplace training partner company",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur) alebo uznané rovnocenné zahraničné vysvedčenie o ukončení strednej školy (napr. IB diplom), posúdené na DHBW Central International Office (Bescheinigung über die Hochschulzugangsberechtigung), a k tomu podpísaná 3-ročná zmluva o štúdiu a odbornej príprave s autorizovanou partnerskou firmou pre praktickú prípravu",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma (certificate-based selection by points in the joint round; ACT, OMPT or SAT in the separate round)",
+      "sk": "IB diplom (výber podľa vysvedčení na základe bodov v spoločnom kole; ACT, OMPT alebo SAT v samostatnom kole)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma earned after at least 12 years of schooling (guide p.12); IB Diploma with at least 24 points, 12 of them at Higher Level, and TOK, CAS and EE passed (entry requirements PDF p.2)",
+      "sk": "Stredoškolský diplom získaný po aspoň 12 rokoch školskej dochádzky (príručka, p.12); IB diplom s aspoň 24 bodmi, z toho 12 na úrovni Higher Level, a so splnenými TOK, CAS a EE (PDF s prijímacími požiadavkami, p.2)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Upper secondary qualification that gives eligibility for higher education in its country; an IB Diploma, IB Results or IB Certificate is listed as eligible",
+      "sk": "Stredoškolská kvalifikácia, ktorá vo svojej krajine oprávňuje na vysokoškolské štúdium; ako vyhovujúce sú uvedené IB diplom, IB Results alebo IB Certificate",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "12 years of schooling + High School Diploma (final title), for bachelor's courses (https://admission.unisi.it/?p=1160). A foreign diploma is checked by the Admission Office; the IB Diploma is not named on any page read.",
+      "sk": "12 rokov školskej dochádzky + High School Diploma (záverečný doklad), pre bakalárske študijné programy (https://admission.unisi.it/?p=1160). Zahraničný diplom preveruje Admission Office; IB diplom nie je uvedený na žiadnej prečítanej stránke.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "a completed secondary school qualification that gives UAS eligibility; the IB Diploma is listed; EU/EEA citizens are eligible when they are eligible for higher education in their home country",
+      "sk": "získaná stredoškolská kvalifikácia, ktorá oprávňuje na štúdium na UAS; IB diplom je uvedený; občania EÚ/EHP sú oprávnení, ak sú oprávnení na vysokoškolské štúdium vo svojej domovskej krajine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "a qualification giving eligibility for Finnish higher education: IB Diploma or IB school completion, European Baccalaureate, Finnish matriculation or upper secondary qualification, or a foreign qualification that gives eligibility in its country",
+      "sk": "kvalifikácia oprávňujúca na vysokoškolské štúdium vo Fínsku: IB diplom alebo ukončenie IB školy, European Baccalaureate, fínska maturitná skúška alebo stredoškolská kvalifikácia, alebo zahraničná kvalifikácia, ktorá oprávňuje na štúdium vo svojej krajine",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Abitur, Fachhochschulreife or foreign equivalent (e.g. IB Diploma meeting German KMK direct higher education entrance criteria)",
+      "sk": "Abitur, Fachhochschulreife alebo zahraničný ekvivalent (napr. IB diplom spĺňajúci nemecké kritériá KMK na priamy vstup do vysokoškolského štúdia)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Accredited high school diploma or equivalent; IB Diploma with a minimum of 24 points, diploma awarded (certificates not accepted)",
+      "sk": "Akreditovaný stredoškolský diplom alebo ekvivalent; IB diplom s minimálne 24 bodmi, udelený diplom (certifikáty sa neakceptujú)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma granting direct university admission in Germany (KMK / DAAD rules) or a recognized secondary school leaving certificate",
+      "sk": "IB diplom, ktorý oprávňuje na priamy vstup na univerzitu v Nemecku (pravidlá KMK / DAAD), alebo uznané vysvedčenie o ukončení strednej školy",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma meeting German KMK requirements for direct university admission (Hochschulzugangsberechtigung); evaluated via uni-assist",
+      "sk": "IB diplom spĺňajúci nemecké požiadavky KMK na priamy vstup na univerzitu (Hochschulzugangsberechtigung); posudzuje sa cez uni-assist",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "an IB Diploma or recognized foreign secondary school leaving certificate equivalent to the German Abitur",
+      "sk": "IB diplom alebo uznané zahraničné vysvedčenie o ukončení strednej školy rovnocenné nemeckému Abitur",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Austrian Matura or a foreign equivalent. The IB Diploma is named as a general university entrance qualification in the national rule (bmfwf access page); the university's own pages do not name the IB and say foreign certificates are checked by the Admission Office.",
+      "sk": "Rakúska Matura alebo zahraničný ekvivalent. IB diplom je v celoštátnom predpise uvedený ako všeobecná kvalifikácia na vstup na univerzitu (stránka bmfwf o prístupe k štúdiu); vlastné stránky univerzity IB neuvádzajú a píšu, že zahraničné vysvedčenia preveruje Admission Office.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Austrian school-leaving certificate or an equivalent foreign certificate (general university entrance qualification, §4(5) FHG); IB named explicitly for Business Consultancy International only",
+      "sk": "Rakúske vysvedčenie o ukončení strednej školy alebo rovnocenné zahraničné vysvedčenie (všeobecná kvalifikácia na vstup na univerzitu, §4(5) FHG); IB je výslovne uvedený iba pri Business Consultancy International",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur, Fachhochschulreife) or recognized equivalent international secondary school-leaving certificate (e.g. IB Diploma), evaluated and recognized by Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom), ktoré posudzuje a uznáva Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Hochschulzugangsberechtigung / HZB) or recognized equivalent foreign secondary school leaving certificate such as the IB Diploma (evaluated via uni-assist VPD)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Hochschulzugangsberechtigung / HZB) alebo uznané rovnocenné zahraničné vysvedčenie o ukončení strednej školy, napríklad IB diplom (posudzuje sa cez uni-assist VPD)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "German Abitur / Fachabitur or recognised equivalent higher education entrance qualification (e.g. IB Diploma under KMK criteria, evaluated via uni-assist)",
+      "sk": "Nemecký Abitur / Fachabitur alebo uznaná rovnocenná kvalifikácia na vstup do vysokoškolského štúdia (napr. IB diplom podľa kritérií KMK, posudzuje sa cez uni-assist)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "German Abitur, Fachhochschulreife, or foreign higher education entrance qualification (e.g. IB Diploma) granting university admission in Germany under KMK guidelines",
+      "sk": "Nemecký Abitur, Fachhochschulreife alebo zahraničná kvalifikácia na vstup do vysokoškolského štúdia (napr. IB diplom), ktorá oprávňuje na prijatie na univerzitu v Nemecku podľa usmernení KMK",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "High school diploma obtained after at least 12 years of studies; IB Diploma treatment not stated",
+      "sk": "Stredoškolský diplom získaný po aspoň 12 rokoch štúdia; posudzovanie IB diplomu nie je uvedené",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Higher Education Entrance Qualification (GSU list); the IB Diploma meets the education requirement; English proficiency also required",
+      "sk": "Kvalifikácia na vstup do vysokoškolského štúdia (zoznam GSU); IB diplom spĺňa požiadavku na vzdelanie; vyžaduje sa aj znalosť angličtiny",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Higher education entrance qualification (Hochschulzugangsberechtigung / Abitur) or recognized equivalent international secondary school leaving certificate (e.g. IB Diploma fulfilling KMK criteria), evaluated directly by TH Nürnberg (not uni-assist)",
+      "sk": "Kvalifikácia na vstup do vysokoškolského štúdia (Hochschulzugangsberechtigung / Abitur) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), ktoré posudzuje priamo TH Nürnberg (nie uni-assist)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma with 24+ points (opens all Danish higher education, subject to each programme's own requirements); or IB Course Results of 18+ points with grade 3 or higher in all six subjects, at least three at HL (opens professional bachelor programmes; ufsn.dk)",
+      "sk": "IB diplom s 24+ bodmi (otvára prístup ku všetkému dánskemu vysokoškolskému štúdiu, s výhradou vlastných požiadaviek programu, na ktorý sa hlásiš); alebo IB Course Results s 18+ bodmi so známkou 3 alebo vyššou zo všetkých šiestich predmetov, z toho aspoň tri na HL (otvára profesijné bakalárske programy; ufsn.dk)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Upper secondary school leaving certificate or IB Diploma (IB counts as a foreign exam; quota 2 deadline and admission interview apply)",
+      "sk": "Stredoškolské záverečné vysvedčenie alebo IB diplom (IB sa počíta ako zahraničná skúška; platí termín pre kvótu 2 a prijímací pohovor)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Abitur or recognized equivalent qualification (IB Diploma satisfying German KMK criteria for direct higher education entrance)",
+      "sk": "Abitur alebo uznaná rovnocenná kvalifikácia (IB diplom spĺňajúci nemecké kritériá KMK na priamy vstup do vysokoškolského štúdia)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Abitur, Fachhochschulreife or recognized equivalent qualification (IB Diploma satisfying German KMK criteria for direct higher education entrance)",
+      "sk": "Abitur, Fachhochschulreife alebo uznaná rovnocenná kvalifikácia (IB diplom spĺňajúci nemecké kritériá KMK na priamy vstup do vysokoškolského štúdia)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Austrian Matura, or a foreign school-leaving certificate accepted under an international agreement or by case-by-case decision (the guide names Bagrut and high school diploma as examples; the IB Diploma is not named)",
+      "sk": "Rakúska Matura alebo zahraničné vysvedčenie o ukončení strednej školy akceptované na základe medzinárodnej dohody alebo individuálneho rozhodnutia (príručka uvádza ako príklady Bagrut a high school diploma; IB diplom nie je uvedený)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Completed secondary or complete secondary vocational education",
+      "sk": "Ukončené stredné alebo úplné stredné odborné vzdelanie",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur / Fachhochschulreife or recognised equivalent foreign certificate e.g. IB Diploma under KMK guidelines, evaluated via uni-assist)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur / Fachhochschulreife alebo uznané rovnocenné zahraničné vysvedčenie, napr. IB diplom podľa usmernení KMK, posudzuje sa cez uni-assist)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur, Fachhochschulreife) or recognized equivalent international secondary school-leaving certificate (e.g. IB Diploma fulfilling KMK criteria), validated by Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), ktoré overuje Studienkolleg Konstanz (Zeugnisanerkennung)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "General higher education entrance qualification (Abitur, Fachhochschulreife) or recognized equivalent international secondary school-leaving certificate (e.g. IB Diploma fulfilling KMK criteria), verified via uni-assist preliminary review documentation (VPD)",
+      "sk": "Všeobecná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy (napr. IB diplom spĺňajúci kritériá KMK), overené cez dokumentáciu predbežného posúdenia od uni-assist (VPD)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "German Abitur, Fachhochschulreife, or foreign higher education entrance qualification (e.g. IB Diploma) granting higher education entrance qualification (HZB) in Germany under KMK guidelines",
+      "sk": "Nemecký Abitur, Fachhochschulreife alebo zahraničná kvalifikácia na vstup do vysokoškolského štúdia (napr. IB diplom), ktorá v Nemecku zakladá oprávnenie na vysokoškolské štúdium (HZB) podľa usmernení KMK",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Higher education entrance qualification (Hochschulzugangsberechtigung / Abitur) or recognized equivalent international secondary school leaving certificate",
+      "sk": "Kvalifikácia na vstup do vysokoškolského štúdia (Hochschulzugangsberechtigung / Abitur) alebo uznané rovnocenné medzinárodné vysvedčenie o ukončení strednej školy",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Higher education entrance qualification valid in Bavaria; foreign school-leaving certificates require uni-assist preliminary assessment. IB-specific recognition not established on the pages read.",
+      "sk": "Kvalifikácia na vstup do vysokoškolského štúdia platná v Bavorsku; zahraničné vysvedčenia o ukončení strednej školy vyžadujú predbežné posúdenie cez uni-assist. Uznávanie špecifické pre IB nie je na prečítaných stránkach doložené.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "IB Diploma under Italian national rules (24+ points in six subjects, 12 of them at Higher Level, TOK, CAS and EE passed), or a secondary diploma obtained after at least 12 years of schooling",
+      "sk": "IB diplom podľa talianskych celoštátnych pravidiel (24+ bodov zo šiestich predmetov, z toho 12 na úrovni Higher Level, splnené TOK, CAS a EE) alebo stredoškolský diplom získaný po aspoň 12 rokoch školskej dochádzky",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Matura, Abitur or other school-leaving certificate that allows study at a higher education institution (MCI's wording; the IB Diploma is not named on MCI's pages)",
+      "sk": "Matura, Abitur alebo iné vysvedčenie o ukončení strednej školy, ktoré umožňuje štúdium na vysokej škole (formulácia MCI; IB diplom nie je na stránkach MCI uvedený)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Recognised foreign secondary-school diploma permitting university access; at least 12 years of schooling. IB-specific rules found only in the university-hosted 2025/26 national procedures: full IBO-recognised diploma, at least 24 points in six subjects including 12 at Higher Level, with TOK, CAS and EE completed; schooling conditions apply. Reconfirm for 2027/28.",
+      "sk": "Uznaný zahraničný stredoškolský diplom umožňujúci prístup na univerzitu; aspoň 12 rokov školskej dochádzky. Pravidlá špecifické pre IB sa našli len v celoštátnych postupoch 2025/26 zverejnených na stránkach univerzity: úplný diplom uznaný IBO, aspoň 24 bodov zo šiestich predmetov vrátane 12 na úrovni Higher Level, so splnenými TOK, CAS a EE; platia podmienky týkajúce sa školskej dochádzky. Pre rok 2027/28 treba znova overiť.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Recognised higher education entrance qualification (Abitur, Fachhochschulreife, or foreign equivalent such as the IB Diploma according to KMK / anabin guidelines; evaluated via uni-assist standard procedure)",
+      "sk": "Uznaná kvalifikácia na vstup do vysokoškolského štúdia (Abitur, Fachhochschulreife alebo zahraničný ekvivalent, napríklad IB diplom podľa usmernení KMK / anabin; posudzuje sa v štandardnom postupe cez uni-assist)",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Recognised school-leaving qualification normally following 12 years of schooling. IB Diploma accepted; official sources conflict on minimum points (24 versus 26): confirmation required.",
+      "sk": "Uznaný doklad o ukončení strednej školy, zvyčajne po 12 rokoch školskej dochádzky. IB diplom sa akceptuje; oficiálne zdroje si odporujú v minimálnom počte bodov (24 verzus 26): treba to potvrdiť.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Recognised university entrance qualification (HZB); foreign qualifications require a uni-assist VPD issued specifically for Kempten. IB-specific recognition conditions not found on the university pages examined.",
+      "sk": "Uznaná kvalifikácia na vstup na univerzitu (HZB); zahraničné kvalifikácie vyžadujú uni-assist VPD vydané špeciálne pre Kempten. Podmienky uznávania špecifické pre IB sa na preskúmaných stránkach univerzity nenašli.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "School-leaving qualification granting admission to German universities; IB evaluated individually under KLU’s published subject conditions. A Business Foundations Program may be required if direct-entry conditions are not met.",
+      "sk": "Doklad o ukončení strednej školy, ktorý oprávňuje na prijatie na nemecké univerzity; IB sa posudzuje individuálne podľa zverejnených predmetových podmienok KLU. Ak nie sú splnené podmienky priameho prijatia, môže sa vyžadovať Business Foundations Program.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "School-leaving qualification granting university access in Bavaria; IB Diploma listed.",
+      "sk": "Doklad o ukončení strednej školy, ktorý oprávňuje na prístup na univerzitu v Bavorsku; IB diplom je uvedený.",
+      "verified_by": "AI-DRAFT"
+    },
+    {
+      "field": "baseline_requirement",
+      "en": "Secondary school diploma, or a foreign qualification recognised as valid under current regulations (IB Diploma recognition not stated on any page read)",
+      "sk": "Stredoškolský diplom alebo zahraničná kvalifikácia uznaná za platnú podľa aktuálnych predpisov (uznávanie IB diplomu nie je uvedené na žiadnej prečítanej stránke)",
+      "verified_by": "AI-DRAFT"
     }
   ]
 }
