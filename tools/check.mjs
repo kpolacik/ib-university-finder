@@ -2050,22 +2050,41 @@ section('Data-fill apply script (tools/apply-data-fill.mjs)');
 section('Prose cleanup selector (#17)');
 const { researchSignals, mechanicalValue, appliedCells, selectResearchCells } = await import('./select-prose.mjs');
 equal('selector: retrieval and fetch narration', researchSignals('Deadline not found as of 2026-10-28. Check manually.'), ['retrieval', 'fetch']);
-equal('selector: course-page quote', researchSignals('The course page says "apply through the portal".'), ['source page', 'quotation']);
+equal('selector: course-page quote', researchSignals('The course page says "apply through the portal".'), ['source page', 'quotation', 'page narration']);
 equal('selector: closed-round and sign-in research logs',
   ['Was shown CLOSED on 26 Oct 2026.', 'The old round is closed; not used here.', 'Linked conditions blocked by Microsoft sign-in.'].map(researchSignals),
   [['fetch'], ['catalogue narration'], ['fetch']]);
+equal('selector: widened source-narration signals',
+  [
+    'No deadline found on the pages checked.',
+    'Full-time only, per the FSI list.',
+    'Page says about 3.5 years.',
+    'Only English-taught bachelor found in the brochure.',
+    'Fee interpreted as €4,000 a year.',
+  ].map(researchSignals),
+  [['pages checked', 'found on'], ['source list'], ['page narration'], ['found on'], ['interpreted']]);
 equal('selector: applicant-facing guidance', researchSignals('Check the official page before applying.'), []);
+equal('selector: plain programme facts stay unselected', researchSignals('Places offered: 30.'), []);
 {
   const applied = 'See the course page for the deadline.';
   const changed = 'See the course page for the new deadline.';
+  const kept = 'Full-time only, per the FSI list.';
+  const keptChanged = 'Part-time only, per the FSI list.';
   const row = { programme_id: 'fx-p1', university_id: 'fx-a', verified_by: 'AI-DRAFT',
     deadline_notes: applied, other_requirements: '', ib_subjects: '' };
-  const batch = appliedCells([`entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p1,deadline_notes,Old,${applied},Wording,\n`]);
+  const batch = appliedCells([
+    `entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p1,deadline_notes,Old,${applied},Wording,\n`,
+    `entity_type,id,column,expected_old,value,reason,drops\nprog,fx-p3,deadline_notes,"${kept}","${kept}",Kept as is,\n`,
+  ]);
   equal('selector: applied wording is skipped', selectResearchCells([row], batch).total, 0);
   equal('selector: changed wording is selected again',
     selectResearchCells([{ ...row, deadline_notes: changed }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p1']);
   equal('selector: a held cell is still selected',
     selectResearchCells([{ ...row, programme_id: 'fx-p2' }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p2']);
+  equal('selector: exact kept-as-is value is skipped',
+    selectResearchCells([{ ...row, programme_id: 'fx-p3', deadline_notes: kept }], batch).total, 0);
+  equal('selector: changed kept-as-is value is selected again',
+    selectResearchCells([{ ...row, programme_id: 'fx-p3', deadline_notes: keptChanged }], batch).universities[0]?.cells.map(({ id }) => id), ['fx-p3']);
 
   const current = new Map(csvToObjects(read('data/programmes.csv')).rows.map((r) => [r.programme_id, r]));
   const run = spawnSync(process.execPath, [join(root, 'tools/select-prose.mjs')], { encoding: 'utf8' });
@@ -2091,8 +2110,8 @@ equal('mechanical: frozen ECB text stays intact',
     .map((s) => mechanicalValue('deadline_notes', s)),
   ['Fee shown in euros at the ECB rate of 2026-10-29.', 'Fee at the ECB reference rate of 2026-11-12.']);
 equal('mechanical: research-log and last-year carryovers are held',
-  ['Deadline not found as of 2026-10-28.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."].map((s) => mechanicalValue('deadline_notes', s)),
-  ['Deadline not found as of 2026-10-28.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."]);
+  ['Deadline not found as of 2026-10-28.', 'Page says 2027-01-13.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."].map((s) => mechanicalValue('deadline_notes', s)),
+  ['Deadline not found as of 2026-10-28.', 'Page says 2027-01-13.', "2026-04-30. Last year's date; the 2027/28 date is not yet published."]);
 
 section('Prose reword script (tools/reword-prose.mjs, #17)');
 // A reword changes how a note is said, never what it says. The guards are

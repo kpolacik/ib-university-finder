@@ -15,6 +15,11 @@ const SIGNALS = [
   ['catalogue narration', /\bnot used here\b/i],
   ['quotation', /"[^"]+"|“[^”]+”|‘[^’]+’|(?:^|[\s(])'[^']+\s[^']+'(?=$|[\s).,;:])/],
   ['source link', /\b(?:https?:\/\/|www\.)/i],
+  ['pages checked', /\bon the pages? checked\b|\bpages? checked\b/i],
+  ['source list', /\bper the (?:\d{4}\/\d{2} )?(?:guide|list|page|brochure|catalogue|leaflet|PDF|FSI list|faculty list)\b|\bper the [\w-]+ (?:list|guide)\b/i],
+  ['page narration', /\b(?:page|pages|guide|brochure|PDF|list) (?:quotes?|gives?|refers?|does not|doesn't|conflicts?|mentions?|names?|lists?|says?|shows?|states?)\b/i],
+  ['found on', /\b(?:not |no .{0,40})?found (?:on|in) the\b/i],
+  ['interpreted', /\binterpreted as\b/i],
 ];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthNames = [...MONTHS, 'Sept', ...MONTHS.filter((name) => name.length > 3).map((name) => name.slice(0, 3))];
