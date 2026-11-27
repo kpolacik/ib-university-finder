@@ -12144,15 +12144,32 @@ section('F01 public subject evidence and reviewed subject rules');
     const pEn = linesOf(null, 'en'), pSk = linesOf(null, 'sk');
     await served(partialRule([twoRoutes[0]]));
     const p1En = linesOf(null, 'en'), p1Sk = linesOf(null, 'sk');
-    const sufficient = /Any one of these routes|is enough|Stačí jedna|stačí\b(?!:)/;
     check('F01 F4: partial routes, EN and SK, detail and Compare, list what was recorded without implying any is enough',
-      [pEn, pSk, p1En, p1Sk].every((v) => v.detail.length && !v.detail.some((l) => /Any one of these routes|Stačí jedna z týchto ciest/.test(l)) && JSON.stringify(v.detail) === JSON.stringify(v.cmp.filter((l) => v.detail.includes(l))))
+      [pEn, p1En].every((v) => !v.detail.includes(UI.en.rv_any_route)) && [pSk, p1Sk].every((v) => !v.detail.includes(UI.sk.rv_any_route))
+        && [pEn, pSk, p1En, p1Sk].every((v) => v.detail.length && JSON.stringify(v.detail) === JSON.stringify(v.cmp.filter((l) => v.detail.includes(l))))
         && pEn.detail.includes(UI.en.rv_partial_routes) && pSk.detail.includes(UI.sk.rv_partial_routes)
         && p1En.detail.includes(UI.en.rv_partial_route) && p1Sk.detail.includes(UI.sk.rv_partial_route)
-        && /none is known to be enough/.test(UI.en.rv_partial_routes) && /not known to be enough/.test(UI.en.rv_partial_route) && /nevieme, či sama stačí/.test(UI.sk.rv_partial_routes) && !sufficient.test(UI.en.rv_partial_route),
+        && /none is known to be enough/.test(UI.en.rv_partial_routes) && /not known to be enough/.test(UI.en.rv_partial_route) && /nevieme, či sama stačí/.test(UI.sk.rv_partial_routes),
       JSON.stringify([pEn.detail, pSk.detail]));
-    await served(rec({ routes: { routes: twoRoutes } }));
-    check('F01 F4: a complete check still says any one route is enough', linesOf(null, 'en').detail.includes('Any one of these routes:') && linesOf(null, 'sk').detail.includes('Stačí jedna z týchto ciest:'));
+    const named = (routes) => ({ ...fixtures.PHYSICS_HL5, routes });
+    await served(rec({ routes: { routes: twoRoutes, general: [fixtures.PHYSICS_HL5, named(['b']), named(['b', 'a'])] } }));
+    for (const [lang, wording] of [
+      ['en', ['Alternative subject routes:', 'Every route also needs: Physics', 'Route 2 also needs: Physics', 'Routes 2, 1 also need: Physics']],
+      ['sk', ['Možnosti splnenia požiadaviek na predmety:', 'Každá cesta navyše vyžaduje: Fyzika', 'Cesta 2 navyše vyžaduje: Fyzika', 'Cesty 2, 1 navyše vyžadujú: Fyzika']],
+    ]) {
+      const view = linesOf(null, lang);
+      check(`F01 ${lang}: alternatives and additional general conditions identify the named routes in detail and Compare`,
+        wording.every((words) => view.detail.some((line) => line.startsWith(words)) && view.cmp.some((line) => line.startsWith(words))), JSON.stringify(view));
+    }
+    await served(rec({ routes: { routes: [twoRoutes[1]], general: [named(['b'])] } }));
+    for (const [lang, route, general] of [
+      ['en', 'Route 1: Chemistry', 'Route 1 also needs: Physics'],
+      ['sk', 'Cesta 1: Chémia', 'Cesta 1 navyše vyžaduje: Fyzika'],
+    ]) {
+      const view = linesOf(null, lang);
+      check(`F01 ${lang}: a sole named route displays the same number beside its clauses and its general requirement`,
+        [route, general].every((words) => view.detail.some((line) => line.startsWith(words)) && view.cmp.some((line) => line.startsWith(words))), JSON.stringify(view));
+    }
     // F5: a route's own scope is shown to the reader.
     await served(rec({ routes: { routes: [twoRoutes[0], { id: 'b', clauses: [twoRoutes[1].clauses[0]], scope: { qualification: 'a-levels', label: { en: 'Applicants with A levels (SAMPLE fixture)', sk: 'Uchádzači s A-levels (SAMPLE fixture)' }, sources: ['s1'] } }] } }));
     const scoped = linesOf(null, 'en'), scopedSk = linesOf(null, 'sk');
@@ -12355,6 +12372,36 @@ section('F01 My subjects in My list: the private profile and its one IndexedDB r
   const UUID = '0f8fad5b-d9cb-469f-a165-70867728950e';
   const entry = (course, level, grade = null) => ({ course, level, grade });
   const rec = (over = {}) => ({ version: 1, revision: UUID, entries: [entry('physics', 'HL', 6)], ...over });
+  {
+    const { courseLabel, clauseParts } = await import('../js/ib-subjects.js');
+    for (const [lang, names, expected] of [
+      ['en', ['Physics', 'Theatre', 'Design technology'], [
+        'If you take Physics, enter it in My subjects to check this route.',
+        'met; you entered Theatre HL',
+        'not decided: grade 5 or higher is needed and you have no predicted grade for Design technology',
+        'Physics HL, predicted grade 6', 'Waiver: SAMPLE', 'Exam: SAMPLE',
+      ]],
+      ['sk', ['Fyzika', 'Divadlo', 'Dizajn a technológie'], [
+        'Ak máš predmet Fyzika, zadaj ho do svojho zoznamu predmetov a over túto cestu.',
+        'splnené. V tvojom zozname: Divadlo HL',
+        'nerozhodnuté: treba známku aspoň 5, pri predmete Dizajn a technológie chýba predpokladaná známka',
+        'Fyzika HL, predpokladaná známka 6', 'Výnimka: SAMPLE', 'Skúška: SAMPLE',
+      ]],
+    ]) {
+      const actual = i18n.inLanguage(lang, () => {
+        const [physics, theatre, design] = ['physics', 'theatre', 'design-technology'].map(courseLabel);
+        const shorthand = (type) => clauseParts({ type, text: { en: 'SAMPLE', sk: 'SAMPLE' } }).map((part) => part.text).join('');
+        return [[physics, theatre, design], [
+          i18n.t('ms_n_add', { course: physics }),
+          i18n.t('ms_r_met', { entry: `${theatre} HL` }),
+          i18n.t('ms_r_grade_missing', { course: design, min: 5 }),
+          i18n.t('ms_entry_pred', { entry: `${physics} HL`, grade: 6 }),
+          shorthand('waiver'), shorthand('exam'),
+        ]];
+      });
+      equal(`F01 ${lang}: course labels, conditional entry, explicit prediction, waiver and exam assemble without inflecting labels`, actual, [names, expected]);
+    }
+  }
   check('F01 store: a full v1 record is accepted and copied',
     JSON.stringify(validRecord(rec())) === JSON.stringify({ revision: UUID, entries: [entry('physics', 'HL', 6)] }));
   const rejected = [

@@ -7032,6 +7032,47 @@ async function runSubjectEvidence(base) {
     }
   }
 
+  watchdog.refresh();
+  {
+    const waiver = { type: 'waiver', en: 'A documented exemption (SAMPLE)', sk: 'Zdokumentovaná výnimka (SAMPLE)', sources: ['s1'] };
+    const exam = { type: 'exam', en: 'Pass the test (SAMPLE)', sk: 'Úspešne absolvovať skúšku (SAMPLE)', sources: ['s1'] };
+    const maths = { id: 'maths-track', clauses: [fixtures.MATHS_HL5, fixtures.PHYSICS_HL5] };
+    const page = await openSubjects({ adapter: true, rules: fixtures.rulesCsv([
+      rule({ routes: { routes: [maths, { id: 'exam-track', clauses: [exam] }], general: [
+        fixtures.PHYSICS_HL5, { ...waiver, routes: ['exam-track'] }, { ...fixtures.MATHS_HL5, routes: ['exam-track', 'maths-track'] },
+      ] } }),
+      rule({ routes: { routes: [maths], general: [{ ...waiver, routes: ['maths-track'] }] } }, 'arcada-it'),
+    ]) });
+    try {
+      await check('1280', 'F01 bilingual public routes', 'detail and Compare identify named conditions, preserve AND/OR and distinguish exams from waivers in EN and SK', async () => {
+        await openDetail(page, 'eur-ibeor');
+        await page.waitFor(reviewedShown('#pane'), 5000, 'the reviewed block');
+        const multi = [
+          ['en', 'Alternative subject routes:', 'Route 1: Maths AA or Maths AI at HL, grade 5 or higher (SL not accepted) and Physics at HL, grade 5 or higher',
+            'Route 2: Exam: Pass the test (SAMPLE)', 'Every route also needs: Physics at HL, grade 5 or higher', 'Route 2 also needs: Waiver: A documented exemption (SAMPLE)',
+            'Routes 2, 1 also need: Maths AA or Maths AI', 'Route 1 also needs: Waiver: A documented exemption (SAMPLE)'],
+          ['sk', 'Možnosti splnenia požiadaviek na predmety:', 'Cesta 1: Matematika AA alebo Matematika AI na úrovni HL, známka aspoň 5 (SL sa neuznáva) a Fyzika na úrovni HL, známka aspoň 5',
+            'Cesta 2: Skúška: Úspešne absolvovať skúšku (SAMPLE)', 'Každá cesta navyše vyžaduje: Fyzika na úrovni HL, známka aspoň 5', 'Cesta 2 navyše vyžaduje: Výnimka: Zdokumentovaná výnimka (SAMPLE)',
+            'Cesty 2, 1 navyše vyžadujú: Matematika AA alebo Matematika AI', 'Cesta 1 navyše vyžaduje: Výnimka: Zdokumentovaná výnimka (SAMPLE)'],
+        ];
+        for (const [code, heading, first, second, all, one, named, only] of multi) {
+          await page.ev(`window.__smokeLanguage('${code}')`);
+          const lines = (await page.ev(detailFacts('#pane'))).lines;
+          assert([heading, first, second, all, one].every((line) => lines.includes(line)) && lines.some((line) => line.startsWith(named)), JSON.stringify(lines));
+          await openDetail(page, 'arcada-it');
+          const single = (await page.ev(detailFacts('#pane'))).lines;
+          assert(single.includes(first) && single.includes(only) && !single.includes(heading), JSON.stringify(single));
+          await openCompareView(page);
+          const cells = (await page.ev(compareFacts)).reviewed.cells;
+          assert(cells[0].includes(first) && cells[0].includes(one) && cells[0].includes(named) && cells[1].includes(first) && cells[1].includes(only), JSON.stringify(cells));
+          await page.click(`document.querySelector('#cmp-close')`, 'Close compare');
+          if (code === 'en') await openDetail(page, 'eur-ibeor');
+        }
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+
   // 10. Partial routes and a route scope, in English and Slovak, then a
   // replacement file with broken quoting (Sol r1 F1, F4, F5).
   watchdog.refresh();
@@ -7507,6 +7548,13 @@ async function runMySubjects(base) {
         noErrors(page);
       });
       await check('1280', 'MS case 5', 'six entries without the needed Physics need checking, never conflict; Maths HL 6 against Maths HL 5 counts only as Meets (predicted) and the explicit-absence rule only as No listed restrictions', async () => {
+        await page.click(`document.querySelector('#results li[data-id="sdu-mma"] button.open')`, 'Open the Physics fixture');
+        const next = () => page.ev(`document.querySelector('#pane .ms-next')?.textContent`);
+        await enter(page, [['chemistry', 'HL', 6]]);
+        assert(await next() === 'Next step: If you take Physics, enter it in My subjects to check this route.', await next());
+        await lang(page, 'sk');
+        assert(await next() === 'Ďalší krok: Ak máš predmet Fyzika, zadaj ho do svojho zoznamu predmetov a over túto cestu.', await next());
+        await lang(page, 'en');
         await enter(page, [['maths-aa', 'HL', 6], ['chemistry', 'HL', 6], ['biology', 'SL'], ['en-a-lit', 'HL'], ['history', 'SL'], ['visual-arts', 'SL']]);
         const sdu = await page.ev(rowLine('sdu-mma'));
         assert(sdu.includes(EN.subj_status_needs), `six entries: ${sdu}`);
@@ -7516,6 +7564,11 @@ async function runMySubjects(base) {
         assert(arc === `${EN.ms_row_lead} ${EN.subj_status_no_restrictions} · ${EN.subj_status_rider}`, `arcada-it: ${arc}`);
         for (const [code, T] of [['en', EN], ['sk', SK]]) {
           await lang(page, code);
+          const detail = await page.ev(detailBlock('#pane'));
+          const missing = code === 'en' ? 'not decided: Physics not entered' : 'nerozhodnuté: v tvojom zozname chýba predmet Fyzika';
+          const advice = code === 'en' ? 'Next step: Check the official requirement for Physics and review your six entries.'
+            : 'Ďalší krok: Over si na oficiálnej stránke požiadavku na predmet Fyzika a skontroluj svojich šesť zadaných predmetov.';
+          assert(detail.includes(T.subj_status_needs) && detail.includes(missing) && await next() === advice, detail);
           const summary = (await page.ev(strip)).summary;
           // eur-ibeor (Chemistry HL 6) and eur-ibp meet, both on predictions.
           for (const [key, n] of [['subj_status_meets', 2], ['subj_status_no_restrictions', 1], ['subj_status_needs', 1], ['subj_status_no_check', 1]]) {
@@ -7709,7 +7762,20 @@ async function runMySubjects(base) {
         const s = await page.ev(strip);
         assert(s.summary === (shared ? EN.ms_sum_empty_shared : EN.ms_sum_empty_mine) && s.line.endsWith(EN.ms_add), JSON.stringify(s));
         if (!shared) assert(await page.ev(`!document.querySelector('#empty-back').hidden`), 'the empty card lost its way back');
+        const wording = shared ? [
+          'This link has no programmes that are still listed, so there is nothing to compare your subjects with.',
+          'V tomto odkaze už nie sú žiadne uvedené programy, takže nie je s čím porovnať tvoje predmety.',
+        ] : [
+          'Save programmes to compare your IB subjects with the listed subject requirements.',
+          'Ulož si programy a porovnaj svoje IB predmety s uvedenými požiadavkami na predmety.',
+        ];
+        assert(s.summary === wording[0], s.summary);
+        await lang(page, 'sk');
+        assert((await page.ev(strip)).summary === wording[1], 'Slovak empty state');
         await enter(page, [['physics', 'HL']]);
+        assert((await page.ev(strip)).summary === wording[1], 'Slovak empty state with a profile');
+        await lang(page, 'en');
+        assert((await page.ev(strip)).summary === wording[0], 'English empty state with a profile');
         noErrors(page);
       });
     } finally { await page.close(); }
@@ -7944,6 +8010,65 @@ async function runMySubjects(base) {
         await page.waitFor(`({ok:document.querySelector('.ms-status').textContent===${JSON.stringify(EN.ms_saved_page_removed)},why:'pending retry'})`, 4000, 'settled retry');
         assert((await page.ev(stored)) === null && (await page.ev(strip)).names === 'Biology SL'
           && !await page.ev(`document.querySelector('.ms-edit').disabled`), 'retry did not settle or lost the page-only entries');
+        noErrors(page);
+      });
+    } finally { await page.close(); }
+  }
+  watchdog.refresh();
+  {
+    const waiver = { type: 'waiver', en: 'A documented exemption (SAMPLE)', sk: 'Zdokumentovaná výnimka (SAMPLE)', sources: ['s1'] };
+    const exam = { type: 'exam', en: 'Pass the test (SAMPLE)', sk: 'Úspešne absolvovať skúšku (SAMPLE)', sources: ['s1'] };
+    const words = rule('eur-ibeor', { routes: routes(
+      [waiver, S(['design-technology'], ['HL'], 5), S(['theatre'], ['HL']), S(['physics'], ['HL'], 5)], [exam],
+    ) });
+    const page = await openMS({ adapter: true, rules: fixtures.rulesCsv([words]), compare: ['eur-ibeor'] });
+    try {
+      await check('1280', 'MS bilingual editor', 'a new empty edit offers Add, a remembered edit offers Forget, and the confirmation describes only the profile', async () => {
+        await toList(page);
+        await page.click(`document.querySelector('#results li[data-id="eur-ibeor"] button.open')`, 'Open the fixture');
+        await page.waitFor(`({ok:!!document.querySelector('#pane .d-reviewed .rv-line'),why:'no reviewed block'})`, 5000, 'the reviewed block');
+        await page.ev(`(()=>{const p=document.querySelector('#f-points');p.value='36';p.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+        const unrelated = `[${JSON.stringify(SHORTLIST)},${JSON.stringify(COMPARE)},'ibuf.filters.v1'].map(k=>localStorage.getItem(k))`;
+        await page.waitFor(`(()=>{const values=${unrelated};return {ok:values.every(Boolean)&&JSON.parse(values[2]).filters.myIbPoints===36,why:'test preferences not stored'}})()`, 5000, 'saved programmes and preferences');
+        const forgetShown = `!document.querySelector('#ms-editor .ms-forget').hidden`;
+        const remaining = `document.querySelector('#ms-editor .ms-empty:not([hidden])')?.textContent`;
+        const samples = [
+          ['en', EN, 'Check the marked subject rows.', 'No subjects left. Add a subject.', 'No predicted grade',
+            'Finder has forgotten your IB subjects in this browser.', 'Physics HL, predicted grade 6', 'met; you entered Theatre HL',
+            'no predicted grade for Design technology', 'not decided: it depends on a waiver the page can\'t confirm', 'not decided: it depends on an exam result the page can\'t know',
+            'Next step: Check the official page for the waiver'],
+          ['sk', SK, 'Skontroluj označené riadky.', 'Nezostal žiadny predmet. Pridaj predmet.', 'Bez predpokladanej známky',
+            'Finder v tomto prehliadači zabudol tvoje IB predmety.', 'Fyzika HL, predpokladaná známka 6', 'splnené. V tvojom zozname: Divadlo HL',
+            'pri predmete Dizajn a technológie chýba predpokladaná známka', 'nerozhodnuté: závisí od výnimky, ktorú stránka nemôže potvrdiť',
+            'nerozhodnuté: závisí od výsledku skúšky, ktorý stránka nemôže poznať', 'Ďalší krok: Over si na oficiálnej stránke, či sa na teba vzťahuje výnimka'],
+        ];
+        for (const [code, T, marked, empty, optional, forgotten, predicted, met, missing, exception, test, next] of samples) {
+          await lang(page, code);
+          await openEditor(page);
+          assert(await page.ev(`document.querySelector('#ms-g-1 option').textContent`) === optional, 'optional predicted grade');
+          await page.ev(choose(0, 'physics', ''));
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === marked, 'row guidance must not depend on direction');
+          await page.click(`document.querySelector('#ms-editor .ms-remove')`, 'Remove the only row');
+          assert(await page.ev(remaining) === empty && !await page.ev(forgetShown), 'a new edit suggested unavailable Forget');
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === T.ms_e_empty, 'new empty draft validation');
+          await page.click(`document.querySelector('#ms-editor .ms-cancel')`, 'Cancel');
+          await enter(page, [['design-technology', 'HL'], ['theatre', 'HL'], ['physics', 'HL', 6]], { remember: true });
+          const detail = await page.ev(detailBlock('#pane'));
+          assert([T.subj_status_needs, predicted, met, missing, exception, test, next].every((text) => detail.includes(text)), detail);
+          assert((await page.ev(stored))?.entries.length === 3, 'remembered fixture was not committed');
+          await openEditor(page);
+          for (let i = 0; i < 3; i++) await page.click(`document.querySelector('#ms-editor .ms-remove')`, 'Remove a subject from the draft');
+          assert(await page.ev(remaining) === empty && await page.ev(forgetShown), 'Forget vanished while editing a remembered profile');
+          await saveEditor(page, false);
+          assert((await page.ev(strip)).formError === T.ms_e_empty_forget && await page.ev(`document.activeElement.matches('.ms-forget')`), 'empty edit lost the explicit Forget action');
+          const before = await page.ev(unrelated);
+          await page.click(`document.querySelector('#ms-editor .ms-forget')`, 'Forget subjects');
+          await page.waitFor(`({ok:document.querySelector('.ms-status').textContent===${JSON.stringify(forgotten)},why:'no scoped confirmation'})`, 5000, 'Forget confirmation');
+          assert((await page.ev(stored)) === null && (await page.ev(strip)).names === T.ms_not_added, 'subjects were not forgotten');
+          assert(JSON.stringify(await page.ev(unrelated)) === JSON.stringify(before), 'Forget changed saves, Compare or preferences');
+        }
         noErrors(page);
       });
     } finally { await page.close(); }
@@ -8206,6 +8331,17 @@ async function runMySubjects(base) {
         const fs0 = await page.ev(filterState);
         await enter(page, [['maths-ai', 'HL', 3], ['physics', 'HL']]);
         await page.waitFor(`({ok:${notices}==='mymaths,hl',why:${notices}})`, 3000, 'HL below 4');
+        for (const [code, grade, link] of [
+          ['en', 'AI HL, predicted grade 3', 'Change “HL Maths 4+”'],
+          ['sk', 'AI HL, predpokladaná známka 3', 'Zmeniť „HL matematika 4+“'],
+        ]) {
+          await lang(page, code);
+          const [label, notice, button] = await page.ev(`[document.querySelector('[data-i18n="hl_maths_4"]').textContent,
+            document.querySelector('.ms-notice[data-notice="hl"]').firstChild.textContent,
+            document.querySelector('.ms-notice[data-notice="hl"] button').textContent]`);
+          assert(notice.includes(label) && notice.includes(grade) && button.includes(label) && button === link, JSON.stringify([label, notice, button]));
+        }
+        await lang(page, 'en');
         await enter(page, [['maths-aa', 'HL'], ['physics', 'HL']]);
         await page.waitFor(`({ok:${notices}==='',why:${notices}})`, 3000, 'HL with no grade and AA HL: no notice');
         await enter(page, [['maths-ai', 'SL'], ['physics', 'HL']]);

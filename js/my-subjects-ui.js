@@ -205,7 +205,8 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     if (maths && v.myMaths && v.myMaths !== mathsShort(maths)) items.push({ key: 'mymaths', text: t('ms_n_mymaths', { filter: v.myMaths, maths: mathsShort(maths) }), link: t('ms_n_link_mymaths') });
     if (maths && v.hlMaths && (maths.level === 'SL' || (maths.grade !== null && maths.grade < 4))) {
       const mine = maths.grade !== null ? t('ms_entry_pred', { entry: mathsShort(maths), grade: maths.grade }) : mathsShort(maths);
-      items.push({ key: 'hl', text: t('ms_n_hl', { maths: mine }), link: t('ms_n_link_hl') });
+      const filter = t('hl_maths_4');
+      items.push({ key: 'hl', text: t('ms_n_hl', { filter, maths: mine }), link: t('ms_n_link_hl', { filter }) });
     }
     const key = JSON.stringify(items);
     if (notices.dataset.key === key) return;
@@ -289,7 +290,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
       });
       node.append(list);
     }
-    if (result.next) node.append(el('p', 'ms-next', t('ms_next', { text: nextText(result.next) })));
+    if (result.next) node.append(el('p', 'ms-next', t('ms_next', { text: nextText(result.next, entries.length) })));
     node.append(el('p', 'ms-help', t('ms_see_above')));
   }
 
@@ -326,10 +327,10 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     }
   }
 
-  function nextText(next) {
+  function nextText(next, count) {
     const course = next.course ? courseLabel(next.course) : '';
     switch (next.kind) {
-      case 'add': return t('ms_n_add', { course });
+      case 'add': return t(count >= MAX_ENTRIES ? 'ms_n_add_full' : 'ms_n_add', { course });
       case 'grade-missing': return t('ms_n_grade_missing', { course });
       case 'grade-below': return t('ms_n_grade_below', { course, min: next.min });
       case 'level-unstated': return t('ms_n_level_unstated', { level: next.level });
@@ -542,6 +543,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
     for (const row of e.rows) for (const node of [row.course, row.level, row.grade, row.remove]) node.disabled = snap.busy;
     // Forget is offered whenever there is something to forget.
     e.forget.hidden = !(snap.active || snap.deleteFailed || snap.writeFailed || snap.warning === 'invalid' || snap.warning === 'read-failed' || snap.observed === 'remembered');
+    if (e.formCode === 'empty') set(e.formError, formText(e.formCode));
   }
 
   const ROW_ERRORS = {
@@ -551,7 +553,7 @@ export function createSubjectsUI({ store, strip, notices, hooks }) {
   function errorText(code) { return t(ROW_ERRORS[code] ?? 'ms_e_invalid'); }
   function formText(code) {
     return t({
-      rows: 'ms_e_summary', empty: profile() ? 'ms_e_empty_forget' : 'ms_e_empty', 'too-many': 'ms_e_too_many',
+      rows: 'ms_e_summary', empty: editor && !editor.forget.hidden ? 'ms_e_empty_forget' : 'ms_e_empty', 'too-many': 'ms_e_too_many',
       stale: 'ms_stale', invalid: 'ms_refused_invalid', error: 'ms_refused_error', pending: 'ms_refused_pending',
     }[code] ?? 'ms_e_summary');
   }

@@ -289,12 +289,13 @@ export function publicRuleView(rule) {
     const partial = rule.kind === 'partial-restrictions';
     if (partial) lines.push([{ text: `${t('rv_partial')} ` }, pickText(rule.partialNote)]);
     const many = rule.routes.length > 1;
-    // A partial check lists what was recorded, never "any one is enough".
+    const numbered = many || rule.general.some((clause) => clause.routes);
+    // A partial check lists only what was recorded.
     if (partial) lines.push([{ text: t(many ? 'rv_partial_routes' : 'rv_partial_route') }]);
     else if (many) lines.push([{ text: t('rv_any_route') }]);
     rule.routes.forEach((route, i) => {
       const parts = joinParts(route.clauses.map(clauseParts), 'rv_and');
-      const lead = many ? [{ text: `${t('rv_route', { n: i + 1 })} ` }] : [];
+      const lead = numbered ? [{ text: `${t('rv_route', { n: i + 1 })} ` }] : [];
       lines.push([...lead, ...parts]);
       if (route.scope) {
         lines.push([{ text: `${t('rv_route_scope')} ` }, pickText(route.scope.label)]);
@@ -303,7 +304,10 @@ export function publicRuleView(rule) {
     });
     for (const clause of rule.general) {
       const which = clause.routes
-        ? t('rv_some_routes', { routes: clause.routes.map((id) => rule.routes.findIndex((r) => r.id === id) + 1).join(', ') })
+        ? t('rv_some_routes', {
+          count: clause.routes.length,
+          routes: clause.routes.map((id) => rule.routes.findIndex((r) => r.id === id) + 1).join(', '),
+        })
         : t(many ? 'rv_all_routes' : 'rv_also');
       lines.push([{ text: `${which} ` }, ...clauseParts(clause)]);
     }
