@@ -170,8 +170,9 @@ function usable() {
   if (s.records.length && (age >= MAX_AGE_MS || age < 0)) { retire(); return new Map(); }
   const today = new Date(wallTime());
   const day = localDay(today);
-  // Cached per answer and day: the result only changes with either.
-  if (s.cache && s.cache.day === day && s.cache.answer === s.answer) return s.cache.rules;
+  // A zone change can move the local day back even if wall time stands still.
+  // Keep the latest day evaluated for this answer; a new response clears it.
+  if (s.cache && s.cache.answer === s.answer && day <= s.cache.day) return s.cache.rules;
   const results = s.records.map((record) => acceptRule(record, { raw: s.raw, today }));
   const { rules } = combineRules(results);
   s.cache = { day, answer: s.answer, rules };

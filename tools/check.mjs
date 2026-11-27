@@ -11605,10 +11605,10 @@ section('F01 public subject evidence and reviewed subject rules');
     const headerCells = [...RULE_COLUMNS];
     const joinedTwo = [`"${headerCells[0]},${headerCells[1]}"`, ...headerCells.slice(2)].join(',');
     for (const [name, text, reason] of [
-      ['text after a closing quote', `${header}\n"1"x${blankRow.slice(1)}\n`, 'malformed'],
-      ['a space after a closing quote', `${header}\n"1" ${blankRow.slice(1)}\n`, 'malformed'],
-      ['a quote inside an unquoted cell', `${header}\n1x"y${blankRow.slice(1)}\n`, 'malformed'],
-      ['a quote closed then reopened', `${header}\n"1""x${blankRow.slice(1)}\n`, 'malformed'],
+      ['text after a closing quote', `${header}\n"1"x${blankRow}\n`, 'malformed'],
+      ['a space after a closing quote', `${header}\n"1" ${blankRow}\n`, 'malformed'],
+      ['a quote inside an unquoted cell', `${header}\n1x"y"${blankRow}\n`, 'malformed'],
+      ['an unclosed field after an escaped quote', `${header}\n"1""x${blankRow}\n`, 'malformed'],
       ['a lone carriage return', `${header}\r${blankRow}\n`, 'malformed'],
       ['an unclosed quote at the very end', `${header}\n"`, 'malformed'],
       ['two header cells joined into one quoted cell', `${joinedTwo}\n`, 'header'],
@@ -11800,6 +11800,19 @@ section('F01 public subject evidence and reviewed subject rules');
     check('F01 F5: an unknown or misspelt qualification, or an uncited one, is invalid, never proof of disjointness',
       !acceptRule(typo, ctx).disjoint && acceptRule(typo, ctx).reasons.includes('scope') && !acceptRule(uncited, ctx).disjoint && acceptRule(uncited, ctx).reasons.includes('scope'));
     check('F01 F5: a disjoint record does not block the IB record for the same programme', one([rec(), aLevels]).size === 1 && one([aLevels, rec()]).size === 1);
+    const source = { url: fixtures.SAMPLE_URL, quote: fixtures.SAMPLE_QUOTE };
+    for (const [problem, override] of [
+      ['unsupported schema', { schema_version: '2' }],
+      ['invalid scope link', { sources: { s1: { ...source, url: '/not-an-official-url' } } }],
+      ['missing scope quote', { sources: { s1: { ...source, quote: ' ' } } }],
+      ['invalid citation language', { sources: { s1: { ...source, lang: ['en'] } } }],
+      ['invalid condition citation', { scope: scopeFor('a-levels', { conditions: [{ en: 'Condition (SAMPLE)', sources: ['s2'] }] }),
+        sources: { s1: source, s2: { ...source, quote: '' } } }],
+    ]) {
+      const competitor = rec({ scope: scopeFor('a-levels'), ...override });
+      check(`F01 F5: ${problem} cannot establish a disjoint qualification in either record order`,
+        !acceptRule(competitor, ctx).disjoint && !one([rec(), competitor]).size && !one([competitor, rec()]).size);
+    }
     check('F01 F5: a disjoint record with its own other problems still cannot block it', one([rec(), rec({ scope: scopeFor('a-levels'), reviewer: '' })]).size === 1);
     check('F01 F5: a misspelt or uncited qualification might overlap, so it blocks', one([rec(), typo]).size === 0 && one([rec(), uncited]).size === 0);
     check('F01 F5: a withdrawal still wins, beside a disjoint record too', one([rec(), aLevels, rec({ status: 'withdrawn' })]).size === 0);
@@ -11962,6 +11975,28 @@ section('F01 public subject evidence and reviewed subject rules');
     h.jump(-3 * 86_400_000);
     check('F01 authority F2: a calendar day earlier than one already seen is never used', has());
     authority.stopSubjectAuthority();
+  }
+  {
+    const zone = process.env.TZ;
+    try {
+      process.env.TZ = 'UTC';
+      const h = harness({ start: Date.parse('2026-11-27T23:59:00Z'), body: fixtures.rulesCsv([rec({ recheck_by: '2026-11-27' })]) });
+      await h.start();
+      const current = has();
+      process.env.TZ = 'Europe/Bratislava';
+      authority.recheckAuthority();
+      const expired = !has();
+      process.env.TZ = 'UTC';
+      authority.recheckAuthority();
+      check('F01 F2: changing zones back cannot revive an approval expired in this response',
+        current && expired && !has() && h.calls.length === 1 && h.changes === 2);
+      await authority.refreshAuthority();
+      check('F01 F2: a new good response may establish approval in the current zone', has() && h.calls.length === 2 && h.changes === 3);
+    } finally {
+      authority.stopSubjectAuthority();
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   }
   for (const [name, body] of [['a missing file (404)', { status: 404 }], ['a malformed file', `${header}\n"broken`], ['an empty file', ''],
     ['an HTML page', '<!doctype html><p>Sign in</p>'], ['a request that never answers', 'hang']]) {

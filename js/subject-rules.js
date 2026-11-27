@@ -171,7 +171,7 @@ export function inspectRule(record, { raw = new Map(), today = new Date() } = {}
   const body = readRoutes(json(cell('routes')), kind, reasons, cited);
   // Proven disjoint only by a valid, cited scope naming a known other
   // qualification. Anything less stays a possible competitor.
-  const disjoint = Boolean(scope && scope.valid && scope.qualification !== IB_DIPLOMA);
+  const disjoint = !reasons.has('schema') && Boolean(scope?.valid && scope.qualification !== IB_DIPLOMA);
   if (disjoint) reasons.add('scope-inapplicable');
   // A rule with no route that could be an IB Diploma route gives no verdict.
   if (!disjoint && kind !== 'explicit-no-restrictions' && body.routes.length && body.routes.every((r) => r.scope?.qualification && r.scope.qualification !== IB_DIPLOMA)) reasons.add('routes');
@@ -224,9 +224,13 @@ function readSources(value, reasons) {
     const url = typeof source.url === 'string' ? safeUrl(source.url) : null;
     if (!url) reasons.add('unsafe-link');
     const quote = typeof source.quote === 'string' ? source.quote.trim() : '';
-    if (!quote || quote.length > MAX_QUOTE) reasons.add('sources');
-    if (source.lang !== undefined && (typeof source.lang !== 'string' || !/^[a-z]{2}$/.test(source.lang))) reasons.add('sources');
-    out[id] = { url, quote, lang: source.lang || 'en' };
+    const validLang = source.lang === undefined || (typeof source.lang === 'string' && /^[a-z]{2}$/.test(source.lang));
+    if (!quote || quote.length > MAX_QUOTE || !validLang) {
+      reasons.add('sources');
+      continue;
+    }
+    // A citation ID can establish scope only if it points to usable evidence.
+    if (url) out[id] = { url, quote, lang: source.lang || 'en' };
   }
   return out;
 }
