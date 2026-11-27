@@ -263,8 +263,9 @@ function subjectText(clause) {
 
 const CLAUSE_PREFIX = { exam: 'rv_exam', waiver: 'rv_waiver', manual: 'rv_manual' };
 
-// A clause as text parts: [{ text, lang? }].
-function clauseParts(clause) {
+// A clause as text parts: [{ text, lang? }]. My list's private block
+// (my-subjects-ui.js) quotes the same words beside each personal result.
+export function clauseParts(clause) {
   if (clause.type === 'subject') return subjectText(clause);
   const own = pickText(clause.text);
   return [{ text: `${t(CLAUSE_PREFIX[clause.type])} ` }, own];

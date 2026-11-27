@@ -20,9 +20,12 @@ import { compareTable, MIN_COMPARE } from './compare.js';
 import { loadCompare, readStoredCompare, saveCompare, normalizeCompare, toggleIn, restoreAt, COMPARE_KEY } from './compare-set.js';
 import {
   appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, renderSourceLine, renderSourceBanner, renderIssues,
-  setSaved, setInCompare, renderCompare, fillReviewed,
+  setSaved, setInCompare, renderCompare, fillReviewed, setPrivateDecor,
 } from './render.js';
 import { startSubjectAuthority, recheckAuthority } from './subject-authority.js';
+import { SHOW_MY_SUBJECTS } from './config.js';
+import { createProfileStore } from './my-subjects.js';
+import { createSubjectsUI, onScreen } from './my-subjects-ui.js';
 
 const dom = {
   banner: document.getElementById('source-banner'),
@@ -274,12 +277,18 @@ let dataDay = localDay(new Date());
 // change came from an arrow key (sortPick).
 let sortKeysWired = false;
 let sortByArrow = false;
+// F01 Phase 2, My subjects in My list: null unless js/config.js turns
+// SHOW_MY_SUBJECTS on. Then it owns the strip under the My list bar's first
+// line, the notices beside #ml-note and the private lines render.js asks it
+// for. It never changes the state, the rows, the counts or the address.
+let subjectsUI = null;
 
 start();
 
 async function start() {
   initLanguage(location.search);
   applyLanguage();
+  if (SHOW_MY_SUBJECTS) startMySubjects();
   initTheme();
   wireSettings();
   dom.banner.addEventListener('click', openIssuesFromLink);
@@ -1122,6 +1131,8 @@ function openCompare(trigger) {
   if (!loaded) return;
   if (!compareOpen) compareFrom = { trigger, scrollY: window.scrollY };
   compareOpen = true;
+  // Compare is public: an open subjects editor is discarded, unsaved.
+  subjectsUI?.sync();
   dismissCompareToast?.();
   dismissCompareToast = null;
   syncCompareControls();
@@ -1136,6 +1147,7 @@ function openCompare(trigger) {
 function redrawReviewed() {
   const byId = new Map(allRows.map((row) => [row.id, row]));
   for (const node of document.querySelectorAll('[data-reviewed-for]')) fillReviewed(node, byId.get(node.getAttribute('data-reviewed-for')));
+  subjectsUI?.refresh();
   drawCompare();
 }
 
@@ -2451,6 +2463,57 @@ function renderCounts(shown) {
   syncRound2(dom, state, active, shortlist.size);
 }
 
+// F01 Phase 2: My subjects. Everything private is built here, only when
+// the switch is on: the two boxes in the My list bar, the profile store (no
+// storage is opened until My list is first shown) and the private lines in
+// rows and details. The hooks give the UI what only this file knows.
+function startMySubjects() {
+  const strip = document.createElement('div');
+  strip.id = 'ml-subjects';
+  strip.className = 'ms-strip ms-private';
+  strip.hidden = true;
+  const notices = document.createElement('div');
+  notices.id = 'ml-subject-notices';
+  notices.className = 'ms-notices ms-private';
+  notices.hidden = true;
+  dom.shortlistBar.querySelector('.ml-row').after(strip);
+  dom.listNote.after(notices);
+  const store = createProfileStore({ onChange: () => subjectsUI?.refresh() });
+  subjectsUI = createSubjectsUI({ store, strip, notices, hooks: {
+    view: () => ({ mode: !state.shortlistOnly ? 'main' : shared ? 'shared' : 'mine', compareOpen, listIds, myMaths: state.myMaths, hlMaths: state.hlMaths }),
+    rowById: (id) => allRows.find((row) => row.id === id) ?? null,
+    snapshot: () => ({ selectedId, wide: wideQuery.matches, paneScroll: dom.pane.scrollTop }),
+    restore: (saved) => { if (saved.wide === wideQuery.matches && paneId === saved.selectedId) dom.pane.scrollTop = saved.paneScroll; },
+    focusProgramme: (saved) => focusProgramme(saved.selectedId),
+    focusFilter,
+    layoutChanged: scheduleWindow,
+  } });
+  setPrivateDecor(subjectsUI.decor);
+}
+
+// Back to the programme the student had open, at a visible place: its row if
+// it is on screen, else the pane (wide) or the row brought into view (narrow).
+function focusProgramme(id) {
+  if (!id || !shownRows.has(id)) return false;
+  const item = mountRow(id);
+  const open = item?.querySelector('button.open');
+  if (!open) return false;
+  if (onScreen(open)) open.focus({ preventScroll: true });
+  else if (wideQuery.matches && paneId === id) dom.pane.focus({ preventScroll: true });
+  else { revealRow(item); open.focus({ preventScroll: true }); }
+  return true;
+}
+
+// The notices' links: the My maths control or the HL Maths 4+ tick, in the
+// bar from 600 px, in the Filters sheet below.
+function focusFilter(which) {
+  if (!barQuery.matches) openSheet();
+  const pressed = document.querySelector('#maths-seg [aria-pressed="true"]');
+  const target = which === 'hl' ? dom.maths : [pressed, dom.myMaths].find(canShow) ?? dom.myMaths;
+  target.scrollIntoView?.({ block: 'nearest' });
+  target.focus({ preventScroll: true });
+}
+
 // The My list bar. Outside the list view: "3 saved · 2 shown", and "Show all
 // saves" when the filters hide some. Inside it: the same counts for the list,
 // the grouping, Compare, Share and the export. Saves whose programme is no
@@ -2521,6 +2584,7 @@ function renderListBar() {
   dom.listMore.hidden = mode !== 'mine' || emptyMine;
   if (dom.listMore.hidden) listMoreOpen = false;
   syncListMore();
+  subjectsUI?.sync();
 }
 
 function syncListMore() {

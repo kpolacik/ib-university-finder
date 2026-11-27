@@ -19,6 +19,12 @@ import { money, moneyRange, countdown, yearlyLine, visibleFacts, subjectLines } 
 import { reviewedRule } from './subject-authority.js';
 import { publicRuleView } from './ib-subjects.js';
 
+// F01 Phase 2: My list's private additions to a row and to Before you apply
+// (my-subjects-ui.js). app.js sets them only when SHOW_MY_SUBJECTS is on in
+// js/config.js; otherwise this stays null and nothing private is ever drawn.
+let privateDecor = null;
+export function setPrivateDecor(decor) { privateDecor = decor; }
+
 const longDate = dateFormatter({
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 });
@@ -404,6 +410,7 @@ function renderRow(row, state, wide, shortlist, headings, compare) {
   // The requirements run under the facts across the whole row, never clipped.
   const line = rowRequirements(row);
   if (line) body.append(line);
+  privateDecor?.row(body, row);
   body.append(chevron);
   item.append(body);
   return item;
@@ -847,6 +854,7 @@ function beforeYouApply(row) {
   // into the "nothing at all" sentence). Nothing is added without one.
   section.setAttribute('data-reviewed-for', row.id);
   fillReviewed(section, row);
+  privateDecor?.detail(reviewedPlace.get(section) ?? section, row);
   return section;
 }
 
@@ -869,7 +877,9 @@ export function fillReviewed(section, row) {
   if (!rule) return true;
   const node = el('div', 'd-reviewed');
   node.append(...reviewedContent(rule, row));
-  (reviewedPlace.get(section) ?? section).append(node);
+  // Public wording first; My list's private block (if any) stays after it.
+  const place = reviewedPlace.get(section) ?? section;
+  place.insertBefore(node, [...place.children].find((child) => child.classList?.contains('ms-detail')) ?? null);
   drawnReviewed.set(section, { key, node });
   return true;
 }

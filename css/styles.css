@@ -696,6 +696,47 @@ html.sheet-open{overflow:hidden}
 .ml-note{margin:6px 0 0;font-weight:600}
 .ml-origin{margin-top:6px}
 .ml-tools{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline)}
+/* F01 My subjects (js/my-subjects-ui.js): a strip under the bar's first
+   line, its inline editor, and private lines in rows and the detail. Only
+   existing tokens; no colour of its own (a personal result is words, not a
+   verdict tint). Screen only: the print rule further down hides .ms-private. */
+.ms-strip{margin-top:6px;padding-top:6px;border-top:1px solid var(--hairline);min-width:0;overflow-wrap:anywhere}
+.ms-line{display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;margin:0}
+.ms-label{font-weight:700}
+.ms-names{color:var(--ink)}
+.ms-more{color:var(--ink-2);font-weight:600}
+.ms-edit{min-height:var(--tap)}
+.ms-summary,.ms-status{margin:2px 0 0;color:var(--ink-2)}
+.ms-status{font-weight:600;color:var(--ink)}
+.ms-warn{display:grid;gap:6px;justify-items:start;margin-top:6px}
+.ms-notices{display:grid;gap:6px;margin-top:6px}
+.ms-notices .note{display:flex;flex-wrap:wrap;align-items:center;gap:0 6px}
+.ms-editor{display:grid;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--edge);border-radius:8px;background:var(--panel)}
+.ms-editor-h{margin:0;font-size:var(--fs-14);line-height:20px}
+.ms-rows{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.ms-erow{display:grid;grid-template-columns:minmax(0,2fr) minmax(5.5rem,1fr) minmax(7.5rem,1fr) auto;gap:4px 8px;align-items:end;padding-bottom:8px;border-bottom:1px solid var(--hairline)}
+.ms-erow .fld{display:grid;gap:2px;min-width:0}
+.ms-erow .inp{width:100%;min-width:0;height:var(--ctl);min-height:var(--tap);font-size:var(--fs-ctl)}
+.ms-erow .err{grid-column:1/-1}
+.ms-erow [aria-invalid=true]{border:2px solid var(--ink)}
+.ms-add-row{justify-self:start}
+.ms-tick{height:auto;min-height:var(--tap);white-space:normal}
+.ms-actions{display:flex;flex-wrap:wrap;gap:8px}
+.ms-actions .btn{min-height:var(--tap)}
+.ms-forget{margin-left:auto}
+@media (max-width: 599.98px){
+  .ms-erow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .ms-erow .ms-f-course{grid-column:1/-1}
+  .ms-erow .ms-remove{grid-column:1/-1;justify-self:start}
+  .ms-forget{margin-left:0}
+}
+.ms-row{grid-column:1/-1;margin:0;font-size:var(--fs-13);line-height:18px;color:var(--ink-2)}
+.ms-detail{margin-top:8px;padding:8px 10px;border-left:3px solid var(--edge);display:grid;gap:4px}
+.ms-detail>*{margin:0}
+.ms-h{font-size:var(--fs-14);line-height:20px}
+.ms-context,.ms-rider,.ms-help{color:var(--ink-2);font-size:var(--fs-13);line-height:18px}
+.ms-routes,.ms-clauses{margin:0;padding-left:18px}
+.ms-route-h{font-weight:600}
 .ml-group{flex:none;width:10rem}
 .ml-pop{position:relative}
 .ml-pop>summary{list-style:none;cursor:pointer;user-select:none}
@@ -2598,3 +2639,7 @@ body.compact .mark h1{opacity:0;transform:translateY(-4px);pointer-events:none}
   .fact{background:none}
   .fact .verd,.fact .ic{color:var(--ink)}
 }
+
+/* F01: a student's subjects never reach paper (no strip, editor, notice,
+   count, reason or personal result), whatever is open on screen. */
+@media print{.ms-private{display:none !important}}

@@ -4671,7 +4671,12 @@ function paneAppHarness(test, { boot = false, compare = null } = {}) {
       renderRows, appendRows, renderSlot, renderPane, renderCount, renderCountShort, renderChips, showSelectedFirst, renderAppliedChips, renderSortOptions, setSaved, setInCompare, renderCompare, renderSourceLine() {},
       renderSourceBanner() {}, renderIssues() {},
       // F01: the rules file is fetched only in a browser; here nothing is current.
-      fillReviewed, startSubjectAuthority: (options) => { context.subjectAuthority = options; }, recheckAuthority: () => { context.rechecks = (context.rechecks ?? 0) + 1; } };
+      fillReviewed, startSubjectAuthority: (options) => { context.subjectAuthority = options; }, recheckAuthority: () => { context.rechecks = (context.rechecks ?? 0) + 1; },
+      // F01 Phase 2 is off here, as shipped: any use of its private parts is a failure.
+      SHOW_MY_SUBJECTS: false, setPrivateDecor: () => { context.privateUsed = 'setPrivateDecor'; },
+      createProfileStore: () => { context.privateUsed = 'createProfileStore'; throw new Error('My subjects used while off'); },
+      createSubjectsUI: () => { context.privateUsed = 'createSubjectsUI'; throw new Error('My subjects used while off'); },
+      onScreen: () => { context.privateUsed = 'onScreen'; return true; } };
     context.compareStorage = fakeStorage(compare ? { [compareSetMod.COMPARE_KEY]: JSON.stringify(compare) } : {});
     const code = appSrc.replace(/^import[\s\S]*?from ['"][^'"]+['"];\n/gm, '');
     runInNewContext(read('js/theme.js').replace(/^export /gm, '') + '\n' + code, context);
@@ -12341,6 +12346,267 @@ section('F01 public subject evidence and reviewed subject rules');
     /const \{ programmes, meta, translations, raw \} = await loadData\(\);/.test(appSrc) && /startSubjectAuthority\(\{ raw, onChange: redrawReviewed \}\);/.test(appSrc)
       && appSrc.indexOf('startSubjectAuthority({ raw') > appSrc.indexOf('loaded = true;') && /addEventListener\('beforeprint', \(\) => \{\s*\/\/[^\n]*\n\s*recheckAuthority\(\);/.test(appSrc));
 }
+
+// BEGIN F01 Phase 2 checks
+section('F01 My subjects in My list: the private profile and its one IndexedDB record (E1–E5)');
+{
+  const msMod = await import('../js/my-subjects.js');
+  const { validRecord, newRevision, createProfileStore, DB_NAME, STORE, KEY, CHANNEL_TOKEN, CHANNEL_NAME } = msMod;
+  const UUID = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  const entry = (course, level, grade = null) => ({ course, level, grade });
+  const rec = (over = {}) => ({ version: 1, revision: UUID, entries: [entry('physics', 'HL', 6)], ...over });
+  check('F01 store: a full v1 record is accepted and copied',
+    JSON.stringify(validRecord(rec())) === JSON.stringify({ revision: UUID, entries: [entry('physics', 'HL', 6)] }));
+  const rejected = [
+    ['an extra field', { ...rec(), note: 'x' }], ['version 2', rec({ version: 2 })], ['a counter revision', rec({ revision: 'r1' })],
+    ['entries as text', rec({ entries: 'bad' })], ['no entries', rec({ entries: [] })], ['seven entries', rec({ entries: ['en-a-lit', 'en-b', 'economics', 'biology', 'chemistry', 'physics', 'film'].map((c) => entry(c, 'SL')) })],
+    ['two maths', rec({ entries: [entry('maths-aa', 'HL'), entry('maths-ai', 'SL')] })], ['a text grade', rec({ entries: [entry('physics', 'HL', '6')] })],
+    ['an unknown course', rec({ entries: [entry('law', 'HL')] })], ['ab initio at HL', rec({ entries: [entry('fr-ab-initio', 'HL')] })],
+    ['an entry with an extra field', rec({ entries: [{ ...entry('physics', 'HL'), note: 1 }] })], ['undefined', undefined], ['null', null], ['an array', [rec()]],
+    ['{ corrupt: true }', { corrupt: true }],
+  ];
+  equal('F01 store: every malformed, old, future or partial record is invalid (never partly trusted)', rejected.filter(([, v]) => validRecord(v) !== null).map(([n]) => n), []);
+  check('F01 store E3: a revision is a fresh CSPRNG id (randomUUID, else getRandomValues), and with no random source there is no write',
+    newRevision({ randomUUID: () => UUID }) === UUID
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(newRevision({ getRandomValues: (a) => { a.fill(171); return a; } }))
+      && (() => { try { newRevision({}); return false; } catch { return true; } })());
+
+  // A small IndexedDB stand-in: one shared "browser" for several stores (tabs).
+  // Each transaction runs whole in one task, so two tabs' transactions
+  // serialise as in a real browser; a test can hold or block an open, abort
+  // the next put or delete, or remove the store.
+  const tick = () => new Promise((r) => setImmediate(r));
+  function fakeBrowser() {
+    const dbs = new Map();
+    const b = { dbs, opens: 0, puts: 0, deletes: 0, hold: false, blocked: false, abortPut: false, abortDelete: false, held: [], posted: [], channels: new Set() };
+    const request = () => ({ onsuccess: null, onerror: null, onblocked: null, onupgradeneeded: null, result: undefined, transaction: null });
+    function connection(name) {
+      const db = dbs.get(name);
+      return {
+        objectStoreNames: { contains: (n) => db.stores.has(n) },
+        createObjectStore: (n) => { db.stores.set(n, new Map()); },
+        close() { this.closed = true; },
+        transaction(storeName, mode) {
+          if (!db.stores.has(storeName)) throw new Error('NotFoundError');
+          // The transaction sees the store as it is when it runs, not when it was asked for.
+          let work = null;
+          const queue = [];
+          let aborted = false;
+          const tx = { oncomplete: null, onabort: null, onerror: null, error: null, abort() { if (aborted) throw new Error('InvalidStateError'); aborted = true; tx.error = { name: 'AbortError' }; } };
+          const req = (fn) => { const r = { onsuccess: null, result: undefined }; queue.push(() => { r.result = fn(); r.onsuccess?.(); }); return r; };
+          const store = {
+            name: storeName,
+            getKey: (k) => req(() => (work.has(k) ? k : undefined)),
+            get: (k) => req(() => work.get(k)),
+            put: (v, k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.puts++; const r = req(() => { work.set(k, structuredClone(v)); return k; }); if (b.abortPut) { b.abortPut = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+            delete: (k) => { if (mode !== 'readwrite') throw new Error('ReadOnlyError'); b.deletes++; const r = req(() => { work.delete(k); }); if (b.abortDelete) { b.abortDelete = false; queue.push(() => { if (!aborted) tx.abort(); }); } return r; },
+          };
+          tx.objectStore = () => store;
+          setImmediate(() => {
+            work = new Map(db.stores.get(storeName));
+            while (queue.length && !aborted) queue.shift()();
+            if (!aborted) db.stores.set(storeName, work);
+            setImmediate(() => (aborted ? tx.onabort?.() : tx.oncomplete?.()));
+          });
+          return tx;
+        },
+      };
+    }
+    function deliver(r, name, version) {
+      if (!dbs.has(name)) {
+        dbs.set(name, { version, stores: new Map() });
+        let abortedUpgrade = false;
+        r.transaction = { abort() { abortedUpgrade = true; } };
+        r.result = connection(name);
+        r.onupgradeneeded?.({ oldVersion: 0 });
+        if (abortedUpgrade) { dbs.delete(name); r.onerror?.({ preventDefault() {} }); return; }
+      } else if (dbs.get(name).version > version) { r.onerror?.({ preventDefault() {} }); return; }
+      r.result = connection(name);
+      r.onsuccess?.();
+    }
+    b.idb = {
+      open(name, version) {
+        b.opens++;
+        const r = request();
+        const go = () => deliver(r, name, version);
+        if (b.blocked) { b.blocked = false; setImmediate(() => r.onblocked?.()); b.held.push(go); }
+        else if (b.hold) { b.hold = false; b.held.push(go); }
+        else setImmediate(go);
+        return r;
+      },
+    };
+    b.release = () => { for (const go of b.held.splice(0)) go(); };
+    b.Channel = class { constructor(n) { this.name = n; b.channels.add(this); } postMessage(m) { b.posted.push(m); for (const c of b.channels) if (c !== this && c.name === this.name) setImmediate(() => c.onmessage?.({ data: m })); } close() { b.channels.delete(this); } };
+    b.record = () => dbs.get(DB_NAME)?.stores.get(STORE)?.get(KEY);
+    return b;
+  }
+  // A store (one tab) on that browser, with timers the test drives.
+  function tab(b) {
+    const timers = new Map(); let id = 0;
+    const store = createProfileStore({ idb: () => b.idb, Channel: () => b.Channel, target: null, timeoutMs: 1000,
+      timers: { set: (fn) => { timers.set(++id, fn); return id; }, clear: (i) => timers.delete(i) } });
+    store.fireTimers = () => { for (const [i, fn] of [...timers]) { timers.delete(i); fn(); } };
+    return store;
+  }
+  const settle = async (...stores) => { for (let i = 0; i < 12; i++) await tick(); await Promise.all(stores.map((s) => s.idle())); for (let i = 0; i < 6; i++) await tick(); };
+  const P = [entry('physics', 'HL', 6)];
+  const C = [entry('chemistry', 'HL', 7)];
+
+  {
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    check('F01 store: reading in My list finds nothing and creates no database', b.dbs.size === 0 && t.snapshot().observed === 'absent' && t.snapshot().active === null);
+    const opens = b.opens;
+    const d = t.openDraft();
+    const page = await t.save(d, P, false);
+    check('F01 store E4: a page-only Save stays in memory: no open, write or delete', page.result === 'page' && b.opens === opens && b.dbs.size === 0 && t.snapshot().active.mode === 'page');
+    const d2 = t.openDraft();
+    check('F01 store: a page-only profile drafts with Remember unticked', d2.remember === false);
+    const r = await t.save(d2, P, true);
+    const stored = b.record();
+    check('F01 store E1/E3: Remember from "absent" writes one valid v1 record with a random revision and posts only the fixed word',
+      r.result === 'remembered' && validRecord(stored) !== null && stored.revision !== UUID && JSON.stringify(b.posted) === JSON.stringify([CHANNEL_TOKEN])
+        && CHANNEL_NAME === DB_NAME && Object.keys(stored).sort().join() === 'entries,revision,version');
+  }
+  {
+    // Immediate stale Save after another tab's Forget, page-only switch, a
+    // new revision (ABA) and a site-data clear: no notification needed.
+    for (const how of ['forget', 'page-only', 'aba', 'clear']) {
+      const b = fakeBrowser(); const a = tab(b); const bb = tab(b);
+      a.activate(); await settle(a);
+      await a.save(a.openDraft(), P, true);
+      bb.activate(); await settle(bb);
+      const adopted = bb.snapshot().active?.mode === 'remembered';
+      // B stops hearing anything: every channel is gone.
+      b.channels.clear();
+      const draft = bb.openDraft();
+      if (how === 'forget') await a.forget();
+      if (how === 'page-only') await a.save(a.openDraft(), P, false);
+      if (how === 'aba') { await a.forget(); await a.save(a.openDraft(), C, true); }
+      if (how === 'clear') b.dbs.clear();
+      const before = JSON.stringify(b.record());
+      const result = await bb.save(draft, C, true);
+      check(`F01 store E1: tab B's Save on an old revision is refused after ${how} in tab A, and nothing is written`,
+        adopted && result.result === 'stale' && JSON.stringify(b.record()) === before && bb.snapshot().active?.mode === 'remembered');
+    }
+  }
+  {
+    const b = fakeBrowser(); const a = tab(b); const c = tab(b);
+    a.activate(); c.activate(); await settle(a, c);
+    const [x, y] = await Promise.all([a.save(a.openDraft(), P, true), c.save(c.openDraft(), C, true)]);
+    check('F01 store E1: two tabs creating from nothing at once: exactly one commits, the other is stale',
+      [x.result, y.result].sort().join() === 'remembered,stale' && validRecord(b.record()) !== null, JSON.stringify([x, y]));
+  }
+  {
+    for (const [name, value] of [['corrupt', { corrupt: true }], ['undefined', undefined], ['future', rec({ version: 2 })]]) {
+      const b = fakeBrowser();
+      b.dbs.set(DB_NAME, { version: 1, stores: new Map([[STORE, new Map([[KEY, value]])]]) });
+      const t = tab(b); t.activate(); await settle(t);
+      const refused = await t.save(t.openDraft(), P, true);
+      const puts = b.puts;
+      const gone = await t.forget();
+      check(`F01 store E1/E3: a ${name} record reads as invalid, a remembered Save refuses to overwrite it, and Forget removes it`,
+        t.snapshot().observed === 'absent' && refused.result === 'refused' && refused.base === 'invalid' && puts === 0 && gone.result === 'forgotten' && !b.dbs.get(DB_NAME).stores.get(STORE).has(KEY));
+    }
+    const b = fakeBrowser();
+    b.dbs.set(DB_NAME, { version: 1, stores: new Map([['other', new Map()]]) });
+    const t = tab(b); t.activate(); await settle(t);
+    const snap = t.snapshot();
+    const gone = await t.forget();
+    check('F01 store E3: a version-1 database without the profile store is a read error, and Forget reports that erasure could not be confirmed',
+      snap.observed === 'error' && snap.warning === 'read-failed' && gone.result === 'delete-failed' && t.snapshot().warning === 'delete-failed');
+    const v = fakeBrowser();
+    v.dbs.set(DB_NAME, { version: 2, stores: new Map([[STORE, new Map([[KEY, rec()]])]]) });
+    const tv = tab(v); tv.activate(); await settle(tv);
+    check('F01 store E3: a newer database version is an error, never read as a profile', tv.snapshot().observed === 'error' && tv.snapshot().active === null);
+  }
+  {
+    // E2: a blocked open and a slow open, for Remember and for Forget.
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const rev1 = JSON.stringify(b.record());
+    b.blocked = true;
+    const blocked = await t.save(t.openDraft(), C, true);
+    b.release(); await settle(t);
+    check('F01 store E2: a blocked open fails the remembered Save at once; the entries stay on the page with the older-copy warning; the late open writes nothing',
+      blocked.result === 'write-failed' && t.snapshot().warning === 'write-failed' && JSON.stringify(t.snapshot().active.entries) === JSON.stringify(C)
+        && JSON.stringify(b.record()) === rev1 && b.puts === 1);
+    b.hold = true;
+    const pending = t.forget();
+    await settle(); t.fireTimers();
+    const slow = await pending;
+    const deletes = b.deletes;
+    const later = await t.retryDelete();
+    b.release(); await settle(t);
+    check('F01 store E2: a slow open fails Forget after the timeout; Retry deletes; the late open from the timed-out Forget deletes nothing more',
+      slow.result === 'delete-failed' && later.result === 'forgotten' && b.deletes === deletes + 1 && t.snapshot().warning === null && b.record() === undefined);
+    await t.save(t.openDraft(), P, true);
+    const kept = JSON.stringify(b.record());
+    b.abortPut = true;
+    const aborted = await t.save(t.openDraft(), C, true);
+    check('F01 store E2: an aborted put is reported only after the abort, keeps the entries on the page, and leaves the older copy',
+      aborted.result === 'write-failed' && JSON.stringify(b.record()) === kept && JSON.stringify(t.snapshot().active.entries) === JSON.stringify(C));
+    b.abortDelete = true;
+    const failedForget = await t.forget();
+    await t.reread(); await settle(t);
+    check('F01 store E4: after a failed delete a reread neither re-adopts the record nor clears the warning while it is still there',
+      failedForget.result === 'delete-failed' && t.snapshot().active === null && t.snapshot().warning === 'delete-failed');
+    b.dbs.clear();
+    await t.reread(); await settle(t);
+    check('F01 store E4: the delete-failure warning clears once a reread finds nothing stored', t.snapshot().warning === null && t.snapshot().deleteFailed === false);
+  }
+  {
+    const b = fakeBrowser(); const a = tab(b); const p = tab(b);
+    p.activate(); await settle(p);
+    await p.save(p.openDraft(), C, false);
+    a.activate(); await settle(a);
+    await a.save(a.openDraft(), P, true);
+    const record = JSON.stringify(b.record());
+    const opens = b.opens - 0;
+    await p.save(p.openDraft(), [entry('film', 'SL')], false);
+    await p.reread(); await settle(p, a);
+    check('F01 store E4: an independent page-only profile is never replaced by another tab\'s remembered copy, and its Saves never touch storage',
+      p.snapshot().active.mode === 'page' && JSON.stringify(p.snapshot().active.entries) === JSON.stringify([entry('film', 'SL')]) && JSON.stringify(b.record()) === record);
+    const q = tab(b); q.activate(); await settle(q, a);
+    await a.forget(); await settle(a, q);
+    check('F01 store: a tab showing the remembered copy hears another tab\'s Forget (fixed word only) and empties with a notice',
+      q.snapshot().active === null && q.snapshot().warning === 'removed-elsewhere' && b.posted.every((m) => m === CHANNEL_TOKEN) && opens > 0);
+  }
+  {
+    // A switch from remembered to page-only deletes unconditionally.
+    const b = fakeBrowser(); const t = tab(b);
+    t.activate(); await settle(t);
+    await t.save(t.openDraft(), P, true);
+    const r = await t.save(t.openDraft(), C, false);
+    check('F01 store E4: switching to page-only keeps the entries in memory and deletes the remembered copy',
+      r.result === 'page-removed' && b.record() === undefined && t.snapshot().active.mode === 'page');
+  }
+
+  const msSrc = read('js/my-subjects.js'), uiSrc = read('js/my-subjects-ui.js'), cfgSrc = read('js/config.js');
+  const appSrcRaw = read('js/app.js'), renderSrc = read('js/render.js'), smokeSrc = read('tools/smoke.mjs');
+  const code = (src) => src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  check('F01 config: SHOW_MY_SUBJECTS ships off, like the rankings switch', /export const SHOW_MY_SUBJECTS = false;/.test(cfgSrc));
+  check('F01 app.js: nothing private is built unless the switch is on; render.js draws nothing private until told',
+    /if \(SHOW_MY_SUBJECTS\) startMySubjects\(\);/.test(appSrcRaw) && (appSrcRaw.match(/setPrivateDecor\(/g) ?? []).length === 1
+      && /let privateDecor = null;/.test(renderSrc) && /privateDecor\?\.row\(body, row\)/.test(renderSrc) && /privateDecor\?\.detail\(/.test(renderSrc));
+  check('F01 privacy: the profile code never uses Web Storage, fetch, the console, the address or history',
+    [msSrc, uiSrc].every((s) => !/localStorage|sessionStorage|fetch\(|console\.|history\.|location\.|document\.cookie/.test(code(s))));
+  check('F01 privacy: CSV, share, Copy link and the address take no profile (toCsv, shareQuery and addressQuery unchanged; app.js never passes the store to them)',
+    /toCsv\(rows, \{ myLiving: state\.myLiving \}\)/.test(appSrcRaw) && !/subjectsUI[^\n]*(toCsv|shareQuery|addressQuery|stateToParams)/.test(appSrcRaw));
+  check('F01 storage: one fixed database, store and key, and only a fixed word on the channel', /export const DB_NAME = 'ib-university-finder:my-subjects:v1';/.test(msSrc)
+    && /export const STORE = 'profile';/.test(msSrc) && /export const KEY = 'current';/.test(msSrc) && /postMessage\(CHANNEL_TOKEN\)/.test(msSrc) && (msSrc.match(/postMessage\(/g) ?? []).length === 1);
+  check('F01 production modules never reference the SAMPLE test adapter', ![msSrc, uiSrc, appSrcRaw, renderSrc].some((s) => s.includes('sample-adapter')));
+  check('F01 smoke registers runMySubjects for --only and the full run', /runSubjectEvidence, runMySubjects \};/.test(smokeSrc) && /await runMySubjects\(base\);/.test(smokeSrc));
+  check('F01 print: every private node carries .ms-private, hidden on paper',
+    /@media print\{\.ms-private\{display:none !important\}\}/.test(read('css/styles.css')) && /'ms-row ms-private'/.test(uiSrc) && /'ms-detail ms-private'/.test(uiSrc)
+      && /'ms-strip ms-private'/.test(appSrcRaw) && /'ms-notices ms-private'/.test(appSrcRaw));
+}
+appCheck('F01 app harness: with the switch off, Browse, a detail and My list use none of the private parts', ({ run, context, click, ids }) => {
+  click(ids[0]); run('state.shortlistOnly = true; update();');
+  return context.privateUsed === undefined && !stubDocument.getElementById('ml-subjects')?.parent;
+});
+// END F01 Phase 2 checks
 
 console.log(failures ? `\n${failures} FAILED` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -32,3 +32,10 @@ export const URGENT_WITHIN_DAYS = 60;
 // after every rank and every blank was checked against both 2027 tables.
 // Set to false to hide the block; the data stays in the CSV.
 export const SHOW_RANKINGS = true;
+
+// F01 Phase 2: a student's own IB subjects in My list (the strip, its editor,
+// and a private result beside each saved programme), kept on the page or, if
+// they tick "Remember in this browser", in this browser only. Off until Leon
+// decides to release it; the public subject wording shows either way. With
+// false nothing private is drawn and the browser's storage is never opened.
+export const SHOW_MY_SUBJECTS = false;

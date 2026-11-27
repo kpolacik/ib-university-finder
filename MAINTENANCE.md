@@ -652,6 +652,28 @@ Track A (now) ships with zero rows: `tools/check.mjs` fails if the shipped file
 has any. Allowing real rows is Leon's decision, together with naming the
 maintainer and reviewer.
 
+### My subjects in My list (switched off as shipped)
+
+Students can add their own IB subjects in My list and see, beside each saved
+programme that has a current reviewed rule above, whether their subjects meet
+it. Nothing about it needs maintaining in the data: it reads only the rules
+file above, and with zero rows every student sees "No reviewed subject checks
+for these programmes yet".
+
+- **On or off:** `SHOW_MY_SUBJECTS` in `js/config.js`. Leave it `false` until
+  Leon decides to release it. Off draws nothing private and never opens the
+  browser's storage; the public subject wording shows either way.
+- **Where a student's subjects are kept:** on the page only, unless they tick
+  "Remember in this browser"; then in this browser's site data (IndexedDB),
+  never on any server. Nobody else, including the maintainers, can see them.
+  A student who wants them gone uses Forget subjects, or clears this site's
+  data in their browser settings.
+- **Changing the subject list** (`IB_COURSES` in `js/ib-subjects.js`): add a
+  new id with its English and Slovak names in `js/i18n.js`; never rename or
+  reuse an id, because remembered profiles and rules store ids.
+- **Checks:** `node tools/check.mjs`, then
+  `node tools/smoke.mjs --only=runMySubjects` (real Chrome, about a minute).
+
 ---
 
 ## The autumn job, every year
